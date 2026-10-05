@@ -35,3 +35,4 @@ GoogleService-Info.plist
 .gradle_home/wrapper/dists/gradle-8.13-bin/5xuhj0ry160q40clulazy9h7d/gradle-8.13-bin.zip.lck
 .gradle_home/wrapper/dists/gradle-8.13-bin/5xuhj0ry160q40clulazy9h7d/gradle-8.13-bin.zip.part
 gradle/wrapper/gradle-wrapper.jar
+**/*.onnx
