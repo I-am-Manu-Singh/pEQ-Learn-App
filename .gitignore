@@ -1,0 +1,37 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/composeApp/build
+.cxx
+externalNativeBuild
+.idea/deploymentTargetDropDown.xml
+.idea/deploymentTargetSelector.xml
+*.log
+*.txt
+technical_debt_backlog.md
+/.kotlin
+# Sensitive credentials, keys & environment files
+.env
+/.recovered
+.env.*
+*.jks
+*.keystore
+key.properties
+local.properties
+
+# Additional binaries and services configs
+google-services.json
+GoogleService-Info.plist
+*.apk
+*.aab
+.gradle_home/wrapper/dists/gradle-8.13-bin/5xuhj0ry160q40clulazy9h7d/gradle-8.13-bin.zip.lck
+.gradle_home/wrapper/dists/gradle-8.13-bin/5xuhj0ry160q40clulazy9h7d/gradle-8.13-bin.zip.part
+gradle/wrapper/gradle-wrapper.jar

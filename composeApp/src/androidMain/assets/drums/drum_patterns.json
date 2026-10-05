@@ -1,0 +1,21 @@
+{
+  "patterns": [
+    {"name": "Standard-4-4", "grid": [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0], "kit": "NEURAL 808"},
+    {"name": "Basic-Rock", "grid": [1,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,1,0], "kit": "NEURAL 808"},
+    {"name": "Trap-Basic", "grid": [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0], "kit": "TRAP / DRILL"},
+    {"name": "Trap-Roll-Advanced", "grid": [1,0,0,0, 1,1,1,0, 1,0,0,0, 0,0,0,1], "kit": "TRAP / DRILL"},
+    {"name": "Trap-Triplet", "grid": [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,0,0], "kit": "TRAP / DRILL"},
+    {"name": "House-Four-On-Floor", "grid": [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0], "kit": "HOUSE / TECHNO"},
+    {"name": "House-Classic-Sync", "grid": [1,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,1,0], "kit": "HOUSE / TECHNO"},
+    {"name": "Drill-Sliding-808", "grid": [1,0,0,1, 0,0,1,0, 1,0,0,0, 0,1,0,0], "kit": "TRAP / DRILL"},
+    {"name": "Drill-Dark-Stab", "grid": [1,0,0,1, 0,1,0,0, 1,0,1,0, 0,1,0,0], "kit": "TRAP / DRILL"},
+    {"name": "Jazz-Swing-Triplets", "grid": [1,0,0,1, 0,0,1,0, 1,0,0,1, 0,0,1,0], "kit": "LOFI / JAZZ"},
+    {"name": "LoFi-Dusty-Boom", "grid": [1,0,0,0, 0,0,1,1, 0,0,0,0, 1,0,1,0], "kit": "LOFI / JAZZ"},
+    {"name": "D&B-Jump-Up", "grid": [1,0,0,1, 0,1,0,0, 1,0,0,1, 0,1,0,0], "kit": "INDUSTRIAL GRIME"},
+    {"name": "Afro-Syncopated", "grid": [1,0,0,1, 0,0,1,0, 0,0,1,0, 1,0,0,1], "kit": "NEURAL 808"},
+    {"name": "Techno-Driving", "grid": [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0], "kit": "HOUSE / TECHNO"},
+    {"name": "Metal-Double-Kick", "grid": [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1], "kit": "INDUSTRIAL GRIME"},
+    {"name": "Reggae-One-Drop", "grid": [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0], "kit": "NEURAL 808"},
+    {"name": "Samba-Bossa", "grid": [1,1,0,1, 1,0,1,0, 1,1,0,1, 1,0,1,0], "kit": "HOUSE / TECHNO"}
+  ]
+}

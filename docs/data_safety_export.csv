@@ -1,0 +1,6 @@
+Question,Response
+Does your app collect or share user data?,Yes
+Is all data encrypted in transit?,Yes
+Do you provide a way for users to request data deletion?,Yes
+Personal Info - User IDs,Collected for app functionality and account management
+Device or other IDs,Collected for analytics and security

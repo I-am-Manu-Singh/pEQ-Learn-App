@@ -1,0 +1,286 @@
+[
+  {
+    "id": "h_bhairav",
+    "name_en": "Bhairav",
+    "name_hi": "भैरव",
+    "system": "Hindustani",
+    "parent_scale": "Bhairav Thaat",
+    "blueprint": {
+      "arohanam": ["S", "r", "G", "m", "P", "d", "N", "S'"],
+      "avarohanam": ["S'", "N", "d", "P", "m", "G", "r", "S"],
+      "vadi": "d",
+      "samvadi": "r"
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_mayamalavagowla",
+    "name_en": "Mayamalavagowla",
+    "name_hi": "मायामालवगौळ",
+    "system": "Carnatic",
+    "parent_scale": "15th Melakarta",
+    "blueprint": {
+      "arohanam": ["S", "R1", "G3", "M1", "P", "D1", "N3", "S"],
+      "avarohanam": ["S", "N3", "D1", "P", "M1", "G3", "R1", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_yaman",
+    "name_en": "Yaman",
+    "name_hi": "यमन",
+    "system": "Hindustani",
+    "parent_scale": "Kalyan Thaat",
+    "blueprint": {
+      "arohanam": ["N.", "R", "G", "M#", "P", "D", "N", "S'"],
+      "avarohanam": ["S'", "N", "D", "P", "M#", "G", "R", "S"],
+      "vadi": "G",
+      "samvadi": "N"
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_ahire_bhairav",
+    "name_en": "Ahir Bhairav",
+    "name_hi": "अहीर भैरव",
+    "system": "Hindustani",
+    "parent_scale": "Bhairav Thaat",
+    "blueprint": {
+      "arohanam": ["S", "r", "G", "m", "P", "D", "n", "S'"],
+      "avarohanam": ["S'", "n", "D", "P", "m", "G", "r", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_bilawal",
+    "name_en": "Bilawal",
+    "name_hi": "बिलावल",
+    "system": "Hindustani",
+    "parent_scale": "Bilawal Thaat",
+    "blueprint": {
+      "arohanam": ["S", "R", "G", "m", "P", "D", "N", "S'"],
+      "avarohanam": ["S'", "N", "D", "P", "m", "G", "R", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_khamaj",
+    "name_en": "Khamaj",
+    "name_hi": "खमाज",
+    "system": "Hindustani",
+    "parent_scale": "Khamaj Thaat",
+    "blueprint": {
+      "arohanam": ["S", "G", "m", "P", "D", "N", "S'"],
+      "avarohanam": ["S'", "n", "D", "P", "m", "G", "R", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_kafi",
+    "name_en": "Kafi",
+    "name_hi": "काफी",
+    "system": "Hindustani",
+    "parent_scale": "Kafi Thaat",
+    "blueprint": {
+      "arohanam": ["S", "R", "g", "m", "P", "D", "n", "S'"],
+      "avarohanam": ["S'", "n", "D", "P", "m", "g", "R", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_asavari",
+    "name_en": "Asavari",
+    "name_hi": "असावरी",
+    "system": "Hindustani",
+    "parent_scale": "Asavari Thaat",
+    "blueprint": {
+      "arohanam": ["S", "R", "m", "P", "d", "S'"],
+      "avarohanam": ["S'", "n", "d", "P", "m", "g", "R", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_bhairavi",
+    "name_en": "Bhairavi",
+    "name_hi": "भैरवी",
+    "system": "Hindustani",
+    "parent_scale": "Bhairavi Thaat",
+    "blueprint": {
+      "arohanam": ["S", "r", "g", "m", "P", "d", "n", "S'"],
+      "avarohanam": ["S'", "n", "d", "P", "m", "g", "r", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_marwa",
+    "name_en": "Marwa",
+    "name_hi": "मारवा",
+    "system": "Hindustani",
+    "parent_scale": "Marwa Thaat",
+    "blueprint": {
+      "arohanam": ["S", "r", "G", "M#", "D", "N", "S'"],
+      "avarohanam": ["S'", "N", "D", "M#", "G", "r", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_purvi",
+    "name_en": "Purvi",
+    "name_hi": "पूर्वी",
+    "system": "Hindustani",
+    "parent_scale": "Purvi Thaat",
+    "blueprint": {
+      "arohanam": ["S", "r", "G", "M#", "P", "d", "N", "S'"],
+      "avarohanam": ["S'", "N", "d", "P", "M#", "G", "r", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "h_todi",
+    "name_en": "Todi",
+    "name_hi": "तोड़ी",
+    "system": "Hindustani",
+    "parent_scale": "Todi Thaat",
+    "blueprint": {
+      "arohanam": ["S", "r", "g", "M#", "d", "N", "S'"],
+      "avarohanam": ["S'", "N", "d", "P", "M#", "g", "r", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_shankarabharanam",
+    "name_en": "Shankarabharanam",
+    "name_hi": "शंकराभरणं",
+    "system": "Carnatic",
+    "parent_scale": "29th Melakarta",
+    "blueprint": {
+      "arohanam": ["S", "R2", "G3", "M1", "P", "D2", "N3", "S"],
+      "avarohanam": ["S", "N3", "D2", "P", "M1", "G3", "R2", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_kharaharapriya",
+    "name_en": "Kharaharapriya",
+    "name_hi": "खरहरप्रिया",
+    "system": "Carnatic",
+    "parent_scale": "22nd Melakarta",
+    "blueprint": {
+      "arohanam": ["S", "R2", "G2", "M1", "P", "D2", "N2", "S"],
+      "avarohanam": ["S", "N2", "D2", "P", "M1", "G2", "R2", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_kalyani",
+    "name_en": "Kalyani",
+    "name_hi": "कल्याणी",
+    "system": "Carnatic",
+    "parent_scale": "65th Melakarta",
+    "blueprint": {
+      "arohanam": ["S", "R2", "G3", "M2", "P", "D2", "N3", "S"],
+      "avarohanam": ["S", "N3", "D2", "P", "M2", "G3", "R2", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_todi",
+    "name_en": "Hanumatodi",
+    "name_hi": "हनुमतोड़ी",
+    "system": "Carnatic",
+    "parent_scale": "8th Melakarta",
+    "blueprint": {
+      "arohanam": ["S", "R1", "G2", "M1", "P", "D1", "N2", "S"],
+      "avarohanam": ["S", "N2", "D1", "P", "M1", "G2", "R1", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_mohanam",
+    "name_en": "Mohanam",
+    "name_hi": "मोहनम",
+    "system": "Carnatic",
+    "parent_scale": "Janya of Harikambhoji",
+    "blueprint": {
+      "arohanam": ["S", "R2", "G3", "P", "D2", "S"],
+      "avarohanam": ["S", "D2", "P", "G3", "R2", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_abhogi",
+    "name_en": "Abhogi",
+    "name_hi": "आभोगि",
+    "system": "Carnatic",
+    "parent_scale": "Janya of Kharaharapriya",
+    "blueprint": {
+      "arohanam": ["S", "R2", "G2", "M1", "D2", "S"],
+      "avarohanam": ["S", "D2", "M1", "G2", "R2", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_hindolam",
+    "name_en": "Hindolam",
+    "name_hi": "हिंदोलम",
+    "system": "Carnatic",
+    "parent_scale": "Janya of Hanumatodi",
+    "blueprint": {
+      "arohanam": ["S", "G2", "M1", "D1", "N2", "S"],
+      "avarohanam": ["S", "N2", "D1", "M1", "G2", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  },
+  {
+    "id": "c_hamsadhwani",
+    "name_en": "Hamsadhwani",
+    "name_hi": "हंसध्वनि",
+    "system": "Carnatic",
+    "parent_scale": "Janya of Shankarabharanam",
+    "blueprint": {
+      "arohanam": ["S", "R2", "G3", "P", "N3", "S"],
+      "avarohanam": ["S", "N3", "P", "G3", "R2", "S"]
+    },
+    "improvisation": {},
+    "composition": {},
+    "finale": {}
+  }
+]

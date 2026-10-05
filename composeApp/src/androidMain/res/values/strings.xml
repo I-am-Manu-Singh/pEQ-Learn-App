@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">pEQ Learn</string>
+    <string name="accessibility_description">pEQ Learn uses this service to detect when audio apps are launched and automatically apply your custom EQ profiles.</string>
+</resources>

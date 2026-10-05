@@ -1,0 +1,402 @@
+[
+  {
+    "name": "ELECTRONIC_808: 4/4 Core Foundation",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], []]
+  },
+  {
+    "name": "ELECTRONIC_808: Club Syncopation",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], [], ["HIHAT_CLOSED", "PERC"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Sub-Bass Heavy Roller",
+    "steps": [["KICK", "BASS_SUB"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK"], ["BASS_SUB"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["FX"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Minimal Tech Bounce",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["KICK_ALT"], [], ["HIHAT_OPEN"], [], ["KICK"], [], ["HIHAT_CLOSED"], ["PERC"], ["KICK_ALT"], [], ["HIHAT_CLOSED"], []]
+  },
+  {
+    "name": "ELECTRONIC_808: Build Up Tension Fills",
+    "steps": [["KICK"], ["TOM_HI"], ["HIHAT_CLOSED"], ["TOM_MID"], ["SNARE"], ["TOM_LO"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["KICK"], ["TOM_HI"], ["TOM_MID"], ["TOM_LO"], ["SNARE", "CLAP"], ["SNARE_ALT"], ["FX"], ["CRASH"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Electro Breakbeat Sync",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["SNARE"], [], ["HIHAT_CLOSED"], [], [], ["KICK"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Shaker Driven Pulse",
+    "steps": [["KICK"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["SNARE"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["KICK"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["SNARE"], ["PERC"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Industrial Accent Stabs",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE", "FX"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], ["BASS_SUB"], ["SNARE"], [], ["HIHAT_CLOSED"], ["CRASH"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Latin Cross-Rhythms",
+    "steps": [["KICK"], [], [], ["RIM_CLICK"], ["SNARE"], [], ["RIM_CLICK"], [], [], ["KICK"], ["RIM_CLICK"], [], ["SNARE"], [], [], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Cyberpunk Aggressive Drive",
+    "steps": [["KICK", "BASS_SUB"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["SNARE"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_OPEN"], ["KICK"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["SNARE", "CLAP"], ["HIHAT_CLOSED"], ["FX"], []]
+  },
+  {
+    "name": "ELECTRONIC_808: House Four-To-The-Floor",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["KICK", "CLAP"], [], ["HIHAT_CLOSED"], [], ["KICK"], [], ["HIHAT_CLOSED"], [], ["KICK", "CLAP"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Classic UK Garage Skip",
+    "steps": [["KICK"], [], [], ["HIHAT_CLOSED"], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["KICK"], [], ["HIHAT_CLOSED"], ["SNARE"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "ELECTRONIC_808: Acid House Accent Pattern",
+    "steps": [["KICK"], ["BASS_SUB"], ["HIHAT_CLOSED"], [], ["SNARE"], ["BASS_SUB"], ["HIHAT_CLOSED"], ["FX"], ["KICK"], ["BASS_SUB"], ["HIHAT_CLOSED"], [], ["SNARE", "CLAP"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Deep Tech Top Loop",
+    "steps": [["HIHAT_CLOSED"], ["PERC"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["HIHAT_CLOSED"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["PERC"], ["FX"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Rave Breakbeat Chaos",
+    "steps": [["KICK"], ["HIHAT_CLOSED"], [], ["KICK_ALT"], ["SNARE"], [], ["HIHAT_OPEN"], ["KICK"], ["KICK"], [], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["SNARE"], [], ["HIHAT_CLOSED"], ["CRASH"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Techno Industrial Static",
+    "steps": [["KICK"], ["FX"], ["HIHAT_CLOSED"], ["FX"], ["KICK", "SNARE"], ["FX"], ["HIHAT_CLOSED"], ["FX"], ["KICK_ALT"], ["FX"], ["HIHAT_CLOSED"], ["FX"], ["KICK", "SNARE"], ["FX"], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Ambient Dub Low-End",
+    "steps": [["KICK", "BASS_SUB"], [], [], [], ["RIM_CLICK"], [], [], [], [], [], ["KICK_ALT"], [], ["RIM_CLICK"], [], ["FX"], []]
+  },
+  {
+    "name": "ELECTRONIC_808: Footwork 160BPM Bounce",
+    "steps": [["KICK"], [], ["SNARE"], ["KICK_ALT"], [], ["HIHAT_CLOSED"], ["SNARE"], [], ["KICK"], ["HIHAT_OPEN"], ["SNARE"], [], ["KICK_ALT"], [], ["SNARE", "CLAP"], ["FX"]]
+  },
+  {
+    "name": "ELECTRONIC_808: IDM Glitch Matrix",
+    "steps": [["KICK"], ["FX"], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["SNARE"], ["TOM_HI"], ["HIHAT_OPEN"], ["KICK_ALT"], ["TOM_LO"], ["FX"], ["SNARE_ALT"], [], ["CLAP"], ["PERC"], ["HIHAT_CLOSED"], ["CRASH"]]
+  },
+  {
+    "name": "ELECTRONIC_808: Outro Down-Tempo Sync",
+    "steps": [["KICK"], [], [], [], ["SNARE"], [], [], [], ["KICK_ALT"], [], [], [], ["CLAP"], [], ["FX"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Clean Pop Groove",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK"], ["KICK_ALT"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Syncopated Ghost Notes",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], [], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["SNARE"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Driving Rock Beat",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK"], [], ["HIHAT_CLOSED", "KICK_ALT"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["CRASH"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Indie Disco Off-Beat",
+    "steps": [["KICK"], ["HIHAT_OPEN"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["KICK", "SNARE"], ["HIHAT_OPEN"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["KICK"], ["HIHAT_OPEN"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["KICK", "SNARE"], ["HIHAT_OPEN"], ["HIHAT_CLOSED"], ["CRASH"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Rolling Tom Tom Fills",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["TOM_HI"], ["SNARE"], ["TOM_MID"], ["HIHAT_CLOSED"], ["TOM_LO"], ["KICK"], [], ["TOM_HI", "TOM_MID"], ["TOM_LO"], ["SNARE"], [], ["HIHAT_CLOSED"], ["CRASH"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Subtle Rim Click Ballad",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], [], ["KICK"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Linear Drumming Pattern",
+    "steps": [["KICK"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["SNARE"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["KICK"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["SNARE"], ["HIHAT_OPEN"], ["KICK_ALT"], ["CRASH"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Classic Funky Drummer",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["SNARE"], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["KICK"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["SNARE"], ["SNARE_ALT"], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: 16th Note Hi-Hat Flow",
+    "steps": [["KICK", "HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["SNARE", "HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["KICK", "HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["KICK_ALT", "HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["SNARE", "HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["CRASH"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Half-Time Studio Shuffle",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["KICK"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Motown Soul Train Groove",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED", "SNARE_ALT"], [], ["SNARE"], [], ["HIHAT_CLOSED", "SNARE_ALT"], [], ["KICK"], [], ["HIHAT_CLOSED", "SNARE_ALT"], [], ["SNARE"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Country Train Rim Rhythm",
+    "steps": [["KICK"], ["RIM_CLICK"], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["KICK_ALT"], ["RIM_CLICK"], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["KICK"], ["RIM_CLICK"], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["KICK_ALT"], ["RIM_CLICK"], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Classic Blues 6/8 Shuffle",
+    "steps": [["KICK", "RIDE"], ["RIDE"], ["RIDE"], ["SNARE", "RIDE"], ["RIDE"], ["RIDE"], ["KICK_ALT", "RIDE"], ["RIDE"], ["RIDE"], ["SNARE", "RIDE"], ["RIDE"], ["CRASH"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Native Americana Stomp",
+    "steps": [["KICK"], ["TOM_LO"], ["TOM_LO"], [], ["KICK_ALT"], ["TOM_LO"], ["TOM_LO"], [], ["KICK"], ["TOM_LO"], ["TOM_LO"], [], ["KICK_ALT", "SNARE"], [], ["PERC"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Jazz-Rock Fusion Comp",
+    "steps": [["KICK", "RIDE"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["RIDE"], ["SNARE"], ["KICK_ALT"], ["RIDE"], ["HIHAT_OPEN"], ["KICK"], ["RIDE"], ["TOM_HI"], ["RIDE"], ["SNARE", "TOM_LO"], [], ["RIDE"], ["CRASH"]]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Poly-Meter Cross Stick",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Swampy New Orleans Funk",
+    "steps": [["KICK"], [], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["SNARE"], [], ["KICK_ALT"], ["SNARE_ALT"], [], ["KICK"], ["HIHAT_OPEN"], [], ["SNARE"], [], ["TOM_LO"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Folk Acoustic Brush Run",
+    "steps": [["KICK"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["KICK"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_OPEN"], ["PERC"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Stadium Rock Breakdown",
+    "steps": [["KICK"], [], [], [], ["SNARE"], [], [], [], ["KICK_ALT"], [], ["KICK"], [], ["SNARE"], [], ["CRASH"], []]
+  },
+  {
+    "name": "ACOUSTIC_STUDIO: Studio Session Outro",
+    "steps": [["KICK", "RIDE"], [], [], [], ["SNARE"], [], [], [], [], [], [], [], ["CRASH"], [], [], []]
+  },
+  {
+    "name": "METAL_CORE: Double Bass Blast Beat",
+    "steps": [["KICK", "SNARE", "CRASH"], ["KICK_ALT"], ["KICK", "HIHAT_CLOSED"], ["KICK_ALT"], ["KICK", "SNARE"], ["KICK_ALT"], ["KICK", "HIHAT_CLOSED"], ["KICK_ALT"], ["KICK", "SNARE"], ["KICK_ALT"], ["KICK", "HIHAT_CLOSED"], ["KICK_ALT"], ["KICK", "SNARE"], ["KICK_ALT"], ["KICK", "HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Heavy Breakdown Gallop",
+    "steps": [["KICK", "CRASH"], ["KICK_ALT"], ["KICK"], ["HIHAT_CLOSED"], ["SNARE"], ["KICK_ALT"], ["KICK"], ["KICK_ALT"], ["KICK"], ["KICK_ALT"], ["KICK", "HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "METAL_CORE: Progressive Djent Syncopation",
+    "steps": [["KICK", "RIDE"], ["KICK_ALT"], [], ["KICK"], ["SNARE"], [], ["KICK_ALT"], ["KICK"], [], ["KICK_ALT"], ["RIDE"], ["KICK"], ["SNARE"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Fast Trash Metal Skank",
+    "steps": [["KICK", "HIHAT_CLOSED"], ["SNARE"], ["KICK_ALT", "HIHAT_CLOSED"], ["SNARE"], ["KICK", "HIHAT_CLOSED"], ["SNARE"], ["KICK_ALT", "HIHAT_CLOSED"], ["SNARE"], ["KICK", "HIHAT_CLOSED"], ["SNARE"], ["KICK_ALT", "HIHAT_CLOSED"], ["SNARE"], ["KICK", "HIHAT_CLOSED"], ["SNARE"], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Quad Blast Tom Fill",
+    "steps": [["KICK"], ["KICK_ALT"], ["TOM_HI"], ["TOM_MID"], ["KICK"], ["KICK_ALT"], ["TOM_MID"], ["TOM_LO"], ["KICK"], ["KICK_ALT"], ["SNARE"], ["SNARE_ALT"], ["KICK"], ["KICK_ALT"], ["FX"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Nu-Metal Groove Accent",
+    "steps": [["KICK", "HIHAT_CLOSED"], [], ["RIM_CLICK"], ["KICK_ALT"], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK"], [], ["KICK_ALT"], ["HIHAT_OPEN"], [], ["SNARE"], [], ["BASS_SUB"], []]
+  },
+  {
+    "name": "METAL_CORE: Deathcore Slow Sludge",
+    "steps": [["KICK", "BASS_SUB", "CRASH"], [], [], [], [], [], ["SNARE"], [], [], [], ["KICK_ALT"], ["KICK"], [], [], ["FX"], []]
+  },
+  {
+    "name": "METAL_CORE: Heavy Half-Time Power Groove",
+    "steps": [["KICK", "RIDE"], [], ["RIDE"], [], ["RIDE"], [], ["SNARE", "RIDE"], [], ["KICK_ALT"], [], ["RIDE"], ["KICK"], ["RIDE"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Cymbal Choke Break",
+    "steps": [["KICK", "CRASH"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["SNARE"], [], [], ["KICK"], ["KICK_ALT"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["FX"], []]
+  },
+  {
+    "name": "METAL_CORE: Double Dynamic Triplet Run",
+    "steps": [["KICK", "HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], ["SNARE", "HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], ["KICK", "HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], ["SNARE", "HIHAT_OPEN"], ["FX"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Speed Metal Riding",
+    "steps": [["KICK", "RIDE"], ["RIDE"], ["KICK_ALT", "RIDE"], ["RIDE"], ["SNARE", "RIDE"], ["RIDE"], ["KICK", "RIDE"], ["RIDE"], ["KICK_ALT", "RIDE"], ["RIDE"], ["KICK", "RIDE"], ["RIDE"], ["SNARE", "RIDE"], ["RIDE"], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Industrial Cyber Metal",
+    "steps": [["KICK", "BASS_SUB"], ["FX"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["SNARE"], ["FX"], ["HIHAT_CLOSED"], ["KICK"], ["KICK"], ["FX"], ["HIHAT_CLOSED"], ["BASS_SUB"], ["SNARE", "CLAP"], ["FX"], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Hard Rock Anthem Beat",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Alternative Grungy Heavy Drop",
+    "steps": [["KICK", "BASS_SUB"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], ["KICK_ALT"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["TOM_LO"], []]
+  },
+  {
+    "name": "METAL_CORE: Double Ride Bell Poly",
+    "steps": [["KICK", "RIDE"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["RIDE"], ["SNARE"], ["KICK"], ["KICK_ALT"], ["RIDE"], ["HIHAT_CLOSED"], ["KICK"], ["RIDE"], ["KICK_ALT"], ["SNARE"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Math-Metal Odd Meter Fill",
+    "steps": [["KICK"], ["TOM_HI"], ["KICK_ALT"], ["TOM_MID"], ["SNARE"], ["TOM_LO"], ["KICK"], ["KICK_ALT"], ["SNARE_ALT"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Thrash Metal Breakdown Fill",
+    "steps": [["KICK"], ["KICK_ALT"], ["SNARE"], ["KICK"], ["KICK_ALT"], ["SNARE"], ["KICK"], ["KICK_ALT"], ["TOM_HI"], ["TOM_MID"], ["TOM_LO"], ["CRASH"]]
+  },
+  {
+    "name": "METAL_CORE: Doom Metal Epic Intro",
+    "steps": [["KICK", "CRASH"], [], [], [], [], [], [], [], ["SNARE"], [], [], [], [], [], ["FX"], []]
+  },
+  {
+    "name": "METAL_CORE: Arena Slam Power Groove",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_OPEN"], [], ["SNARE"], [], ["CRASH"], []]
+  },
+  {
+    "name": "METAL_CORE: Double Kick Blast Outro",
+    "steps": [["KICK", "SNARE", "CRASH"], ["KICK_ALT"], ["KICK"], ["KICK_ALT"], ["SNARE"], [], [], [], [], [], [], [], [], [], [], []]
+  },
+  {
+    "name": "HIPHOP_TRAP: Modern Sub Bap 4/4",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK"], ["KICK_ALT"], ["HIHAT_CLOSED"], [], ["SNARE", "CLAP"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Accelerated Hi-Hat Rolls",
+    "steps": [["KICK"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["SNARE"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["KICK"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["SNARE", "CLAP"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["FX"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Heavy UK Drill Slider",
+    "steps": [["KICK", "BASS_SUB"], [], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["HIHAT_OPEN"], [], [], ["SNARE", "CLAP"], [], ["FX"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Atlanta Bounce Sync",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["KICK"], ["HIHAT_CLOSED"], [], ["CLAP"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "HIPHOP_TRAP: Double Time Subway Roll",
+    "steps": [["KICK"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["SNARE"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["CLAP"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Boom Bap Old School Legacy",
+    "steps": [["KICK"], [], [], ["HIHAT_CLOSED"], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], ["KICK"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "HIPHOP_TRAP: West Coast G-Funk Slap",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE", "RIM_CLICK"], [], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Phonk Memphis Cowbell Loop",
+    "steps": [["KICK", "BASS_SUB"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["SNARE"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["KICK_ALT"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["SNARE", "CLAP"], ["PERC"], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Dark Underground Quake",
+    "steps": [["KICK", "BASS_SUB"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], ["BASS_SUB"], ["SNARE"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Platinum Pluck Interlude",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["CLAP"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], ["PERC"], ["SNARE"], [], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: East Coast Lyrical Boom",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["KICK"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "HIPHOP_TRAP: Trap Soul R&B Pulse",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], [], ["HIHAT_CLOSED"], [], ["CLAP"], [], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Ethereal Cloud Rap Glide",
+    "steps": [["KICK", "BASS_SUB"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], [], ["CLAP"], [], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Chopped & Screwed Slow Heavy",
+    "steps": [["KICK", "BASS_SUB"], [], [], [], ["SNARE"], [], [], [], ["KICK_ALT"], [], [], ["BASS_SUB"], ["CLAP"], [], ["FX"], []]
+  },
+  {
+    "name": "HIPHOP_TRAP: Latin Reggaeton Dembow Riddim",
+    "steps": [["KICK"], [], [], ["SNARE"], [], ["KICK_ALT"], [], [], ["KICK"], [], [], ["SNARE"], [], ["KICK_ALT"], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "HIPHOP_TRAP: Hardstyle Trap Hybrid Drop",
+    "steps": [["KICK", "BASS_SUB"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["SNARE", "CLAP"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_OPEN"], ["KICK"], ["HIHAT_CLOSED"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["SNARE"], ["HIHAT_CLOSED"], ["FX"], ["CRASH"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Metro Dark Dynamic Cinematic",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["TOM_HI"], ["KICK_ALT"], [], ["HIHAT_CLOSED"], ["TOM_LO"], ["CLAP"], [], ["FX"], ["CRASH"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Lo-Fi Trap Vibe Pattern",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "HIPHOP_TRAP: Industrial Drill Core Slam",
+    "steps": [["KICK", "BASS_SUB"], ["HIHAT_CLOSED"], [], ["HIHAT_CLOSED"], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], [], ["HIHAT_CLOSED"], [], ["CLAP"], [], ["FX"], ["CRASH"]]
+  },
+  {
+    "name": "HIPHOP_TRAP: Outro Beat Absolute Fade",
+    "steps": [["KICK"], [], [], [], ["SNARE"], [], [], [], [], [], [], [], [], [], [], []]
+  },
+  {
+    "name": "LOFI_CHILL: Dusty Vinyl Pocket Beat",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK"], ["KICK_ALT"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["HIHAT_OPEN"]]
+  },
+  {
+    "name": "LOFI_CHILL: Lazy Swing Jazz Café",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], [], ["HIHAT_CLOSED"], ["PERC"], ["SNARE"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Soft Brush Acoustic Tape",
+    "steps": [["KICK"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_OPEN"], ["KICK_ALT"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["HIHAT_CLOSED"], ["RIM_CLICK"], ["HIHAT_CLOSED"], ["PERC"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Midnight Smooth Lounge",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["KICK"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "LOFI_CHILL: Rainy Day Melancholy Stroll",
+    "steps": [["KICK"], [], [], ["HIHAT_CLOSED"], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], ["KICK"], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Neo-Soul Organic Shuffle",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["SNARE"], ["SNARE_ALT"], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["KICK"], ["HIHAT_CLOSED"], ["SNARE_ALT"], ["SNARE"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Chillhop Smooth Boom Bap",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], ["KICK"], ["KICK"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "LOFI_CHILL: Vintage Cassette Dynamic Loop",
+    "steps": [["KICK"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["SNARE"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["KICK_ALT"], ["PERC"], ["HIHAT_CLOSED"], ["PERC"], ["SNARE"], ["PERC"], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "LOFI_CHILL: Smooth Rhodes Backdrop",
+    "steps": [["KICK", "BASS_SUB"], [], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Nostalgic VHS Ambient Vibe",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], ["FX"], ["SNARE"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Coffee Shop Acoustic Jazz",
+    "steps": [["KICK", "RIDE"], ["HIHAT_CLOSED"], ["RIDE"], ["RIM_CLICK"], ["RIDE"], ["HIHAT_CLOSED"], ["KICK_ALT", "RIDE"], [], ["RIDE"], ["HIHAT_CLOSED"], ["SNARE"], ["RIDE"], ["TOM_LO"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "LOFI_CHILL: Velvet Night Sub Bass",
+    "steps": [["KICK", "BASS_SUB"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["KICK"], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "LOFI_CHILL: Sunset Boulevard Cruising",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_CLOSED"], ["KICK_ALT"], [], ["KICK"], ["HIHAT_CLOSED"], [], ["RIM_CLICK"], [], ["HIHAT_OPEN"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Cinematic Study Session Beat",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["FX"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Bedroom Producer Tape Deck",
+    "steps": [["KICK"], ["HIHAT_CLOSED"], [], ["KICK_ALT"], ["SNARE"], [], ["HIHAT_OPEN"], ["KICK"], ["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["FX"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Abstract Organic Wood Perc",
+    "steps": [["KICK"], [], ["PERC"], ["RIM_CLICK"], ["SNARE"], [], ["PERC"], ["KICK_ALT"], [], ["KICK"], ["PERC"], [], ["SNARE"], [], ["HIHAT_OPEN"], ["FX"]]
+  },
+  {
+    "name": "LOFI_CHILL: Floating Clouds Dream Beat",
+    "steps": [["KICK", "BASS_SUB"], [], [], [], ["RIM_CLICK"], [], [], [], ["KICK_ALT"], [], [], [], ["RIM_CLICK"], [], ["FX"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Jazzy Tom-Tom Interlude",
+    "steps": [["KICK"], ["TOM_HI"], ["HIHAT_CLOSED"], ["TOM_MID"], ["SNARE"], ["TOM_LO"], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_OPEN"], ["CRASH"]]
+  },
+  {
+    "name": "LOFI_CHILL: Vinyl Crackle Static Groove",
+    "steps": [["KICK"], [], ["HIHAT_CLOSED"], [], ["SNARE"], [], ["HIHAT_CLOSED"], [], ["KICK_ALT"], [], ["HIHAT_OPEN"], [], ["SNARE"], [], ["FX"], []]
+  },
+  {
+    "name": "LOFI_CHILL: Fading Dream Outro Beat",
+    "steps": [["KICK"], [], [], [], ["RIM_CLICK"], [], [], [], [], [], [], [], [], [], [], []]
+  }
+]
