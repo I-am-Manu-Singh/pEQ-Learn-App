@@ -16,15 +16,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
@@ -48,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.creativeblisslabs.peqlearn.app.ui.components.setScreenOrientation
@@ -55,6 +60,12 @@ import com.creativeblisslabs.peqlearn.app.ui.components.pEQOrientation
 import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
+import com.creativeblisslabs.peqlearn.app.ui.viewmodel.playMediaItem
+import com.creativeblisslabs.peqlearn.app.ui.screens.Score
+import com.creativeblisslabs.peqlearn.app.ui.screens.PianoKeyboardMode
+import com.creativeblisslabs.peqlearn.app.ui.screens.PianoFallingNoteBlock
+import com.creativeblisslabs.peqlearn.app.ui.screens.PianoWaterfallBlock
+import com.creativeblisslabs.peqlearn.app.ui.screens.PianoSpark
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
@@ -173,6 +184,17 @@ fun PianoKeyboard88Keys(
         tonalElevation = 2.dp
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "Interactive Piano & Fretboard Lab",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Explore chords, inversions, voice leading and scale maps across 88 keys and guitar frets.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(22.dp)) {
                         Row(modifier = Modifier.padding(2.dp)) {
@@ -436,7 +458,7 @@ fun PianoKeyboard88Keys(
                 }
             }
         }
-    }
+
 
     if (viewModel.isFullscreenKeyboard.value) {
         Dialog(
@@ -454,25 +476,51 @@ fun PianoKeyboard88Keys(
                 var fsZoomFactor by rememberSaveable { mutableStateOf(1.0f) }
                 var panOffset by remember { mutableStateOf(Offset.Zero) }
                 var areControlsVisible by remember { mutableStateOf(true) }
+                var fsShowLetters by rememberSaveable { mutableStateOf(true) }
+                var fsShowLyrics by rememberSaveable { mutableStateOf(true) }
 
                 val isPlaying = viewModel.isScorePlaying.value
                 val currentScore = viewModel.currentScore.value
 
                 val totalMeasures = currentScore?.measures?.size ?: 0
-                val timelineProgress = if (totalMeasures > 0) {
-                    (viewModel.scorePlayheadMeasure.value.toFloat() + viewModel.scorePlayheadOffset.value) / totalMeasures.toFloat()
-                } else 0f
+                
+                // Calculate total duration based on per-measure time signatures
+                val totalSeconds = remember(currentScore) {
+                    if (currentScore == null) 0.0
+                    else {
+                        currentScore.measures.sumOf { 
+                            (60.0 / currentScore.tempo.toDouble()) * it.timeSignatureNumerator.toDouble() 
+                        }
+                    }
+                }
+                
+                val currentMeasure = viewModel.scorePlayheadMeasure.value
+                val currentOffset = viewModel.scorePlayheadOffset.value
+                
+                val currentSeconds = remember(currentScore, currentMeasure, currentOffset) {
+                    if (currentScore == null) 0.0
+                    else {
+                        var elapsed = 0.0
+                        for (i in 0 until currentMeasure) {
+                            val m = currentScore.measures.getOrNull(i) ?: break
+                            elapsed += (60.0 / currentScore.tempo.toDouble()) * m.timeSignatureNumerator.toDouble()
+                        }
+                        val m = currentScore.measures.getOrNull(currentMeasure)
+                        if (m != null) {
+                            elapsed += (currentOffset.toDouble() * (60.0 / currentScore.tempo.toDouble()) * m.timeSignatureNumerator.toDouble())
+                        }
+                        elapsed
+                    }
+                }
 
-                val secondsPerMeasure = 2.5f
-                val totalSeconds = (totalMeasures * secondsPerMeasure).toInt()
-                val currentSeconds = ((viewModel.scorePlayheadMeasure.value.toFloat() + viewModel.scorePlayheadOffset.value) * secondsPerMeasure).toInt()
+                val timelineProgress = if (totalSeconds > 0) (currentSeconds / totalSeconds).toFloat() else 0f
 
-                val currentMin = currentSeconds / 60
-                val currentSec = currentSeconds % 60
+                val currentMin = currentSeconds.toInt() / 60
+                val currentSec = currentSeconds.toInt() % 60
                 val currentTimeStr = "$currentMin:${if (currentSec < 10) "0$currentSec" else currentSec}"
 
-                val totalMin = totalSeconds / 60
-                val totalSec = totalSeconds % 60
+                val totalMin = totalSeconds.toInt() / 60
+                val totalSec = totalSeconds.toInt() % 60
                 val totalTimeStr = "$totalMin:${if (totalSec < 10) "0$totalSec" else totalSec}"
 
                 val fsScrollState = rememberScrollState()
@@ -510,52 +558,41 @@ fun PianoKeyboard88Keys(
                             .fillMaxSize()
                             .graphicsLayer(scaleX = fsZoomFactor, scaleY = fsZoomFactor, translationX = panOffset.x, translationY = panOffset.y)
                     ) {
+                        // Notation View Area
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(270.dp)
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFFFCFBF7))
+                                .weight(1f)
+                                .background(Color.Black)
                         ) {
-                            StaffAndTabNotationViewer(
-                                score = currentScore as Score?,
-                                playheadMeasure = viewModel.scorePlayheadMeasure.value,
-                                playheadOffset = viewModel.scorePlayheadOffset.value,
-                                activeMidiNotes = viewModel.midiActiveNotes,
-                                playingNote = viewModel.midiPlayingNote.value,
-                                primaryColor = primaryColor,
-                                currentFormat = notationFormat,
-                                modifier = Modifier.fillMaxSize(),
-                                onFormatChange = { newFormat -> notationFormat = newFormat }
-                            )
+                                    StaffAndTabNotationViewer(
+                                        score = currentScore,
+                                        playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                        playheadOffset = viewModel.scorePlayheadOffset.value,
+                                        activeMidiNotes = viewModel.midiActiveNotes,
+                                        playingNote = viewModel.midiPlayingNote.value,
+                                        primaryColor = primaryColor,
+                                        currentFormat = notationFormat,
+                                        onFormatChange = { newFormat -> notationFormat = newFormat },
+                                        showLetters = fsShowLetters,
+                                        showLyrics = fsShowLyrics,
+                                        isSplitStaff = viewModel.isSplitStaff.value,
+                                        isVerticalScroll = viewModel.isVerticalScroll.value,
+                                        leftHandColor = viewModel.leftHandColor.value,
+                                        rightHandColor = viewModel.rightHandColor.value,
+                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                        isRightHandHidden = viewModel.isRightHandHidden.value,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
                         }
 
+                        // Piano Keyboard Area
                         Column(
-                            modifier = Modifier.fillMaxWidth().weight(1f).horizontalScroll(fsScrollState)
+                            modifier = Modifier.fillMaxWidth().wrapContentHeight().horizontalScroll(fsScrollState)
                         ) {
-                            Canvas(modifier = Modifier.width(fsKeyboardWidth).weight(1f).background(Color.Black.copy(0.15f))) {
-                                val whiteKeyWidthPx = size.width / whiteKeyCount.toFloat()
-                                fallingBlocks.forEach { block ->
-                                    val isBlack = isMidiNoteBlack(block.midiNote)
-                                    val wIdx = getWhiteKeyIndexForMidi(block.midiNote)
-
-                                    val blockWidth = if (isBlack) whiteKeyWidthPx * 0.60f else whiteKeyWidthPx - 4f
-                                    val xOffset = if (isBlack) (whiteKeyWidthPx - blockWidth) / 2f else 2f
-                                    val finalX = (wIdx * whiteKeyWidthPx) + xOffset
-
-                                    drawRoundRect(
-                                        color = block.color.copy(alpha = 0.85f),
-                                        topLeft = Offset(finalX, block.currentY * 2.2f),
-                                        size = Size(blockWidth, 32f),
-                                        cornerRadius = CornerRadius(4f, 4f)
-                                    )
-                                }
-                            }
-
                             UnifiedPianoKeyboard(
                                 activeMidiNotes = viewModel.midiActiveNotes,
-                                accentColor = if (fsKeyboardMode == "DRUM") Color(0xFFFF9800) else Color(0xFF6C63FF),
+                                accentColor = if (fsKeyboardMode == "DRUM") Color(0xFFFF9800) else primaryColor,
                                 startNote = 21,
                                 endNote = 108,
                                 onKeyTapped = { note ->
@@ -573,151 +610,60 @@ fun PianoKeyboard88Keys(
                                         viewModel.midiActiveNotes[note] = false
                                     }
                                 },
-                                modifier = Modifier.width(fsKeyboardWidth).height(150.dp)
+                                modifier = Modifier.width(fsKeyboardWidth).height(180.dp)
                             )
                         }
                     }
 
-                    AnimatedVisibility(
+                    // Top Toolbar (HUD)
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = areControlsVisible,
-                        enter = fadeIn(tween(300)),
-                        exit = fadeOut(tween(400)),
+                        enter = fadeIn(tween(250)),
+                        exit = fadeOut(tween(300)),
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 16.dp)
+                            .align(Alignment.TopCenter)
+                            .padding(top = 16.dp)
+                            .widthIn(max = 800.dp)
                     ) {
                         Surface(
                             color = Color(0xEE121212),
                             shape = RoundedCornerShape(24.dp),
-                            tonalElevation = 8.dp,
-                            modifier = Modifier
-                                .fillMaxWidth(0.94f)
-                                .wrapContentHeight()
+                            modifier = Modifier.fillMaxWidth(0.92f).wrapContentHeight()
                         ) {
                             Column(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f, fill = false),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Surface(shape = RoundedCornerShape(50), color = primaryColor, modifier = Modifier.size(34.dp)) {
-                                            val beatsPerMeasure = viewModel.currentScore.value?.timeSignature?.split("/")?.firstOrNull()?.toFloatOrNull() ?: 4f
-
-                                            IconButton(onClick = { viewModel.toggleScorePlayback(beatsPerMeasure = beatsPerMeasure) }) {
-                                                Icon(
-                                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        }
-
-                                        IconButton(
-                                            onClick = { viewModel.resetScorePlayhead() },
-                                            modifier = Modifier.size(34.dp)
-                                        ) {
-                                            Icon(Icons.Default.Stop, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        }
-
-                                        VerticalDivider(modifier = Modifier.height(16.dp).padding(horizontal = 2.dp), color = Color.White.copy(0.15f))
-
-                                        Surface(color = Color.White.copy(0.06f), shape = RoundedCornerShape(22.dp)) {
-                                            Row(modifier = Modifier.padding(2.dp)) {
-                                                listOf("PIANO" to "P", "DRUM" to "D").forEach { (fullName, codeName) ->
-                                                    val active = fsKeyboardMode == fullName
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(22.dp))
-                                                            .background(if (active) primaryColor else Color.Transparent)
-                                                            .clickable { fsKeyboardMode = fullName }
-                                                            .padding(horizontal = 10.dp, vertical = 0.dp)
-                                                    ) {
-                                                        Text(codeName, fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (active) Color.White else Color.White.copy(0.5f))
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(12.dp))
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        if (viewModel.detectedNote.value.isNotEmpty()) {
-                                            Surface(color = primaryColor.copy(0.15f), shape = RoundedCornerShape(6.dp), modifier = Modifier.padding(end = 2.dp)) {
-                                                Text(
-                                                    text = viewModel.detectedNote.value,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = primaryColor
-                                                )
-                                            }
-                                        }
-
-                                        IconButton(
-                                            onClick = {
-                                                fsZoomFactor = (fsZoomFactor - 0.1f).coerceAtLeast(1.0f)
-                                                if (fsZoomFactor <= 1.0f) panOffset = Offset.Zero
-                                            },
-                                            modifier = Modifier.size(30.dp)
-                                        ) {
-                                            Icon(Icons.Default.ZoomOut, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                        }
-
-                                        Text(
-                                            text = "${(fsZoomFactor * 100).toInt()}%",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            modifier = Modifier.width(36.dp),
-                                            textAlign = TextAlign.Center
-                                        )
-
-                                        IconButton(
-                                            onClick = { fsZoomFactor = (fsZoomFactor + 0.1f).coerceAtMost(2.2f) },
-                                            modifier = Modifier.size(30.dp)
-                                        ) {
-                                            Icon(Icons.Default.ZoomIn, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                        }
-
-                                        VerticalDivider(modifier = Modifier.height(16.dp).padding(horizontal = 4.dp), color = Color.White.copy(0.15f))
-
-                                        IconButton(
-                                            onClick = { viewModel.isFullscreenKeyboard.value = false },
-                                            modifier = Modifier.size(30.dp)
-                                        ) {
-                                            Icon(Icons.Default.FullscreenExit, "Minimize Keyboard", tint = Color(0xFFFF6B35), modifier = Modifier.size(18.dp))
-                                        }
-                                    }
-                                }
-
+                                // Progress Slider at the very top
                                 Row(
                                     modifier = Modifier.fillMaxWidth().height(24.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(text = currentTimeStr, fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                                    Text(text = currentTimeStr, fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
                                     Slider(
                                         value = timelineProgress,
-                                        onValueChange = {
-                                            if (currentScore != null && totalMeasures > 0) {
-                                                val totalProgressMeasures = totalMeasures.toFloat()
-                                                val targetMeasure = (it * totalProgressMeasures).toInt().coerceIn(0, totalMeasures - 1)
-                                                val targetOffset = (it * totalProgressMeasures) - targetMeasure
-                                                viewModel.scorePlayheadMeasure.value = targetMeasure
-                                                viewModel.scorePlayheadOffset.value = targetOffset
+                                        onValueChange = { targetProgress ->
+                                            if (currentScore != null && totalSeconds > 0) {
+                                                val targetTotalSec = targetProgress * totalSeconds.toFloat()
+                                                var accumulated = 0f
+                                                var targetM = 0
+                                                var targetO = 0f
+                                                for (i in currentScore.measures.indices) {
+                                                    val m = currentScore.measures[i]
+                                                    val mDur = (60f / currentScore.tempo) * m.timeSignatureNumerator
+                                                    if (targetTotalSec < accumulated + mDur) {
+                                                        targetM = i
+                                                        targetO = (targetTotalSec - accumulated) / mDur
+                                                        break
+                                                    }
+                                                    accumulated += mDur
+                                                    if (i == currentScore.measures.lastIndex) {
+                                                        targetM = i
+                                                        targetO = 1.0f
+                                                    }
+                                                }
+                                                viewModel.seekToPosition(targetM, targetO)
                                             }
                                         },
                                         modifier = Modifier.weight(1f),
@@ -727,12 +673,437 @@ fun PianoKeyboard88Keys(
                                             inactiveTrackColor = Color.White.copy(alpha = 0.15f)
                                         )
                                     )
-                                    Text(text = totalTimeStr, fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                                    Text(text = totalTimeStr, fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(shape = RoundedCornerShape(50), color = primaryColor, modifier = Modifier.size(36.dp)) {
+                                            IconButton(onClick = { viewModel.toggleScorePlayback() }) {
+                                                Icon(
+                                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+
+                                        IconButton(onClick = { viewModel.resetScorePlayhead() }) {
+                                            Icon(Icons.Default.Stop, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                        }
+
+                                        Text(
+                                            text = "Speed: 1.0x",
+                                            fontSize = 11.sp,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        Text(
+                                            text = "BPM: ${currentScore?.tempo ?: 120}",
+                                            fontSize = 11.sp,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        IconButton(
+                                            onClick = { viewModel.showSettings.value = true },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Tune,
+                                                contentDescription = "Settings",
+                                                tint = Color.White.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { fsShowLetters = !fsShowLetters },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (fsShowLetters) primaryColor else Color.White.copy(0.1f)
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.height(28.dp)
+                                        ) {
+                                            Text("Letters", fontSize = 10.sp, color = Color.White)
+                                        }
+                                        Button(
+                                            onClick = { fsShowLyrics = !fsShowLyrics },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (fsShowLyrics) primaryColor else Color.White.copy(0.1f)
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.height(28.dp)
+                                        ) {
+                                            Text("Lyrics", fontSize = 10.sp, color = Color.White)
+                                        }
+                                        
+                                        IconButton(onClick = { viewModel.isFullscreenKeyboard.value = false }) {
+                                            Icon(Icons.Default.FullscreenExit, null, tint = Color(0xFFFF6B35), modifier = Modifier.size(22.dp))
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
+
+                    if (viewModel.showSettings.value) {
+                        PlaybackSettingsSheet(
+                            viewModel = viewModel,
+                            notationFormat = notationFormat,
+                            onFormatChange = { notationFormat = it },
+                            showLetters = fsShowLetters,
+                            onShowLettersChange = { fsShowLetters = it },
+                            showLyrics = fsShowLyrics,
+                            onShowLyricsChange = { fsShowLyrics = it },
+                            onDismiss = { viewModel.showSettings.value = false }
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlaybackSettingsSheet(
+    viewModel: AppViewModel,
+    notationFormat: String,
+    onFormatChange: (String) -> Unit,
+    showLetters: Boolean,
+    onShowLettersChange: (Boolean) -> Unit,
+    showLyrics: Boolean,
+    onShowLyricsChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF151515),
+        scrimColor = Color.Black.copy(alpha = 0.7f),
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFFFFD700).copy(alpha = 0.4f)) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(28.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Playback & Notation Settings",
+                    color = Color(0xFFFFD700),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Surface(
+                    color = Color(0xFFFFD700).copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.clickable { onDismiss() }
+                ) {
+                    Text(
+                        "DONE",
+                        color = Color(0xFFFFD700),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            // --- VISUAL CONTROLS ---
+            SettingsSection(title = "Visual Controls") {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Notation Format", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        val formats = listOf("Staff", "Tab", "Combined")
+                        Row(modifier = Modifier.background(Color.White.copy(0.05f), RoundedCornerShape(8.dp)).padding(3.dp)) {
+                            formats.forEach { f ->
+                                val active = (f == "Staff" && notationFormat.contains("Staff")) || 
+                                             (f == "Tab" && notationFormat.contains("Tab")) ||
+                                             (f == "Combined" && notationFormat == "Combined")
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (active) Color(0xFFFFD700) else Color.Transparent)
+                                        .clickable { onFormatChange(if(f == "Combined") "Combined" else "$f Notation") }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Text(f, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (active) Color.Black else Color.White)
+                                }
+                            }
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Split Staff (Piano View)", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = viewModel.isSplitStaff.value,
+                            onCheckedChange = { viewModel.isSplitStaff.value = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Vertical Scrolling", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = viewModel.isVerticalScroll.value,
+                            onCheckedChange = { viewModel.isVerticalScroll.value = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
+                        )
+                    }
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Show Note Names", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = showLetters,
+                            onCheckedChange = onShowLettersChange,
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
+                        )
+                    }
+                }
+            }
+
+            // --- HANDS & MUTING ---
+            SettingsSection(title = "Hands & Muting") {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    HandControlRow(
+                        label = "Right Hand (Treble)",
+                        isMuted = viewModel.isRightHandMuted.value,
+                        isHidden = viewModel.isRightHandHidden.value,
+                        color = viewModel.rightHandColor.value,
+                        onMuteToggle = { viewModel.isRightHandMuted.value = it },
+                        onHideToggle = { viewModel.isRightHandHidden.value = it },
+                        onColorChange = { viewModel.rightHandColor.value = it }
+                    )
+                    HandControlRow(
+                        label = "Left Hand (Bass)",
+                        isMuted = viewModel.isLeftHandMuted.value,
+                        isHidden = viewModel.isLeftHandHidden.value,
+                        color = viewModel.leftHandColor.value,
+                        onMuteToggle = { viewModel.isLeftHandMuted.value = it },
+                        onHideToggle = { viewModel.isLeftHandHidden.value = it },
+                        onColorChange = { viewModel.leftHandColor.value = it }
+                    )
+                }
+            }
+
+            // --- TRANSPOSE ---
+            SettingsSection(title = "Transpose & Pitch") {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    StepperControl(
+                        label = "Transposition",
+                        value = viewModel.transposition.value,
+                        onValueChange = { viewModel.transposition.value = it }
+                    )
+                    StepperControl(
+                        label = "Octave Shift",
+                        value = viewModel.octaveShift.value,
+                        onValueChange = { viewModel.octaveShift.value = it }
+                    )
+                }
+            }
+
+            // --- TRACK LIST ---
+            if (viewModel.playbackQueue.isNotEmpty()) {
+                SettingsSection(title = "Current Queue") {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 160.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(0.05f))
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        viewModel.playbackQueue.forEach { item ->
+                            val isActive = viewModel.currentMediaItem.value == item
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.playMediaItem(item) }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (isActive) Icons.Default.PlayArrow else Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = if (isActive) Color(0xFFFFD700) else Color.White.copy(0.3f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    item.title,
+                                    color = if (isActive) Color(0xFFFFD700) else Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- SPEED & LOOP ---
+            SettingsSection(title = "Speed & Loop Controls") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val speed = viewModel.playbackSpeed.value
+                        val formattedSpeed = (kotlin.math.round(speed * 10) / 10.0).toString()
+                        Text(
+                            "Tempo Scale: ${formattedSpeed}x",
+                            color = Color.White.copy(0.8f),
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Slider(
+                            value = viewModel.playbackSpeed.value,
+                            onValueChange = { viewModel.playbackSpeed.value = it },
+                            valueRange = 0.5f..2.0f,
+                            modifier = Modifier.width(140.dp),
+                            colors = SliderDefaults.colors(thumbColor = Color(0xFFFFD700), activeTrackColor = Color(0xFFFFD700))
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Metronome Click", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = viewModel.metronomeEnabled.value,
+                            onCheckedChange = { viewModel.metronomeEnabled.value = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("A-B Loop Active", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = viewModel.abRepeatActive.value,
+                            onCheckedChange = { viewModel.abRepeatActive.value = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(title: String, content: @Composable () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title.uppercase(),
+            color = Color(0xFFFFD700).copy(alpha = 0.6f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 1.2.sp
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        content()
+    }
+}
+
+@Composable
+private fun HandControlRow(
+    label: String,
+    isMuted: Boolean,
+    isHidden: Boolean,
+    color: Color,
+    onMuteToggle: (Boolean) -> Unit,
+    onHideToggle: (Boolean) -> Unit,
+    onColorChange: (Color) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(0.03f))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(Color(0xFF6C63FF), Color(0xFF4A90E2), Color(0xFFFF6B35), Color(0xFFFFD700), Color(0xFF4CAF50)).forEach { c ->
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(c)
+                            .border(if (color == c) 2.dp else 0.dp, Color.White, RoundedCornerShape(6.dp))
+                            .clickable { onColorChange(c) }
+                    )
+                }
+            }
+        }
+
+        IconButton(onClick = { onMuteToggle(!isMuted) }) {
+            Icon(
+                imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                contentDescription = null,
+                tint = if (isMuted) Color.Red.copy(0.7f) else Color.White.copy(0.6f)
+            )
+        }
+
+        IconButton(onClick = { onHideToggle(!isHidden) }) {
+            Icon(
+                imageVector = if (isHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                contentDescription = null,
+                tint = if (isHidden) Color.White.copy(0.2f) else Color(0xFFFFD700)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StepperControl(label: String, value: Int, onValueChange: (Int) -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, color = Color.White.copy(0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .background(Color.White.copy(0.08f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 4.dp)
+        ) {
+            IconButton(onClick = { onValueChange(value - 1) }) {
+                Icon(Icons.Default.Remove, null, tint = Color.White, modifier = Modifier.size(18.dp))
+            }
+            Text(
+                text = if (value > 0) "+$value" else value.toString(),
+                color = if (value != 0) Color(0xFFFFD700) else Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.width(40.dp),
+                textAlign = TextAlign.Center
+            )
+            IconButton(onClick = { onValueChange(value + 1) }) {
+                Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(18.dp))
             }
         }
     }

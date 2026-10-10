@@ -114,4 +114,34 @@ object MusicVectorSymbols {
         }
         drawPath(path, color = color, style = Stroke(width = 2f))
     }
+
+    fun DrawScope.drawSegno(color: Color, size: Size) {
+        val path = Path().apply {
+            moveTo(size.width * 0.2f, size.height * 0.8f)
+            cubicTo(size.width * 0.1f, size.height * 0.5f, size.width * 0.9f, size.height * 0.5f, size.width * 0.8f, size.height * 0.2f)
+            moveTo(size.width * 0.5f, size.height * 0.1f)
+            lineTo(size.width * 0.5f, size.height * 0.9f)
+        }
+        drawPath(path, color = color, style = Stroke(width = 2f))
+        drawCircle(color, radius = size.width * 0.1f, center = Offset(size.width * 0.3f, size.height * 0.5f))
+        drawCircle(color, radius = size.width * 0.1f, center = Offset(size.width * 0.7f, size.height * 0.5f))
+    }
+
+    fun DrawScope.drawCoda(color: Color, size: Size) {
+        drawCircle(color, radius = size.width * 0.4f, center = Offset(size.width * 0.5f, size.height * 0.5f), style = Stroke(width = 2f))
+        drawLine(color, Offset(size.width * 0.5f, 0f), Offset(size.width * 0.5f, size.height), strokeWidth = 2f)
+        drawLine(color, Offset(0f, size.height * 0.5f), Offset(size.width, size.height * 0.5f), strokeWidth = 2f)
+    }
+
+    fun DrawScope.drawEighthFlag(color: Color, stemX: Float, stemY: Float, isUp: Boolean) {
+        val path = Path().apply {
+            moveTo(stemX, stemY)
+            if (isUp) {
+                cubicTo(stemX, stemY + 5f, stemX + 10f, stemY + 10f, stemX + 8f, stemY + 20f)
+            } else {
+                cubicTo(stemX, stemY - 5f, stemX + 10f, stemY - 10f, stemX + 8f, stemY - 20f)
+            }
+        }
+        drawPath(path, color = color, style = Stroke(width = 1.5f))
+    }
 }

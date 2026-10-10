@@ -17,6 +17,7 @@ interface AudioEngine {
     var onTrackEnded: (() -> Unit)?
     var onTrackChanged: (() -> Unit)?
     var onBufferingChanged: ((Boolean) -> Unit)?
+    var onPadTriggered: ((Int) -> Unit)?
     fun pause()
     fun resume()
     fun stop()
@@ -124,6 +125,8 @@ interface AudioEngine {
     ) {}
     fun playSample(label: String, index: Int = -1, string: String = "PIANO") {}
     fun playTabla(bol: String, velocity: Int = 100) {}
+    fun setTanpuraGain(gain: Float) {}
+    fun setTablaGain(gain: Float) {}
     fun getLatency(): Int = 0
     fun getRegistry(): Map<String, String> = emptyMap()
     fun release()

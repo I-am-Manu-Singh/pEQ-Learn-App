@@ -250,15 +250,9 @@ fun DashboardHome(viewModel: AppViewModel) {
 
                 // 🔮 UNIFIED DASHBOARD GLASS CONTAINER
                 item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp),
-                        color = pEQDesign.GlassColor,
-                        border = pEQDesign.GlassBorder,
-                        tonalElevation = pEQDesign.GlassTonalElevation
-                    ) {
+
                         Column(
-                            modifier = Modifier.padding(20.dp),
+                            modifier = Modifier,
                             verticalArrangement = Arrangement.spacedBy(22.dp)
                         ) {
                             if (isWide) {
@@ -278,7 +272,6 @@ fun DashboardHome(viewModel: AppViewModel) {
                                 SectionHeader("MOST PLAYED")
                                 MostPlayedSection(viewModel)
                             }
-                        }
                     }
                 }
 
@@ -786,8 +779,9 @@ fun RecentlyOpenedCard(
                     if (item.durationMs > 0L) {
                         val mins = (item.durationMs / 60000).toInt()
                         val secs = ((item.durationMs % 60000) / 1000).toInt()
+                        val secsStr = if (secs < 10) "0$secs" else "$secs"
                         Text(
-                            text = "%d:%02d".format(mins, secs),
+                            text = "$mins:$secsStr",
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )

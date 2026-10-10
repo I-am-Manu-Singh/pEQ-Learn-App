@@ -60,28 +60,24 @@ fun pEQMixerScreen(
                 tonalElevation = 4.dp
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                        }
                         Column {
                             Text(
-                                text = "STUDIO MULTI-TRACK STEM MIXER",
+                                text = "STEM MIXER",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "6 Isolated AI Stems • Real-Time DSP Pan & Fader Engine",
+                                text = "• 6 Isolated AI Stems",
                                 fontSize = 11.sp,
                                 color = Color.White.copy(alpha = 0.6f)
                             )
                         }
-                    }
+
 
                     Button(
                         onClick = { isMasterPlaying = !isMasterPlaying },
@@ -132,10 +128,11 @@ fun pEQMixerScreen(
             }
 
             // Quick Stem Presets Bar
-            Row(
+            LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                item{
                 FilterChip(
                     selected = false,
                     onClick = {
@@ -143,37 +140,47 @@ fun pEQMixerScreen(
                     },
                     label = { Text("Bypass Reset", fontSize = 11.sp) }
                 )
-                FilterChip(
-                    selected = stems.firstOrNull()?.isSolo == true,
-                    onClick = {
-                        stems.forEachIndexed { idx, it ->
-                            it.isSolo = (idx == 0)
-                            it.isMuted = (idx != 0)
+            }
+                item {
+
+                    FilterChip(
+                        selected = stems.firstOrNull()?.isSolo == true,
+                        onClick = {
+                            stems.forEachIndexed { idx, it ->
+                                it.isSolo = (idx == 0)
+                                it.isMuted = (idx != 0)
+                            }
+                        },
+                        label = { Text("Acappella Solo", fontSize = 11.sp) }
+                    )
+                }
+                    item {
+
+                        FilterChip(
+                            selected = stems.firstOrNull()?.isMuted == true && stems.getOrNull(1)?.isMuted == false,
+                            onClick = {
+                                stems.forEachIndexed { idx, it ->
+                                    it.isMuted = (idx == 0) // Mute Vocals for Karaoke
+                                    it.isSolo = false
+                                }
+                            },
+                            label = { Text("Karaoke Mode", fontSize = 11.sp) }
+                        )
+                    }
+                        item {
+
+                            FilterChip(
+                                selected = stems.getOrNull(1)?.isSolo == true && stems.getOrNull(2)?.isSolo == true,
+                                onClick = {
+                                    stems.forEachIndexed { idx, it ->
+                                        // Solo Drums & Bass
+                                        it.isMuted = (idx != 1 && idx != 2)
+                                        it.isSolo = (idx == 1 || idx == 2)
+                                    }
+                                },
+                                label = { Text("Rhythm Solo", fontSize = 11.sp) }
+                            )
                         }
-                    },
-                    label = { Text("Acappella Solo", fontSize = 11.sp) }
-                )
-                FilterChip(
-                    selected = stems.firstOrNull()?.isMuted == true && stems.getOrNull(1)?.isMuted == false,
-                    onClick = {
-                        stems.forEachIndexed { idx, it ->
-                            it.isMuted = (idx == 0) // Mute Vocals for Karaoke
-                            it.isSolo = false
-                        }
-                    },
-                    label = { Text("Karaoke Mode", fontSize = 11.sp) }
-                )
-                FilterChip(
-                    selected = stems.getOrNull(1)?.isSolo == true && stems.getOrNull(2)?.isSolo == true,
-                    onClick = {
-                        stems.forEachIndexed { idx, it ->
-                            // Solo Drums & Bass
-                            it.isMuted = (idx != 1 && idx != 2)
-                            it.isSolo = (idx == 1 || idx == 2)
-                        }
-                    },
-                    label = { Text("Rhythm Solo", fontSize = 11.sp) }
-                )
             }
 
             // Stems Console Channels (Horizontal Scrollable Desk)

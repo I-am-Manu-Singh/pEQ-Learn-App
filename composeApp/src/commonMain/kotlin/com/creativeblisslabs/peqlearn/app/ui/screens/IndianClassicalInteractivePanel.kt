@@ -54,11 +54,6 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
     var notationFormat by remember { mutableStateOf("Staff Notation") }
 
     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(Icons.Default.Museum, null, modifier = Modifier.size(16.dp), tint = indianColor)
-            Text("INDIAN CLASSICAL MUSIC", fontSize = 12.sp, fontWeight = FontWeight.Black, color = indianColor, letterSpacing = 1.5.sp)
-        }
-
         TabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent, contentColor = indianColor,
             indicator = { tabPositions -> if (selectedTab < tabPositions.size) TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTab]), color = indianColor) }
         ) {
@@ -779,11 +774,18 @@ fun IndianAlankaarPanel(viewModel: AppViewModel? = null, accentColor: Color) {
 
 @Composable
 fun IndianTablaBolsPanel(accentColor: Color) {
+    val engine = getAudioEngine()
+    
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Tabla Syllables & Finger Articulations", fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
         INDIAN_TABLA_BOLS.forEach { (bol, desc) ->
             Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { 
+                        engine.playSample(bol, 0, "TABLA")
+                    }
+                    .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -798,6 +800,12 @@ fun IndianTablaBolsPanel(accentColor: Color) {
                     fontSize = 12.sp,
                     color = Color.White.copy(alpha = 0.8f),
                     modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = accentColor.copy(alpha = 0.5f),
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }

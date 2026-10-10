@@ -23,7 +23,7 @@ fun AppViewModel.selectRaga(raga: Raaga) {
 }
 
 fun AppViewModel.toggleMetronome() {
-    _metronomeActive.value = !_metronomeActive.value
+    metronomeEnabled.value = !metronomeEnabled.value
 }
 
 fun AppViewModel.setMetronomeBpm(bpm: Int) {
@@ -84,9 +84,9 @@ fun AppViewModel.updateDrumPadVolume(index: Int, volume: Float) {
 }
 
 fun AppViewModel.onTunerPitchDetected(pitch: Float, note: String, cents: Int) {
-    detectedPitch.floatValue = pitch
+    detectedPitch.value = pitch
     detectedNote.value = note
-    centsDeviation.intValue = cents
+    centsDeviation.value = cents
 }
 
 fun AppViewModel.onChordDetected(chord: String) {
@@ -113,4 +113,5 @@ fun AppViewModel.switchDrumKit(kit: DrumKitPreset) {
     selectedDrumKit.value = kit
     drumPadLabels.clear()
     drumPadLabels.addAll(kit.labels)
+    audioEngine.currentSelectedKitName = kit.id
 }

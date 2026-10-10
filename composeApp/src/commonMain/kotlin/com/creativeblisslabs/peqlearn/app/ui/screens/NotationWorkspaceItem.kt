@@ -36,7 +36,6 @@ import kotlinx.coroutines.launch
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotationWorkspaceItem(
@@ -67,7 +66,6 @@ fun NotationWorkspaceItem(
     var quantizeDivision by rememberSaveable { mutableStateOf("1/16") }
     var showExportDialog by rememberSaveable { mutableStateOf(false) }
     var showFullscreenPdf by rememberSaveable { mutableStateOf(false) }
-    var isZooming by remember { mutableStateOf(false) }
 
     val stablePlayheadMeasure by remember { derivedStateOf { viewModel.scorePlayheadMeasure.value } }
     val stablePlayheadOffset by remember { derivedStateOf { viewModel.scorePlayheadOffset.value } }
@@ -76,38 +74,23 @@ fun NotationWorkspaceItem(
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0F1117))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Top Industrial Header Bar
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.05f), CircleShape)
-                ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-
                 Column {
                     Text(
-                        text = "NOTATION WORKSPACE & ARRANGER",
+                        text = "NOTATION WORKSPACE",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "Multi-System Engraving • MIDI Playback • Dynamic Clef Routing",
+                        text = "• MIDI Playback",
                         fontSize = 11.sp,
                         color = Color.White.copy(alpha = 0.5f)
                     )
@@ -156,7 +139,6 @@ fun NotationWorkspaceItem(
                     Text("Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
-        }
 
         // Comprehensive Control Toolbar
         Card(
@@ -185,31 +167,31 @@ fun NotationWorkspaceItem(
                         }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Key Shift: ${if (shiftNotesOffset >= 0) "+$shiftNotesOffset" else "$shiftNotesOffset"}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
+                    )
+                    IconButton(
+                        onClick = { shiftNotesOffset-- },
+                        modifier = Modifier.size(28.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
                     ) {
-                        Text(
-                            text = "Key Shift: ${if (shiftNotesOffset >= 0) "+$shiftNotesOffset" else "$shiftNotesOffset"}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = accentColor
-                        )
-                        IconButton(
-                            onClick = { shiftNotesOffset-- },
-                            modifier = Modifier.size(28.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
-                        ) {
-                            Text("-", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                        IconButton(
-                            onClick = { shiftNotesOffset++ },
-                            modifier = Modifier.size(28.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
-                        ) {
-                            Text("+", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
+                        Text("-", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    IconButton(
+                        onClick = { shiftNotesOffset++ },
+                        modifier = Modifier.size(28.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
+                    ) {
+                        Text("+", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
-
                 // Row 2: Key Signatures & Time Signatures Pickers
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -233,55 +215,71 @@ fun NotationWorkspaceItem(
                         }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("Time:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
-                        timeSignatures.take(4).forEach { ts ->
-                            FilterChip(
-                                selected = selectedTimeSig == ts,
-                                onClick = { selectedTimeSig = ts },
-                                label = { Text(ts, fontSize = 10.sp) }
-                            )
-                        }
+
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("Time:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+                    timeSignatures.take(4).forEach { ts ->
+                        FilterChip(
+                            selected = selectedTimeSig == ts,
+                            onClick = { selectedTimeSig = ts },
+                            label = { Text(ts, fontSize = 10.sp) }
+                        )
                     }
                 }
-
                 // Row 3: Target Instrument & Quantization Grid
-                Row(
+                LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("Instrument:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
-                        instruments.forEach { inst ->
-                            FilterChip(
-                                selected = selectedInstrument == inst,
-                                onClick = { selectedInstrument = inst },
-                                label = { Text(inst, fontSize = 10.sp) }
+                    item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "Instrument:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.7f)
                             )
+                            instruments.forEach { inst ->
+                                FilterChip(
+                                    selected = selectedInstrument == inst,
+                                    onClick = { selectedInstrument = inst },
+                                    label = { Text(inst, fontSize = 10.sp) }
+                                )
+                            }
                         }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("Quantize:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
-                        listOf("1/4", "1/8", "1/16", "1/32").forEach { q ->
-                            FilterChip(
-                                selected = isQuantizeActive && quantizeDivision == q,
-                                onClick = {
-                                    isQuantizeActive = true
-                                    quantizeDivision = q
-                                },
-                                label = { Text(q, fontSize = 10.sp) }
+                }
+                LazyRow {
+                    item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "Quantize:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.7f)
                             )
+                            listOf("1/4", "1/8", "1/16", "1/32").forEach { q ->
+                                FilterChip(
+                                    selected = isQuantizeActive && quantizeDivision == q,
+                                    onClick = {
+                                        isQuantizeActive = true
+                                        quantizeDivision = q
+                                    },
+                                    label = { Text(q, fontSize = 10.sp) }
+                                )
+                            }
                         }
                     }
                 }
@@ -330,19 +328,21 @@ fun NotationWorkspaceItem(
             var isScrubbing by remember { mutableStateOf(false) }
             var scrubbingProgress by remember { mutableStateOf(0f) }
 
+            val fsScrollState = rememberScrollState()
+            
             val isPlaying = viewModel.isScorePlaying.value
             val currentScore = viewModel.currentScore.value
             val measuresPerPage = 8
             val totalMeasures = currentScore?.measures?.size ?: 0
             val totalPages = if (totalMeasures > 0) (totalMeasures + measuresPerPage - 1) / measuresPerPage else 1
 
-            val beatsPerMeasure = remember(currentScore?.timeSignature) {
-                currentScore?.timeSignature?.split("/")?.firstOrNull()?.toFloatOrNull() ?: 4f
-            }
-
             val currentMeasure = stablePlayheadMeasure
             val currentOffset = stablePlayheadOffset
-            val liveProgress = if (totalMeasures > 0) (currentMeasure.toFloat() + currentOffset) / totalMeasures.toFloat() else 0f
+
+            val totalSeconds = viewModel.scoreTotalDurationSeconds.value
+            val currentSeconds = viewModel.scoreCurrentPositionSeconds.value
+
+            val liveProgress = if (totalSeconds > 0) currentSeconds / totalSeconds else 0f
 
             val density = LocalDensity.current
             val rowHeightPx = remember(density) { with(density) { 260.dp.toPx() } }
@@ -353,7 +353,7 @@ fun NotationWorkspaceItem(
                     val measuresPerRow = 2
                     val currentRow = currentMeasure / measuresPerRow
                     val targetScrollY = (currentRow * rowHeightPx).toInt()
-                    scrollState.animateScrollTo(targetScrollY)
+                    fsScrollState.animateScrollTo(targetScrollY)
                 }
             }
 
@@ -361,21 +361,20 @@ fun NotationWorkspaceItem(
                 val firstMeasureOfPage = (currentPage - 1) * measuresPerPage
                 val rowOfPage = firstMeasureOfPage / 2
                 val targetScrollY = (rowOfPage * rowHeightPx).toInt()
-                if (scrollState.value != targetScrollY) {
-                    scrollState.animateScrollTo(targetScrollY)
+                if (fsScrollState.value != targetScrollY) {
+                    fsScrollState.animateScrollTo(targetScrollY)
                 }
             }
 
-            val dynamicSecondsPerMeasure = if (currentScore != null) (60f / currentScore.tempo) * beatsPerMeasure else 2.5f
-            val totalSeconds = (totalMeasures * dynamicSecondsPerMeasure).toInt()
-            val currentSeconds = if (isScrubbing) {
-                (scrubbingProgress * totalMeasures * dynamicSecondsPerMeasure).toInt()
+            val displaySeconds = if (isScrubbing) {
+                (scrubbingProgress * totalSeconds).toInt()
             } else {
-                ((currentMeasure.toFloat() + currentOffset) * dynamicSecondsPerMeasure).toInt()
+                currentSeconds.toInt()
             }
 
-            val currentTimeStr = "${currentSeconds / 60}:${String.format("%02d", currentSeconds % 60)}"
-            val totalTimeStr = "${totalSeconds / 60}:${String.format("%02d", totalSeconds % 60)}"
+            val currentTimeStr = "${displaySeconds / 60}:${(displaySeconds % 60).toString().padStart(2, '0')}"
+            val totalSecondsInt = totalSeconds.toInt()
+            val totalTimeStr = "${totalSecondsInt / 60}:${(totalSecondsInt % 60).toString().padStart(2, '0')}"
 
             Dialog(
                 onDismissRequest = { showFullscreenPdf = false },
@@ -396,7 +395,6 @@ fun NotationWorkspaceItem(
                                     coroutineScope {
                                         launch {
                                             detectTransformGestures { _, pan, zoom, _ ->
-                                                isZooming = true
                                                 fsZoomFactor = (fsZoomFactor * zoom).coerceIn(0.7f, 2.2f)
                                                 if (fsZoomFactor > 1.0f) {
                                                     val maxPanX = (fsZoomFactor - 1f) * size.width / 2f
@@ -429,24 +427,22 @@ fun NotationWorkspaceItem(
                                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                                     )
                             ) {
-                                Box(modifier = if (isZooming) Modifier else Modifier.verticalScroll(scrollState)) {
-                                    StaffAndTabNotationViewer(
-                                        score = currentScore as Score?,
-                                        playheadMeasure = currentMeasure,
-                                        playheadOffset = currentOffset,
-                                        activeMidiNotes = viewModel.midiActiveNotes,
-                                        playingNote = viewModel.midiPlayingNote.value,
-                                        primaryColor = accentColor,
-                                        currentFormat = notationFormat,
-                                        onFormatChange = { notationFormat = it },
-                                        modifier = Modifier.fillMaxSize(),
-                                        scrollState = scrollState
-                                    )
-                                }
+                                StaffAndTabNotationViewer(
+                                    score = currentScore as Score?,
+                                    playheadMeasure = currentMeasure,
+                                    playheadOffset = currentOffset,
+                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                    playingNote = viewModel.midiPlayingNote.value,
+                                    primaryColor = accentColor,
+                                    currentFormat = notationFormat,
+                                    onFormatChange = { notationFormat = it },
+                                    modifier = Modifier.fillMaxSize(),
+                                    scrollState = fsScrollState
+                                )
                             }
                         }
 
-                        // HUD Layer
+                        // HUD Layer with max width constraint for landscape / tablets
                         androidx.compose.animation.AnimatedVisibility(
                             visible = areControlsVisible,
                             enter = fadeIn(tween(250)),
@@ -454,6 +450,7 @@ fun NotationWorkspaceItem(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = 24.dp)
+                                .widthIn(max = 680.dp)
                         ) {
                             Surface(
                                 color = Color(0xEE121212),
@@ -476,7 +473,7 @@ fun NotationWorkspaceItem(
                                                 color = accentColor,
                                                 modifier = Modifier.size(36.dp)
                                             ) {
-                                                IconButton(onClick = { viewModel.toggleScorePlayback(beatsPerMeasure) }) {
+                                                IconButton(onClick = { viewModel.toggleScorePlayback() }) {
                                                     Icon(
                                                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                                         contentDescription = null,
@@ -500,36 +497,36 @@ fun NotationWorkspaceItem(
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color.White.copy(alpha = 0.5f)
                                             )
-                                            IconButton(
-                                                onClick = {
-                                                    if (currentPage > 1) {
-                                                        currentPage--
-                                                        val targetScrollY = (((currentPage - 1) * measuresPerPage) / 2 * rowHeightPx).toInt()
-                                                        scope.launch { scrollState.animateScrollTo(targetScrollY) }
-                                                    }
-                                                },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(Icons.AutoMirrored.Filled.NavigateBefore, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                            }
+                                                IconButton(
+                                                    onClick = {
+                                                        if (currentPage > 1) {
+                                                            currentPage--
+                                                            val targetScrollY = (((currentPage - 1) * measuresPerPage) / 2 * rowHeightPx).toInt()
+                                                            scope.launch { fsScrollState.animateScrollTo(targetScrollY) }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(Icons.AutoMirrored.Filled.NavigateBefore, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                }
 
-                                            Text(
-                                                text = "Page $currentPage / $totalPages",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White.copy(alpha = 0.5f)
-                                            )
+                                                Text(
+                                                    text = "Page $currentPage / $totalPages",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White.copy(alpha = 0.5f)
+                                                )
 
-                                            IconButton(
-                                                onClick = {
-                                                    if (currentPage < totalPages) {
-                                                        currentPage++
-                                                        val targetScrollY = (((currentPage - 1) * measuresPerPage) / 2 * rowHeightPx).toInt()
-                                                        scope.launch { scrollState.animateScrollTo(targetScrollY) }
-                                                    }
-                                                },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
+                                                IconButton(
+                                                    onClick = {
+                                                        if (currentPage < totalPages) {
+                                                            currentPage++
+                                                            val targetScrollY = (((currentPage - 1) * measuresPerPage) / 2 * rowHeightPx).toInt()
+                                                            scope.launch { fsScrollState.animateScrollTo(targetScrollY) }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
                                                 Icon(Icons.AutoMirrored.Filled.NavigateNext, null, tint = Color.White, modifier = Modifier.size(16.dp))
                                             }
 
@@ -559,20 +556,14 @@ fun NotationWorkspaceItem(
                                             onValueChange = { targetProgress ->
                                                 isScrubbing = true
                                                 scrubbingProgress = targetProgress
-                                                if (currentScore != null && totalMeasures > 0) {
-                                                    val targetTotal = targetProgress * totalMeasures.toFloat()
-                                                    val targetMeasure = targetTotal.toInt().coerceIn(0, totalMeasures - 1)
-                                                    val targetOffset = targetTotal - targetMeasure
-                                                    viewModel.seekToPosition(targetMeasure, targetOffset, beatsPerMeasure)
+                                                if (currentScore != null && totalSeconds > 0) {
+                                                    viewModel.seekToTotalSeconds(targetProgress * totalSeconds)
                                                 }
                                             },
                                             onValueChangeFinished = {
                                                 isScrubbing = false
-                                                if (currentScore != null && totalMeasures > 0) {
-                                                    val targetTotal = scrubbingProgress * totalMeasures.toFloat()
-                                                    val targetMeasure = targetTotal.toInt().coerceIn(0, totalMeasures - 1)
-                                                    val targetOffset = targetTotal - targetMeasure
-                                                    viewModel.seekToPosition(targetMeasure, targetOffset, beatsPerMeasure)
+                                                if (currentScore != null && totalSeconds > 0) {
+                                                    viewModel.seekToTotalSeconds(scrubbingProgress * totalSeconds)
                                                 }
                                             },
                                             modifier = Modifier.weight(1f),

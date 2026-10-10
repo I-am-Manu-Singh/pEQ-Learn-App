@@ -585,15 +585,15 @@ fun ChordDictionaryPanel(
         }
 
         StaffAndTabNotationViewer(
+            score = viewModel.currentScore.value as Score?,
+            playheadMeasure = viewModel.scorePlayheadMeasure.value,
+            playheadOffset = viewModel.scorePlayheadOffset.value,
             activeMidiNotes = viewModel.midiActiveNotes,
             playingNote = viewModel.midiPlayingNote.value,
             primaryColor = partColor,
             currentFormat = unifiedFormat,
             onFormatChange = onFormatChange,
             modifier = Modifier.fillMaxWidth().height(220.dp),
-            score = viewModel.currentScore.value as Score?,
-            playheadMeasure = viewModel.scorePlayheadMeasure.value,
-            playheadOffset = viewModel.scorePlayheadOffset.value,
             scrollState = scrollState
         )
 
@@ -1134,7 +1134,17 @@ fun ImmersiveKeyboardFretboardLabDialog(
                     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text("Harmonic Staff & Tablature Projection", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
                         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                            StaffAndTabNotationViewer(guitarShape = shape, modifier = Modifier.fillMaxSize())
+                            StaffAndTabNotationViewer(
+                                score = viewModel.currentScore.value as Score?,
+                                playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                playheadOffset = viewModel.scorePlayheadOffset.value,
+                                activeMidiNotes = viewModel.midiActiveNotes,
+                                playingNote = viewModel.midiPlayingNote.value,
+                                primaryColor = accentColor,
+                                currentFormat = "Tab",
+                                onFormatChange = {},
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
 
                         Text("88-Key Synchronized Keyboard Canvas", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)

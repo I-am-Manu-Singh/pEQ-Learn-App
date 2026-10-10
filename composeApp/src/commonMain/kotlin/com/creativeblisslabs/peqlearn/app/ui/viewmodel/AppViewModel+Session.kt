@@ -1,6 +1,8 @@
 package com.creativeblisslabs.peqlearn.app.ui.viewmodel
 
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import com.creativeblisslabs.peqlearn.app.data.*
@@ -45,6 +47,13 @@ fun AppViewModel.restoreSession() {
             // 2. Restore Session State
             val session = manager.loadSession() ?: SessionState()
             isLandscapeLocked.value = session.isRotationLocked
+            isLeftHandMuted.value = session.isLeftHandMuted
+            isRightHandMuted.value = session.isRightHandMuted
+            isLeftHandHidden.value = session.isLeftHandHidden
+            isRightHandHidden.value = session.isRightHandHidden
+            session.leftHandColor?.let { leftHandColor.value = Color(it.toLong()) }
+            session.rightHandColor?.let { rightHandColor.value = Color(it.toLong()) }
+            transposition.intValue = session.notationTransposition
 
             // 3. Wait for library to populate
             val items = withTimeoutOrNull(4000) { 
@@ -225,6 +234,13 @@ fun AppViewModel.persistSession() {
         favorites = favorites.toList(),
         eqGains = eqGains.toList(),
         eqQs = eqQs.toList(),
+        isLeftHandMuted = isLeftHandMuted.value,
+        isRightHandMuted = isRightHandMuted.value,
+        isLeftHandHidden = isLeftHandHidden.value,
+        isRightHandHidden = isRightHandHidden.value,
+        leftHandColor = leftHandColor.value.toArgb(),
+        rightHandColor = rightHandColor.value.toArgb(),
+        notationTransposition = transposition.intValue,
         lastIrPath = convolverIrPath.value,
         lastSubtitleTrackId = selectedSubtitleTrack.value?.id,
         lastAudioTrackId = selectedAudioTrack.value?.id

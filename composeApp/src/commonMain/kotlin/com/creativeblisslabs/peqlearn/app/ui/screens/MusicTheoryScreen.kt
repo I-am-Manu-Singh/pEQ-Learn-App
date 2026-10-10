@@ -58,50 +58,35 @@ fun MusicTheoryScreen(
                 tonalElevation = 2.dp,
                 shadowElevation = 4.dp
             ) {
-                Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                        Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                            Text(
-                                text = "Music Theory & Harmony",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                        // Search input
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp,
+                                vertical = 4.dp),
+                            placeholder = { Text("Search chords, scales, ragas ..") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(Icons.Default.Clear, contentDescription = "Clear")
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                             )
-                            Text(
-                                text = "${ALL_CONCEPTS.size} Core Concepts • Interactive Labs",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        )
                     }
 
-                    // Search input
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        placeholder = { Text("Search chords, scales, ragas, cadences...") },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear")
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                        )
-                    )
 
                     // Navigation Tabs
                     LazyRow(
@@ -155,12 +140,6 @@ fun MusicTheoryScreen(
                         onSelectConcept = { selectedConcept = if (selectedConcept == it) null else it }
                     )
                 }
-                TheoryPart.CHORDS -> {
-                    ChordAcademyPanel(viewModel = viewModel)
-                }
-                TheoryPart.GROOVE -> {
-                    RhythmGrooveWorkstation(viewModel = viewModel)
-                }
                 TheoryPart.STRUCTURE -> {
                     SongStructureAcademyPanel()
                 }
@@ -169,6 +148,10 @@ fun MusicTheoryScreen(
                 }
                 TheoryPart.KARNATIC -> {
                     KarnaticClassicalInteractivePanel(viewModel = viewModel)
+                }
+                else -> {
+                    // Fallback for CHORDS, GROOVE, or future additions
+                    Box(Modifier.fillMaxSize())
                 }
             }
         }
@@ -190,7 +173,7 @@ private fun ConceptsBrowser(
     ) {
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val filters = listOf("ALL", "CHORDS", "GROOVE", "STRUCTURE", "INDIAN_CLASSICAL", "KARNATIC")
+                val filters = listOf("ALL", "STRUCTURE", "INDIAN_CLASSICAL", "KARNATIC")
                 items(filters) { f ->
                     FilterChip(
                         selected = subFilterMode == f,
@@ -296,52 +279,6 @@ private fun ConceptsBrowser(
     }
 }
 
-@Composable
-private fun ChordAcademyPanel(viewModel: AppViewModel) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 120.dp)
-    ) {
-        item {
-            Text(
-                text = "CHORD & HARMONY ACADEMY",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        item {
-            StrobeTunerSection(viewModel)
-        }
-
-        item {
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
-                )
-            ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Interactive Piano & Fretboard Lab",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Explore chords, inversions, voice leading and scale maps across 88 keys and guitar frets.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    PianoKeyboard88Keys(viewModel = viewModel)
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun SongStructureAcademyPanel() {

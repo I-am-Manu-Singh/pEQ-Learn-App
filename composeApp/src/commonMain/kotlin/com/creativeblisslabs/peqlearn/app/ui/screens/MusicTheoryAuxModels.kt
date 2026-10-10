@@ -11,9 +11,9 @@ enum class TheoryPart(
     val icon: ImageVector,
     val color: Color
 ) {
-    CHORDS("Chord Dict.", Icons.Default.MusicNote, Color(0xFFFFD700)),
+//    CHORDS("Chord Dict.", Icons.Default.MusicNote, Color(0xFFFFD700)),
     CONCEPTS("Theory Concepts", Icons.Default.MenuBook, Color(0xFF64B5F6)),
-    GROOVE("Drums", Icons.Default.PlayArrow, Color(0xFF00E676)),
+//    GROOVE("Drums", Icons.Default.PlayArrow, Color(0xFF00E676)),
     STRUCTURE("Song Str.", Icons.AutoMirrored.Filled.List, Color(0xFFFF7043)),
     INDIAN_CLASSICAL("Ind. Class.", Icons.Default.Home, Color(0xFFFF9800)),
     KARNATIC("Karnatic", Icons.Default.Info, Color(0xFF00BCD4))

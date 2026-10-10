@@ -125,6 +125,34 @@ fun AppViewModel.seekTo(positionMs: Long) {
     currentPosition.longValue = positionMs
     isSeeking.value = true
     audioEngine.seekTo(positionMs)
+
+    // SYNC NOTATION: If we have a score, sync the playhead when seeking in track
+    currentScore.value?.let { score ->
+        val totalSec = positionMs / 1000f
+        val starts = measureStartTimesSeconds.value
+        
+        var targetM = 0
+        var targetO = 0f
+        
+        for (i in score.measures.indices) {
+            val start = starts.getOrNull(i) ?: 0f
+            val m = score.measures[i]
+            val dur = (60f / score.tempo) * m.timeSignatureNumerator
+            
+            if (totalSec < start + dur) {
+                targetM = i
+                targetO = (totalSec - start) / dur
+                break
+            }
+            if (i == score.measures.lastIndex) {
+                targetM = i
+                targetO = 1.0f
+            }
+        }
+        scorePlayheadMeasure.value = targetM
+        scorePlayheadOffset.value = targetO
+    }
+
     scope.launch {
         delay(400)
         isSeeking.value = false
@@ -405,6 +433,11 @@ fun AppViewModel.updateLoopPoints(a: Long?, b: Long?) {
 }
 
 fun AppViewModel.syncNowPlaying() {
+    val now = Clock.System.now().toEpochMilliseconds()
+    // Throttle to once every 2 seconds unless playback state changes
+    if (now - lastSyncTime < 2000 && audioEngine.isPlaying() == isPlaying.value) return
+    
+    lastSyncTime = now
     persistenceManager.updateNowPlaying(currentMediaItem.value, isPlaying.value)
 }
 

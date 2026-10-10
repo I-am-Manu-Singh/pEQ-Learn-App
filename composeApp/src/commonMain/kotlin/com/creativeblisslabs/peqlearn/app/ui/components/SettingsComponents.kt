@@ -50,18 +50,6 @@ fun SettingsPanel(viewModel: AppViewModel) {
                     letterSpacing = 1.5.sp,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Text(
-                    "INDUSTRIAL WORKSTATION v2.0",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.4f)
-                )
-            }
-            IconButton(
-                onClick = { viewModel.currentTab.value = Tab.Dashboard },
-                modifier = Modifier.background(Color.White.copy(alpha = 0.06f), CircleShape)
-            ) {
-                Icon(Icons.Default.Close, null, tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
             }
         }
 
@@ -333,7 +321,9 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
         channel = viewModel.tanpuraChannel.intValue,
         onChannelChange = { viewModel.tanpuraChannel.intValue = it },
         velocity = viewModel.tanpuraVelocity.intValue,
-        onVelocityChange = { viewModel.tanpuraVelocity.intValue = it }
+        onVelocityChange = { viewModel.tanpuraVelocity.intValue = it },
+        gain = viewModel.tanpuraGain.floatValue,
+        onGainChange = { viewModel.tanpuraGain.floatValue = it }
     )
 
     // 6. Tabla SoundFont Customization
@@ -361,7 +351,9 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
         channel = viewModel.tablaChannel.intValue,
         onChannelChange = { viewModel.tablaChannel.intValue = it },
         velocity = viewModel.tablaVelocity.intValue,
-        onVelocityChange = { viewModel.tablaVelocity.intValue = it }
+        onVelocityChange = { viewModel.tablaVelocity.intValue = it },
+        gain = viewModel.tablaGain.floatValue,
+        onGainChange = { viewModel.tablaGain.floatValue = it }
     )
 
     // 7. LEARN & CREATIVE STUDIO
@@ -675,6 +667,8 @@ private fun InstrumentCustomizationCard(
     onChannelChange: (Int) -> Unit,
     velocity: Int,
     onVelocityChange: (Int) -> Unit,
+    gain: Float? = null,
+    onGainChange: ((Float) -> Unit)? = null,
     useSoundFont: Boolean? = null,
     onToggleUseSoundFont: ((Boolean) -> Unit)? = null
 ) {
@@ -777,6 +771,22 @@ private fun InstrumentCustomizationCard(
                     valueRange = 0f..127f,
                     colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
+            }
+
+            // Output Gain Slider
+            if (gain != null && onGainChange != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Output Gain (Volume)", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+                        Text("${(gain * 100).toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Slider(
+                        value = gain,
+                        onValueChange = onGainChange,
+                        valueRange = 0f..1f,
+                        colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+                    )
+                }
             }
         }
     }

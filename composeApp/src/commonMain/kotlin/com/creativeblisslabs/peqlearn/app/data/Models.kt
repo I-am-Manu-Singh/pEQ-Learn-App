@@ -97,6 +97,13 @@ data class SessionState(
     val currentTabIndex: Int = 0,
     val isAiVocalRemovalActive: Boolean = false,
     val lastKnownBpm: Float = 120.0f,
+    val isLeftHandMuted: Boolean = false,
+    val isRightHandMuted: Boolean = false,
+    val isLeftHandHidden: Boolean = false,
+    val isRightHandHidden: Boolean = false,
+    val leftHandColor: Int? = null,
+    val rightHandColor: Int? = null,
+    val notationTransposition: Int = 0,
     val scanFolders: List<String> = emptyList(),
     val playCounts: Map<String, Int> = emptyMap(),
     val lastPlayed: Map<String, Long> = emptyMap()

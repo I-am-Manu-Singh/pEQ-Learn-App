@@ -46,10 +46,6 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
     var notationFormat by remember { mutableStateOf("Staff Notation") }
 
     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(Icons.Default.Museum, null, modifier = Modifier.size(16.dp), tint = karnaticColor)
-            Text("CARNATIC CLASSICAL ACADEMY", fontSize = 12.sp, fontWeight = FontWeight.Black, color = karnaticColor, letterSpacing = 1.5.sp)
-        }
 
         TabRow(
             selectedTabIndex = selectedTab,

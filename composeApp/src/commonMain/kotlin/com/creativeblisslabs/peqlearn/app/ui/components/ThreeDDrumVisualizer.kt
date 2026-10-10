@@ -236,11 +236,21 @@ fun ThreeDDrumVisualizer(
                     sortedParts.forEach { part ->
                         val isDirectActive = viewModel.sequencerTriggeredPads[part.label] == true
                         val isGeneralActive = viewModel.sequencerTriggeredPads.any { (k, v) ->
-                            v && (k.contains(part.label, ignoreCase = true) ||
-                                (part.label == "HH" && k.contains("HIHAT", ignoreCase = true)) ||
-                                (part.label == "FLOOR" && k.contains("TOM_LO", ignoreCase = true)) ||
-                                (part.label == "TOM1" && k.contains("TOM_HI", ignoreCase = true)) ||
-                                (part.label == "TOM2" && k.contains("TOM_MID", ignoreCase = true)))
+                            if (!v) return@any false
+                            val cleanKey = k.uppercase()
+                            val cleanPart = part.label.uppercase()
+
+                            when {
+                                cleanKey.contains(cleanPart) -> true
+                                cleanPart == "HH" && (cleanKey.contains("HIHAT") || cleanKey.contains("HAT")) -> true
+                                cleanPart == "OHAT" && (cleanKey.contains("OPEN") || cleanKey.contains("HAT")) -> true
+                                cleanPart == "CRASH" && cleanKey.contains("CRASH") -> true
+                                cleanPart == "RIDE" && cleanKey.contains("RIDE") -> true
+                                cleanPart == "FLOOR" && (cleanKey.contains("LO") || cleanKey.contains("FLOOR")) -> true
+                                cleanPart.startsWith("TOM") && cleanKey.contains("TOM") -> true
+                                cleanPart.contains("KICK") && cleanKey.contains("KICK") -> true
+                                else -> false
+                            }
                         }
                         val isActive = isDirectActive || isGeneralActive
 

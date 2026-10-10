@@ -5,12 +5,19 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class NoteDuration(val beats: Float) {
+    LONGA(16.0f),
+    BREVE(8.0f),
     WHOLE(4.0f),
     HALF(2.0f),
     QUARTER(1.0f),
     EIGHTH(0.5f),
     SIXTEENTH(0.25f),
     THIRTY_SECOND(0.125f)
+}
+
+@Serializable
+enum class MusicalArticulation {
+    NONE, STACCATO, ACCENT, TENUTO, MARCATO
 }
 
 @Serializable
@@ -84,6 +91,7 @@ data class ScoreNote(
     val lyric: String = "",
     val fingering: Int? = null,
     val articulation: TabArticulation = TabArticulation.NONE,
+    val musicalArticulation: MusicalArticulation = MusicalArticulation.NONE,
     val bend: BendInfo? = null,
     val harmonic: HarmonicType? = null,
     val palmMute: Boolean = false,
@@ -163,12 +171,17 @@ data class DrawingConfig(
     val trebleBaseline: Float = 48.0f,
     val bassBaseline: Float = 118.0f,
     val primaryColor: Color = Color(0xFF64B5F6),
+    val leftHandColor: Color = Color(0xFF6C63FF),
+    val rightHandColor: Color = Color(0xFF4A90E2),
+    val isLeftHandHidden: Boolean = false,
+    val isRightHandHidden: Boolean = false,
     val isDark: Boolean = true,
     val isTab: Boolean = false,
     val tabBaseline: Float = 195.0f,
     val isPedalPressed: Boolean = false,
     val strokeWidth: Float = 1.5f,
     val showLabels: Boolean = true,
+    val showLyrics: Boolean = true,
     val isDarkMode: Boolean = isDark
 )
 
@@ -186,10 +199,6 @@ data class NotationOptions(
     val timeSignatureOverride: String = "4/4",
     val useVexflow: Boolean = false
 )
-
-
-
-
 
 
 @Serializable

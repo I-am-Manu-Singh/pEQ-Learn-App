@@ -1,4 +1,4 @@
-package org.audiocular.peqlearn.app.midi
+package com.creativeblisslabs.peqlearn.app.midi
 
 import android.content.Context
 import android.media.midi.MidiDevice
@@ -8,7 +8,7 @@ import android.media.midi.MidiOutputPort
 import android.media.midi.MidiReceiver
 import android.os.Handler
 import android.os.Looper
-import org.audiocular.peqlearn.app.ui.viewmodel.AppViewModel
+import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 
 class AndroidMidiHandler(
     private val context: Context,

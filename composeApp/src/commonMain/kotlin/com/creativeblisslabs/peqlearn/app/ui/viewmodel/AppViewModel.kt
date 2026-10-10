@@ -6,20 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.*
-import androidx.compose.animation.core.RepeatMode as AnimationRepeatMode
-import io.ktor.client.*
-import io.ktor.client.call.body
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -32,16 +19,11 @@ import com.creativeblisslabs.peqlearn.app.ai.pEQStemSplitter
 import com.creativeblisslabs.peqlearn.app.audio.AudioEngine
 import kotlinx.coroutines.*
 import com.creativeblisslabs.peqlearn.app.data.*
-import com.creativeblisslabs.peqlearn.app.ui.viewmodel.observeLibraryState
-import com.creativeblisslabs.peqlearn.app.ui.viewmodel.refreshLibrary
 import com.creativeblisslabs.peqlearn.app.data.Device
 import com.creativeblisslabs.peqlearn.app.data.SyncedLine
 import com.creativeblisslabs.peqlearn.app.data.lyrics.LyricsRepository
 import com.creativeblisslabs.peqlearn.app.data.repository.*
 import com.creativeblisslabs.peqlearn.app.ui.screens.*
-import com.creativeblisslabs.peqlearn.app.ui.components.*
-import com.creativeblisslabs.peqlearn.app.ui.components.getSystemVolume
-import com.creativeblisslabs.peqlearn.app.ui.components.setSystemVolume
 import com.creativeblisslabs.peqlearn.app.network.createHttpClient
 import com.creativeblisslabs.peqlearn.app.ui.theme.pEQTheme
 import com.creativeblisslabs.peqlearn.app.ui.theme.pEQAccent
@@ -50,10 +32,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withTimeoutOrNull
+
+import com.creativeblisslabs.peqlearn.app.data.normalizePath
 
 open class AppViewModel(
 
@@ -96,6 +78,7 @@ open class AppViewModel(
         mutableStateOf(
             LibraryViewMode.LIBRARY
         )
+    val currentStepIndex = mutableIntStateOf(0)
 val isLandscapeMode =
     mutableStateOf(true)
     var libraryMediaTypeFilter =
@@ -152,12 +135,30 @@ val client = createHttpClient()
     val masterVolume = mutableStateOf(1f)
     val customAccentColor = mutableStateOf<Color?>(null)
     val isVocalRemovalActive = mutableStateOf(false)
+    val isLeftHandMuted = mutableStateOf(false)
+    val isRightHandMuted = mutableStateOf(false)
+    val isLeftHandHidden = mutableStateOf(false)
+    val isRightHandHidden = mutableStateOf(false)
+    val leftHandColor = mutableStateOf(Color(0xFF6C63FF))
+    val rightHandColor = mutableStateOf(Color(0xFF4A90E2))
+    val transposition = mutableIntStateOf(0)
+    val octaveShift = mutableIntStateOf(0)
+    val isSplitStaff = mutableStateOf(true)
+    val isVerticalScroll = mutableStateOf(false)
+    val metronomeEnabled = mutableStateOf(false)
+    private var metronomeJob: Job? = null
     val isBuffering = mutableStateOf(false)
     val isPiPMode = mutableStateOf(false)
     val showMiniPlayer = mutableStateOf(false)
     val isFullscreenKeyboard = mutableStateOf(false)
     val practicingChord = mutableStateOf<String?>(null)
     val isTanpuraActive = mutableStateOf(false)
+    val tanpuraGain = mutableFloatStateOf(0.8f)
+    val tablaGain = mutableFloatStateOf(1.0f)
+
+    // Callback interfaces for platform-specific features
+    var onScanMidiDevicesRequested: (() -> Unit)? = null
+    var onVideoExportRequested: ((Score, String, Int, Map<String, Boolean>, (Float) -> Unit, (String?) -> Unit) -> Unit)? = null
 
     internal val _currentQueueIndex = mutableStateOf(-1)
     val currentQueueIndex: State<Int> = _currentQueueIndex             
@@ -287,6 +288,7 @@ val client = createHttpClient()
     val activeJob = mutableStateOf<SplitJob?>(null)
     val backgroundJobs = mutableStateListOf<SplitJob>()
     private var lastFftTime = 0L
+    var lastSyncTime = 0L
 
     fun start() {
         if (hasInitialized) return
@@ -678,8 +680,8 @@ val client = createHttpClient()
         
         // 🚀 Automatic Metadata & Lyric Fetching
         scope.launch {
-            snapshotFlow { currentMediaItem.value }.distinctUntilChanged().collect { item ->
-                if (item != null) {
+            snapshotFlow { currentMediaItem.value?.path }.distinctUntilChanged().collect { path ->
+                if (path != null) {
                     onTrackLoaded()
                     syncNowPlaying()
                 }
@@ -717,7 +719,114 @@ val client = createHttpClient()
             }
         }
 
+        // 🎚️ Real-time Instrument Gain Observers
+        scope.launch {
+            snapshotFlow { tanpuraGain.floatValue }
+                .distinctUntilChanged()
+                .collect { 
+                    audioEngine.setTanpuraGain(it)
+                }
+        }
+        scope.launch {
+            snapshotFlow { tablaGain.floatValue }
+                .distinctUntilChanged()
+                .collect { 
+                    audioEngine.setTablaGain(it)
+                }
+        }
+
+        scope.launch {
+            snapshotFlow { isLeftHandMuted.value }
+                .distinctUntilChanged()
+                .collect { 
+                    audioEngine.setStemMute("left_hand", it)
+                    audioEngine.setStemMute("BASS", it)
+                    persistSession()
+                }
+        }
+
+        scope.launch {
+            snapshotFlow { isRightHandMuted.value }
+                .distinctUntilChanged()
+                .collect { 
+                    audioEngine.setStemMute("right_hand", it)
+                    audioEngine.setStemMute("PIANO", it)
+                    audioEngine.setStemMute("VOCALS", it)
+                    persistSession()
+                }
+        }
+
+        scope.launch {
+            snapshotFlow { isLeftHandHidden.value }
+                .distinctUntilChanged()
+                .collect { persistSession() }
+        }
+
+        scope.launch {
+            snapshotFlow { isRightHandHidden.value }
+                .distinctUntilChanged()
+                .collect { persistSession() }
+        }
+
+        scope.launch {
+            snapshotFlow { leftHandColor.value }
+                .distinctUntilChanged()
+                .collect { persistSession() }
+        }
+
+        scope.launch {
+            snapshotFlow { rightHandColor.value }
+                .distinctUntilChanged()
+                .collect { persistSession() }
+        }
+
+        scope.launch {
+            snapshotFlow { transposition.intValue }
+                .distinctUntilChanged()
+                .collect { persistSession() }
+        }
+
+        scope.launch {
+            snapshotFlow { metronomeEnabled.value }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    _metronomeActive.value = enabled
+                    if (enabled) startMetronome() else stopMetronome()
+                }
+        }
+
         start()
+    }
+
+    private fun startMetronome() {
+        metronomeJob?.cancel()
+        metronomeJob = scope.launch(Dispatchers.Default) {
+            var beatCount = 0
+            while (isActive) {
+                val bpm = _metronomeBpm.value
+                val interval = (60000 / bpm).toLong()
+                
+                val isStrong = beatCount % 4 == 0
+                audioEngine.playSample(
+                    label = if (isStrong) "METRONOME-STRONG" else "METRONOME-WEAK",
+                    index = beatCount,
+                    string = "SYSTEM"
+                )
+                
+                beatCount++
+                
+                // Use a smaller delay loop to react faster to BPM changes or cancellation
+                val startTime = Clock.System.now().toEpochMilliseconds()
+                while (Clock.System.now().toEpochMilliseconds() - startTime < interval && isActive) {
+                    delay(10)
+                }
+            }
+        }
+    }
+
+    private fun stopMetronome() {
+        metronomeJob?.cancel()
+        metronomeJob = null
     }
 
     fun syncFromEngineTrack() {
@@ -895,6 +1004,66 @@ val client = createHttpClient()
         }
     }
 
+    // --- Optimized Score Temporal States ---
+    val measureStartTimesSeconds = derivedStateOf {
+        val score = currentScore.value ?: return@derivedStateOf emptyList<Float>()
+        val starts = mutableListOf<Float>()
+        var current = 0f
+        for (m in score.measures) {
+            starts.add(current)
+            current += (60f / score.tempo) * m.timeSignatureNumerator
+        }
+        starts
+    }
+
+    val scoreTotalDurationSeconds = derivedStateOf {
+        val starts = measureStartTimesSeconds.value
+        val score = currentScore.value
+        if (score == null || starts.isEmpty()) 0f
+        else {
+            val lastMeasure = score.measures.last()
+            starts.last() + (60f / score.tempo) * lastMeasure.timeSignatureNumerator
+        }
+    }
+
+    val scoreCurrentPositionSeconds = derivedStateOf {
+        val score = currentScore.value ?: return@derivedStateOf 0f
+        val measureIdx = scorePlayheadMeasure.value
+        val offset = scorePlayheadOffset.value
+        val starts = measureStartTimesSeconds.value
+        
+        val startSec = starts.getOrNull(measureIdx) ?: 0f
+        val m = score.measures.getOrNull(measureIdx)
+        val mDur = if (m != null) (60f / score.tempo) * m.timeSignatureNumerator else 0f
+        
+        startSec + (offset * mDur)
+    }
+
+    fun seekToTotalSeconds(totalSeconds: Float) {
+        val score = currentScore.value ?: return
+        val starts = measureStartTimesSeconds.value
+        
+        var targetM = 0
+        var targetO = 0f
+        
+        for (i in score.measures.indices) {
+            val start = starts.getOrNull(i) ?: 0f
+            val m = score.measures[i]
+            val dur = (60f / score.tempo) * m.timeSignatureNumerator
+            
+            if (totalSeconds < start + dur) {
+                targetM = i
+                targetO = (totalSeconds - start) / dur
+                break
+            }
+            if (i == score.measures.lastIndex) {
+                targetM = i
+                targetO = 1.0f
+            }
+        }
+        seekToPosition(targetM, targetO)
+    }
+
 
     fun triggerKeyboardNote(midiNote: Int, mode: String, scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch {
@@ -936,7 +1105,7 @@ val client = createHttpClient()
         "Percussion" to listOf("3-CLAP", "8-TOM_HI", "9-TOM_MID", "10-TOM_LO", "14-PERC", "15-FX")
     )
     fun remapPad(index: Int, sample: String) {
-        if (index in 0 until drumPadLabels.size) {
+        if (index >= 0 && index < drumPadLabels.size) {
             drumPadLabels[index] = sample
         }
     }
@@ -958,6 +1127,9 @@ fun playPattern(pattern: DrumTutorial) {
         while (isActive && isPatternLooping.value) {
             pattern.steps.forEachIndexed { stepIdx: Int, activeTokens: List<String> ->
                 // Guard check to instantly break out of the sequence if looping is turned off mid-cycle
+                withContext(Dispatchers.Main) {
+                    currentStepIndex.intValue = stepIdx
+                }
                 if (!isPatternLooping.value) return@launch
 
                 // Read tempo calculations dynamically on every single tick step event handler
@@ -1117,7 +1289,9 @@ fun startSongPlayback() {
                     // Execute the 16 steps of this specific bar matching the master BPM clock
                     pattern.steps.forEachIndexed { stepIdx: Int, activeTokens: List<String> ->
                         if (!isSongPlaybackActive.value) return@launch
-
+                        withContext(Dispatchers.Main) {
+                            currentStepIndex.intValue = stepIdx
+                        }
                         val currentBpm = liveTutorialBpm.intValue.coerceIn(40, 240)
                         val stepDelayMs = ((60.0 / currentBpm) * 1000 / 4).toLong()
 
@@ -1288,52 +1462,93 @@ fun scrubSongPlayhead(targetProgress: Float) {
         loadRagas(system)
     }
 
-    fun seekToPosition(measure: Int, offset: Float, beatsPerMeasure: Float) {
+    fun seekToPosition(measure: Int, offset: Float) {
+        val score = currentScore.value ?: return
+        
         scorePlayheadMeasure.value = measure
         scorePlayheadOffset.value = offset
         firedNotesMap.clear()
         lastTrackedMeasure = measure
 
-        val score = currentScore.value
-        val dynamicSecondsPerMeasure = if (score != null) {
-            (60f / score.tempo) * beatsPerMeasure
-        } else {
-            2.5f
+        var accumulatedMs = 0L
+        for (i in 0 until measure) {
+            val m = score.measures.getOrNull(i) ?: break
+            val mDurationMs = ((60f / score.tempo) * m.timeSignatureNumerator * 1000).toLong()
+            accumulatedMs += mDurationMs
+        }
+        
+        val targetMeasure = score.measures.getOrNull(measure)
+        if (targetMeasure != null) {
+            val mDurationMs = ((60f / score.tempo) * targetMeasure.timeSignatureNumerator * 1000).toLong()
+            accumulatedMs += (offset * mDurationMs).toLong()
         }
 
-        val totalSeconds = (measure.toFloat() + offset) * dynamicSecondsPerMeasure
-        val targetPositionMs = (totalSeconds * 1000).toLong()
-        audioEngine.seekTo(targetPositionMs)
+        audioEngine.seekTo(accumulatedMs)
     }
 
-    fun startScorePlayback(beatsPerMeasure: Float) {
+    fun startScorePlayback() {
         val score = currentScore.value ?: return
         if (isScorePlaying.value) return
 
         isScorePlaying.value = true
 
-        val dynamicSecondsPerMeasure = (60f / score.tempo) * beatsPerMeasure
-        val measureDurationMs = (dynamicSecondsPerMeasure * 1000).toLong()
-
         scorePlaybackJob = viewModelScope.launch(Dispatchers.Default) {
             val startTime = Clock.System.now().toEpochMilliseconds()
-            val startMeasure = scorePlayheadMeasure.value
-            val startOffset = scorePlayheadOffset.value
-            val initialElapsedMs = (startMeasure * measureDurationMs) + (startOffset * measureDurationMs).toLong()
+            var startMeasure = scorePlayheadMeasure.value
+            var startOffset = scorePlayheadOffset.value
+            
+            // Calculate initial elapsed time based on sum of previous measures
+            var initialElapsedMs = 0L
+            for (i in 0 until startMeasure) {
+                val m = score.measures.getOrNull(i) ?: break
+                val mDurationMs = ((60f / score.tempo) * m.timeSignatureNumerator * 1000).toLong()
+                initialElapsedMs += mDurationMs
+            }
+            val startMeasureObj = score.measures.getOrNull(startMeasure)
+            if (startMeasureObj != null) {
+                val mDurationMs = ((60f / score.tempo) * startMeasureObj.timeSignatureNumerator * 1000).toLong()
+                initialElapsedMs += (startOffset * mDurationMs).toLong()
+            }
 
             while (isActive && isScorePlaying.value) {
                 val now = Clock.System.now().toEpochMilliseconds()
                 val totalElapsedMs = initialElapsedMs + (now - startTime)
 
-                val currentMeasure = (totalElapsedMs / measureDurationMs).toInt()
-                val currentOffset = (totalElapsedMs % measureDurationMs).toFloat() / measureDurationMs
+                // Optimized identification of current measure and offset
+                val totalElapsedSec = totalElapsedMs / 1000f
+                val starts = measureStartTimesSeconds.value
+                var currentMeasureIdx = score.measures.size
+                var currentMeasureDurationMs = 0L
+                var accumulatedSec = 0f
 
-                if (currentMeasure != lastTrackedMeasure) {
-                    firedNotesMap.clear()
-                    lastTrackedMeasure = currentMeasure
+                var i = lastTrackedMeasure.coerceAtLeast(0)
+                if (i >= score.measures.size || totalElapsedSec < (starts.getOrNull(i) ?: 0f)) {
+                    i = 0
                 }
 
-                if (currentMeasure >= score.measures.size) {
+                while (i < score.measures.size) {
+                    val start = starts.getOrNull(i) ?: 0f
+                    val m = score.measures[i]
+                    val dur = (60f / score.tempo) * m.timeSignatureNumerator
+                    if (totalElapsedSec < start + dur) {
+                        currentMeasureIdx = i
+                        currentMeasureDurationMs = (dur * 1000).toLong()
+                        accumulatedSec = start
+                        break
+                    }
+                    i++
+                }
+
+                val currentOffset = if (currentMeasureDurationMs > 0) {
+                    (totalElapsedSec - accumulatedSec) / (currentMeasureDurationMs / 1000f)
+                } else 0f
+
+                if (currentMeasureIdx != lastTrackedMeasure) {
+                    firedNotesMap.clear()
+                    lastTrackedMeasure = currentMeasureIdx
+                }
+
+                if (currentMeasureIdx >= score.measures.size) {
                     withContext(Dispatchers.Main) {
                         stopScorePlayback()
                         resetScorePlayhead()
@@ -1341,21 +1556,49 @@ fun scrubSongPlayhead(targetProgress: Float) {
                     break
                 }
 
-                withContext(Dispatchers.Main) {
-                    scorePlayheadMeasure.value = currentMeasure
-                    scorePlayheadOffset.value = currentOffset
+                val measure = score.measures[currentMeasureIdx]
+                
+                // PRECISE MAPPING: Map temporal progress to actual note positions
+                // This ensures the playhead snaps to noteheads even with non-linear rhythmic spacing
+                val beatsInMeasure = measure.timeSignatureNumerator.toFloat()
+                val notes = measure.notes.filter { !it.isRest }.sortedBy { it.position }
+                
+                var visualOffset = currentOffset
+                if (notes.isNotEmpty()) {
+                    val lastNote = notes.last()
+                    val lastNoteEnd = lastNote.position + lastNote.duration
+                    
+                    // Find the current note segment
+                    val currentNoteIndex = notes.indexOfLast { it.position <= currentOffset * beatsInMeasure }
+                    if (currentNoteIndex != -1) {
+                        val currentNote = notes[currentNoteIndex]
+                        val nextNote = notes.getOrNull(currentNoteIndex + 1)
+                        
+                        val segmentStart = currentNote.position
+                        val segmentEnd = nextNote?.position ?: beatsInMeasure
+                        
+                        val segmentProgress = (currentOffset * beatsInMeasure - segmentStart) / (segmentEnd - segmentStart).coerceAtLeast(0.01f)
+                        
+                        // We map this to the visual range between these two notes
+                        // For now, linear mapping within segment is much better than global linear
+                        visualOffset = (segmentStart + segmentProgress * (segmentEnd - segmentStart)) / beatsInMeasure
+                    }
                 }
 
-                val measure = score.measures[currentMeasure]
+                withContext(Dispatchers.Main) {
+                    scorePlayheadMeasure.value = currentMeasureIdx
+                    scorePlayheadOffset.value = visualOffset
+                }
+
                 measure.notes.forEachIndexed { index: Int, note: ScoreNote ->
                     val alreadyFired = firedNotesMap[index] == true
 
-                    if (currentOffset >= note.position && !alreadyFired) {
+                    if (currentOffset >= note.position / measure.timeSignatureNumerator && !alreadyFired) {
                         firedNotesMap[index] = true
                         onMidiEventReceived(note.midiNote, isNoteOn = true)
 
                         launch {
-                            delay((note.duration * measureDurationMs).toLong())
+                            delay((note.duration * (60f / score.tempo) * 1000).toLong())
                             onMidiEventReceived(note.midiNote, isNoteOn = false)
                         }
                     }
@@ -1365,11 +1608,11 @@ fun scrubSongPlayhead(targetProgress: Float) {
         }
     }
 
-    fun toggleScorePlayback(beatsPerMeasure: Float) {
+    fun toggleScorePlayback() {
         if (isScorePlaying.value) {
             stopScorePlayback()
         } else {
-            startScorePlayback(beatsPerMeasure)
+            startScorePlayback()
         }
     }
 
@@ -1408,24 +1651,36 @@ fun scrubSongPlayhead(targetProgress: Float) {
         }
     }
 
+    fun onMidiPedalEventReceived(isPressed: Boolean) {
+        sustainActive.value = isPressed
+        if (!isPressed) {
+            notesToReleaseOnSustainUp.forEach { note ->
+                midiActiveNotes[note] = false
+                audioEngine.noteOff(note)
+            }
+            notesToReleaseOnSustainUp.clear()
+        }
+    }
+
     fun parseIncomingScoreFile(uriString: String) {
         isImportingPDF.value = true
         viewModelScope.launch(Dispatchers.Default) {
             delay(1000)
 
+            // Generate a test score with mixed signatures
             val mockScore = Score(
-                title = "Imported Score",
-                tempo = 96f,
+                title = "Mixed Time Signature Test",
+                tempo = 120f,
                 timeSignature = "4/4",
-                measures = List(16) { mIdx ->
+                measures = List(8) { mIdx ->
+                    val num = if (mIdx % 2 == 0) 4 else 3
                     Measure(
-                        notes = listOf(
-                            ScoreNote(midiNote = 60 + (mIdx % 12), position = 0f, duration = 0.25f),
-                            ScoreNote(midiNote = 64 + (mIdx % 12), position = 0.25f, duration = 0.25f),
-                            ScoreNote(midiNote = 67 + (mIdx % 12), position = 0.5f, duration = 0.25f),
-                            ScoreNote(midiNote = 72 + (mIdx % 12), position = 0.75f, duration = 0.25f)
-                        ),
-                        barline = if (mIdx == 15) "final" else "single"
+                        timeSignatureNumerator = num,
+                        timeSignatureDenominator = 4,
+                        notes = List(num) { nIdx ->
+                             ScoreNote(midiNote = 60 + (mIdx * 2) + nIdx, position = nIdx.toFloat(), duration = 1.0f)
+                        },
+                        barline = if (mIdx == 7) "final" else "single"
                     )
                 }
             )
@@ -1536,6 +1791,22 @@ fun scrubSongPlayhead(targetProgress: Float) {
         midiActiveNotes[note] = true
         audioEngine.noteOn(note, velocity.toFloat() / 127f)
         notesToReleaseOnSustainUp.remove(note)
+        
+        // FOLLOW MODE: Sync notation playhead to incoming MIDI notes
+        currentScore.value?.let { score ->
+            for (mIdx in score.measures.indices) {
+                val measure = score.measures[mIdx]
+                val matchingNote = measure.notes.find { it.midiNote == note }
+                if (matchingNote != null) {
+                    // Only jump if it's in the current or future measure to avoid jumping back constantly
+                    if (mIdx >= scorePlayheadMeasure.value) {
+                        scorePlayheadMeasure.value = mIdx
+                        scorePlayheadOffset.value = matchingNote.position / measure.timeSignatureNumerator
+                    }
+                    break
+                }
+            }
+        }
     }
 
     fun onMidiNoteOff(note: Int) {

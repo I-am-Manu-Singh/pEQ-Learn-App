@@ -280,11 +280,24 @@ class AndroidAudioEngine(
 
     private var currentlyPlayingNoteEngine: Int? = null
     private var currentlyPlayingTanpuraNote: Int? = null
+    private var currentlyPlayingTanpuraId: Int? = null
+    
+    private var tanpuraTrack1: AudioTrack? = null
+    private var tanpuraTrack2: AudioTrack? = null
+    private var activeTanpuraTrackIndex = 0 // 0 for none, 1 for track1, 2 for track2
+
+    private var tanpuraGain = 0.8f
+    private var tablaGain = 1.0f
 
     private val tanpuraMidiMap = mapOf(
         "C"  to 60, "C#" to 61, "D"  to 62, "D#" to 63,
         "E"  to 64, "F"  to 65, "F#" to 66, "G"  to 67,
         "G#" to 68, "A"  to 69, "A#" to 70, "B"  to 71
+    )
+
+    private val tablaMidiMap = mapOf(
+        "DHA" to 36, "DHIN" to 38, "TIN" to 40, "TA" to 42,
+        "NA" to 44, "GE" to 46, "KA" to 48
     )
 
     private var listenersAttached = false
@@ -312,6 +325,7 @@ class AndroidAudioEngine(
     override var onTrackEnded: (() -> Unit)? = null
     override var onTrackChanged: (() -> Unit)? = null
     override var onBufferingChanged: ((Boolean) -> Unit)? = null
+    override var onPadTriggered: ((Int) -> Unit)? = null
 
     private var currentBitrateVal = 0
     private var currentSampleRateVal = 44100
@@ -331,6 +345,7 @@ class AndroidAudioEngine(
     private val soundFontPool = mutableMapOf<String, FluidSynthPlayer>()
     private var globalSoundFont: FluidSynthPlayer? = null
     private var tanpuraEngine: TanpuraSoundFontEngine? = null
+    private var tablaEngine: TablaSoundFontEngine? = null
     private val sf2Lock = Any()
     private val sf2Loaded = AtomicBoolean(false)
 
@@ -343,8 +358,56 @@ class AndroidAudioEngine(
             player.noteOff(0, midiNote)
         }
 
+        /**
+         * Renders a seamless looping Tanpura drone buffer by crossfading a tail segment back to the start.
+         */
         fun renderTanpuraDrone(midiNote: Int, velocity: Int): ShortArray? {
-            val samples = 44100 * 2 // 2 seconds
+            val sampleRate = 44100
+            val loopSeconds = 6
+            val crossfadeSeconds = 1
+            val preRollSeconds = 1
+
+            val loopSamples = loopSeconds * sampleRate * 2
+            val crossfadeSamples = crossfadeSeconds * sampleRate * 2
+            val preRollSamples = preRollSeconds * sampleRate * 2
+
+            // Render attack phase to avoid starting from silence
+            player.noteOn(0, midiNote, velocity)
+            player.renderFloat(preRollSamples)
+
+            // Render the main loop plus a tail for crossfading
+            val floatBuffer = player.renderFloat(loopSamples + crossfadeSamples)
+
+            val result = ShortArray(loopSamples)
+            for (i in 0 until loopSamples) {
+                var sampleValue = if (i < floatBuffer.size) floatBuffer[i] else 0f
+
+                // Perform a linear crossfade at the loop boundary
+                if (i < crossfadeSamples) {
+                    val tailIndex = loopSamples + i
+                    if (tailIndex < floatBuffer.size) {
+                        val frameIndex = i / 2
+                        val totalFadeFrames = crossfadeSamples / 2
+                        val fade = frameIndex.toFloat() / totalFadeFrames
+                        val tailSample = floatBuffer[tailIndex]
+                        sampleValue = tailSample * (1f - fade) + sampleValue * fade
+                    }
+                }
+
+                result[i] = (sampleValue * Short.MAX_VALUE).toInt().coerceIn(-32768, 32767).toShort()
+            }
+            player.noteOff(0, midiNote) // Clean up synth voice after rendering
+            return result
+        }
+    }
+
+    class TablaSoundFontEngine(private val player: FluidSynthPlayer) {
+        fun noteOn(midiNote: Int) {
+            player.noteOn(0, midiNote, 100)
+        }
+
+        fun renderTablaBol(midiNote: Int, velocity: Int): ShortArray? {
+            val samples = 44100 / 2 // 0.5 seconds
             val floatBuffer = player.renderFloat(samples)
             return ShortArray(samples) { i ->
                 val sampleValue = if (i < floatBuffer.size) floatBuffer[i] else 0f
@@ -447,6 +510,10 @@ class AndroidAudioEngine(
             loadSf2Tanpura()?.let { sf ->
                 tanpuraEngine = TanpuraSoundFontEngine(sf)
                 Log.i("AudioEngine", "Isolated Tanpura Engine mounted successfully.")
+            }
+            loadSf2Tabla()?.let { sf ->
+                tablaEngine = TablaSoundFontEngine(sf)
+                Log.i("AudioEngine", "Isolated Tabla Engine mounted successfully.")
             }
         }
 
@@ -1103,6 +1170,22 @@ class AndroidAudioEngine(
         AudioEngineProvider.setVolume(volume)
     }
 
+    override fun setTanpuraGain(gain: Float) {
+        tanpuraGain = gain
+        tanpuraTrack1?.setVolume(gain)
+        tanpuraTrack2?.setVolume(gain)
+        currentlyPlayingTanpuraId?.let { id ->
+            systemSoundPool.setVolume(id, gain, gain)
+        }
+    }
+
+    override fun setTablaGain(gain: Float) {
+        tablaGain = gain
+        voiceMutex.withLock {
+            voicePool.forEach { it.setVolume(gain) }
+        }
+    }
+
     override fun setPlaybackSpeed(speed: Float) {
         player?.playbackParameters = PlaybackParameters(
             speed,
@@ -1191,6 +1274,25 @@ class AndroidAudioEngine(
         loadAssets("metronome", "METRONOME", keyMapper = {
             if (it.contains("strong", true)) "METRONOME-STRONG" else "METRONOME-WEAK"
         })
+        loadTanpuraFallbacks()
+    }
+
+    private fun loadTanpuraFallbacks() {
+        engineScope.launch(Dispatchers.IO) {
+            try {
+                val files = context.assets.list("tanpura") ?: return@launch
+                files.filter { it.endsWith(".mp3", true) }.forEach { fileName ->
+                    val scaleKey = fileName.substringAfter("tanpura_").substringBefore(".mp3").uppercase()
+                    context.assets.openFd("tanpura/$fileName").use { afd ->
+                        val soundId = systemSoundPool.load(afd.fileDescriptor, afd.startOffset, afd.length, 1)
+                        tanpuraSoundIds[scaleKey] = soundId
+                        Log.d("AudioEngine", "Loaded Tanpura MP3 fallback for scale: $scaleKey")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("AudioEngine", "Failed to load Tanpura MP3 fallbacks: ${e.message}")
+            }
+        }
     }
 
     private fun loadAssets(
@@ -1219,11 +1321,11 @@ class AndroidAudioEngine(
     suspend fun loadSf2Tanpura(): FluidSynthPlayer? {
         return withContext(Dispatchers.IO) {
             try {
-                val tempFile = File(context.cacheDir, "tanpura_drone.sf2")
+                val tempFile = File(context.cacheDir, "Tanpura_drone.sf2")
                 if (!tempFile.exists() || tempFile.length() == 0L) {
-                    val bytes = Res.readBytes("assets/tanpura/Tanpura Drone.sf2")
-                    if (bytes.isEmpty()) throw IllegalStateException("Empty binary data resource file")
-                    tempFile.writeBytes(bytes)
+                    context.assets.open("tanpura/Tanpura_drone.sf2").use { input ->
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
+                    }
                 }
 
                 val player = FluidSynthPlayer(AudioConfig(sampleRate = 44100, interpolation = 1, periodSize = 64, periods = 2))
@@ -1233,6 +1335,28 @@ class AndroidAudioEngine(
                 player
             } catch (e: Exception) {
                 Log.e("AudioEngine", "[SF2] Failed loading Tanpura: ${e.message}")
+                null
+            }
+        }
+    }
+
+    suspend fun loadSf2Tabla(): FluidSynthPlayer? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val tempFile = File(context.cacheDir, "tabla.sf2")
+                if (!tempFile.exists() || tempFile.length() == 0L) {
+                    context.assets.open("tabla/tabla.sf2").use { input ->
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
+
+                val player = FluidSynthPlayer(AudioConfig(sampleRate = 44100, interpolation = 1, periodSize = 64, periods = 2))
+                player.loadSoundFont(tempFile.absolutePath)
+                tablaEngine = TablaSoundFontEngine(player)
+                Log.i("AudioEngine", "[SF2] Tabla SoundFont compiled cleanly via FluidSynth.")
+                player
+            } catch (e: Exception) {
+                Log.e("AudioEngine", "[SF2] Failed loading Tabla: ${e.message}")
                 null
             }
         }
@@ -1411,29 +1535,149 @@ class AndroidAudioEngine(
             activeTanpuraNotes.clear()
             currentlyPlayingNoteEngine = null
             currentlyPlayingTanpuraNote = null
+            
+            currentlyPlayingTanpuraId?.let { 
+                systemSoundPool.stop(it)
+                currentlyPlayingTanpuraId = null
+            }
+            
+            stopAndReleaseTanpuraTracks()
         } finally {
             voiceMutex.unlock()
         }
     }
 
-    private fun handleTanpura(target: String) {
-        activeTanpuraNotes.clear()
-        currentlyPlayingTanpuraNote = null
-        if (target == "STOP") return
+    private fun stopAndReleaseTanpuraTracks() {
+        tanpuraTrack1?.apply { runCatching { stop(); release() } }
+        tanpuraTrack2?.apply { runCatching { stop(); release() } }
+        tanpuraTrack1 = null
+        tanpuraTrack2 = null
+        activeTanpuraTrackIndex = 0
+    }
 
-        val cleanKey = target.replace(Regex("[0-9]"), "").trim()
-        val midiNote = tanpuraMidiMap[cleanKey]
+    private val tanpuraSoundIds = ConcurrentHashMap<String, Int>()
+
+    private fun handleTanpura(target: String) {
+        if (target == "STOP") {
+            currentlyPlayingTanpuraId?.let { systemSoundPool.stop(it) }
+            currentlyPlayingTanpuraId = null
+            stopAndReleaseTanpuraTracks()
+            currentlyPlayingTanpuraNote = null
+            return
+        }
+
+        val cleanKey = target.replace(Regex("[0-9]"), "").trim().uppercase()
+        val midiNote = tanpuraMidiMap[cleanKey] ?: return
+
+        // 1. AudioTrack Engine with Crossfading
+        val engine = tanpuraEngine
+        if (engine != null) {
+            engine.noteOn(midiNote)
+            val pcmData: ShortArray? = engine.renderTanpuraDrone(midiNote, velocity = 100)
+            if (pcmData != null) {
+                try {
+                    val normalizedPcm = ShortArray(pcmData.size) { i ->
+                        (pcmData[i] * tanpuraGain).toInt().coerceIn(-32768, 32767).toShort()
+                    }
+                    
+                    val newTrack = AudioTrack(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build(),
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(44100)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                            .build(),
+                        normalizedPcm.size * 2,
+                        AudioTrack.MODE_STATIC,
+                        AudioManager.AUDIO_SESSION_ID_GENERATE
+                    ).apply {
+                        write(normalizedPcm, 0, normalizedPcm.size)
+                        if (normalizedPcm.size >= 2) {
+                            setLoopPoints(0, normalizedPcm.size / 2, -1)
+                        }
+                    }
+
+                    crossfadeTanpuraTracks(newTrack)
+                    currentlyPlayingTanpuraNote = midiNote
+                    
+                    // Kill SoundPool fallback if it was playing
+                    currentlyPlayingTanpuraId?.let { 
+                        systemSoundPool.stop(it)
+                        currentlyPlayingTanpuraId = null
+                    }
+                    return
+                } catch (e: Exception) {
+                    Log.e("AudioEngine", "SoundFont Tanpura Crossfade failed: ${e.message}")
+                }
+            }
+        }
+
+        // 2. Fallback to MP3 via SoundPool (ONLY if AudioTrack engine fails)
+        if (currentlyPlayingTanpuraId == null) {
+            val soundId = tanpuraSoundIds[cleanKey]
+            if (soundId != null) {
+                currentlyPlayingTanpuraId = systemSoundPool.play(soundId, tanpuraGain, tanpuraGain, 1, -1, 1.0f)
+                currentlyPlayingTanpuraNote = midiNote
+            } else {
+                Log.w("AudioEngine", "Tanpura fallback MP3 not found for scale: $cleanKey")
+            }
+        }
+    }
+
+    private fun crossfadeTanpuraTracks(newTrack: AudioTrack) {
+        val oldTrack = if (activeTanpuraTrackIndex == 1) tanpuraTrack1 else tanpuraTrack2
+        
+        // Start new track
+        newTrack.play()
+        
+        if (activeTanpuraTrackIndex == 1) {
+            tanpuraTrack2 = newTrack
+            activeTanpuraTrackIndex = 2
+        } else {
+            tanpuraTrack1 = newTrack
+            activeTanpuraTrackIndex = 1
+        }
+
+        // Fade out old track asynchronously
+        oldTrack?.let { old ->
+            engineScope.launch(Dispatchers.Default) {
+                val fadeSteps = 20
+                val fadeInterval = 25L // 500ms total fade
+                for (i in fadeSteps downTo 0) {
+                    val vol = i.toFloat() / fadeSteps * tanpuraGain
+                    try { old.setVolume(vol) } catch (_: Exception) {}
+                    delay(fadeInterval)
+                }
+                try {
+                    old.stop()
+                    old.release()
+                } catch (_: Exception) {}
+                if (old == tanpuraTrack1 && activeTanpuraTrackIndex != 1) tanpuraTrack1 = null
+                if (old == tanpuraTrack2 && activeTanpuraTrackIndex != 2) tanpuraTrack2 = null
+            }
+        }
+    }
+
+    private fun handleTabla(target: String) {
+        val bol = target.uppercase().trim()
+        val midiNote = tablaMidiMap[bol]
 
         if (midiNote != null) {
-            val engine = tanpuraEngine
+            val engine = tablaEngine
             if (engine != null) {
                 engine.noteOn(midiNote)
-                val pcmData: ShortArray? = engine.renderTanpuraDrone(midiNote, velocity = 100)
+                val pcmData: ShortArray? = engine.renderTablaBol(midiNote, velocity = 100)
                 if (pcmData != null) {
                     voiceMutex.withLock {
+                        val normalizedPcm = ShortArray(pcmData.size) { i ->
+                            (pcmData[i] * tablaGain).toInt().coerceIn(-32768, 32767).toShort()
+                        }
                         voicePool[currentVoiceIndex].apply {
                             flush()
-                            write(pcmData, 0, pcmData.size)
+                            write(normalizedPcm, 0, normalizedPcm.size)
                         }
                         currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
                     }
@@ -1511,6 +1755,11 @@ class AndroidAudioEngine(
             return
         }
 
+        if (type == "TABLA") {
+            engineScope.launch(Dispatchers.Default) { handleTabla(target) }
+            return
+        }
+
         if (type == "PIANO" || type == "GUITAR") {
             Log.d("AudioEngine", "Melodic Note Trigger Request Received - Target: $target, Instrument Type: $type")
             engineScope.launch(Dispatchers.Default) {
@@ -1568,6 +1817,7 @@ class AndroidAudioEngine(
                     if (soundId != null && drumKitLoader.loadedAssetsStatus[soundId] == true) {
                         val vol = if (index % 4 == 0) 1.0f else 0.6f
                         soundPool.play(soundId, vol, vol, 1, 0, 1f)
+                        onPadTriggered?.invoke(index)
                     } else {
                         val expectedLabel = drumKitLoader.padLabels.getOrNull(index) ?: "UNKNOWN"
                         val expectedAssetPath = "drums/fingerdrumming/$currentSelectedKitName/$index-$expectedLabel.wav"
