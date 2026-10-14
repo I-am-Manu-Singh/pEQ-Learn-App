@@ -50,7 +50,7 @@ class AndroidFileScanner(private val context: Context) : pEQFileScanner {
     override val audioFiles: StateFlow<List<AudioFile>> = _audioFiles
 
     override fun scanNetworkDrives(host: String) {
-        println("pEQControl: [DISCOVERY] Physically scanning network host: $host")
+        println("pEQLearn: [DISCOVERY] Physically scanning network host: $host")
         // AI-15: JmDNS / SMBJ handshake for remote production archives
     }
 
@@ -350,7 +350,7 @@ class AndroidFileScanner(private val context: Context) : pEQFileScanner {
             }
         }
         file.writeText(content)
-        println("pEQControl: [STORAGE] Playlist physically exported to: ${file.absolutePath}")
+        println("pEQLearn: [STORAGE] Playlist physically exported to: ${file.absolutePath}")
     }
 
     override fun readFileContent(path: String): String? {
@@ -413,11 +413,11 @@ class AndroidFileScanner(private val context: Context) : pEQFileScanner {
                 }
 
                 audioFile.commit()
-                println("pEQControl: [METADATA] Successfully committed ID3 tags for $path")
+                println("pEQLearn: [METADATA] Successfully committed ID3 tags for $path")
                 refresh()
             }
         } catch (e: Exception) {
-            println("pEQControl: [METADATA] Failed to write ID3 tags physically: ${e.message}")
+            println("pEQLearn: [METADATA] Failed to write ID3 tags physically: ${e.message}")
         }
     }
 }

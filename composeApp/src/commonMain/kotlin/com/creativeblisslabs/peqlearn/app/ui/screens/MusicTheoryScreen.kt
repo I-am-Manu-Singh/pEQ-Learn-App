@@ -53,11 +53,7 @@ fun MusicTheoryScreen(
 
     Scaffold(
         topBar = {
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp,
-                shadowElevation = 4.dp
-            ) {
+       
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -122,7 +118,7 @@ fun MusicTheoryScreen(
                         }
                     }
                 }
-            }
+            
         }
     ) { innerPadding ->
         AnimatedContent(

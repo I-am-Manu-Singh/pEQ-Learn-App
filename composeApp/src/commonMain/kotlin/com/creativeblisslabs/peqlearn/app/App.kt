@@ -238,7 +238,7 @@ fun pEQSplashScreen() {
             // TITLE
             // =========================
             Text(
-                text = "pEQ",
+                text = "pEQ Learn",
                 color = Color.White,
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Black,
@@ -356,13 +356,6 @@ fun MainScreen(
     LaunchedEffect(Unit) {
         viewModel.start()
         viewModel.setMasterVolume(getSystemVolume())
-        
-        // 🔥 FIRST INSTALL ONBOARDING
-        val folders = viewModel.persistenceManager.loadScanFolders()
-        if (folders.isEmpty()) {
-            delay(400) // Let the app breathe
-            viewModel.showFolderManager.value = true
-        }
     }
 
     // =========================
@@ -406,19 +399,7 @@ fun MainScreen(
              
                     WindowInsets.safeDrawing,
 
-            topBar = {
-
-                 if (
-                     !isWideScreen
-                 ) {
-
-                    Column(
-                        modifier = Modifier
-                    ) {
-                        HeaderSection(viewModel)
-                    }
-                 }
-            },
+            topBar = {},
 
             snackbarHost = {
 
@@ -429,16 +410,23 @@ fun MainScreen(
 
             bottomBar = {
 
-                if (
-                    !isWideScreen) {
-
-                   BottomNavigationBar(
-                    current = currentTab,
-                    viewModel = viewModel,
-                    onSelect = {
-                        viewModel.currentTab.value = it
+                if (!isWideScreen) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Transparent)
+                    ) {
+                        if (viewModel.showMiniPlayer.value && viewModel.currentMediaItem.value != null && viewModel.currentTab.value != Tab.Player) {
+                            ThinMiniPlayer(viewModel = viewModel)
+                        }
+                        BottomNavigationBar(
+                            current = currentTab,
+                            viewModel = viewModel,
+                            onSelect = {
+                                viewModel.currentTab.value = it
+                            }
+                        )
                     }
-                )
                 }
             }
 
@@ -583,16 +571,6 @@ fun MainScreen(
                 
 
                 // =========================
-                // FOLDER MANAGER
-                // =========================
-
-                if (viewModel.showFolderManager.value && viewModel.currentTab.value != Tab.Player) {
-                    PEQArchiveRegistryDialog {
-                        viewModel.showFolderManager.value = false
-                    }
-                }
-                
-                // =========================
                 // DEVICE SWITCHER
                 // =========================
 
@@ -600,6 +578,18 @@ fun MainScreen(
 
                     DeviceSwitcherDialog(
                         viewModel
+                    )
+                }
+
+                // =========================
+                // PLAYLIST PICKER
+                // =========================
+                if (viewModel.isPlaylistPickerShown.value) {
+                    PlaylistPicker(
+                        viewModel = viewModel,
+                        onDismiss = {
+                            viewModel.isPlaylistPickerShown.value = false
+                        }
                     )
                 }
             }
@@ -806,17 +796,15 @@ fun DynamicBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.Transparent,
+                        Color.Transparent,
 
-                            if (isLight)
-                                Color.Black.copy(alpha = 0.05f)
-                            else
-                                Color.Black.copy(alpha = 0.42f)
-                        )
+                        if (isLight)
+                            Color.Black.copy(alpha = 0.05f)
+                        else
+                            Color.Black.copy(alpha = 0.42f)
                     )
                 )
+            )
         )
     }
 }
-
-

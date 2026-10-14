@@ -95,12 +95,9 @@ fun BottomNavigationBar(
     viewModel: AppViewModel,
     onSelect: (Tab) -> Unit
 ) {
-    val tabs = listOf(
-        Tab.Dashboard,
-        Tab.Learn,
-        Tab.Mixer,
-        Tab.Settings
-    )
+    val leftTabs = listOf(Tab.Dashboard, Tab.Learn)
+    val rightTabs = listOf(Tab.Mixer, Tab.Settings)
+    val isMiniPlayerVisible = viewModel.showMiniPlayer.value
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -113,11 +110,12 @@ fun BottomNavigationBar(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .height(72.dp)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            tabs.forEach { tab ->
+            // Left Tabs (Dashboard, Learn)
+            leftTabs.forEach { tab ->
                 val isSelected = current == tab
                 val iconColor = if (isSelected)
                     MaterialTheme.colorScheme.primary
@@ -129,21 +127,17 @@ fun BottomNavigationBar(
                         .weight(1f)
                         .clip(RoundedCornerShape(18.dp))
                         .clickable { onSelect(tab) }
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = getTabIcon(tab),
-                            contentDescription = tab.label,
-                            tint = iconColor,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    Spacer(Modifier.height(4.dp))
-
+                    Icon(
+                        imageVector = getTabIcon(tab),
+                        contentDescription = tab.label,
+                        tint = iconColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.height(3.dp))
                     Text(
                         text = tab.label,
                         fontSize = 9.sp,
@@ -151,17 +145,88 @@ fun BottomNavigationBar(
                         color = iconColor,
                         maxLines = 1
                     )
-
                     if (isSelected) {
                         Box(
                             modifier = Modifier
-                                .padding(top = 4.dp)
+                                .padding(top = 3.dp)
                                 .size(4.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primary)
                         )
                     } else {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(7.dp))
+                    }
+                }
+            }
+
+            // Center Cutout Button: Miniplayer Toggle
+            Column(
+                modifier = Modifier
+                    .weight(0.9f)
+                    .padding(vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Surface(
+                    onClick = { viewModel.showMiniPlayer.value = !viewModel.showMiniPlayer.value },
+                    shape = CircleShape,
+                    color = if (isMiniPlayerVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isMiniPlayerVisible) Icons.Default.MusicNote else Icons.Default.MusicOff,
+                            contentDescription = if (isMiniPlayerVisible) "Hide MiniPlayer" else "Show MiniPlayer",
+                            tint = if (isMiniPlayerVisible) Color.Black else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+
+            // Right Tabs (Mixer, Settings)
+            rightTabs.forEach { tab ->
+                val isSelected = current == tab
+                val iconColor = if (isSelected)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable { onSelect(tab) }
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = getTabIcon(tab),
+                        contentDescription = tab.label,
+                        tint = iconColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = tab.label,
+                        fontSize = 9.sp,
+                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
+                        color = iconColor,
+                        maxLines = 1
+                    )
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 3.dp)
+                                .size(4.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(7.dp))
                     }
                 }
             }

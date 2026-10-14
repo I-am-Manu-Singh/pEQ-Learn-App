@@ -76,7 +76,6 @@ fun ScaleSelector(selected: String, onSelect: (String) -> Unit) {
 private fun MetronomeControlSection(
     viewModel: AppViewModel,
     primaryColor: Color,
-    genreThemeColor: Color,
     workstationTab: Int,
     onTabChange: (Int) -> Unit,
     currentBpm: Float,
@@ -97,7 +96,7 @@ private fun MetronomeControlSection(
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // Slider Control
-        Row(
+     Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -106,19 +105,17 @@ private fun MetronomeControlSection(
                 onValueChange = { onBpmChange(it) },
                 valueRange = 40f..220f,
                 colors = SliderDefaults.colors(
-                    thumbColor = genreThemeColor,
-                    activeTrackColor = genreThemeColor
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier.weight(1f)
             )
             Text(
                 text = "${currentBpm.toInt()} BPM",
                 fontWeight = FontWeight.Black,
-                color = genreThemeColor,
                 modifier = Modifier.width(64.dp)
             )
         }
-
         // Genre Workstation Tab Row
         TabRow(
             selectedTabIndex = workstationTab,
@@ -126,7 +123,7 @@ private fun MetronomeControlSection(
                 if (workstationTab < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(
                         Modifier.tabIndicatorOffset(tabPositions[workstationTab]),
-                        color = genreThemeColor
+                        color = primaryColor
                     )
                 }
             }
@@ -139,7 +136,7 @@ private fun MetronomeControlSection(
                         Text(
                             text = title,
                             fontWeight = if (workstationTab == index) FontWeight.Bold else FontWeight.Normal,
-                            color = if (workstationTab == index) genreThemeColor else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (workstationTab == index) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 )
@@ -237,13 +234,18 @@ private fun MetronomeControlSection(
                         } else {
                             viewModel.stopRiyaazEngine()
                             runEngineSafetyCheck(totalGridSteps)
-                            viewModel.startRiyaazEngine(selectedScale, totalGridSteps)
+                            val activeBols = when (workstationTab) {
+                                1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence ?: emptyList()
+                                2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence ?: emptyList()
+                                else -> emptyList()
+                            }
+                            viewModel.startRiyaazEngine(selectedScale, totalGridSteps, activeBols)
                         }
                     }
                 },
                 modifier = Modifier.weight(1.2f).height(46.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = genreThemeColor)
+                colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
             ) {
                 Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
@@ -261,8 +263,8 @@ private fun MetronomeControlSection(
                         onBpmChange(calculatedBpm.toFloat())
                     }
                 },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = genreThemeColor),
-                border = BorderStroke(1.dp, genreThemeColor.copy(alpha = 0.5f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = primaryColor),
+                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)),
                 modifier = Modifier.weight(0.8f).height(46.dp),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -294,27 +296,37 @@ private fun MetronomeControlSection(
 
                     // Multi-tonal dynamic variations matching the selected sub-genres
                     val cardContainerColor = when {
-                        playing -> genreThemeColor // Solid focus layer
-                        isDownbeat -> genreThemeColor.copy(alpha = 0.40f) // Distinct downbeat weight
+                        playing -> primaryColor // Solid focus layer
+                        isDownbeat -> primaryColor.copy(alpha = 0.40f) // Distinct downbeat weight
                         isKhaliBeat -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f) // Muted drop tint
-                        else -> genreThemeColor.copy(alpha = 0.15f) // Balanced step layer
+                        else -> primaryColor.copy(alpha = 0.15f) // Balanced step layer
                     }
 
                     val contentTextColor = when {
                         playing -> Color.White
-                        isDownbeat -> genreThemeColor
+                        isDownbeat -> primaryColor
                         isKhaliBeat -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        else -> genreThemeColor.copy(alpha = 0.85f)
+                        else -> primaryColor.copy(alpha = 0.85f)
                     }
 
                     Card(
                         modifier = Modifier
                             .weight(1f)
-                            .height(42.dp),
+                            .height(42.dp)
+                            .clickable {
+                                val labelText = when (workstationTab) {
+                                    1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat)
+                                    2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat)
+                                    else -> null
+                                }
+                                if (!labelText.isNullOrBlank()) {
+                                    viewModel.audioEngine.playSample(labelText, beat, "TABLA")
+                                }
+                            },
                         shape = RoundedCornerShape(8.dp),
                         border = when {
                             playing -> BorderStroke(2.dp, MaterialTheme.colorScheme.outline)
-                            isDownbeat -> BorderStroke(2.dp, genreThemeColor)
+                            isDownbeat -> BorderStroke(2.dp, primaryColor)
                             else -> null
                         },
                         colors = CardDefaults.cardColors(containerColor = cardContainerColor)
@@ -355,8 +367,8 @@ private fun MetronomeControlSection(
                             .background(
                                 when {
                                     playing -> Color.White
-                                    stepState == 2 -> genreThemeColor
-                                    stepState == 1 -> genreThemeColor.copy(alpha = 0.4f)
+                                    stepState == 2 -> primaryColor
+                                    stepState == 1 -> primaryColor.copy(alpha = 0.4f)
                                     else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                                 }
                             )
@@ -381,7 +393,7 @@ private fun MetronomeControlSection(
 
         // Dynamic Text Context Description Surface
         Surface(
-            color = genreThemeColor.copy(alpha = 0.06f),
+            color = primaryColor.copy(alpha = 0.06f),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -389,18 +401,18 @@ private fun MetronomeControlSection(
                 when (workstationTab) {
                     0 -> {
                         val sig = ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx) ?: ACADEMIC_TIME_SIGNATURES.first()
-                        Text(sig.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = genreThemeColor)
+                        Text(sig.name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text(sig.description, fontSize = 10.sp, lineHeight = 14.sp)
                     }
                     1 -> {
                         val taal = INDIAN_TAALS.getOrNull(selectedTaalIdx) ?: INDIAN_TAALS.first()
-                        Text("${taal.name} | ${taal.beats} Matras", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = genreThemeColor)
+                        Text("${taal.name} | ${taal.beats} Matras", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text("Vibhag Structure: ${taal.vibhags.joinToString(" • ")}", fontSize = 10.sp)
                         Text(taal.description, fontSize = 10.sp, lineHeight = 14.sp)
                     }
                     2 -> {
                         val tala = CARNATIC_TALAS.getOrNull(selectedKarnaticIdx) ?: CARNATIC_TALAS.first()
-                        Text("${tala.name} | ${tala.beats} Aksharas", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = genreThemeColor)
+                        Text("${tala.name} | ${tala.beats} Aksharas", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text("Anga Division: ${tala.vibhags.joinToString(" + ")}", fontSize = 10.sp)
                         Text(tala.description, fontSize = 10.sp, lineHeight = 14.sp)
                     }
@@ -430,15 +442,6 @@ fun RiyaazScreen(
     var selectedTaalIdx by remember { mutableIntStateOf(0) }
     var selectedKarnaticIdx by remember { mutableIntStateOf(0) }
 
-    // Multi-tonal dynamic palette context
-    val genreThemeColor = remember(workstationTab, primaryColor) {
-        when (workstationTab) {
-            0 -> Color(0xFF008080) // Deep Cyan/Teal for Western Academic Meter
-            1 -> Color(0xFF8B0000) // Classic Crimson/Maroon for Hindustani Taals
-            2 -> Color(0xFF4B0082) // Royal Violet/Indigo for Carnatic Aksharas
-            else -> primaryColor
-        }
-    }
 
     // Safely look up the active Western signature properties from the global dataset
     val currentWesternSig = remember(selectedSigIdx) {
@@ -481,7 +484,7 @@ fun RiyaazScreen(
     }
 
     LearnSectionCard(title = "Riyaaz Guru", icon = Icons.Filled.Mediation) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column {
 
             // Dynamic pitch alignment on the fly
             ScaleSelector(
@@ -497,7 +500,6 @@ fun RiyaazScreen(
             MetronomeControlSection(
                 viewModel = viewModel,
                 primaryColor = primaryColor,
-                genreThemeColor = genreThemeColor,
                 workstationTab = workstationTab,
                 onTabChange = { workstationTab = it },
                 currentBpm = currentBpm,
@@ -541,7 +543,12 @@ fun RiyaazScreen(
                             } else {
                                 runEngineSafetyCheck(totalGridSteps)
                                 viewModel.liveRiyaazBpm.value = currentBpm.toInt()
-                                viewModel.startRiyaazEngine(selectedScale, totalGridSteps)
+                                val activeBols = when (workstationTab) {
+                                    1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence ?: emptyList()
+                                    2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence ?: emptyList()
+                                    else -> emptyList()
+                                }
+                                viewModel.startRiyaazEngine(selectedScale, totalGridSteps, activeBols)
                             }
                         }
                     }
@@ -562,7 +569,7 @@ fun RiyaazScreen(
                         .height(56.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isTanpuraPlaying) MaterialTheme.colorScheme.error else genreThemeColor
+                        containerColor = if (isTanpuraPlaying) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     ),
                     onClick = {
                         if (isTanpuraPlaying) {

@@ -53,6 +53,9 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
     val tabs = listOf("Raagas", "Thaats", "Taals", "Alankaars", "Tabla Bols")
     var notationFormat by remember { mutableStateOf("Staff Notation") }
 
+    var selectedRagaState by remember { mutableStateOf<Raaga?>(null) }
+    var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Piano, 1 = Guitar
+
     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent, contentColor = indianColor,
             indicator = { tabPositions -> if (selectedTab < tabPositions.size) TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTab]), color = indianColor) }
@@ -62,13 +65,89 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
 
         Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             when (selectedTab) {
-                0 -> IndianRaagaBrowser(viewModel, indianColor)
-                1 -> IndianThaatBrowser(viewModel, indianColor)
-                2 -> IndianTaalBrowser(viewModel, indianColor)
-                3 -> IndianAlankaarPanel(viewModel, indianColor)
+                0 -> UnifiedRaagaBrowser(viewModel, indianColor, isCarnatic = false, onSelectRaga = { selectedRagaState = it })
+                1 -> UnifiedThaatBrowser(viewModel, indianColor)
+                2 -> UnifiedTaalBrowser(viewModel, indianColor, isCarnatic = false)
+                3 -> UnifiedAlankaarPanel(viewModel, indianColor, isCarnatic = false)
                 4 -> IndianTablaBolsPanel(indianColor)
             }
-            
+
+            // Shared Instrument Selection Row & Piano / Guitar Interactive Visualizer
+            val activeSemitones = remember(selectedRagaState) {
+                selectedRagaState?.semitones?.ifEmpty { listOf(0, 2, 4, 5, 7, 9, 11, 12) } ?: listOf(0, 2, 4, 5, 7, 9, 11, 12)
+            }
+            val playingNote = viewModel.midiPlayingNote.value
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "INSTRUMENT SCALE VISUALIZER",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = indianColor,
+                    letterSpacing = 0.5.sp
+                )
+                Row(
+                    modifier = Modifier
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf("🎹 Piano", "🎸 Guitar").forEachIndexed { idx, label ->
+                        val isSelected = visualizerMode == idx
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) indianColor.copy(alpha = 0.25f) else Color.Transparent)
+                                .clickable { visualizerMode = idx }
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) indianColor else Color.White.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (visualizerMode == 0) {
+                val activeMidiMap = remember(activeSemitones, playingNote) {
+                    if (playingNote != null) mapOf(playingNote to true)
+                    else activeSemitones.associate { (60 + it) to true }
+                }
+                UnifiedPianoKeyboard(
+                    activeMidiNotes = activeMidiMap,
+                    accentColor = indianColor,
+                    startNote = 60,
+                    endNote = 72,
+                    showNoteNames = true,
+                    modifier = Modifier.fillMaxWidth().height(85.dp).clip(RoundedCornerShape(8.dp))
+                )
+            } else {
+                val highlightedGuitarList = remember(activeSemitones, playingNote) {
+                    if (playingNote != null) listOf(playingNote - 60) else activeSemitones
+                }
+                UnifiedGuitarFretboard(
+                    numFrets = 12,
+                    activeNotes = highlightedGuitarList,
+                    rootNote = 0,
+                    accentColor = indianColor,
+                    showNoteNames = true,
+                    modifier = Modifier.fillMaxWidth().height(125.dp).clip(RoundedCornerShape(8.dp))
+                )
+            }
+
             // Notation Viewer linked to viewModel.currentScore
             StaffAndTabNotationViewer(
                 score = viewModel.currentScore.value as? Score,
@@ -97,7 +176,6 @@ fun InfoChip(label: String, icon: androidx.compose.ui.graphics.vector.ImageVecto
 }
 
 private fun Modifier.fillModifierOrWrap() = this.fillMaxWidth().wrapContentHeight()
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun IndianRaagaBrowser(
@@ -106,8 +184,7 @@ fun IndianRaagaBrowser(
     onSelectRaga: (Raaga) -> Unit = {}
 ) {
     val allRagas = viewModel?.ragaList?.value ?: emptyList()
-    val apiRagas = allRagas.filter { it.system.equals("Hindustani", ignoreCase = true) }
-    val isFallback = apiRagas.isEmpty()
+    val sourceList = if (allRagas.isNotEmpty()) allRagas.filter { it.system.equals("Hindustani", ignoreCase = true) } else INDIAN_RAAGAS
 
     var selectedIdx by remember { mutableStateOf(0) }
     var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Harmonium/Piano, 1 = Guitar
@@ -117,7 +194,6 @@ fun IndianRaagaBrowser(
     var searchQuery by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    val sourceList = if (allRagas.isNotEmpty()) allRagas.filter { it.system.equals("Hindustani", ignoreCase = true) } else INDIAN_RAAGAS
     val filteredRagas = remember(searchQuery, sourceList) {
         if (searchQuery.isEmpty()) sourceList
         else sourceList.filter {
@@ -130,12 +206,6 @@ fun IndianRaagaBrowser(
     val activeSelectedIdx = selectedIdx.coerceIn(0, (filteredRagas.size - 1).coerceAtLeast(0))
     val selectedRaga = filteredRagas.getOrNull(activeSelectedIdx) ?: INDIAN_RAAGAS.first()
 
-    val ragaName = selectedRaga.name
-    val parentThaat = selectedRaga.thaat
-    val arohaText = selectedRaga.aroha
-    val avarohaText = selectedRaga.avaroha
-    val descText = selectedRaga.description
-
     val arohaSemitones = remember(selectedRaga) { selectedRaga.semitones }
     val avarohaSemitones = remember(selectedRaga) { selectedRaga.semitones.reversed() }
     val completeRagaMelodyPattern = remember(arohaSemitones, avarohaSemitones) { arohaSemitones + avarohaSemitones }
@@ -144,13 +214,11 @@ fun IndianRaagaBrowser(
         INDIAN_TAALS.find { it.name.equals(selectedRaga.taal, ignoreCase = true) } ?: INDIAN_TAALS.first()
     }
 
-    val currentRaagaData = selectedRaga
-
-    LaunchedEffect(currentRaagaData, activeTaalFramework) {
-        viewModel?.currentScore?.value = MusicConverter.convertRaagaToScore(currentRaagaData, 60, activeTaalFramework)
+    LaunchedEffect(selectedRaga, activeTaalFramework) {
+        viewModel?.currentScore?.value = MusicConverter.convertRaagaToScore(selectedRaga, 60, activeTaalFramework)
     }
 
-    Column(modifier = Modifier.fillModifierOrWrap(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it; selectedIdx = 0 },
@@ -164,15 +232,14 @@ fun IndianRaagaBrowser(
         if (filteredRagas.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(filteredRagas.take(40)) { idx, raga ->
-                    val name = raga.name
                     val isSelected = activeSelectedIdx == idx
                     FilterChip(
                         selected = isSelected,
                         onClick = {
                             selectedIdx = idx
-                            onSelectRaga(currentRaagaData)
+                            onSelectRaga(raga)
                         },
-                        label = { Text(name, fontSize = 11.sp) },
+                        label = { Text(raga.name, fontSize = 11.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = accentColor.copy(alpha = 0.25f),
                             selectedLabelColor = accentColor
@@ -182,10 +249,14 @@ fun IndianRaagaBrowser(
             }
         }
 
-        FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            InfoChip("Mood: ${currentRaagaData.mood}", Icons.Default.MusicNote, accentColor)
-            InfoChip("Taal: ${currentRaagaData.taal}", Icons.Default.MusicNote, accentColor)
-            InfoChip("Time: ${currentRaagaData.time}", Icons.Default.MusicNote, accentColor)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            InfoChip("Mood: ${selectedRaga.mood.ifEmpty { "Shanta" }}", Icons.Default.MusicNote, accentColor)
+            InfoChip("Taal: ${selectedRaga.taal.ifEmpty { "Teental" }}", Icons.Default.MusicNote, accentColor)
+            InfoChip("Time: ${selectedRaga.time.ifEmpty { "Evening" }}", Icons.Default.MusicNote, accentColor)
         }
 
         Surface(
@@ -200,10 +271,10 @@ fun IndianRaagaBrowser(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(ragaName, fontSize = 20.sp, fontWeight = FontWeight.Black, color = accentColor)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(selectedRaga.name, fontSize = 20.sp, fontWeight = FontWeight.Black, color = accentColor)
                         Text(
-                            text = "Parent Thaat: $parentThaat • ${currentRaagaData.jati.ifEmpty { "Sampoorna" }}",
+                            text = "Parent Thaat: ${selectedRaga.thaat} • ${selectedRaga.jati.ifEmpty { "Sampoorna" }}",
                             fontSize = 12.sp,
                             color = Color.White.copy(alpha = 0.7f)
                         )
@@ -219,10 +290,10 @@ fun IndianRaagaBrowser(
                                         scaleNotes.forEachIndexed { idx, semitone ->
                                             currentPlayingIdx = idx
                                             val currentMidiPitch = 65 + semitone
-                                            if (viewModel != null) {
-                                                viewModel.scorePlayheadMeasure.value = idx / activeTaalFramework.beats
-                                                viewModel.scorePlayheadOffset.value = (idx % activeTaalFramework.beats).toFloat() / activeTaalFramework.beats.toFloat()
-                                                viewModel.midiPlayingNote.value = currentMidiPitch
+                                            viewModel?.let {
+                                                it.scorePlayheadMeasure.value = idx / activeTaalFramework.beats
+                                                it.scorePlayheadOffset.value = (idx % activeTaalFramework.beats).toFloat() / activeTaalFramework.beats.toFloat()
+                                                it.midiPlayingNote.value = currentMidiPitch
                                             }
                                             engine.noteOn(currentMidiPitch, 0.85f)
                                             delay(380L)
@@ -230,10 +301,10 @@ fun IndianRaagaBrowser(
                                         }
                                     } finally {
                                         currentPlayingIdx = -1
-                                        if (viewModel != null) {
-                                            viewModel.midiPlayingNote.value = null
-                                            viewModel.scorePlayheadMeasure.value = 0
-                                            viewModel.scorePlayheadOffset.value = 0f
+                                        viewModel?.let {
+                                            it.midiPlayingNote.value = null
+                                            it.scorePlayheadMeasure.value = 0
+                                            it.scorePlayheadOffset.value = 0f
                                         }
                                         isAuditionRunning = false
                                     }
@@ -244,7 +315,11 @@ fun IndianRaagaBrowser(
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                     ) {
-                        Icon(if (isAuditionRunning) Icons.Default.GraphicEq else Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(
+                            if (isAuditionRunning) Icons.Default.GraphicEq else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(Modifier.width(6.dp))
                         Text(if (isAuditionRunning) "Auditioning..." else "Audition Rāga", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
@@ -265,7 +340,14 @@ fun IndianRaagaBrowser(
                         Tab(
                             selected = selectedDetailsTab == idx,
                             onClick = { selectedDetailsTab = idx },
-                            text = { Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (selectedDetailsTab == idx) accentColor else Color.White.copy(alpha = 0.6f)) }
+                            text = {
+                                Text(
+                                    title,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selectedDetailsTab == idx) accentColor else Color.White.copy(alpha = 0.6f)
+                                )
+                            }
                         )
                     }
                 }
@@ -274,31 +356,41 @@ fun IndianRaagaBrowser(
                     0 -> {
                         Surface(shape = RoundedCornerShape(10.dp), color = accentColor.copy(alpha = 0.06f), modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("↑ Aroha: $arohaText", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isAuditionRunning && currentPlayingIdx < arohaSemitones.size) accentColor else Color.White)
-                                Text("↓ Avaroha: $avarohaText", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isAuditionRunning && currentPlayingIdx >= arohaSemitones.size) accentColor else Color.White)
+                                Text(
+                                    "↑ Aroha: ${selectedRaga.aroha}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isAuditionRunning && currentPlayingIdx < arohaSemitones.size) accentColor else Color.White
+                                )
+                                Text(
+                                    "↓ Avaroha: ${selectedRaga.avaroha}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isAuditionRunning && currentPlayingIdx >= arohaSemitones.size) accentColor else Color.White
+                                )
                             }
                         }
 
-                        if (currentRaagaData.pakad.isNotEmpty()) {
-                            PlayableInfoRow(Icons.Default.Star, "Pakad (Signature Phrase)", currentRaagaData.pakad, completeRagaMelodyPattern, Color(0xFFFFD54F), scope, viewModel)
+                        if (selectedRaga.pakad.isNotEmpty()) {
+                            PlayableInfoRow(Icons.Default.Star, "Pakad (Signature Phrase)", selectedRaga.pakad, completeRagaMelodyPattern, Color(0xFFFFD54F), scope, viewModel)
                         }
-                        if (currentRaagaData.chalan.isNotEmpty()) {
-                            PlayableInfoRow(Icons.Default.LinearScale, "Chalan (Movement Flow)", currentRaagaData.chalan, completeRagaMelodyPattern, Color(0xFF81C784), scope, viewModel)
+                        if (selectedRaga.chalan.isNotEmpty()) {
+                            PlayableInfoRow(Icons.Default.LinearScale, "Chalan (Movement Flow)", selectedRaga.chalan, completeRagaMelodyPattern, Color(0xFF81C784), scope, viewModel)
                         }
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            MetaChip("Vadi (Primary)", currentRaagaData.vadi.ifEmpty { "Sa" }, Color(0xFF64B5F6))
-                            MetaChip("Samvadi (Secondary)", currentRaagaData.samvadi.ifEmpty { "Pa" }, Color(0xFF81C784))
-                            MetaChip("Time (Prahar)", currentRaagaData.time.ifEmpty { "Evening" }, Color(0xFFFFB74D))
-                            MetaChip("Rasa (Mood)", currentRaagaData.mood.ifEmpty { "Shanta" }, Color(0xFFE57373))
+                            MetaChip("Vadi", selectedRaga.vadi.ifEmpty { "Sa" }, Color(0xFF64B5F6))
+                            MetaChip("Samvadi", selectedRaga.samvadi.ifEmpty { "Pa" }, Color(0xFF81C784))
+                            MetaChip("Time", selectedRaga.time.ifEmpty { "Evening" }, Color(0xFFFFB74D))
+                            MetaChip("Mood", selectedRaga.mood.ifEmpty { "Shanta" }, Color(0xFFE57373))
                         }
 
-                        if (descText.isNotEmpty()) {
+                        if (selectedRaga.description.isNotEmpty()) {
                             Text(
-                                descText,
+                                selectedRaga.description,
                                 fontSize = 12.sp,
                                 lineHeight = 18.sp,
                                 color = Color.White.copy(alpha = 0.75f)
@@ -313,18 +405,15 @@ fun IndianRaagaBrowser(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (currentRaagaData.bandish.isNotEmpty()) currentRaagaData.bandish else "Traditional Classical Bandish",
+                                    text = if (selectedRaga.bandish.isNotEmpty()) selectedRaga.bandish else "Traditional Classical Bandish",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor
                                 )
-                                if (currentRaagaData.taal.isNotEmpty()) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = accentColor.copy(alpha = 0.15f)
-                                    ) {
+                                if (selectedRaga.taal.isNotEmpty()) {
+                                    Surface(shape = RoundedCornerShape(8.dp), color = accentColor.copy(alpha = 0.15f)) {
                                         Text(
-                                            "Taal: ${currentRaagaData.taal}",
+                                            "Taal: ${selectedRaga.taal}",
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
@@ -334,70 +423,50 @@ fun IndianRaagaBrowser(
                                 }
                             }
 
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color.White.copy(alpha = 0.03f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("स्थायी (Sthayi - First Verse):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64B5F6))
-                                    Text(
-                                        text = if (currentRaagaData.sthai.isNotEmpty()) currentRaagaData.sthai else "Paayo ji maine Ram ratan dhan paayo",
-                                        fontSize = 14.sp,
-                                        lineHeight = 22.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.White
-                                    )
+                            if (selectedRaga.sthai.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color.White.copy(alpha = 0.03f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("स्थायी (Sthayi - First Verse):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64B5F6))
+                                        Text(selectedRaga.sthai, fontSize = 14.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, color = Color.White)
+                                    }
                                 }
                             }
 
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color.White.copy(alpha = 0.03f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("अंतरा (Antara - Second Verse):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81C784))
-                                    Text(
-                                        text = if (currentRaagaData.antara.isNotEmpty()) currentRaagaData.antara else "Janam janam ki poonji paayi",
-                                        fontSize = 14.sp,
-                                        lineHeight = 22.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.White
-                                    )
+                            if (selectedRaga.antara.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color.White.copy(alpha = 0.03f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("अंतरा (Antara - Second Verse):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81C784))
+                                        Text(selectedRaga.antara, fontSize = 14.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, color = Color.White)
+                                    }
                                 }
                             }
 
-                            if (currentRaagaData.transliteration.isNotEmpty()) {
-                                Text(
-                                    "Transliteration: ${currentRaagaData.transliteration}",
-                                    fontSize = 11.sp,
-                                    fontStyle = FontStyle.Italic,
-                                    color = Color.White.copy(alpha = 0.7f)
-                                )
+                            if (selectedRaga.transliteration.isNotEmpty()) {
+                                Text("Transliteration: ${selectedRaga.transliteration}", fontSize = 11.sp, fontStyle = FontStyle.Italic, color = Color.White.copy(alpha = 0.7f))
                             }
-
-                            if (currentRaagaData.meaning.isNotEmpty()) {
-                                Text(
-                                    "Translation: ${currentRaagaData.meaning}",
-                                    fontSize = 12.sp,
-                                    fontStyle = FontStyle.Italic,
-                                    color = Color.White.copy(alpha = 0.7f)
-                                )
+                            if (selectedRaga.meaning.isNotEmpty()) {
+                                Text("Translation: ${selectedRaga.meaning}", fontSize = 12.sp, fontStyle = FontStyle.Italic, color = Color.White.copy(alpha = 0.7f))
                             }
                         }
                     }
                     2 -> {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Alaap Phrases: ${if (currentRaagaData.alaap.isNotEmpty()) currentRaagaData.alaap.joinToString(", ") else "N/A"}", fontSize = 12.sp, color = Color.White)
-                            Text("Taans / Paltas: ${if (currentRaagaData.taansPaltas.isNotEmpty()) currentRaagaData.taansPaltas.joinToString(", ") else "N/A"}", fontSize = 12.sp, color = Color.White)
-                            Text("Jhala / Tihai: ${currentRaagaData.jhala.ifEmpty { "N/A" }}", fontSize = 12.sp, color = Color.White)
-                            Text("Bol Taal Pattern: ${currentRaagaData.bolTaal.ifEmpty { "N/A" }}", fontSize = 12.sp, color = Color.White)
-                            Text("Stream URL: ${currentRaagaData.streamUrl ?: "None"}", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
-                            Text("Video URL: ${currentRaagaData.videoUrl ?: "None"}", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
-                            Text("Accent Color: ${currentRaagaData.accentColor ?: "Default"}", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
+                            Text("Alaap Phrases: ${if (selectedRaga.alaap.isNotEmpty()) selectedRaga.alaap.joinToString(", ") else "N/A"}", fontSize = 12.sp, color = Color.White)
+                            Text("Taans / Paltas: ${if (selectedRaga.taansPaltas.isNotEmpty()) selectedRaga.taansPaltas.joinToString(", ") else "N/A"}", fontSize = 12.sp, color = Color.White)
+                            Text("Jhala / Tihai: ${selectedRaga.jhala.ifEmpty { "N/A" }}", fontSize = 12.sp, color = Color.White)
+                            Text("Bol Taal Pattern: ${selectedRaga.bolTaal.ifEmpty { "N/A" }}", fontSize = 12.sp, color = Color.White)
+                            Text("Stream URL: ${selectedRaga.streamUrl ?: "None"}", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
+                            Text("Video URL: ${selectedRaga.videoUrl ?: "None"}", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
                         }
                     }
                 }
@@ -416,104 +485,23 @@ fun IndianRaagaBrowser(
                         color = accentColor,
                         letterSpacing = 0.5.sp
                     )
-                    Row(
-                        modifier = Modifier
-                            .height(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                            .padding(3.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        listOf("🎹 Piano" to Icons.Default.Keyboard, "🎸 Guitar" to Icons.Default.MusicNote).forEachIndexed { index, (modeTitle, modeIcon) ->
-                            val isCurrentActive = visualizerMode == index
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(9.dp))
-                                    .background(if (isCurrentActive) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) else Color.Transparent)
-                                    .clickable { visualizerMode = index }
-                                    .padding(horizontal = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = modeIcon,
-                                        contentDescription = modeTitle,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = if (isCurrentActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = modeTitle,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isCurrentActive) FontWeight.ExtraBold else FontWeight.Medium,
-                                        color = if (isCurrentActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
 
-                val activeSemitones = completeRagaMelodyPattern.ifEmpty { listOf(0, 2, 4, 5, 7, 9, 11, 12) }
-                val dynamicPlayingSemitone = if (currentPlayingIdx in activeSemitones.indices) activeSemitones[currentPlayingIdx] else -1
-
-                if (visualizerMode == 0) {
-                    val activeMidiMap = remember(activeSemitones, dynamicPlayingSemitone) {
-                        if (dynamicPlayingSemitone != -1) mapOf((60 + dynamicPlayingSemitone) to true)
-                        else activeSemitones.associate { (60 + it) to true }
-                    }
-                    UnifiedPianoKeyboard(
-                        activeMidiNotes = activeMidiMap,
-                        accentColor = accentColor,
-                        startNote = 60,
-                        endNote = 72,
-                        showNoteNames = true,
-                        modifier = Modifier.fillMaxWidth().height(85.dp).clip(RoundedCornerShape(6.dp))
-                    )
-                } else {
-                    val highlightedGuitarList = remember(activeSemitones, dynamicPlayingSemitone) {
-                        if (dynamicPlayingSemitone != -1) listOf(dynamicPlayingSemitone) else activeSemitones
-                    }
-                    UnifiedGuitarFretboard(
-                        numFrets = 12,
-                        activeNotes = highlightedGuitarList,
-                        rootNote = 0,
-                        accentColor = accentColor,
-                        showNoteNames = true,
-                        modifier = Modifier.fillMaxWidth().height(125.dp).clip(RoundedCornerShape(8.dp))
-                    )
-                }
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                Text("Associated Bandish Composition", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accentColor)
-
-                if (currentRaagaData.sthai.isNotEmpty() || currentRaagaData.bandish.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (currentRaagaData.sthai.isNotEmpty()) {
-                            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("स्थायी (Sthayi)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor)
-                                    Text(currentRaagaData.sthai, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                        if (currentRaagaData.antara.isNotEmpty()) {
-                            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("अन्तरा (Antara)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor)
-                                    Text(currentRaagaData.antara, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                        Text("Taal Framework: ${currentRaagaData.taal}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        if (currentRaagaData.meaning.isNotEmpty()) {
-                            Text("Translation: ${currentRaagaData.meaning}", fontSize = 11.sp, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SwaraSthanasVisualizer(
+                    activeSemitones = selectedRaga.semitones,
+                    currentPlayingMidi = viewModel?.midiPlayingNote?.value,
+                    accentColor = accentColor,
+                    onPlayNote = { midiNote ->
+                        viewModel?.midiPlayingNote?.value = midiNote
+                        getAudioEngine().noteOn(midiNote, 0.85f)
+                    },
+                    onStopNote = { midiNote ->
+                        getAudioEngine().noteOff(midiNote)
+                        if (viewModel?.midiPlayingNote?.value == midiNote) {
+                            viewModel.midiPlayingNote.value = null
                         }
                     }
-                } else {
-                    Text("No local classical bandish composition linked to this scale format.", fontSize = 11.sp, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
-                }
+                )
             }
         }
     }
@@ -522,24 +510,69 @@ fun IndianRaagaBrowser(
 @Composable
 fun IndianThaatBrowser(viewModel: AppViewModel? = null, accentColor: Color) {
     var selectedIdx by remember { mutableStateOf(0) }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val currentThaat = INDIAN_THAATS.getOrNull(selectedIdx) ?: INDIAN_THAATS.first()
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("The 10 Foundational Parent Thaats of Hindustani Classical Music", fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(INDIAN_THAATS) { idx, thaat ->
-                val isSelected = idx == selectedIdx
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { selectedIdx = idx },
-                    label = { Text(thaat.name, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = accentColor.copy(alpha = 0.25f),
-                        selectedLabelColor = accentColor
+
+        // Dropdown Selector for Thaats
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { isDropdownExpanded = true },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White.copy(alpha = 0.05f),
+                    contentColor = Color.White
+                ),
+                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Thaat: ${currentThaat.name}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
                     )
-                )
+                    Icon(
+                        imageVector = if (isDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                        contentDescription = "Select Thaat",
+                        tint = accentColor
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = isDropdownExpanded,
+                onDismissRequest = { isDropdownExpanded = false },
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .background(Color(0xFF141724))
+            ) {
+                INDIAN_THAATS.forEachIndexed { idx, thaat ->
+                    val isSelected = idx == selectedIdx
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = thaat.name,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) accentColor else Color.White
+                            )
+                        },
+                        onClick = {
+                            selectedIdx = idx
+                            isDropdownExpanded = false
+                        }
+                    )
+                }
             }
         }
 
@@ -594,28 +627,70 @@ fun IndianThaatBrowser(viewModel: AppViewModel? = null, accentColor: Color) {
 @Composable
 fun IndianTaalBrowser(viewModel: AppViewModel? = null, accentColor: Color) {
     var selectedIdx by remember { mutableStateOf(0) }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
     val taal = INDIAN_TAALS.getOrNull(selectedIdx) ?: INDIAN_TAALS.first()
     var currentBeatPlayhead by remember { mutableIntStateOf(-1) }
     var isTaalLooping by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(INDIAN_TAALS) { idx, t ->
-                val isSelected = idx == selectedIdx
-                FilterChip(
-                    selected = isSelected,
-                    onClick = {
-                        selectedIdx = idx
-                        isTaalLooping = false
-                        currentBeatPlayhead = -1
-                    },
-                    label = { Text("${t.name} (${t.beats}m)", fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = accentColor.copy(alpha = 0.25f),
-                        selectedLabelColor = accentColor
+        // Dropdown Selector for Taals
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { isDropdownExpanded = true },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White.copy(alpha = 0.05f),
+                    contentColor = Color.White
+                ),
+                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Tāla: ${taal.name} (${taal.beats} Matras)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
                     )
-                )
+                    Icon(
+                        imageVector = if (isDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                        contentDescription = "Select Tāla",
+                        tint = accentColor
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = isDropdownExpanded,
+                onDismissRequest = { isDropdownExpanded = false },
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .background(Color(0xFF141724))
+            ) {
+                INDIAN_TAALS.forEachIndexed { idx, t ->
+                    val isSelected = idx == selectedIdx
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "${t.name} (${t.beats}m)",
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) accentColor else Color.White
+                            )
+                        },
+                        onClick = {
+                            selectedIdx = idx
+                            isTaalLooping = false
+                            currentBeatPlayhead = -1
+                            isDropdownExpanded = false
+                        }
+                    )
+                }
             }
         }
 
@@ -646,13 +721,11 @@ fun IndianTaalBrowser(viewModel: AppViewModel? = null, accentColor: Color) {
                                 scope.launch {
                                     try {
                                         while (isTaalLooping) {
-                                            taal.bolSequence.forEachIndexed { bIdx, _ ->
+                                            taal.bolSequence.forEachIndexed { bIdx, bol ->
                                                 if (!isTaalLooping) return@forEachIndexed
                                                 currentBeatPlayhead = bIdx
-                                                val drumMidi = if (bIdx == 0) 36 else 38
-                                                engine.noteOn(drumMidi, 0.9f)
+                                                engine.playSample(bol, bIdx, "TABLA")
                                                 delay(500L)
-                                                engine.noteOff(drumMidi)
                                             }
                                         }
                                     } finally {
@@ -684,7 +757,10 @@ fun IndianTaalBrowser(viewModel: AppViewModel? = null, accentColor: Color) {
                                 isSam -> accentColor.copy(alpha = 0.35f)
                                 else -> Color.White.copy(alpha = 0.05f)
                             },
-                            border = BorderStroke(1.dp, if (isSam) accentColor else Color.White.copy(alpha = 0.1f))
+                            border = BorderStroke(1.dp, if (isSam) accentColor else Color.White.copy(alpha = 0.1f)),
+                            modifier = Modifier.clickable {
+                                getAudioEngine().playSample(bol, bIdx, "TABLA")
+                            }
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),

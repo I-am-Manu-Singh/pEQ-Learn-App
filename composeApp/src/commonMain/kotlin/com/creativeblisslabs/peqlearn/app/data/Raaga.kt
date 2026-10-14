@@ -37,6 +37,7 @@ import kotlinx.serialization.SerialName
  * 28. accentColor     - Optional accent color (Int?)
  * 29. videoUrl        - Optional video URL
  */
+
 @Serializable
 data class Raaga(
     val name: String,

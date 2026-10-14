@@ -72,30 +72,8 @@ fun NotationWorkspaceItem(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Column {
-                    Text(
-                        text = "NOTATION WORKSPACE",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "• MIDI Playback",
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.5f)
-                    )
-                }
-            }
+   LearnSectionCard(title = "Notation Viewer", icon = Icons.Filled.MusicNote) {
+        
 
             // Quick Tool Buttons (Scroll Direction, Import, Export, Fullscreen)
             Row(

@@ -1,5 +1,6 @@
 package com.creativeblisslabs.peqlearn.app.ui.screens
 
+import androidx.compose.material.icons.filled.Adjust  
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -195,15 +196,9 @@ fun DrumAcademySection(
         )
     }
     val activeIndices = remember { mutableStateListOf<Int>() }
+    LearnSectionCard(title = "TRAINING MODULES & MASTER CLOCK", icon = Icons.Filled.Adjust) {
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(
-            text = "TRAINING MODULES & MASTER CLOCK",
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Black,
-            color = primaryColor.copy(alpha = 0.75f),
-            letterSpacing = 1.sp
-        )
+
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -823,6 +818,7 @@ fun RhythmGrooveWorkstation(
         }
     }
 }
+
 @Composable
 fun SongArrangerTimeline(
     viewModel: AppViewModel,
@@ -972,7 +968,7 @@ fun SongArrangerTimeline(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 440.dp),
+                .height(350.dp),
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.06f))
@@ -1180,7 +1176,7 @@ fun SongArrangerTimeline(
             }
         }
     }
-} 
+}
 @Composable
 fun ProfessionalDrumKitGrid(
     viewModel: AppViewModel,

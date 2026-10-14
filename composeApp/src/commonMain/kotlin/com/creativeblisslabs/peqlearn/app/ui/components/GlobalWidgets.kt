@@ -1,5 +1,6 @@
 package com.creativeblisslabs.peqlearn.app.ui.components
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -11,10 +12,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.creativeblisslabs.peqlearn.app.Tab
+import com.creativeblisslabs.peqlearn.app.data.MediaType
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
@@ -155,87 +162,6 @@ fun LiveSpectrumVisualizer(viewModel: AppViewModel, height: androidx.compose.ui.
     }
 }
 
-@Composable
-fun FloatingLyricsOverlay(
-    viewModel: AppViewModel,
-    modifier: Modifier = Modifier
-) {
-    val currentPosition by viewModel.currentPosition
-    val lyrics = viewModel.syncedLyrics
-    
-    val currentLineIndex by remember(lyrics, currentPosition) {
-        derivedStateOf {
-            lyrics.indexOfLast { it.timestampMs <= currentPosition }.coerceAtLeast(0)
-        }
-    }
-    
-    val currentLyric = lyrics.getOrNull(currentLineIndex)
-    
-    Surface(
-        modifier = modifier
-            .padding(16.dp)
-            .widthIn(max = 340.dp)
-            .wrapContentHeight(),
-        shape = RoundedCornerShape(28.dp),
-        color = Color.Black.copy(alpha = 0.88f),
-        border = BorderStroke(1.2.dp, Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), Color.Transparent))),
-        shadowElevation = 12.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(42.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.QueueMusic,
-                        null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-            
-            Spacer(Modifier.width(18.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = currentLyric?.text?.takeIf { it.isNotBlank() } ?: "NEURAL pEQ STATION",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-                
-                val nextLyric = lyrics.getOrNull(currentLineIndex + 1)
-                if (nextLyric != null) {
-                    Text(
-                        text = nextLyric.text,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.45f),
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                }
-            }
-            
-            Spacer(Modifier.width(12.dp))
-
-            IconButton(
-                onClick = { viewModel.isLyricsVisible.value = false },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(Icons.Default.Close, null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
 
 // ============================================================================
 // 100% RECOVERED ORIGINAL M3 DROPDOWN MENU & GLOBAL MINI PLAYER DOCK
@@ -293,74 +219,242 @@ fun M3DropdownMenu(
 }
 
 @Composable
-fun MiniPlayerDock(
-    viewModel: com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel,
-    modifier: Modifier = Modifier,
-    isCompactSidebar: Boolean = false
+fun ThinMiniPlayer(
+    viewModel: AppViewModel,
+    modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = Color(0xFF141724),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+    val nowPlaying = viewModel.currentMediaItem.value ?: return
+    val isPlaying by viewModel.isPlaying
+    val isLandscape = false
+    var isExpanded by remember { mutableStateOf(true) }
 
-                Column {
-                    Text(
-                        text = "pEQ Concert Player",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+    val currentPos = viewModel.currentPosition.value
+    val duration = viewModel.currentDuration.value.coerceAtLeast(1L)
+    val progress = (currentPos.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+
+    var isDraggingSlider by remember { mutableStateOf(false) }
+    var dragProgress by remember { mutableStateOf(0f) }
+
+    val isFavorite = viewModel.favoriteItems.any { it.id == nowPlaying.id }
+    val speed = viewModel.playbackSpeed.value
+    val abActive = viewModel.abRepeatActive.value
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 0.dp, vertical = 2.dp),
+        color = Color(0xFF141724).copy(alpha = 0.95f),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        shadowElevation = 10.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 1. TOP EDGE SEEKBAR (Ultra-thin interactive / touch slider flush with the top edge)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .background(Color.White.copy(alpha = 0.08f))
+            ) {
+                // Active progress bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(if (isDraggingSlider) dragProgress else progress)
+                        .fillMaxHeight()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                    MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        )
+                )
+
+                // Invisible slider on top edge for direct scrub touch interaction
+                Slider(
+                    value = if (isDraggingSlider) dragProgress else progress,
+                    onValueChange = {
+                        isDraggingSlider = true
+                        dragProgress = it
+                    },
+                    onValueChangeFinished = {
+                        val seekTargetMs = (dragProgress * duration).toLong()
+                        viewModel.seekTo(seekTargetMs)
+                        isDraggingSlider = false
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .alpha(0.01f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = Color.Transparent,
+                        inactiveTrackColor = Color.Transparent
                     )
-                    Text(
-                        text = "Lossless Audio Master • 96kHz",
-                        fontSize = 10.sp,
-                        color = Color.White.copy(alpha = 0.5f)
-                    )
-                }
+                )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilledTonalIconButton(
-                    onClick = { viewModel.togglePlayback() },
-                    modifier = Modifier.size(34.dp)
+            // 2. UNIFIED SINGLE ROW: Thumbnail, Title, Prev, Play/Pause, Next, A-B, Speed, Favorite, Playlist
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        viewModel.currentTab.value = Tab.Player
+                        if (nowPlaying.type == MediaType.VIDEO) {
+                            viewModel.isVideoFullScreen.value = true
+                        }
+                    }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Thumbnail / Icon
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black)
                 ) {
-                    Icon(
-                        if (viewModel.isPlaying.value) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "Playback",
-                        modifier = Modifier.size(18.dp)
+                    pEQImage(
+                        data = nowPlaying.thumbnail,
+                        fallbackPath = nowPlaying.path,
+                        modifier = Modifier.fillMaxSize().alpha(0.9f),
+                        contentScale = ContentScale.Crop,
+                        mediaType = nowPlaying.type
                     )
                 }
 
-                IconButton(
-                    onClick = { viewModel.nextTrack() },
-                    modifier = Modifier.size(32.dp)
+                Spacer(Modifier.width(8.dp))
+
+                // Title & Subtitle (flexibly weighted)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 4.dp)
                 ) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White.copy(alpha = 0.7f))
+                    Text(
+                        text = nowPlaying.title,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = nowPlaying.subtitle.ifBlank { "pEQ Lossless Audio" },
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // All Action & Transport Buttons in Single Row
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Previous Track
+                    IconButton(
+                        onClick = { viewModel.previousTrack() },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.SkipPrevious,
+                            contentDescription = "Previous",
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
+                    // Play / Pause
+                    FilledIconButton(
+                        onClick = { viewModel.togglePlayback() },
+                        modifier = Modifier.size(32.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.Black,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
+                    // Next Track
+                    IconButton(
+                        onClick = { viewModel.nextTrack() },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.SkipNext,
+                            contentDescription = "Next",
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
+                    // A-B Repeat Button
+                    IconButton(
+                        onClick = { viewModel.toggleAbRepeat() },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Repeat,
+                            contentDescription = "A-B Repeat",
+                            tint = if (abActive) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // Speed Button (clickable text badge)
+                    Surface(
+                        onClick = { viewModel.cyclePlaybackSpeed() },
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color.White.copy(alpha = 0.08f),
+                        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.15f)),
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    ) {
+                        Text(
+                            text = "${speed}x",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    // Favorite Button
+                    IconButton(
+                        onClick = { viewModel.toggleFavorite(nowPlaying) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Favorite",
+                            tint = if (isFavorite) Color(0xFFFF5252) else Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // Add to Playlist Button
+                    IconButton(
+                        onClick = {
+                            viewModel.selectedItemForPlaylist.value = nowPlaying
+                            viewModel.isPlaylistBulkAction.value = false
+                            viewModel.isPlaylistPickerShown.value = true
+                        },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                            contentDescription = "Add to Playlist",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }

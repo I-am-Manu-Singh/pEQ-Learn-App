@@ -277,7 +277,7 @@ fun NowPlayingBar(
 
                 Column {
                     Text(
-                        text = "pEQ Media Player",
+                        text = "pEQ Learn Player",
                         fontSize = if (isLandscape) 11.sp else 13.sp,
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.primary

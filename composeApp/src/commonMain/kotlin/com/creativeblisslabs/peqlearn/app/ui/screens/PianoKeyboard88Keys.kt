@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.filled.List      
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -30,8 +31,6 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WaterDrop
-import androidx.compose.material.icons.filled.ZoomIn
-import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,8 +43,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -61,15 +63,15 @@ import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewe
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.playMediaItem
-import com.creativeblisslabs.peqlearn.app.ui.screens.Score
-import com.creativeblisslabs.peqlearn.app.ui.screens.PianoKeyboardMode
-import com.creativeblisslabs.peqlearn.app.ui.screens.PianoFallingNoteBlock
-import com.creativeblisslabs.peqlearn.app.ui.screens.PianoWaterfallBlock
-import com.creativeblisslabs.peqlearn.app.ui.screens.PianoSpark
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
+
+data class FingeringData(
+    val notes: List<Int> = emptyList(),
+    val fingers: List<Int> = emptyList()
+)
 
 enum class PianoKeyboardMode(val label: String) {
     FULL_88("88 Keys"),
@@ -103,6 +105,7 @@ data class PianoSpark(
     val color: Color
 )
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PianoKeyboard88Keys(
@@ -118,8 +121,8 @@ fun PianoKeyboard88Keys(
     val whiteKeyCount = 52
     val whiteKeyWidth = 28.dp
     val blackKeyWidth = 18.dp
-    val whiteKeyHeight = 160.dp
-    val blackKeyHeight = 100.dp
+    val whiteKeyHeight = 150.dp
+    val blackKeyHeight = 90.dp
     val keyboardWidth = whiteKeyWidth * whiteKeyCount
 
     var keyboardMode by rememberSaveable { mutableStateOf(PianoKeyboardMode.FULL_88) }
@@ -176,26 +179,68 @@ fun PianoKeyboard88Keys(
         }
     }
 
-    Surface(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.08f)),
-        tonalElevation = 2.dp
-    ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = "Interactive Piano & Fretboard Lab",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "Explore chords, inversions, voice leading and scale maps across 88 keys and guitar frets.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-           Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
+        Column(
+        ) {
+            // Top Toolbar Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+            
+                IconButton(
+                    onClick = { viewModel.isFullscreenKeyboard.value = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Fullscreen,
+                        contentDescription = "Fullscreen",
+                        tint = primaryColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // NOTATION VIEW ON TOP (Takes available weighted space)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.Black.copy(alpha = 0.25f),
+                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.15f))
+            ) {
+                StaffAndTabNotationViewer(
+                    score = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score,
+                    playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                    playheadOffset = viewModel.scorePlayheadOffset.value,
+                    activeMidiNotes = viewModel.midiActiveNotes,
+                    playingNote = viewModel.midiPlayingNote.value,
+                    primaryColor = primaryColor,
+                    currentFormat = notationFormat,
+                    onFormatChange = { notationFormat = it },
+                    showLetters = showNoteLabels,
+                    isSplitStaff = viewModel.isSplitStaff.value,
+                    isVerticalScroll = viewModel.isVerticalScroll.value,
+                    leftHandColor = viewModel.leftHandColor.value,
+                    rightHandColor = viewModel.rightHandColor.value,
+                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // PIANO KEYBOARD ON BOTTOM
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(22.dp)) {
                         Row(modifier = Modifier.padding(2.dp)) {
                             listOf("PIANO", "DRUM").forEach { mode ->
@@ -205,11 +250,11 @@ fun PianoKeyboard88Keys(
                                         .clip(RoundedCornerShape(22.dp))
                                         .background(if (active) primaryColor else Color.Transparent)
                                         .clickable { internalKeyboardModeName = mode }
-                                        .padding(horizontal = 8.dp, vertical = 0.dp)
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
                                 ) {
                                     Text(
                                         mode,
-                                        fontSize = 8.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (active) Color.White else MaterialTheme.colorScheme.onSurface.copy(0.6f)
                                     )
@@ -222,7 +267,7 @@ fun PianoKeyboard88Keys(
                         if (keyboardMode == PianoKeyboardMode.FULL_88) {
                             IconButton(
                                 onClick = { scope.launch { scrollState.animateScrollTo(0) } },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(26.dp)
                             ) {
                                 Text("A0", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
                             }
@@ -233,13 +278,13 @@ fun PianoKeyboard88Keys(
                                         scope.launch { scrollState.animateScrollTo((middleCWhiteIdx * 28).coerceAtLeast(0)) }
                                     }
                                 },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(26.dp)
                             ) {
                                 Text("C4", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = primaryColor)
                             }
                             IconButton(
                                 onClick = { scope.launch { scrollState.animateScrollTo(scrollState.maxValue) } },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(26.dp)
                             ) {
                                 Text("C8", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
                             }
@@ -247,7 +292,7 @@ fun PianoKeyboard88Keys(
 
                         IconButton(
                             onClick = { showWaterfall = !showWaterfall },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(26.dp)
                         ) {
                             Icon(
                                 imageVector = if (showWaterfall) Icons.Default.WaterDrop else Icons.Default.VerticalAlignBottom,
@@ -259,7 +304,7 @@ fun PianoKeyboard88Keys(
 
                         IconButton(
                             onClick = { showNoteLabels = !showNoteLabels },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(26.dp)
                         ) {
                             Icon(
                                 imageVector = if (showNoteLabels) Icons.Default.Visibility else Icons.Default.VisibilityOff,
@@ -274,7 +319,7 @@ fun PianoKeyboard88Keys(
                                 val nextIdx = (keyboardMode.ordinal + 1) % PianoKeyboardMode.entries.size
                                 keyboardMode = PianoKeyboardMode.entries[nextIdx]
                             },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(26.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Tune,
@@ -284,181 +329,67 @@ fun PianoKeyboard88Keys(
                             )
                         }
                     }
-
-                    IconButton(
-                        onClick = { viewModel.isFullscreenKeyboard.value = true },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Fullscreen,
-                            contentDescription = "Fullscreen",
-                            tint = primaryColor,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = showWaterfall) {
-                SynthesiaWaterfallOverlay(
-                    activeMidiNotes = activeMidiNotes + pressedKeys + activeNotesSnapshot.value,
-                    primaryColor = primaryColor
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(scrollState)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(0.3f))
-            ) {
-                Canvas(modifier = Modifier.width(keyboardWidth).height(120.dp).background(Color.Black.copy(0.2f))) {
-                    val whiteKeyWidthPx = size.width / whiteKeyCount.toFloat()
-                    fallingBlocks.forEach { block ->
-                        val isBlack = isMidiNoteBlack(block.midiNote)
-                        val wIdx = getWhiteKeyIndexForMidi(block.midiNote)
-
-                        val blockWidth = if (isBlack) whiteKeyWidthPx * 0.60f else whiteKeyWidthPx - 4f
-                        val xOffset = if (isBlack) (whiteKeyWidthPx - blockWidth) / 2f else 2f
-                        val finalX = (wIdx * whiteKeyWidthPx) + xOffset
-
-                        drawRoundRect(
-                            color = block.color.copy(alpha = 0.85f),
-                            topLeft = Offset(finalX, block.currentY),
-                            size = Size(blockWidth, 24f),
-                            cornerRadius = CornerRadius(4f, 4f)
-                        )
-                    }
                 }
 
-                Box(
+                AnimatedVisibility(visible = showWaterfall) {
+                    SynthesiaWaterfallOverlay(
+                        activeMidiNotes = activeMidiNotes + pressedKeys + activeNotesSnapshot.value,
+                        primaryColor = primaryColor
+                    )
+                }
+
+                Column(
                     modifier = Modifier
-                        .width(keyboardWidth)
-                        .height(whiteKeyHeight + 20.dp)
-                        .padding(vertical = 8.dp)
+                        .fillMaxWidth()
+                        .horizontalScroll(scrollState)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.Black.copy(0.3f))
                 ) {
-                    Row {
-                        whiteNotes.forEach { midiNote ->
-                            val isPressed = pressedKeys.contains(midiNote) || viewModel.midiActiveNotes[midiNote] == true
-                            val noteName = getNoteNameFromMidi(midiNote)
-                            val isMiddleC = midiNote == 60
+                    Canvas(modifier = Modifier.width(keyboardWidth).height(80.dp).background(Color.Black.copy(0.2f))) {
+                        val finalWhiteKeyWidthPx = size.width / whiteNotes.size.coerceAtLeast(1)
+                        fallingBlocks.forEach { block ->
+                            val isBlack = isMidiNoteBlack(block.midiNote)
+                            val wIdx = getWhiteKeyIndexForMidi(block.midiNote) - getWhiteKeyIndexForMidi(startMidi)
+                            val blockWidth = if (isBlack) finalWhiteKeyWidthPx * 0.60f else finalWhiteKeyWidthPx * 0.85f
+                            val xOffset = if (isBlack) (finalWhiteKeyWidthPx - blockWidth) / 2f else 2f
+                            val finalX = (wIdx * finalWhiteKeyWidthPx) + xOffset
 
-                            Box(
-                                modifier = Modifier
-                                    .width(whiteKeyWidth)
-                                    .height(whiteKeyHeight)
-                                    .padding(horizontal = 0.5.dp)
-                                    .shadow(if (isPressed) 2.dp else 4.dp, RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
-                                    .background(
-                                        brush = if (isPressed) {
-                                            Brush.verticalGradient(listOf(primaryColor.copy(alpha = 0.8f), primaryColor))
-                                        } else if (isMiddleC) {
-                                            Brush.verticalGradient(listOf(Color(0xFFFFF9E6), Color(0xFFFFECC0)))
-                                        } else {
-                                            Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFE8ECEF)))
-                                        },
-                                        shape = RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
-                                    )
-                                    .border(
-                                        width = if (isMiddleC) 1.dp else 0.5.dp,
-                                        color = if (isMiddleC) primaryColor.copy(alpha = 0.6f) else Color(0x33000000),
-                                        shape = RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
-                                    )
-                                    .pointerInput(midiNote) {
-                                        detectTapGestures(
-                                            onPress = {
-                                                pressedKeys.add(midiNote)
-                                                onNotePressed(midiNote)
-                                                viewModel.onMidiNoteOn(midiNote, 95)
-                                                val freq = viewModel.tunerReferenceFrequency.value * 2.0.pow((midiNote - 69) / 12.0).toFloat()
-                                                viewModel.detectedPitch.value = freq
-                                                viewModel.detectedNote.value = getNoteNameFromMidi(midiNote)
-
-                                                try {
-                                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
-                                                } catch (_: Exception) {}
-
-                                                tryAwaitRelease()
-                                                pressedKeys.remove(midiNote)
-                                                viewModel.onMidiNoteOff(midiNote)
-                                            }
-                                        )
-                                    },
-                                contentAlignment = Alignment.BottomCenter
-                            ) {
-                                if (showNoteLabels) {
-                                    Text(
-                                        text = if (isMiddleC) "C4" else if (noteName.startsWith("C")) noteName else noteName.take(1),
-                                        fontSize = if (isMiddleC) 10.sp else 9.sp,
-                                        fontWeight = if (isMiddleC) FontWeight.Black else FontWeight.Medium,
-                                        color = if (isPressed) Color.White else if (isMiddleC) primaryColor else Color(0xFF555555),
-                                        modifier = Modifier.padding(bottom = 6.dp)
-                                    )
-                                }
-                            }
+                            drawRoundRect(
+                                color = block.color.copy(alpha = 0.85f),
+                                topLeft = Offset(finalX, block.currentY),
+                                size = Size(blockWidth, 20f),
+                                cornerRadius = CornerRadius(4f, 4f)
+                            )
                         }
                     }
 
-                    whiteNotes.forEachIndexed { whiteIdx, whiteMidi ->
-                        val potentialBlackMidi = whiteMidi + 1
-                        if (allNotes.contains(potentialBlackMidi) && isMidiNoteBlack(potentialBlackMidi)) {
-                            val isPressed = pressedKeys.contains(potentialBlackMidi) || viewModel.midiActiveNotes[potentialBlackMidi] == true
-                            val leftOffset = (whiteIdx * 28 + 19).dp
-
-                            Box(
-                                modifier = Modifier
-                                    .offset(x = leftOffset)
-                                    .width(blackKeyWidth)
-                                    .height(blackKeyHeight)
-                                    .shadow(if (isPressed) 2.dp else 6.dp, RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                                    .background(
-                                        brush = if (isPressed) {
-                                            Brush.verticalGradient(listOf(primaryColor, primaryColor.copy(alpha = 0.7f)))
-                                        } else {
-                                            Brush.verticalGradient(listOf(Color(0xFF2B2D33), Color(0xFF111215)))
-                                        },
-                                        shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
-                                    )
-                                    .border(0.5.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                                    .pointerInput(potentialBlackMidi) {
-                                        detectTapGestures(
-                                            onPress = {
-                                                pressedKeys.add(potentialBlackMidi)
-                                                onNotePressed(potentialBlackMidi)
-                                                viewModel.onMidiNoteOn(potentialBlackMidi, 95)
-                                                val freq = viewModel.tunerReferenceFrequency.value * 2.0.pow((potentialBlackMidi - 69) / 12.0).toFloat()
-                                                viewModel.detectedPitch.value = freq
-                                                viewModel.detectedNote.value = getNoteNameFromMidi(potentialBlackMidi)
-
-                                                try {
-                                                    viewModel.audioEngine.noteOn(potentialBlackMidi, 0.85f)
-                                                } catch (_: Exception) {}
-
-                                                tryAwaitRelease()
-                                                pressedKeys.remove(potentialBlackMidi)
-                                                viewModel.onMidiNoteOff(potentialBlackMidi)
-                                            }
-                                        )
-                                    },
-                                contentAlignment = Alignment.BottomCenter
-                            ) {
-                                if (showNoteLabels) {
-                                    Text(
-                                        text = getNoteNameFromMidi(potentialBlackMidi),
-                                        fontSize = 7.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isPressed) Color.White else Color(0xFFBBBBBB),
-                                        modifier = Modifier.padding(bottom = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    UnifiedPianoKeyboard(
+                        activeMidiNotes = viewModel.midiActiveNotes,
+                        accentColor = primaryColor,
+                        showNoteNames = showNoteLabels,
+                        isPlaying = viewModel.isScorePlaying.value,
+                        startNote = startMidi,
+                        endNote = startMidi + totalKeys - 1,
+                        onKeyTapped = { midiNote ->
+                            pressedKeys.add(midiNote)
+                            onNotePressed(midiNote)
+                            viewModel.onMidiNoteOn(midiNote, 95)
+                            val freq = viewModel.tunerReferenceFrequency.value * 2.0.pow((midiNote - 69) / 12.0).toFloat()
+                            viewModel.detectedPitch.value = freq
+                            viewModel.detectedNote.value = getNoteNameFromMidi(midiNote)
+                            try {
+                                viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                            } catch (_: Exception) {}
+                        },
+                        modifier = Modifier
+                            .width(keyboardWidth)
+                            .height(whiteKeyHeight)
+                            .padding(vertical = 4.dp)
+                    )
                 }
             }
         }
-
+    }
 
     if (viewModel.isFullscreenKeyboard.value) {
         Dialog(
@@ -472,31 +403,27 @@ fun PianoKeyboard88Keys(
                 }
             }
             Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF0A0A0A)) {
-                var fsKeyboardMode by rememberSaveable { mutableStateOf("PIANO") }
                 var fsZoomFactor by rememberSaveable { mutableStateOf(1.0f) }
                 var panOffset by remember { mutableStateOf(Offset.Zero) }
                 var areControlsVisible by remember { mutableStateOf(true) }
-                var fsShowLetters by rememberSaveable { mutableStateOf(true) }
+                var fsShowLetters by rememberSaveable { mutableStateOf(showNoteLabels) }
                 var fsShowLyrics by rememberSaveable { mutableStateOf(true) }
 
                 val isPlaying = viewModel.isScorePlaying.value
-                val currentScore = viewModel.currentScore.value
+                val currentScore = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
 
-                val totalMeasures = currentScore?.measures?.size ?: 0
-                
-                // Calculate total duration based on per-measure time signatures
                 val totalSeconds = remember(currentScore) {
                     if (currentScore == null) 0.0
                     else {
-                        currentScore.measures.sumOf { 
-                            (60.0 / currentScore.tempo.toDouble()) * it.timeSignatureNumerator.toDouble() 
+                        currentScore.measures.sumOf {
+                            (60.0 / currentScore.tempo.toDouble()) * it.timeSignatureNumerator.toDouble()
                         }
                     }
                 }
-                
+
                 val currentMeasure = viewModel.scorePlayheadMeasure.value
                 val currentOffset = viewModel.scorePlayheadOffset.value
-                
+
                 val currentSeconds = remember(currentScore, currentMeasure, currentOffset) {
                     if (currentScore == null) 0.0
                     else {
@@ -514,7 +441,6 @@ fun PianoKeyboard88Keys(
                 }
 
                 val timelineProgress = if (totalSeconds > 0) (currentSeconds / totalSeconds).toFloat() else 0f
-
                 val currentMin = currentSeconds.toInt() / 60
                 val currentSec = currentSeconds.toInt() % 60
                 val currentTimeStr = "$currentMin:${if (currentSec < 10) "0$currentSec" else currentSec}"
@@ -525,13 +451,6 @@ fun PianoKeyboard88Keys(
 
                 val fsScrollState = rememberScrollState()
                 val fsKeyboardWidth = 32.dp * whiteKeyCount
-
-                LaunchedEffect(areControlsVisible, activeNotesSnapshot.value.isNotEmpty()) {
-                    if (areControlsVisible && activeNotesSnapshot.value.isNotEmpty()) {
-                        delay(4500L)
-                        areControlsVisible = false
-                    }
-                }
 
                 Box(
                     modifier = Modifier
@@ -558,65 +477,56 @@ fun PianoKeyboard88Keys(
                             .fillMaxSize()
                             .graphicsLayer(scaleX = fsZoomFactor, scaleY = fsZoomFactor, translationX = panOffset.x, translationY = panOffset.y)
                     ) {
-                        // Notation View Area
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
                                 .background(Color.Black)
                         ) {
-                                    StaffAndTabNotationViewer(
-                                        score = currentScore,
-                                        playheadMeasure = viewModel.scorePlayheadMeasure.value,
-                                        playheadOffset = viewModel.scorePlayheadOffset.value,
-                                        activeMidiNotes = viewModel.midiActiveNotes,
-                                        playingNote = viewModel.midiPlayingNote.value,
-                                        primaryColor = primaryColor,
-                                        currentFormat = notationFormat,
-                                        onFormatChange = { newFormat -> notationFormat = newFormat },
-                                        showLetters = fsShowLetters,
-                                        showLyrics = fsShowLyrics,
-                                        isSplitStaff = viewModel.isSplitStaff.value,
-                                        isVerticalScroll = viewModel.isVerticalScroll.value,
-                                        leftHandColor = viewModel.leftHandColor.value,
-                                        rightHandColor = viewModel.rightHandColor.value,
-                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                        isRightHandHidden = viewModel.isRightHandHidden.value,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
+                            StaffAndTabNotationViewer(
+                                score = currentScore,
+                                playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                playheadOffset = viewModel.scorePlayheadOffset.value,
+                                activeMidiNotes = viewModel.midiActiveNotes,
+                                playingNote = viewModel.midiPlayingNote.value,
+                                primaryColor = primaryColor,
+                                currentFormat = notationFormat,
+                                onFormatChange = { newFormat -> notationFormat = newFormat },
+                                showLetters = fsShowLetters,
+                                showLyrics = fsShowLyrics,
+                                isSplitStaff = viewModel.isSplitStaff.value,
+                                isVerticalScroll = viewModel.isVerticalScroll.value,
+                                leftHandColor = viewModel.leftHandColor.value,
+                                rightHandColor = viewModel.rightHandColor.value,
+                                isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                isRightHandHidden = viewModel.isRightHandHidden.value,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
 
-                        // Piano Keyboard Area
                         Column(
                             modifier = Modifier.fillMaxWidth().wrapContentHeight().horizontalScroll(fsScrollState)
                         ) {
                             UnifiedPianoKeyboard(
                                 activeMidiNotes = viewModel.midiActiveNotes,
-                                accentColor = if (fsKeyboardMode == "DRUM") Color(0xFFFF9800) else primaryColor,
+                                accentColor = primaryColor,
+                                showNoteNames = fsShowLetters,
+                                isPlaying = isPlaying,
                                 startNote = 21,
                                 endNote = 108,
-                                onKeyTapped = { note ->
-                                    viewModel.midiActiveNotes[note] = true
-                                    val freq = viewModel.tunerReferenceFrequency.value * 2.0.pow((note - 69) / 12.0).toFloat()
-                                    viewModel.detectedPitch.value = freq
-                                    viewModel.detectedNote.value = getNoteNameFromMidi(note)
-
+                                onKeyTapped = { midi ->
+                                    viewModel.onMidiNoteOn(midi, 95)
                                     try {
-                                        viewModel.audioEngine.noteOn(note, 0.85f)
+                                        viewModel.audioEngine.noteOn(midi, 0.85f)
                                     } catch (_: Exception) {}
-
-                                    scope.launch {
-                                        delay(300)
-                                        viewModel.midiActiveNotes[note] = false
-                                    }
                                 },
-                                modifier = Modifier.width(fsKeyboardWidth).height(180.dp)
+                                modifier = Modifier.width(fsKeyboardWidth).height(160.dp)
                             )
                         }
                     }
 
                     // Top Toolbar (HUD)
-                    androidx.compose.animation.AnimatedVisibility(
+                    AnimatedVisibility(
                         visible = areControlsVisible,
                         enter = fadeIn(tween(250)),
                         exit = fadeOut(tween(300)),
@@ -634,7 +544,6 @@ fun PianoKeyboard88Keys(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                // Progress Slider at the very top
                                 Row(
                                     modifier = Modifier.fillMaxWidth().height(24.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -753,7 +662,7 @@ fun PianoKeyboard88Keys(
                                         ) {
                                             Text("Lyrics", fontSize = 10.sp, color = Color.White)
                                         }
-                                        
+
                                         IconButton(onClick = { viewModel.isFullscreenKeyboard.value = false }) {
                                             Icon(Icons.Default.FullscreenExit, null, tint = Color(0xFFFF6B35), modifier = Modifier.size(22.dp))
                                         }
@@ -762,22 +671,22 @@ fun PianoKeyboard88Keys(
                             }
                         }
                     }
-
-                    if (viewModel.showSettings.value) {
-                        PlaybackSettingsSheet(
-                            viewModel = viewModel,
-                            notationFormat = notationFormat,
-                            onFormatChange = { notationFormat = it },
-                            showLetters = fsShowLetters,
-                            onShowLettersChange = { fsShowLetters = it },
-                            showLyrics = fsShowLyrics,
-                            onShowLyricsChange = { fsShowLyrics = it },
-                            onDismiss = { viewModel.showSettings.value = false }
-                        )
-                    }
                 }
             }
         }
+    }
+
+    if (viewModel.showSettings.value) {
+        PlaybackSettingsSheet(
+            viewModel = viewModel,
+            notationFormat = notationFormat,
+            onFormatChange = { notationFormat = it },
+            showLetters = showNoteLabels,
+            onShowLettersChange = { showNoteLabels = it },
+            showLyrics = true,
+            onShowLyricsChange = {},
+            onDismiss = { viewModel.showSettings.value = false }
+        )
     }
 }
 
@@ -843,14 +752,14 @@ fun PlaybackSettingsSheet(
                         val formats = listOf("Staff", "Tab", "Combined")
                         Row(modifier = Modifier.background(Color.White.copy(0.05f), RoundedCornerShape(8.dp)).padding(3.dp)) {
                             formats.forEach { f ->
-                                val active = (f == "Staff" && notationFormat.contains("Staff")) || 
-                                             (f == "Tab" && notationFormat.contains("Tab")) ||
-                                             (f == "Combined" && notationFormat == "Combined")
+                                val active = (f == "Staff" && notationFormat.contains("Staff")) ||
+                                        (f == "Tab" && notationFormat.contains("Tab")) ||
+                                        (f == "Combined" && notationFormat == "Combined")
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
                                         .background(if (active) Color(0xFFFFD700) else Color.Transparent)
-                                        .clickable { onFormatChange(if(f == "Combined") "Combined" else "$f Notation") }
+                                        .clickable { onFormatChange(if (f == "Combined") "Combined" else "$f Notation") }
                                         .padding(horizontal = 10.dp, vertical = 5.dp)
                                 ) {
                                     Text(f, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (active) Color.Black else Color.White)
@@ -876,7 +785,7 @@ fun PlaybackSettingsSheet(
                             colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
                         )
                     }
-                    
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Show Note Names", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Switch(
@@ -1110,7 +1019,7 @@ private fun StepperControl(label: String, value: Int, onValueChange: (Int) -> Un
 }
 
 fun isMidiNoteBlack(midiNote: Int): Boolean {
-    val semitone = (midiNote - 12) % 12
+    val semitone = midiNote % 12
     val normalized = if (semitone < 0) semitone + 12 else semitone
     return normalized == 1 || normalized == 3 || normalized == 6 || normalized == 8 || normalized == 10
 }
@@ -1171,12 +1080,13 @@ fun SynthesiaWaterfallOverlay(
                 block.currentY += 6f
 
                 if (block.currentY in 300f..312f && particlesEnabled) {
+                    val wIdx = getWhiteKeyIndexForMidi(block.midiNote)
                     for (i in 0..3) {
                         val angle = (Random.nextFloat() * Math.PI).toFloat()
                         val speed = Random.nextFloat() * 4f + 2f
                         particles.add(
                             PianoSpark(
-                                x = (getWhiteKeyIndexForMidi(block.midiNote) / whiteKeyCount) * 1200f,
+                                x = (wIdx + 0.5f) * (1200f / whiteKeyCount),
                                 y = 300f,
                                 vx = cos(angle) * speed,
                                 vy = -sin(angle) * speed,
@@ -1206,13 +1116,13 @@ fun SynthesiaWaterfallOverlay(
     }
 
     Canvas(modifier = modifier.fillMaxWidth().height(260.dp)) {
-        val whiteKeyWidthPx = size.width / whiteKeyCount
+        val whiteKeyWidthPx = size.width / whiteKeyCount.toFloat()
 
         for (block in fallingBlocks) {
             val isBlack = isMidiNoteBlack(block.midiNote)
             val wIdx = getWhiteKeyIndexForMidi(block.midiNote)
-            val blockWidth = if (isBlack) 0.6f * whiteKeyWidthPx else whiteKeyWidthPx - 4f
-            val xOffset = if (isBlack) (whiteKeyWidthPx - blockWidth) / 2f else 2f
+            val blockWidth = if (isBlack) 0.6f * whiteKeyWidthPx else 0.85f * whiteKeyWidthPx
+            val xOffset = if (isBlack) (whiteKeyWidthPx - blockWidth) / 2f else (whiteKeyWidthPx - blockWidth) / 2f
             val finalX = (wIdx * whiteKeyWidthPx) + xOffset
             val blockHeight = (block.currentY - block.startY).coerceAtLeast(24f)
 

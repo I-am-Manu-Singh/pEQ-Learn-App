@@ -172,7 +172,13 @@ class MainActivity : ComponentActivity() {
         val scorePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let {
                 lifecycleScope.launch {
-                    viewModel.parseIncomingScoreFile(it.toString())
+                    val fileName = getFileName(it) ?: "Imported Score"
+                    val bytes = try {
+                        contentResolver.openInputStream(it)?.use { stream -> stream.readBytes() }
+                    } catch (e: Exception) {
+                        null
+                    }
+                    viewModel.parseIncomingScoreFile(it.toString(), bytes, fileName)
                 }
             }
         }

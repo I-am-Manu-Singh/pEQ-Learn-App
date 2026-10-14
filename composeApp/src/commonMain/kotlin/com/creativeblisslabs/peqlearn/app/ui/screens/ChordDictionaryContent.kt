@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -31,11 +32,12 @@ import com.creativeblisslabs.peqlearn.app.util.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.vector.ImageVector
 
 enum class ChordInstrumentType(val label: String) {
-    GUITAR("Guitar (6-Str)"),
-    PIANO("Piano (88-Key)"),
-    UKULELE("Ukulele (4-Str)")
+    PIANO("🎹"),
+    GUITAR("🎸"),
+    UKULELE("🪕")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -204,7 +206,7 @@ fun ChordDictionaryPanel(
         try {
             getAudioEngine().setInstrument(selectedInstrument.name)
         } catch (e: Exception) {
-            println("pEQControl: [INSTRUMENT-SWITCH] Failed to sync audio engine pointer: ${e.message}")
+            println("pEQLearn: [INSTRUMENT-SWITCH] Failed to sync audio engine pointer: ${e.message}")
         }
     }
 
@@ -212,58 +214,47 @@ fun ChordDictionaryPanel(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (isScrollable) Modifier.verticalScroll(scrollState) else Modifier)
-            .padding(16.dp),
+            .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(
-                        imageVector = if (selectedInstrument == ChordInstrumentType.PIANO) Icons.Default.Piano else Icons.Default.MusicNote,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = partColor
-                    )
-                    Text(
-                        text = if (mode == 0) "CHORD DICTIONARY - ${typeDef.label.uppercase()}" else "SCALE EXPLORER",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        color = partColor,
-                        letterSpacing = 1.5.sp
-                    )
-                }
-                Text(
-                    text = chordName,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
-                )
-            }
+     
+Row(
+    modifier = Modifier.fillMaxWidth(), // Ensures the top row fills available bounds
+    horizontalArrangement = Arrangement.spacedBy(8.dp), 
+    verticalAlignment = Alignment.CenterVertically
+) {
+    // 1. Added Modifier.weight(1f) here so it leaves room for the buttons
+    Box(modifier = Modifier.weight(1f)) {
+        InstrumentSelectionRow(
+            selectedInstrument = selectedInstrument,
+            onInstrumentChange = { selectedInstrument = it }
+        )
+    }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                FilledTonalButton(
-                    onClick = { isLabModeOpen = true },
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = partColor.copy(alpha = 0.2f))
-                ) {
-                    Icon(Icons.Default.Science, contentDescription = null, tint = partColor, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Immersive Lab", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = partColor)
-                }
+    // 2. Lab Toggle Button (Will now display perfectly)
+    FilledTonalButton(
+        onClick = { isLabModeOpen = true },
+        colors = ButtonDefaults.filledTonalButtonColors(containerColor = partColor.copy(alpha = 0.2f)),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), // Cleans up inner spacing bounds
+        modifier = Modifier.height(40.dp) // Matches the height profile of the instrument selector row
+    ) {
+        Icon(Icons.Default.Science, contentDescription = null, tint = partColor, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text("Lab", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = partColor)
+    }
 
-                IconButton(onClick = { showCircleOfFifths = !showCircleOfFifths }) {
-                    Icon(
-                        imageVector = Icons.Default.Adjust,
-                        contentDescription = "Circle of Fifths",
-                        tint = if (showCircleOfFifths) partColor else Color.White.copy(alpha = 0.7f)
-                    )
-                }
-            }
-        }
-
+    // 3. Circle of Fifths Button
+    IconButton(
+        onClick = { showCircleOfFifths = !showCircleOfFifths },
+        modifier = Modifier.size(40.dp) // Keeps a consistent touch target profile matching 40.dp height
+    ) {
+        Icon(
+            imageVector = Icons.Default.Adjust,
+            contentDescription = "Circle of Fifths",
+            tint = if (showCircleOfFifths) partColor else Color.White.copy(alpha = 0.7f)
+        )
+    }
+}
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             SegmentedButton(
                 selected = mode == 0,
@@ -284,10 +275,7 @@ fun ChordDictionaryPanel(
             )
         }
 
-        InstrumentSelectionRow(
-            selectedInstrument = selectedInstrument,
-            onInstrumentChange = { selectedInstrument = it }
-        )
+      
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -467,7 +455,9 @@ fun ChordDictionaryPanel(
                                 viewModel.midiActiveNotes[midiPitch] = true
 
                                 try {
-                                    getAudioEngine().playSample("PIANO_NOTE", midiPitch, "SYSTEM")
+                                    val instr = if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.UKULELE) "GUITAR" else "PIANO"
+                                    viewModel.audioEngine.setInstrument(instr)
+                                    viewModel.audioEngine.noteOn(midiPitch, 0.85f)
                                 } catch (_: Exception) {}
                                 delay(500)
                             }
@@ -517,6 +507,13 @@ fun ChordDictionaryPanel(
                                 chordFingers = if (!isArpeggioRunning && mode == 0) guitarShape.fingers else null,
                                 activeCoordinate = highlightedGuitarCoordinate,
                                 activeNotes = if (isArpeggioRunning) emptyList() else pianoPitches,
+                                onFretTapped = { _, _, midiNote ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("GUITAR")
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
                                 modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp))
                             )
                             Spacer(Modifier.height(2.dp))
@@ -533,6 +530,13 @@ fun ChordDictionaryPanel(
                                 startNote = startNoteBoundary,
                                 endNote = endNoteBoundary,
                                 showNoteNames = true,
+                                onKeyTapped = { midiNote ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("PIANO")
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
                                 modifier = Modifier.fillMaxWidth().height(105.dp).clip(RoundedCornerShape(8.dp))
                             )
                             PianoFingerLegend(accentColor = partColor, activeSuffix = typeDef.suffix)
@@ -568,6 +572,13 @@ fun ChordDictionaryPanel(
                                 stringLabels = listOf("G", "C", "E", "A"),
                                 openStringsSemis = listOf(7, 0, 4, 9),
                                 activeCoordinate = highlightedUkuCoordinate,
+                                onFretTapped = { _, _, midiNote ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("GUITAR")
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
                                 modifier = Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(12.dp))
                             )
                             Spacer(Modifier.height(2.dp))
@@ -676,17 +687,39 @@ fun InstrumentSelectionRow(
     onInstrumentChange: (ChordInstrumentType) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(40.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         ChordInstrumentType.entries.forEach { inst ->
             val isSelected = inst == selectedInstrument
-            FilterChip(
-                selected = isSelected,
-                onClick = { onInstrumentChange(inst) },
-                label = { Text(inst.label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                modifier = Modifier.weight(1f)
-            )
+            Box(
+                modifier = Modifier
+                    .weight(1f) // Distributes width evenly across items
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (isSelected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) else Color.Transparent)
+                    .clickable { onInstrumentChange(inst) }
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp), 
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Text(
+                        text = inst.label,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -1037,6 +1070,7 @@ fun CircleOfFifthsVisualizer(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImmersiveKeyboardFretboardLabDialog(
     viewModel: AppViewModel,
@@ -1046,117 +1080,705 @@ fun ImmersiveKeyboardFretboardLabDialog(
     accentColor: Color,
     onDismiss: () -> Unit
 ) {
-    var playbackSpeedMultiplier by remember { mutableStateOf(1.0f) }
-    var isArpeggioRunning by remember { mutableStateOf(false) }
-    var currentPlayingIdx by remember { mutableStateOf(-1) }
-    var cagedPosition by remember { mutableStateOf(0) }
+    var activeLabTab by remember { mutableStateOf(if (instrumentType == ChordInstrumentType.PIANO) "Piano" else if (instrumentType == ChordInstrumentType.UKULELE) "Uke" else "Guitar") }
+    var selectedSpeed by remember { mutableStateOf("1.0x") }
+    var playbackMode by remember { mutableStateOf("Arpeggio") }
+    var isPlaying by remember { mutableStateOf(false) }
+
+    var selectedMode by remember { mutableStateOf(0) } // 0 = Chords, 1 = Scales
+    var labRootIdx by remember { mutableStateOf(rootIdx) }
+    var labSuffixIdx by remember { mutableStateOf(qualityIdx) }
+    var labInversion by remember { mutableStateOf("Root Position") }
+
+    // Left sidebar controls
+    var guitarConfigStr by remember { mutableStateOf("6 Str") }
+    var tuningOption by remember { mutableStateOf("Standard") }
+    var capoFretSelected by remember { mutableStateOf(0) } // 0 = Open, 1..5
+    var fretNeckZoom by remember { mutableStateOf("12f") }
+    var isLeftHanded by remember { mutableStateOf(false) }
+    var showInlayDots by remember { mutableStateOf(true) }
+    var labelOverlay by remember { mutableStateOf("Notes") } // Notes, Intervals, Fingers
+    var noteNamingSystem by remember { mutableStateOf("Western (C, D, E)") }
+    var synthSound by remember { mutableStateOf("Acoustic Piano") }
 
     val roots = NOTE_NAMES_CD
-    val rootName = roots[rootIdx % roots.size]
-    val shape = remember(rootIdx, qualityIdx, cagedPosition) {
-        ChordVoicingEngine.getGuitarVoicing(rootName, "maj", cagedPosition)
-    }
+    val currentRootName = roots[labRootIdx.coerceIn(0, roots.size - 1)]
 
-    LaunchedEffect(isArpeggioRunning, playbackSpeedMultiplier) {
-        if (isArpeggioRunning && shape.soundingMidiNotes.isNotEmpty()) {
-            val notes = shape.soundingMidiNotes
-            while (isArpeggioRunning) {
-                for (i in notes.indices) {
-                    currentPlayingIdx = i
-                    val delayMs = (400L / playbackSpeedMultiplier).toLong().coerceAtLeast(100L)
-                    delay(delayMs)
-                }
-            }
-        } else {
-            currentPlayingIdx = -1
+    val chordSuffixes = listOf("Major", "Minor", "7th", "Major 7th", "Minor 7th", "Diminished", "Augmented", "Sus4", "Add9")
+    val currentSuffixName = chordSuffixes.getOrElse(labSuffixIdx) { "Major" }
+    val inversions = listOf("Root Position", "1st Inversion", "2nd Inversion")
+
+    val activeChordPitches = remember(labRootIdx, labSuffixIdx, labInversion) {
+        val rootMidi = 60 + labRootIdx
+        val intervals = when (labSuffixIdx) {
+            1 -> listOf(0, 3, 7)
+            2 -> listOf(0, 4, 7, 10)
+            3 -> listOf(0, 4, 7, 11)
+            4 -> listOf(0, 3, 7, 10)
+            5 -> listOf(0, 3, 6)
+            6 -> listOf(0, 4, 8)
+            7 -> listOf(0, 5, 7)
+            8 -> listOf(0, 4, 7, 14)
+            else -> listOf(0, 4, 7) // Major
+        }
+        val baseNotes = intervals.map { rootMidi + it }
+        when (labInversion) {
+            "1st Inversion" -> if (baseNotes.size > 1) baseNotes.drop(1) + (baseNotes.first() + 12) else baseNotes
+            "2nd Inversion" -> if (baseNotes.size > 2) baseNotes.drop(2) + baseNotes.take(2).map { it + 12 } else baseNotes
+            else -> baseNotes
         }
     }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.92f),
-            shape = RoundedCornerShape(24.dp),
-            color = Color(0xFF10121A),
-            border = BorderStroke(1.5.dp, accentColor.copy(alpha = 0.5f))
+    val activeMidiMap = remember(activeChordPitches) {
+        activeChordPitches.associateWith { true }
+    }
+
+    val orangeColor = Color(0xFFFF9E1B)
+    val darkCardBg = Color(0xFF13151B)
+    val sidebarBg = Color(0xFF0F1015)
+    val rosewoodBrush = Brush.verticalGradient(listOf(Color(0xFF4A342E), Color(0xFF382723), Color(0xFF291C19)))
+
+    // Arpeggio / Strum playback loop
+    var currentAuditionIdx by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(isPlaying, selectedSpeed, playbackMode, activeChordPitches) {
+        if (!isPlaying || activeChordPitches.isEmpty()) {
+            currentAuditionIdx = null
+            return@LaunchedEffect
+        }
+        val speedMult = when (selectedSpeed) {
+            "0.5x" -> 0.5f
+            "1.5x" -> 1.5f
+            "2.0x" -> 2.0f
+            else -> 1.0f
+        }
+        val stepDelay = ((if (playbackMode == "Arpeggio") 400L else 700L) / speedMult).toLong()
+
+        while (isPlaying) {
+            if (playbackMode == "Arpeggio") {
+                for (idx in activeChordPitches.indices) {
+                    if (!isPlaying) break
+                    currentAuditionIdx = idx
+                    val midi = activeChordPitches[idx]
+                    try {
+                        val inst = if (activeLabTab == "Guitar" || activeLabTab == "Uke") "GUITAR" else "PIANO"
+                        viewModel.audioEngine.setInstrument(inst)
+                        viewModel.audioEngine.noteOn(midi, 0.85f)
+                    } catch (_: Exception) {}
+                    delay(stepDelay)
+                }
+            } else {
+                currentAuditionIdx = null
+                activeChordPitches.forEach { midi ->
+                    try {
+                        val inst = if (activeLabTab == "Guitar" || activeLabTab == "Uke") "GUITAR" else "PIANO"
+                        viewModel.audioEngine.setInstrument(inst)
+                        viewModel.audioEngine.noteOn(midi, 0.85f)
+                    } catch (_: Exception) {}
+                }
+                delay(stepDelay)
+            }
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0A0B0E))
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            Row(modifier = Modifier.fillMaxSize()) {
+                // 1. LEFT SIDEBAR (Dark control panel matching screenshots)
+                Column(
+                    modifier = Modifier
+                        .width(220.dp)
+                        .fillMaxHeight()
+                        .background(sidebarBg)
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Surface(
-                            shape = CircleShape,
-                            color = accentColor.copy(alpha = 0.2f),
-                            border = BorderStroke(1.dp, accentColor)
-                        ) {
-                            Icon(Icons.Default.Science, contentDescription = null, tint = accentColor, modifier = Modifier.padding(8.dp).size(24.dp))
-                        }
-                        Column {
-                            Text(text = "IMMERSIVE INSTRUMENT LAB", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color.White, letterSpacing = 1.sp)
-                            Text(text = "$rootName Interactive Fretboard & Keyboard Analysis", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
-                        }
-                    }
+                    Text(
+                        text = "Visualizer Lab",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = orangeColor,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
 
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().background(Color(0xFF161922), RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(
-                            onClick = { isArpeggioRunning = !isArpeggioRunning },
-                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = if (isArpeggioRunning) accentColor else Color(0xFF2A2D3D))
-                        ) {
-                            Icon(if (isArpeggioRunning) Icons.Default.Stop else Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (isArpeggioRunning) "Halt Arpeggio" else "Run Arpeggiator", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-
-                        listOf(0.5f, 1.0f, 1.5f, 2.0f).forEach { spd ->
-                            FilterChip(selected = playbackSpeedMultiplier == spd, onClick = { playbackSpeedMultiplier = spd }, label = { Text("${spd}x", fontSize = 11.sp) })
-                        }
-                    }
-                }
-
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f).background(Color(0xFF0C0E14), RoundedCornerShape(16.dp)).border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp)).padding(12.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("Harmonic Staff & Tablature Projection", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
-                        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                            StaffAndTabNotationViewer(
-                                score = viewModel.currentScore.value as Score?,
-                                playheadMeasure = viewModel.scorePlayheadMeasure.value,
-                                playheadOffset = viewModel.scorePlayheadOffset.value,
-                                activeMidiNotes = viewModel.midiActiveNotes,
-                                playingNote = viewModel.midiPlayingNote.value,
-                                primaryColor = accentColor,
-                                currentFormat = "Tab",
-                                onFormatChange = {},
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-
-                        Text("88-Key Synchronized Keyboard Canvas", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
-                        Box(modifier = Modifier.fillMaxWidth().height(160.dp)) {
-                            val activeNotes = remember(shape, currentPlayingIdx) {
-                                if (currentPlayingIdx in shape.soundingMidiNotes.indices) {
-                                    setOf(shape.soundingMidiNotes[currentPlayingIdx])
-                                } else {
-                                    shape.soundingMidiNotes.toSet()
+                    // Active Visualizer Buttons: [Piano] [Guitar] [Uke] [Split]
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Active Visualizer", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("Piano", "Guitar", "Uke", "Split").forEach { tab ->
+                                val isSelected = activeLabTab == tab
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(30.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSelected) orangeColor else Color(0xFF1E2129))
+                                        .clickable { activeLabTab = tab },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = tab,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.Black else Color.White
+                                    )
                                 }
                             }
-                            PianoKeyboard88Keys(viewModel = viewModel, activeMidiNotes = activeNotes, modifier = Modifier.fillMaxSize())
+                        }
+                    }
+
+                    // Visualizer specific configs:
+                    if (activeLabTab == "Guitar" || activeLabTab == "Split") {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Guitar Config", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("6 Str", "7 Str").forEach { strConf ->
+                                    val isSel = guitarConfigStr == strConf
+                                    Box(
+                                        modifier = Modifier
+                                            .width(54.dp)
+                                            .height(28.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSel) Color(0xFF3B4054) else Color(0xFF1E2129))
+                                            .border(1.dp, if (isSel) Color(0xFF7580A5) else Color.Transparent, RoundedCornerShape(6.dp))
+                                            .clickable { guitarConfigStr = strConf },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(strConf, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Tuning Dropdown
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Tuning", fontSize = 10.sp, color = Color.White.copy(0.5f))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF161820))
+                                    .border(1.dp, Color(0xFF282D3A), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(tuningOption, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+
+                        // Capo Fret: [Open] [1] [2] [3] [4] [5]
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Capo Fret", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                (0..3).forEach { fret ->
+                                    val label = if (fret == 0) "Open" else "$fret"
+                                    val isSel = capoFretSelected == fret
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(if (fret == 0) 1.4f else 1f)
+                                            .height(28.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSel) orangeColor else Color(0xFF1E2129))
+                                            .clickable { capoFretSelected = fret },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color.Black else Color.White)
+                                    }
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                (4..5).forEach { fret ->
+                                    val isSel = capoFretSelected == fret
+                                    Box(
+                                        modifier = Modifier
+                                            .width(42.dp)
+                                            .height(28.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSel) orangeColor else Color(0xFF1E2129))
+                                            .clickable { capoFretSelected = fret },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("$fret", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color.Black else Color.White)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Fret Neck Zoom: [5f] [8f] [12f] [15f]
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Fret Neck Zoom", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("5f", "8f", "12f", "15f").forEach { z ->
+                                    val isSel = fretNeckZoom == z
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(28.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSel) Color(0xFF3B4054) else Color(0xFF1E2129))
+                                            .border(1.dp, if (isSel) Color(0xFF7580A5) else Color.Transparent, RoundedCornerShape(6.dp))
+                                            .clickable { fretNeckZoom = z },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(z, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+                            }
+                        }
+                    } else if (activeLabTab == "Uke") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Ukulele Tuning", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF161820))
+                                    .border(1.dp, Color(0xFF282D3A), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Standard C", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    // Toggles: Left-Handed, Inlay Dots
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Fretboard View", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                        if (activeLabTab != "Piano") {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Left-Handed", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                Switch(
+                                    checked = isLeftHanded,
+                                    onCheckedChange = { isLeftHanded = it },
+                                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = orangeColor)
+                                )
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Inlay Dots", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            Switch(
+                                checked = showInlayDots,
+                                onCheckedChange = { showInlayDots = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = orangeColor)
+                            )
+                        }
+                    }
+
+                    // Label Overlay: [Notes] [Intervals] [Fingers]
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Label Overlay", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Notes", "Intervals").forEach { l ->
+                                val isSel = labelOverlay == l
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(28.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSel) Color(0xFF3B4054) else Color(0xFF1E2129))
+                                        .border(1.dp, if (isSel) Color(0xFF7580A5) else Color.Transparent, RoundedCornerShape(6.dp))
+                                        .clickable { labelOverlay = l },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(l, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .width(70.dp)
+                                .height(28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (labelOverlay == "Fingers") Color(0xFF3B4054) else Color(0xFF1E2129))
+                                .border(1.dp, if (labelOverlay == "Fingers") Color(0xFF7580A5) else Color.Transparent, RoundedCornerShape(6.dp))
+                                .clickable { labelOverlay = "Fingers" },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Fingers", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+
+                    // Note Naming System Dropdown
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Note Naming System", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF161820))
+                                .border(1.dp, Color(0xFF282D3A), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(noteNamingSystem, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+
+                    // Sound Generator
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Sound Generator", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF161820))
+                                .border(1.dp, Color(0xFF282D3A), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(synthSound, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+
+                // 2. MAIN WORKSTATION AREA (Top bar, Instrument Canvas, Bottom Configuration Bar)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // TOP BAR: [Back Arrow] Title + Subtitle | [Speed buttons] [Arpeggio] [Play Button]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            }
+                            Column {
+                                Text(
+                                    text = "$currentRootName Workstation",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Speed: Normal ($selectedSpeed) | Playback: $playbackMode",
+                                    fontSize = 11.sp,
+                                    color = Color.White.copy(0.6f)
+                                )
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            // Speeds: 0.5x, 1.0x, 1.5x, 2.0x
+                            listOf("0.5x", "1.0x", "1.5x", "2.0x").forEach { spd ->
+                                val isSel = selectedSpeed == spd
+                                Box(
+                                    modifier = Modifier
+                                        .height(28.dp)
+                                        .padding(horizontal = 8.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSel) orangeColor else Color(0xFF1E2129))
+                                        .clickable { selectedSpeed = spd },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(spd, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color.Black else Color.White)
+                                }
+                            }
+
+                            // Playback Mode Chip: Arpeggio / Strum
+                            Box(
+                                modifier = Modifier
+                                    .height(28.dp)
+                                    .padding(horizontal = 10.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF1E2129))
+                                    .clickable {
+                                        playbackMode = if (playbackMode == "Arpeggio") "Strum" else "Arpeggio"
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(playbackMode, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+
+                            // Play Button (Orange circle with Play icon)
+                            Button(
+                                onClick = { isPlaying = !isPlaying },
+                                shape = RoundedCornerShape(20.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isPlaying) Color(0xFFD32F2F) else orangeColor),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = if (isPlaying) Color.White else Color.Black,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = if (isPlaying) "Stop" else "Play",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isPlaying) Color.White else Color.Black
+                                )
+                            }
+                        }
+                    }
+
+                    // CENTER: INSTRUMENT CANVAS (Keyboard, Fretboard, or Split view)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        when (activeLabTab) {
+                            "Piano" -> {
+                                UnifiedPianoKeyboard(
+                                    activeMidiNotes = activeMidiMap,
+                                    accentColor = orangeColor,
+                                    startNote = 48,
+                                    endNote = 84,
+                                    showNoteNames = true,
+                                    isPlaying = isPlaying,
+                                    onKeyTapped = { midi ->
+                                        try {
+                                            viewModel.audioEngine.setInstrument("PIANO")
+                                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                                        } catch (_: Exception) {}
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(10.dp))
+                                )
+                            }
+                            "Guitar" -> {
+                                val numF = when (fretNeckZoom) {
+                                    "5f" -> 5
+                                    "8f" -> 8
+                                    "15f" -> 15
+                                    else -> 12
+                                }
+                                UnifiedGuitarFretboard(
+                                    numFrets = numF,
+                                    activeNotes = activeChordPitches,
+                                    rootNote = labRootIdx,
+                                    accentColor = orangeColor,
+                                    showNoteNames = true,
+                                    baseFret = if (capoFretSelected > 0) capoFretSelected else 1,
+                                    fretboardBrush = rosewoodBrush,
+                                    showInlayDots = showInlayDots,
+                                    onFretTapped = { _, _, midi ->
+                                        try {
+                                            viewModel.audioEngine.setInstrument("GUITAR")
+                                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                                        } catch (_: Exception) {}
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(10.dp))
+                                )
+                            }
+                            "Uke" -> {
+                                UnifiedGuitarFretboard(
+                                    numFrets = 7,
+                                    activeNotes = activeChordPitches,
+                                    rootNote = labRootIdx,
+                                    accentColor = orangeColor,
+                                    showNoteNames = true,
+                                    stringLabels = listOf("A", "E", "C", "G"),
+                                    openStringsSemis = listOf(9, 4, 0, 7),
+                                    fretboardBrush = rosewoodBrush,
+                                    showInlayDots = showInlayDots,
+                                    onFretTapped = { _, _, midi ->
+                                        try {
+                                            viewModel.audioEngine.setInstrument("GUITAR")
+                                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                                        } catch (_: Exception) {}
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(10.dp))
+                                )
+                            }
+                            else -> {
+                                // Split View (Piano on top, Guitar on bottom)
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    UnifiedPianoKeyboard(
+                                        activeMidiNotes = activeMidiMap,
+                                        accentColor = orangeColor,
+                                        startNote = 48,
+                                        endNote = 84,
+                                        showNoteNames = true,
+                                        isPlaying = isPlaying,
+                                        onKeyTapped = { midi ->
+                                            try {
+                                                viewModel.audioEngine.setInstrument("PIANO")
+                                                viewModel.audioEngine.noteOn(midi, 0.85f)
+                                            } catch (_: Exception) {}
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(115.dp).clip(RoundedCornerShape(8.dp))
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    UnifiedGuitarFretboard(
+                                        numFrets = 12,
+                                        activeNotes = activeChordPitches,
+                                        rootNote = labRootIdx,
+                                        accentColor = orangeColor,
+                                        showNoteNames = true,
+                                        fretboardBrush = rosewoodBrush,
+                                        showInlayDots = showInlayDots,
+                                        onFretTapped = { _, _, midi ->
+                                            try {
+                                                viewModel.audioEngine.setInstrument("GUITAR")
+                                                viewModel.audioEngine.noteOn(midi, 0.85f)
+                                            } catch (_: Exception) {}
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(105.dp).clip(RoundedCornerShape(8.dp))
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // BOTTOM BAR: Mode [Chords] [Scales] | Root Dropdown | Chord Suffix Dropdown | Inversion Dropdown
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0F1117), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFF1E212B), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Mode: [Chords] [Scales]
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Mode:", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF1B1E28))
+                                    .padding(2.dp)
+                            ) {
+                                listOf("Chords", "Scales").forEachIndexed { idx, m ->
+                                    val isSel = selectedMode == idx
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSel) Color(0xFF383E54) else Color.Transparent)
+                                            .clickable { selectedMode = idx }
+                                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(m, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color.White else Color.White.copy(0.6f))
+                                    }
+                                }
+                            }
+                        }
+
+                        // Root Dropdown
+                        var rootExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            Column(
+                                modifier = Modifier
+                                    .width(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF13161F))
+                                    .border(1.dp, Color(0xFF282E40), RoundedCornerShape(8.dp))
+                                    .clickable { rootExpanded = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("Root", fontSize = 9.sp, color = Color.White.copy(0.5f))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(currentRootName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            DropdownMenu(expanded = rootExpanded, onDismissRequest = { rootExpanded = false }) {
+                                roots.forEachIndexed { idx, r ->
+                                    DropdownMenuItem(
+                                        text = { Text(r) },
+                                        onClick = { labRootIdx = idx; rootExpanded = false }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Chord Suffix Dropdown
+                        var suffixExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            Column(
+                                modifier = Modifier
+                                    .width(100.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF13161F))
+                                    .border(1.dp, Color(0xFF282E40), RoundedCornerShape(8.dp))
+                                    .clickable { suffixExpanded = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("Chord Suffix", fontSize = 9.sp, color = Color.White.copy(0.5f))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(currentSuffixName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            DropdownMenu(expanded = suffixExpanded, onDismissRequest = { suffixExpanded = false }) {
+                                chordSuffixes.forEachIndexed { idx, s ->
+                                    DropdownMenuItem(
+                                        text = { Text(s) },
+                                        onClick = { labSuffixIdx = idx; suffixExpanded = false }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Inversion Dropdown
+                        var inversionExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            Column(
+                                modifier = Modifier
+                                    .width(105.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF13161F))
+                                    .border(1.dp, Color(0xFF282E40), RoundedCornerShape(8.dp))
+                                    .clickable { inversionExpanded = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("Inversion", fontSize = 9.sp, color = Color.White.copy(0.5f))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(labInversion, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            DropdownMenu(expanded = inversionExpanded, onDismissRequest = { inversionExpanded = false }) {
+                                inversions.forEach { inv ->
+                                    DropdownMenuItem(
+                                        text = { Text(inv) },
+                                        onClick = { labInversion = inv; inversionExpanded = false }
+                                    )
+                                }
+                            }
                         }
                     }
                 }

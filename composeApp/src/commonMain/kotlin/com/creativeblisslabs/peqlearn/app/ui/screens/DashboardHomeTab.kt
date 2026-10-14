@@ -147,79 +147,9 @@ fun DashboardHome(viewModel: AppViewModel) {
                 verticalArrangement = Arrangement.spacedBy(24.dp),
                 contentPadding = PaddingValues(top = 20.dp, bottom = 140.dp)
             ) {
-                // ⭐ PRO STATS & QUICK OPEN
+                // ⭐ QUICK PICK FILE TO OPEN
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(22.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                                horizontalArrangement = Arrangement.SpaceAround,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(
-                                        "${items.count { it.type == MediaType.AUDIO }}",
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        "AUDIO TRACKS",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                    )
-                                }
-                                VerticalDivider(
-                                    modifier = Modifier
-                                        .height(28.dp)
-                                        .width(1.dp),
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                                )
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(
-                                        "${items.count { it.type == MediaType.VIDEO }}",
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.secondary
-                                    )
-                                    Text(
-                                        "VIDEO REELS",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                    )
-                                }
-                                VerticalDivider(
-                                    modifier = Modifier
-                                        .height(28.dp)
-                                        .width(1.dp),
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                                )
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(
-                                        "${items.sumOf { it.sizeBytes } / 1024 / 1024} MB",
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.tertiary
-                                    )
-                                    Text(
-                                        "STORAGE USED",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                    )
-                                }
-                            }
-                        }
-
                         // 📂 QUICK PICK FILE TO OPEN
                         Button(
                             onClick = {
@@ -544,7 +474,7 @@ private fun MostPlayedSection(viewModel: AppViewModel) {
             "YEAR" -> 365 * 24 * 3600 * 1000L
             else -> Long.MAX_VALUE
         }
-        items.filter { it.playCount > 0 && (now - it.lastPlayed) < threshold }
+        items.filter { it.playCount > 0 && (timeFilter == "ALL" || it.lastPlayed == 0L || (now - it.lastPlayed) < threshold) }
              .sortedByDescending { it.playCount }
              .take(10)
     }

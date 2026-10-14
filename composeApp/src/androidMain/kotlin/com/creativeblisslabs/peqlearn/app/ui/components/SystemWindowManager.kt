@@ -63,7 +63,7 @@ actual fun setScreenOrientation(orientation: Int) {
 
     }.onFailure {
         println(
-            "pEQControl: Orientation change failed -> ${it.message}"
+            "pEQLearn: Orientation change failed -> ${it.message}"
         )
     }
 }
@@ -101,7 +101,7 @@ actual fun setSystemBarsVisibility(visible: Boolean) {
 
     }.onFailure {
         println(
-            "pEQControl: System bars visibility update failed -> ${it.message}"
+            "pEQLearn: System bars visibility update failed -> ${it.message}"
         )
     }
 }
@@ -117,7 +117,7 @@ actual fun setBrightness(brightness: Float) {
         }
         window.attributes = layoutParams
     }.onFailure {
-        println("pEQControl: Brightness update failed -> ${it.message}")
+        println("pEQLearn: Brightness update failed -> ${it.message}")
     }
 }
 
@@ -133,7 +133,7 @@ actual fun setSystemVolume(volume: Float) {
         val targetVolume = (volume * maxVolume).toInt()
         audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetVolume, 0)
     }.onFailure {
-        println("pEQControl: Volume update failed -> ${it.message}")
+        println("pEQLearn: Volume update failed -> ${it.message}")
     }
 }
 

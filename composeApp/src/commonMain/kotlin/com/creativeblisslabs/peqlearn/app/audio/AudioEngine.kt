@@ -125,6 +125,7 @@ interface AudioEngine {
     ) {}
     fun playSample(label: String, index: Int = -1, string: String = "PIANO") {}
     fun playTabla(bol: String, velocity: Int = 100) {}
+    fun loadCustomSoundFont(category: String, path: String): Boolean = false
     fun setTanpuraGain(gain: Float) {}
     fun setTablaGain(gain: Float) {}
     fun getLatency(): Int = 0

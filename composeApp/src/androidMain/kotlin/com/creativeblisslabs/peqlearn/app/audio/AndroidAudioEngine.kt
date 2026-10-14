@@ -75,7 +75,7 @@ object AndroidBass {
             bassClass = Class.forName("org.un4seen.bass.BASS")
             isLoaded = true
         } catch (_: Throwable) {
-            println("pEQControl: [BASS] Android library binaries not found, using ExoPlayer.")
+            println("pEQLearn: [BASS] Android library binaries not found, using ExoPlayer.")
         }
     }
 
@@ -295,9 +295,25 @@ class AndroidAudioEngine(
         "G#" to 68, "A"  to 69, "A#" to 70, "B"  to 71
     )
 
-    private val tablaMidiMap = mapOf(
-        "DHA" to 36, "DHIN" to 38, "TIN" to 40, "TA" to 42,
-        "NA" to 44, "GE" to 46, "KA" to 48
+    private val tablaNoteCache = ConcurrentHashMap<Int, ShortArray>()
+
+    private val tablaMidiMap = ConcurrentHashMap<String, Int>(
+        mapOf(
+            // Hindustani Classical Bols Default Fallbacks
+            "DHA" to 72, "DHIN" to 68, "TIN" to 63, "TA" to 61,
+            "NA" to 64, "GE" to 60, "GHE" to 67, "KA" to 65,
+            "KE" to 65, "TI" to 62, "TE" to 61, "TU" to 69,
+            "TUN" to 69, "DIN" to 70, "DHAGE" to 74, "TIRAKITA" to 66,
+            "KITONE" to 66, "DU" to 60, "DHI" to 68,
+
+            // Carnatic Solkattu Syllables Default Fallbacks
+            "THA" to 61, "THI" to 62, "THOM" to 60, "THON" to 60,
+            "NAM" to 64, "NU" to 64, "MI" to 62, "KI" to 66,
+            "JO" to 63, "DI" to 68,
+            "THA-KA" to 61, "TAKA" to 61, "THA-KI-TA" to 66, "TAKITA" to 66,
+            "THA-KA-DHI-MI" to 72, "THAKADHIMI" to 72, "THA-KA-THA-KI-TA" to 61,
+            "THA-KI-TA-THA-KA-DHI-MI" to 72, "THA-KA-DHI-MI-THA-KA-THA-KI-TA" to 72
+        )
     )
 
     private var listenersAttached = false
@@ -335,7 +351,7 @@ class AndroidAudioEngine(
 
     private var lastSeekTime = 0L
     private var isSeeking = false
-    private val prefs = context.getSharedPreferences("pEQ_player_state", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("pEQLearn_player_state", Context.MODE_PRIVATE)
 
     private var currentDrumKitName = "NEURAL 808"
     override var currentSelectedKitName: String = "ELECTRONIC_808"
@@ -407,9 +423,12 @@ class AndroidAudioEngine(
         }
 
         fun renderTablaBol(midiNote: Int, velocity: Int): ShortArray? {
-            val samples = 44100 / 2 // 0.5 seconds
-            val floatBuffer = player.renderFloat(samples)
-            return ShortArray(samples) { i ->
+            // Render 0.75 seconds of stereo 16-bit PCM (44100 Hz * 2 channels)
+            val stereoSamples = (44100 * 0.75 * 2).toInt()
+            player.noteOn(0, midiNote, velocity.coerceIn(1, 127))
+            val floatBuffer = player.renderFloat(stereoSamples)
+            player.noteOff(0, midiNote) // Clean up voice in FluidSynth to avoid accumulation
+            return ShortArray(stereoSamples) { i ->
                 val sampleValue = if (i < floatBuffer.size) floatBuffer[i] else 0f
                 (sampleValue * Short.MAX_VALUE).toInt().coerceIn(-32768, 32767).toShort()
             }
@@ -535,7 +554,7 @@ class AndroidAudioEngine(
             private var bufferingRunnable: Runnable? = null
 
             override fun onPlaybackStateChanged(state: Int) {
-                println("pEQControl: [PLAYER] State = $state")
+                println("pEQLearn: [PLAYER] State = $state")
                 if (state == Player.STATE_BUFFERING) {
                     bufferingRunnable?.let { bufferingHandler.removeCallbacks(it) }
                     bufferingRunnable = Runnable {
@@ -615,7 +634,7 @@ class AndroidAudioEngine(
 
         if (resolvedAudioSessionId <= 0) {
             if (visualizerRetryCount >= 6) {
-                println("pEQControl: [DSP] Visualizer init aborted")
+                println("pEQLearn: [DSP] Visualizer init aborted")
                 return
             }
             visualizerRetryCount++
@@ -701,9 +720,9 @@ class AndroidAudioEngine(
             loopHandler.removeCallbacks(loopRunnable)
             loopHandler.post(loopRunnable)
 
-            println("pEQControl: [DSP] Visualizer initialized")
+            println("pEQLearn: [DSP] Visualizer initialized")
         } catch (e: Exception) {
-            println("pEQControl: [DSP] Init Failed: ${e.message}")
+            println("pEQLearn: [DSP] Init Failed: ${e.message}")
             runCatching { visualizer?.enabled = false }
             visualizer?.release()
             visualizer = null
@@ -733,7 +752,7 @@ class AndroidAudioEngine(
     @RequiresApi(Build.VERSION_CODES.P)
     override fun updateEqBand(bandIndex: Int, gainDb: Float) {
         if (AndroidBass.isLoaded && bassHandle != 0) {
-            println("pEQControl: [BASS] Android EQ Band $bandIndex -> $gainDb dB")
+            println("pEQLearn: [BASS] Android EQ Band $bandIndex -> $gainDb dB")
             return
         }
         val dp = dynamicsProcessing ?: return
@@ -745,7 +764,7 @@ class AndroidAudioEngine(
             band.gain = gainDb
             dp.setAllChannelsTo(channelConfig)
         } catch (e: Exception) {
-            println("pEQControl: [DSP] EQ Update Failed: ${e.message}")
+            println("pEQLearn: [DSP] EQ Update Failed: ${e.message}")
         }
     }
 
@@ -756,10 +775,10 @@ class AndroidAudioEngine(
             val config = dp.config
             val channelConfig = config.getChannelByChannelIndex(0)
             val band = channelConfig.preEq.getBand(bandIndex)
-            println("pEQControl: [DSP] EQ Band $bandIndex Q-Factor -> $q (Simulated Bandwidth)")
+            println("pEQLearn: [DSP] EQ Band $bandIndex Q-Factor -> $q (Simulated Bandwidth)")
             dp.setAllChannelsTo(channelConfig)
         } catch (e: Exception) {
-            println("pEQControl: [DSP] EQ Q Update Failed: ${e.message}")
+            println("pEQLearn: [DSP] EQ Q Update Failed: ${e.message}")
         }
     }
 
@@ -777,7 +796,7 @@ class AndroidAudioEngine(
             mbc.releaseTime = release
             dp.setAllChannelsTo(channelConfig)
         } catch (e: Exception) {
-            println("pEQControl: [DSP] Compressor Update Failed: ${e.message}")
+            println("pEQLearn: [DSP] Compressor Update Failed: ${e.message}")
         }
     }
 
@@ -808,18 +827,18 @@ class AndroidAudioEngine(
                     @Suppress("DEPRECATION")
                     audioManager.isSpeakerphoneOn = (type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
                 }
-                println("pEQControl: [ROUTING] Output set to ${targetDevice.productName}")
+                println("pEQLearn: [ROUTING] Output set to ${targetDevice.productName}")
             }
         }
     }
 
     override fun setSubHarmonicGenerator(enabled: Boolean) {
-        println("pEQControl: [DSP] Sub-Harmonic Generator -> $enabled")
+        println("pEQLearn: [DSP] Sub-Harmonic Generator -> $enabled")
     }
 
     override fun setPhaseInversion(enabled: Boolean) {
         isPhaseInverted = enabled
-        println("pEQControl: [DSP] Phase Inversion -> $enabled")
+        println("pEQLearn: [DSP] Phase Inversion -> $enabled")
     }
 
     @RequiresApi(Build.VERSION_CODES.P)
@@ -831,7 +850,7 @@ class AndroidAudioEngine(
             channelConfig.limiter.isEnabled = enabled
             dp.setAllChannelsTo(channelConfig)
         } catch (e: Exception) {
-            println("pEQControl: [DSP] Limiter Update Failed: ${e.message}")
+            println("pEQLearn: [DSP] Limiter Update Failed: ${e.message}")
         }
     }
 
@@ -958,9 +977,9 @@ class AndroidAudioEngine(
                 Uri.fromFile(File(cleanLocalPath(url)))
             }
 
-            println("pEQControl: TITLE -> $title")
-            println("pEQControl: ARTIST -> $artist")
-            println("pEQControl: URI -> $uri")
+            println("pEQLearn: TITLE -> $title")
+            println("pEQLearn: ARTIST -> $artist")
+            println("pEQLearn: URI -> $uri")
 
             if (AndroidBass.isLoaded) {
                 try {
@@ -972,11 +991,11 @@ class AndroidAudioEngine(
                     if (bassHandle != 0) {
                         AndroidBass.channelPlay(bassHandle, true)
                         onTrackChanged?.invoke()
-                        println("pEQControl: [BASS] Android playing track -> $url")
+                        println("pEQLearn: [BASS] Android playing track -> $url")
                         return
                     }
                 } catch (e: Exception) {
-                    println("pEQControl: [BASS] Android playback failed: ${e.message}")
+                    println("pEQLearn: [BASS] Android playback failed: ${e.message}")
                 }
             }
 
@@ -1033,7 +1052,7 @@ class AndroidAudioEngine(
                 playWhenReady = true
             }
         } catch (e: Exception) {
-            println("pEQControl: Playback Failed: ${e.message}")
+            println("pEQLearn: Playback Failed: ${e.message}")
         }
     }
 
@@ -1097,7 +1116,7 @@ class AndroidAudioEngine(
                 playWhenReady = false
             }
         } catch (e: Exception) {
-            println("pEQControl: Load Failed: ${e.message}")
+            println("pEQLearn: Load Failed: ${e.message}")
         }
     }
 
@@ -1313,7 +1332,7 @@ class AndroidAudioEngine(
                     }
                 }
             } catch (e: Exception) {
-                println("pEQControl: [ASSETS] Error scanning $directory: ${e.message}")
+                println("pEQLearn: [ASSETS] Error scanning $directory: ${e.message}")
             }
         }
     }
@@ -1353,12 +1372,281 @@ class AndroidAudioEngine(
                 val player = FluidSynthPlayer(AudioConfig(sampleRate = 44100, interpolation = 1, periodSize = 64, periods = 2))
                 player.loadSoundFont(tempFile.absolutePath)
                 tablaEngine = TablaSoundFontEngine(player)
-                Log.i("AudioEngine", "[SF2] Tabla SoundFont compiled cleanly via FluidSynth.")
+                parseAndAutoMapSoundFont(tempFile, "TABLA")
+                Log.i("AudioEngine", "[SF2] Tabla compiled & auto-mapped cleanly via FluidSynth.")
                 player
             } catch (e: Exception) {
                 Log.e("AudioEngine", "[SF2] Failed loading Tabla: ${e.message}")
                 null
             }
+        }
+    }
+
+    /**
+     * Parses SF2 file binary metadata (shdr and instrument key ranges) to automatically map sample
+     * notes and bol syllabics dynamically without hardcoding.
+     */
+    private fun parseAndAutoMapSoundFont(sf2File: File, category: String) {
+        try {
+            if (!sf2File.exists() || sf2File.length() < 1024L) return
+            val bytes = sf2File.readBytes()
+
+            fun findChunk(name: ByteArray): Pair<Int, Int>? {
+                var pos = 0
+                while (pos < bytes.size - 8) {
+                    var match = true
+                    for (i in name.indices) {
+                        if (bytes[pos + i] != name[i]) {
+                            match = false
+                            break
+                        }
+                    }
+                    if (match) {
+                        val size = (bytes[pos + 4].toInt() and 0xFF) or
+                                ((bytes[pos + 5].toInt() and 0xFF) shl 8) or
+                                ((bytes[pos + 6].toInt() and 0xFF) shl 16) or
+                                ((bytes[pos + 7].toInt() and 0xFF) shl 24)
+                        return Pair(pos + 8, size)
+                    }
+                    pos++
+                }
+                return null
+            }
+
+            val shdrChunk = findChunk("shdr".toByteArray(Charsets.US_ASCII))
+            val sampleNames = mutableListOf<Pair<String, Int>>()
+            if (shdrChunk != null) {
+                val start = shdrChunk.first
+                val size = shdrChunk.second
+                var offset = 0
+                while (offset + 46 <= size && start + offset + 46 <= bytes.size) {
+                    val sStart = start + offset
+                    val nameBytes = bytes.copyOfRange(sStart, sStart + 20)
+                    val zeroIdx = nameBytes.indexOf(0)
+                    val len = if (zeroIdx >= 0) zeroIdx else 20
+                    val sampleName = String(nameBytes, 0, len, Charsets.US_ASCII).trim()
+                    val origPitch = bytes[sStart + 40].toInt() and 0xFF
+                    if (sampleName.isNotEmpty() && sampleName != "EOS") {
+                        sampleNames.add(Pair(sampleName, origPitch))
+                    }
+                    offset += 46
+                }
+            }
+
+            // Inspect instrument key ranges
+            val instChunk = findChunk("inst".toByteArray(Charsets.US_ASCII))
+            val ibagChunk = findChunk("ibag".toByteArray(Charsets.US_ASCII))
+            val igenChunk = findChunk("igen".toByteArray(Charsets.US_ASCII))
+
+            val keyToSampleName = mutableMapOf<Int, String>()
+
+            if (instChunk != null && ibagChunk != null && igenChunk != null) {
+                val ibagStart = ibagChunk.first
+                val ibagSize = ibagChunk.second
+                val igenStart = igenChunk.first
+                val igenSize = igenChunk.second
+
+                val totalBags = ibagSize / 4
+                val totalGens = igenSize / 4
+
+                // Parse bags of instrument 0
+                val instEndBag = if (instChunk.second >= 22) {
+                    val bLow = bytes[instChunk.first + 20].toInt() and 0xFF
+                    val bHigh = bytes[instChunk.first + 21].toInt() and 0xFF
+                    (bHigh shl 8) or bLow
+                } else totalBags
+
+                val targetEndBag = if (totalBags > 1) (totalBags - 1).coerceAtMost(50) else 0
+
+                for (b in 0 until targetEndBag) {
+                    val bOff = ibagStart + b * 4
+                    val sgen = (bytes[bOff].toInt() and 0xFF) or ((bytes[bOff + 1].toInt() and 0xFF) shl 8)
+                    val egen = (bytes[bOff + 4].toInt() and 0xFF) or ((bytes[bOff + 5].toInt() and 0xFF) shl 8)
+
+                    var minKey: Int? = null
+                    var maxKey: Int? = null
+                    var sampleId: Int? = null
+
+                    for (g in sgen until egen.coerceAtMost(totalGens)) {
+                        val gOff = igenStart + g * 4
+                        val op = (bytes[gOff].toInt() and 0xFF) or ((bytes[gOff + 1].toInt() and 0xFF) shl 8)
+                        val valLo = bytes[gOff + 2].toInt() and 0xFF
+                        val valHi = bytes[gOff + 3].toInt() and 0xFF
+                        if (op == 43) { // keyRange
+                            minKey = valLo
+                            maxKey = valHi
+                        } else if (op == 53) { // sampleID
+                            sampleId = (valHi shl 8) or valLo
+                        }
+                    }
+
+                    if (sampleId != null && sampleId < sampleNames.size) {
+                        val sname = sampleNames[sampleId].first
+                        if (minKey != null && maxKey != null) {
+                            for (k in minKey..maxKey) {
+                                keyToSampleName[k] = sname
+                            }
+                        } else {
+                            val p = sampleNames[sampleId].second
+                            if (p in 1..127) {
+                                keyToSampleName[p] = sname
+                            }
+                        }
+                    }
+                }
+            }
+
+            Log.i("AudioEngine", "[AutoMap] Parsed ${sampleNames.size} samples, ${keyToSampleName.size} key mappings for $category")
+
+            if (category.equals("TABLA", true)) {
+                tablaNoteCache.clear()
+                val newMap = mutableMapOf<String, Int>()
+
+                // 1. Analyze sample names for acoustic keywords
+                sampleNames.forEachIndexed { idx, (name, pitch) ->
+                    val upper = name.uppercase()
+                    val targetMidi = if (pitch in 21..108) pitch else (60 + (idx % 20))
+
+                    when {
+                        upper.contains("DHA") -> newMap["DHA"] = targetMidi
+                        upper.contains("DHIN") -> newMap["DHIN"] = targetMidi
+                        upper.contains("TIN") -> newMap["TIN"] = targetMidi
+                        upper.contains("NA") || upper.contains("KINAR") -> newMap["NA"] = targetMidi
+                        upper.contains("TA") || upper.contains("TE") -> newMap["TA"] = targetMidi
+                        upper.contains("GE") || upper.contains("GHE") || upper.contains("BANYA") || upper.contains("BAYAN") -> {
+                            newMap["GE"] = targetMidi
+                            newMap["GHE"] = targetMidi
+                            newMap["THOM"] = targetMidi
+                        }
+                        upper.contains("KA") || upper.contains("KE") || upper.contains("SLAP") -> {
+                            newMap["KA"] = targetMidi
+                            newMap["THA"] = targetMidi
+                        }
+                        upper.contains("TI") -> newMap["TI"] = targetMidi
+                        upper.contains("TU") || upper.contains("TUN") -> newMap["TU"] = targetMidi
+                        upper.contains("DIN") -> newMap["DIN"] = targetMidi
+                    }
+                }
+
+                // 2. Also map keys from keyToSampleName
+                keyToSampleName.forEach { (k, sname) ->
+                    val upper = sname.uppercase()
+                    when {
+                        upper.contains("DHA") && !newMap.containsKey("DHA") -> newMap["DHA"] = k
+                        upper.contains("DHIN") && !newMap.containsKey("DHIN") -> newMap["DHIN"] = k
+                        upper.contains("TIN") && !newMap.containsKey("TIN") -> newMap["TIN"] = k
+                        upper.contains("BANYA") || upper.contains("BAYAN") -> {
+                            if (!newMap.containsKey("GE")) newMap["GE"] = k
+                            if (!newMap.containsKey("THOM")) newMap["THOM"] = k
+                        }
+                        upper.contains("SLAP") -> {
+                            if (!newMap.containsKey("KA")) newMap["KA"] = k
+                            if (!newMap.containsKey("THA")) newMap["THA"] = k
+                        }
+                    }
+                }
+
+                // 3. Fallback to discovered sample pitch clusters if standard names missing
+                val sortedPitches = keyToSampleName.keys.sorted().ifEmpty { sampleNames.map { it.second }.filter { it in 21..108 }.sorted() }
+                if (sortedPitches.isNotEmpty()) {
+                    val lowKey = sortedPitches.first()
+                    val highKey = sortedPitches.last()
+                    val midKey = sortedPitches[sortedPitches.size / 2]
+
+                    newMap.putIfAbsent("GE", lowKey)
+                    newMap.putIfAbsent("THOM", lowKey)
+                    newMap.putIfAbsent("THON", lowKey)
+                    newMap.putIfAbsent("DHA", midKey)
+                    newMap.putIfAbsent("DHIN", midKey)
+                    newMap.putIfAbsent("THA-KA-DHI-MI", midKey)
+                    newMap.putIfAbsent("TA", highKey)
+                    newMap.putIfAbsent("THA", highKey)
+                    newMap.putIfAbsent("NA", highKey)
+                    newMap.putIfAbsent("NAM", highKey)
+                    newMap.putIfAbsent("TIN", (lowKey + highKey) / 2)
+                    newMap.putIfAbsent("TI", (lowKey + highKey) / 2)
+                    newMap.putIfAbsent("MI", (lowKey + highKey) / 2)
+                    newMap.putIfAbsent("DHI", (lowKey + highKey) / 2)
+                    newMap.putIfAbsent("KI", highKey)
+                    newMap.putIfAbsent("KA", lowKey)
+                    newMap.putIfAbsent("KE", lowKey)
+                }
+
+                tablaMidiMap.putAll(newMap)
+                Log.i("AudioEngine", "[AutoMap] Successfully auto-mapped ${tablaMidiMap.size} bols to active SoundFont")
+            }
+        } catch (e: Exception) {
+            Log.e("AudioEngine", "[AutoMap] Error during dynamic SoundFont indexing: ${e.message}")
+        }
+    }
+
+    override fun loadCustomSoundFont(category: String, path: String): Boolean {
+        try {
+            val upperCat = category.uppercase().trim()
+            val file = if (path.startsWith("/")) File(path) else {
+                // If it's an asset relative path, copy to cache
+                val cleanPath = path.removePrefix("assets/").removePrefix("/")
+                val cached = File(context.cacheDir, cleanPath.substringAfterLast("/"))
+                if (!cached.exists() || cached.length() == 0L) {
+                    context.assets.open(cleanPath).use { input ->
+                        cached.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
+                cached
+            }
+
+            if (!file.exists() || file.length() == 0L) {
+                Log.w("AudioEngine", "Cannot load custom SoundFont: File not found at $path")
+                return false
+            }
+
+            val player = FluidSynthPlayer(AudioConfig(sampleRate = 44100, interpolation = 1, periodSize = 64, periods = 2))
+            player.loadSoundFont(file.absolutePath)
+
+            when (upperCat) {
+                "TABLA" -> {
+                    tablaEngine = TablaSoundFontEngine(player)
+                    parseAndAutoMapSoundFont(file, "TABLA")
+                }
+                "TANPURA" -> {
+                    tanpuraEngine = TanpuraSoundFontEngine(player)
+                    parseAndAutoMapSoundFont(file, "TANPURA")
+                }
+                "PIANO" -> {
+                    synchronized(sf2Lock) {
+                        soundFontPool["PIANO"] = player
+                        if (currentInstrument == "PIANO" || currentInstrument.isEmpty()) {
+                            globalSoundFont = player
+                            sf2Loaded.set(true)
+                        }
+                    }
+                    pianoNoteCache.clear()
+                    parseAndAutoMapSoundFont(file, "PIANO")
+                }
+                "GUITAR" -> {
+                    synchronized(sf2Lock) {
+                        soundFontPool["GUITAR"] = player
+                        if (currentInstrument.contains("GUITAR")) {
+                            globalSoundFont = player
+                            sf2Loaded.set(true)
+                        }
+                    }
+                    guitarNoteCache.clear()
+                    parseAndAutoMapSoundFont(file, "GUITAR")
+                }
+                else -> {
+                    synchronized(sf2Lock) {
+                        soundFontPool[upperCat] = player
+                    }
+                    parseAndAutoMapSoundFont(file, upperCat)
+                }
+            }
+
+            Log.i("AudioEngine", "Successfully loaded & auto-mapped custom SoundFont for $upperCat from ${file.name}")
+            return true
+        } catch (e: Exception) {
+            Log.e("AudioEngine", "Failed loading custom SoundFont: ${e.message}", e)
+            return false
         }
     }
 
@@ -1662,27 +1950,50 @@ class AndroidAudioEngine(
     }
 
     private fun handleTabla(target: String) {
-        val bol = target.uppercase().trim()
-        val midiNote = tablaMidiMap[bol]
+        val rawBol = target.uppercase().trim().replace(" ", "").replace("-", "")
+        // Find exact or normalized match
+        val midiNote = tablaMidiMap[rawBol] 
+            ?: tablaMidiMap[target.uppercase().trim()]
+            ?: tablaMidiMap.entries.firstOrNull { rawBol.startsWith(it.key) || it.key.startsWith(rawBol) }?.value
+
+        Log.d("AudioEngine", "handleTabla called for '$target' (rawBol='$rawBol') -> resolved MIDI note: $midiNote")
 
         if (midiNote != null) {
             val engine = tablaEngine
             if (engine != null) {
-                engine.noteOn(midiNote)
-                val pcmData: ShortArray? = engine.renderTablaBol(midiNote, velocity = 100)
+                // Check cache first for 0ms instantaneous triggering
+                val cachedPcm = tablaNoteCache[midiNote]
+                val pcmData: ShortArray? = cachedPcm ?: run {
+                    val rendered = engine.renderTablaBol(midiNote, velocity = 110)
+                    if (rendered != null) {
+                        tablaNoteCache[midiNote] = rendered
+                    }
+                    rendered
+                }
+
                 if (pcmData != null) {
                     voiceMutex.withLock {
                         val normalizedPcm = ShortArray(pcmData.size) { i ->
                             (pcmData[i] * tablaGain).toInt().coerceIn(-32768, 32767).toShort()
                         }
-                        voicePool[currentVoiceIndex].apply {
-                            flush()
-                            write(normalizedPcm, 0, normalizedPcm.size)
+                        try {
+                            val activeTrack = voicePool[currentVoiceIndex]
+                            activeTrack.play()
+                            val written = activeTrack.write(normalizedPcm, 0, normalizedPcm.size)
+                            Log.d("AudioEngine", "Tabla PCM written: $written samples (note: $midiNote) to track index $currentVoiceIndex")
+                            currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
+                        } catch (e: Exception) {
+                            Log.e("AudioEngine", "Error playing tabla PCM: ${e.message}")
                         }
-                        currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
                     }
+                } else {
+                    Log.w("AudioEngine", "renderTablaBol returned null for MIDI note $midiNote")
                 }
+            } else {
+                Log.w("AudioEngine", "tablaEngine is not loaded yet.")
             }
+        } else {
+            Log.w("AudioEngine", "No MIDI note mapping found for tabla bol: '$target'")
         }
     }
 
@@ -1749,6 +2060,7 @@ class AndroidAudioEngine(
     override fun playSample(label: String, index: Int, string: String) {
         val target = label.uppercase().trim()
         val type = string.uppercase()
+        Log.d("AudioEngine", "playSample requested -> target: '$target', index: $index, type: '$type'")
 
         if (type == "TANPURA") {
             engineScope.launch(Dispatchers.Default) { handleTanpura(target) }
@@ -2041,7 +2353,7 @@ class AndroidAudioEngine(
                     }
                     retriever.release()
                 } catch (e: Exception) {
-                    println("pEQControl: [CHAPTERS] Probe failed: ${e.message}")
+                    println("pEQLearn: [CHAPTERS] Probe failed: ${e.message}")
                 }
             }
 
@@ -2177,7 +2489,7 @@ class AndroidAudioEngine(
                         }
                     }
                 } catch (e: Exception) {
-                    println("pEQControl: Lyrics extraction failed ${e.message}")
+                    println("pEQLearn: Lyrics extraction failed ${e.message}")
                 }
             }
 
@@ -2203,7 +2515,7 @@ class AndroidAudioEngine(
                         }
                     }
                 } catch (e: Exception) {
-                    println("pEQControl: Chapter extraction failed ${e.message}")
+                    println("pEQLearn: Chapter extraction failed ${e.message}")
                 }
             }
 
@@ -2245,23 +2557,23 @@ class AndroidAudioEngine(
     }
 
     override fun setNeuralSaturation(enabled: Boolean) {
-        println("pEQControl: [NEURAL] Saturation -> $enabled")
+        println("pEQLearn: [NEURAL] Saturation -> $enabled")
     }
 
     override fun setCompressorThreshold(thresholdDb: Float) {
-        println("pEQControl: [DYNAMICS] Compressor Threshold -> $thresholdDb dB")
+        println("pEQLearn: [DYNAMICS] Compressor Threshold -> $thresholdDb dB")
     }
 
     override fun setClarityLevel(level: Float) {
-        println("pEQControl: [NEURAL] Clarity Level -> $level")
+        println("pEQLearn: [NEURAL] Clarity Level -> $level")
     }
 
     override fun setDeepBassLevel(level: Float) {
-        println("pEQControl: [NEURAL] Deep Bass Level -> $level")
+        println("pEQLearn: [NEURAL] Deep Bass Level -> $level")
     }
 
     override fun setExclusiveMode(enabled: Boolean) {
-        println("pEQControl: [AUDIO] Exclusive Mode -> $enabled")
+        println("pEQLearn: [AUDIO] Exclusive Mode -> $enabled")
     }
 
     override fun getJitterBufferMs(): Int = lastLatency
@@ -2275,7 +2587,7 @@ class AndroidAudioEngine(
     override fun setOscBroadcasting(enabled: Boolean) {}
 
     override fun enableZeroLatencyMonitoring(enabled: Boolean) {
-        println("pEQControl: [AUDIO] Zero Latency Monitoring -> $enabled")
+        println("pEQLearn: [AUDIO] Zero Latency Monitoring -> $enabled")
     }
 
     override fun forceBluetoothCodec(codec: String) {}
@@ -2298,9 +2610,9 @@ class AndroidAudioEngine(
                 }
             }
             dp.setAllChannelsTo(channelConfig)
-            println("pEQControl: [DSP] Vocal Removal -> $enabled")
+            println("pEQLearn: [DSP] Vocal Removal -> $enabled")
         } catch (e: Exception) {
-            println("pEQControl: [DSP] Vocal Removal Failed: ${e.message}")
+            println("pEQLearn: [DSP] Vocal Removal Failed: ${e.message}")
         }
     }
 
@@ -2325,11 +2637,11 @@ class AndroidAudioEngine(
                         }
                         tag.setField(org.jaudiotagger.tag.FieldKey.LYRICS, lyricsText)
                         audioFile.commit()
-                        println("pEQControl: [Android] Embedded lyrics successfully saved to file via jaudiotagger: $url")
+                        println("pEQLearn: [Android] Embedded lyrics successfully saved to file via jaudiotagger: $url")
                     }
                 }
             } catch (e: Exception) {
-                println("pEQControl: [Android] Failed to embed lyrics in file: ${e.message}")
+                println("pEQLearn: [Android] Failed to embed lyrics in file: ${e.message}")
             }
             saveSidecarFile(url, "lrc", lyricsText)
         }
@@ -2357,10 +2669,10 @@ class AndroidAudioEngine(
                     val sidecar = File(file.parent, "${file.nameWithoutExtension}.$extension")
                     sidecar.writeText(content)
                 } else if (mediaPath.startsWith("http") || mediaPath.startsWith("content://")) {
-                    println("pEQControl: [SIDECAR] Cannot save sidecar for non-file URI: $mediaPath")
+                    println("pEQLearn: [SIDECAR] Cannot save sidecar for non-file URI: $mediaPath")
                 }
             } catch (e: Exception) {
-                println("pEQControl: [SIDECAR] Failed to save: ${e.message}")
+                println("pEQLearn: [SIDECAR] Failed to save: ${e.message}")
             }
         }
     }

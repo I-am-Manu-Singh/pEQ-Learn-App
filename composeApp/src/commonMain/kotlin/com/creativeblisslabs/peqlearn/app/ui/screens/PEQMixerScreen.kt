@@ -56,7 +56,6 @@ fun pEQMixerScreen(
     Scaffold(
         topBar = {
             Surface(
-                color = Color(0xFF14171F),
                 tonalElevation = 4.dp
             ) {
                 Row(

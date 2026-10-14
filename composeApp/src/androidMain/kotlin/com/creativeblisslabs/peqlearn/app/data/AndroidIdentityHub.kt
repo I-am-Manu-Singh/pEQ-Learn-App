@@ -7,11 +7,11 @@ class AndroidIdentityHub(private val context: Context) : pEQIdentityHub {
     override fun setOfflineMode(enabled: Boolean) {
         val prefs = context.getSharedPreferences("pEQ_workstation_registry", Context.MODE_PRIVATE).edit()
         prefs.putBoolean("air_gap_active", enabled).apply()
-        println("pEQControl: [SOVEREIGN] Air-Gap Mode: ${if(enabled) "ACTIVE (All network traffic halted)" else "DISABLED"}")
+        println("pEQLearn: [SOVEREIGN] Air-Gap Mode: ${if(enabled) "ACTIVE (All network traffic halted)" else "DISABLED"}")
     }
 
     override fun reportError(message: String, severity: String) {
-        println("pEQControl: [DIAGNOSTICS] Reporting $severity error: $message")
+        println("pEQLearn: [DIAGNOSTICS] Reporting $severity error: $message")
         // AI-18: Real-time relay to industrial crashlytics vault
     }
 
@@ -20,6 +20,6 @@ class AndroidIdentityHub(private val context: Context) : pEQIdentityHub {
     }
 
     override fun saveProfile(profile: UserProfile) {
-        println("pEQControl: [IDENTITY] Physically saving engineer profile: ${profile.name}")
+        println("pEQLearn: [IDENTITY] Physically saving engineer profile: ${profile.name}")
     }
 }

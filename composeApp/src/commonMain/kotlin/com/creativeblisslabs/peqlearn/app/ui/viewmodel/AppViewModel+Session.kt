@@ -23,23 +23,57 @@ fun AppViewModel.restoreSession() {
 
     scope.launch {
         try {
-            // 1. Restore Scan Folders immediately to allow library refresh
+            // 1. Restore Scan Folders and Play Counts immediately so scanner uses them from start
             val storedFolders = manager.loadScanFolders()
             scanFolders.clear()
             scanFolders.addAll(storedFolders)
             
+            val storedCounts = manager.loadMostPlayed()
+            playCounts.putAll(storedCounts)
+            
             // 🚀 Kick off library scan so items exist when we wait for them
             refreshLibrary()
 
-            // 🚀 Industrial Library Synchronization
+            // 🚀 Industrial Library Synchronization: Update metadata in customPlaylists, favorites, and recents once scanner emits
             scope.launch {
                 mediaLibrary.collect { library ->
-                    val current = currentMediaItem.value ?: return@collect
-                    if (current.subtitle == "Media Resource" || current.artist == "Unknown Artist" || current.subtitle == "Local archive" || current.subtitle == "Neural Engine") {
-                        library.find { it.path == current.path }?.let { matched ->
+                    if (library.isEmpty()) return@collect
+                    val libByPath = library.associateBy { normalizePath(it.path) }
+
+                    // Re-sync currentMediaItem if fallback
+                    val current = currentMediaItem.value
+                    if (current != null) {
+                        libByPath[normalizePath(current.path)]?.let { matched ->
                             currentMediaItem.value = matched
-                            println("Industrial Sync: Resolved fallback metadata for ${matched.title}")
                         }
+                    }
+
+                    // Re-sync favoriteItems
+                    val updatedFavs = favoriteItems.map { fav ->
+                        libByPath[normalizePath(fav.path)] ?: fav
+                    }
+                    if (updatedFavs != favoriteItems.toList()) {
+                        favoriteItems.clear()
+                        favoriteItems.addAll(updatedFavs)
+                    }
+
+                    // Re-sync customPlaylists
+                    customPlaylists.keys.toList().forEach { name ->
+                        val list = customPlaylists[name] ?: return@forEach
+                        val updatedList = list.map { item -> libByPath[normalizePath(item.path)] ?: item }
+                        if (updatedList != list.toList()) {
+                            list.clear()
+                            list.addAll(updatedList)
+                        }
+                    }
+
+                    // Re-sync recentlyPlayedItems
+                    val updatedRecents = recentlyPlayedItems.map { rec ->
+                        libByPath[normalizePath(rec.path)] ?: rec
+                    }
+                    if (updatedRecents != recentlyPlayedItems.toList()) {
+                        recentlyPlayedItems.clear()
+                        recentlyPlayedItems.addAll(updatedRecents)
                     }
                 }
             }
@@ -168,31 +202,6 @@ fun AppViewModel.restoreSession() {
             isShuffleEnabled = session.isShuffle
             repeatMode.value = session.repeatMode
             favorites.addAll(session.favorites)
-            
-            // Restore DSP State
-            if (session.eqGains.isNotEmpty()) {
-                session.eqGains.forEachIndexed { index, gain -> 
-                    if (index < eqGains.size) {
-                        eqGains[index] = gain
-                        audioEngine.updateEqBand(index, gain)
-                    }
-                }
-            }
-            if (session.eqQs.isNotEmpty()) {
-                session.eqQs.forEachIndexed { index, q -> 
-                    if (index < eqQs.size) {
-                        eqQs[index] = q
-                        audioEngine.updateEqQ(index, q)
-                    }
-                }
-            }
-            session.lastIrPath?.let { path ->
-                convolverIrPath.value = path
-                convolverIrName.value = path.substringAfterLast("/")
-            }
-
-            // 8. Load Play Counts
-            val storedCounts = manager.loadMostPlayed()
             playCounts.putAll(storedCounts)
             
             // Note: Since we don't have a separate lastPlayed persistence yet, 
@@ -210,7 +219,7 @@ fun AppViewModel.restoreSession() {
             syncNowPlaying()
             
         } catch (e: Exception) {
-            println("pEQControl: [SYSTEM] Session restore failed: ${e.message}")
+            println("pEQLearn: [SYSTEM] Session restore failed: ${e.message}")
         } finally {
             completeSplash()
         }
@@ -232,8 +241,6 @@ fun AppViewModel.persistSession() {
         isShuffle = isShuffleEnabled,
         repeatMode = repeatMode.value,
         favorites = favorites.toList(),
-        eqGains = eqGains.toList(),
-        eqQs = eqQs.toList(),
         isLeftHandMuted = isLeftHandMuted.value,
         isRightHandMuted = isRightHandMuted.value,
         isLeftHandHidden = isLeftHandHidden.value,
@@ -241,9 +248,6 @@ fun AppViewModel.persistSession() {
         leftHandColor = leftHandColor.value.toArgb(),
         rightHandColor = rightHandColor.value.toArgb(),
         notationTransposition = transposition.intValue,
-        lastIrPath = convolverIrPath.value,
-        lastSubtitleTrackId = selectedSubtitleTrack.value?.id,
-        lastAudioTrackId = selectedAudioTrack.value?.id
     )
     
     val playlistsToSave = customPlaylists.mapValues { entry -> entry.value.map { item -> item.path } }
@@ -255,5 +259,6 @@ fun AppViewModel.persistSession() {
         persistenceManager.savePlaylists(playlistsToSave)
         persistenceManager.saveFavorites(favoritesToSave)
         persistenceManager.saveRecentSessions(recentToSave)
+        persistenceManager.saveMostPlayed(playCounts.toMap())
     }
 }

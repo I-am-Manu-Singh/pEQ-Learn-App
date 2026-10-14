@@ -21,7 +21,6 @@ import kotlinx.coroutines.*
 import com.creativeblisslabs.peqlearn.app.data.*
 import com.creativeblisslabs.peqlearn.app.data.Device
 import com.creativeblisslabs.peqlearn.app.data.SyncedLine
-import com.creativeblisslabs.peqlearn.app.data.lyrics.LyricsRepository
 import com.creativeblisslabs.peqlearn.app.data.repository.*
 import com.creativeblisslabs.peqlearn.app.ui.screens.*
 import com.creativeblisslabs.peqlearn.app.network.createHttpClient
@@ -110,11 +109,15 @@ val client = createHttpClient()
     val isExternalLaunch = mutableStateOf(false)
     
     var onEnterPiP: (() -> Unit)? = null
-    
+        val centsDeviation = mutableIntStateOf(0)
+
+      val detectedPitch = mutableFloatStateOf(0f)
+    val detectedNote = mutableStateOf("-")
     val playbackSpeed = mutableStateOf(1.0f)
     val peakLevelDb = mutableStateOf(-60f)
     val toastMessage = mutableStateOf<String?>(null)
-    
+        val isBackgroundServiceRunning = mutableStateOf(true)
+
     var onPickFolderRequested: (() -> Unit)? = null
     var onPickLyricsRequested: (() -> Unit)? = null
     var onPickSubtitleRequested: (() -> Unit)? = null
@@ -149,7 +152,7 @@ val client = createHttpClient()
     private var metronomeJob: Job? = null
     val isBuffering = mutableStateOf(false)
     val isPiPMode = mutableStateOf(false)
-    val showMiniPlayer = mutableStateOf(false)
+    val showMiniPlayer = mutableStateOf(true)
     val isFullscreenKeyboard = mutableStateOf(false)
     val practicingChord = mutableStateOf<String?>(null)
     val isTanpuraActive = mutableStateOf(false)
@@ -195,10 +198,6 @@ val client = createHttpClient()
    
     val audioDelayMs = mutableLongStateOf(0L)
     val openAtStartup = mutableStateOf(false)
-    val showSubtitleConsole = mutableStateOf(false)
-    val showCutter = mutableStateOf(false)
-    val subtitleSettings = mutableStateOf(SubtitleSettings())
-    val osApiKey = mutableStateOf(persistenceManager.openSubtitlesApiKey)
 
     val abRepeatActive = mutableStateOf(false)
     // Initialize with -1L instead of null
@@ -209,46 +208,18 @@ val client = createHttpClient()
     val showBrowser = mutableStateOf(false)
     val browserUrl = mutableStateOf("")
     val browserTitle = mutableStateOf("pEQ BROWSER")
-
-    val selectedAutoEqProfile = mutableStateOf<AutoEqProfile?>(null)
-    val autoEqProfiles = mutableStateListOf<AutoEqProfile>()
-    val isAiUpscalingEnabled = mutableStateOf(false)
-    val isCrossfading = mutableStateOf(false)
+     val isCrossfading = mutableStateOf(false)
     val crossfadeProgress = mutableStateOf(0f)
     internal var activeCrossfadeJob: Job? = null
 
     private val osClient by lazy { com.creativeblisslabs.peqlearn.app.ai.OpenSubtitlesClient(persistenceManager.openSubtitlesApiKey) }
 
-    internal val lyricsRepository = com.creativeblisslabs.peqlearn.app.data.lyrics.LyricsRepository()
-    internal val subtitleRepository = com.creativeblisslabs.peqlearn.app.data.repository.SubtitleRepository { osApiKey.value }
 
-
-    val eqGains = mutableStateListOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f) // 10 Bands
-    val eqQs = mutableStateListOf(1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f)
-    val convolverIrPath = mutableStateOf<String?>(null)
-    val favorites = mutableStateListOf<String>()
-    // 📝 Lyrics & Temporal Metadata
-    val syncedLyrics = mutableStateListOf<SyncedLine>()
-    val syncedSubtitles = mutableStateListOf<SyncedLine>()
-    val currentChapters = mutableStateListOf<MediaChapter>()
-    val isLyricsVisible = mutableStateOf(false)
-    val isChaptersVisible = mutableStateOf(false)
-    val isEditingLyrics = mutableStateOf(false)
-    val isEditingChapters = mutableStateOf(false)
-    val isEditingSubtitles = mutableStateOf(false)
+   val favorites = mutableStateListOf<String>()
+   
     val isMoodMakerVisible = mutableStateOf(false)
     val selectedItems = mutableStateListOf<pEQMediaItem>()
-    
-
-    val lyricsAvailable = derivedStateOf { syncedLyrics.isNotEmpty() }
-    val chaptersAvailable = derivedStateOf { currentChapters.isNotEmpty() }
-    val isLyricsWebViewVisible = mutableStateOf(false)
-    val lyricsSearchUrl = mutableStateOf("")
-    
-    // 🔍 AutoEQ & Parametric Engine
-    val autoEqSearchResults = mutableStateListOf<AutoEqProfile>()
-    val isAutoEqLoading = mutableStateOf(false)
-    
+   
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     
     internal val scanFolders = mutableStateListOf<String>()
@@ -256,34 +227,7 @@ val client = createHttpClient()
     var primaryStoragePath: String = "/storage/emulated/0"
     val isHapticsEnabled = mutableStateOf(true)
     
-    // 🌀 Convolution & Dynamics Engine
-    val convolverIrName = mutableStateOf("Reference Room (Default)")
-    val convolverIrDryWet = mutableFloatStateOf(0.3f)
-    
-    val isConvolverActive = mutableStateOf(false)
-    val compressorThreshold = mutableFloatStateOf(-20f)
-    val compressorRatio = mutableStateOf(4f)
-    val compressorAttackMs = mutableFloatStateOf(10f)
-    val compressorReleaseMs = mutableFloatStateOf(100f)
-    val limiterEnabled = mutableStateOf(true)
-    val isSubHarmonicActive = mutableStateOf(false)
-    
-    // 📊 Signal Telemetry (Pre/Post DSP)
-    val preDspLevel = mutableFloatStateOf(0f)
-    val dspProcessingLoad = mutableStateOf(0f)
-    val isAutoScanEnabled = mutableStateOf(true)
-    val isNeuralSaturationEnabled = mutableStateOf(false)
-    val detectedPitch = mutableFloatStateOf(0f)
-    val detectedNote = mutableStateOf("-")
-    val centsDeviation = mutableIntStateOf(0)
-    
-    val isGaplessEnabled = mutableStateOf(true)
-    val isBackgroundServiceRunning = mutableStateOf(true)
-    val isBitPerfectEnabled = mutableStateOf(false)
-    val phaseInverted = mutableStateOf(false)
-    val isDynamicColorsEnabled = mutableStateOf(true)
-    val bufferPriority = mutableStateOf("High")
-    val channelBalance = mutableFloatStateOf(0f)
+   
     val isNeuralEnvActive = mutableStateOf(false)
     val activeJob = mutableStateOf<SplitJob?>(null)
     val backgroundJobs = mutableStateListOf<SplitJob>()
@@ -293,67 +237,15 @@ val client = createHttpClient()
     fun start() {
         if (hasInitialized) return
         hasInitialized = true
-        startHardwarePolling()
         restoreSession()
         
         // Natural decay loop — zeros out RTA bars when paused/stopped, no fake data
         scope.launch {
             while (true) {
                 kotlinx.coroutines.delay(80)
-                if (!isPlaying.value) {
-                    val current = rtaData.value
-                    if (current.any { it > 0f }) {
-                        rtaData.value = FloatArray(current.size) { i ->
-                            (current[i] * 0.65f).let { if (it < 0.005f) 0f else it }
-                        }
-                        val peak = rtaData.value.maxOrNull() ?: 0f
-                        if (peak > 0f) {
-                            peakLevelDb.value = (20 * kotlin.math.log10(peak.toDouble().coerceAtLeast(1e-6))).toFloat()
-                            preDspLevel.value = peak
-                        } else {
-                            peakLevelDb.value = -60f
-                            preDspLevel.value = 0f
-                            detectedPitch.value = 0f
-                            detectedNote.value = ""
-                        }
-                    }
-                }
             }
         }
         
-        audioEngine.onFftDataReceived = { fft ->
-            lastFftTime = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
-            scope.launch(Dispatchers.Main) {
-                // Smooth the FFT data for professional RTA look
-                val smoothedFft = FloatArray(fft.size) { i ->
-                    val prev = rtaData.value.getOrElse(i) { 0f }
-                    fft[i] * 0.7f + prev * 0.3f
-                }
-                rtaData.value = smoothedFft
-                
-                // Update peak level for Hardware screen
-                val peak = fft.maxOrNull() ?: 0f
-                peakLevelDb.value = (20 * log10(peak.toDouble().coerceAtLeast(1e-6))).toFloat()
-                preDspLevel.value = peak
-
-                // 🎹 Professional Harmonic Analysis (Learn Screen)
-                val peakBin = smoothedFft.indices.maxByOrNull { smoothedFft[it] } ?: 0
-                val peakMagnitude = smoothedFft[peakBin]
-                val currentId = currentMediaItem.value?.id ?: ""
-                
-                if (peakMagnitude > 0.05f) {
-                    // Nyquist / numBins * peakBin
-                    val freq = (peakBin * (44100f / (fft.size * 2))).coerceAtLeast(20f)
-                    val noteIdx = (12 * (log2(freq / 440.0) + 4.0)).toInt() % 12
-                    val notes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-                    val note = notes[noteIdx.coerceIn(0, 11)]
-                    
-                    detectedNote.value = note
-                    detectedPitch.value = freq
-                    centsDeviation.value = ((1200 * log2(freq / 440.0)) % 100).toInt()
-                }
-            }
-        }
 
         // 🎼 SET UP ENGINE CALLBACKS
         audioEngine.onTrackEnded = {
@@ -406,10 +298,7 @@ val client = createHttpClient()
                 }
                 
                 if (actualPlaying && !isSeeking.value) {
-                    // 💓 Neural Heartbeat: Jitter data slightly for "Live" feel if hardware is idle
-                    if (detectedPitch.value == 440f || detectedPitch.value == 0f) {
-                         detectedPitch.value = 440f + (sin(Clock.System.now().toEpochMilliseconds() / 500.0) * 2f).toFloat()
-                    }
+                
 
                     // 🔁 INDUSTRIAL LOOP ENGINE (A-B Repeat)
                     if (abRepeatActive.value && abRepeatPointA.value != -1L && abRepeatPointB.value != -1L) {
@@ -455,26 +344,13 @@ val client = createHttpClient()
             _scanner = value
             value?.let { 
                 observeScanner()
-                loadNeuralAssets()
                 if (scanFolders.isNotEmpty()) {
                     refreshLibrary()
                 }
             }
         }
     
-    private fun loadNeuralAssets() {
-        scope.launch {
-            try {
-                val autoeqJson = scanner?.readResourceContent("autoeq_database.json") ?: "[]"
-                val profiles = Json.decodeFromString<List<AutoEqProfile>>(autoeqJson)
-                autoEqProfiles.clear()
-                autoEqProfiles.addAll(profiles)
-            } catch (e: Exception) {
-                println("pEQControl: [ENGINE] Asset Loading Failure -> ${e.message}")
-            }
-            loadAssets()
-        }
-    }
+   
 
     internal val tapTimes = mutableListOf<Long>()
 
@@ -873,7 +749,7 @@ val client = createHttpClient()
     val pianoVelocity = mutableIntStateOf(95)
 
     // Guitar SoundFont
-    val guitarSf2File = mutableStateOf("guitar/Miniis_electric_guitar.sf2")
+    val guitarSf2File = mutableStateOf("guitar/guitar_samples_clean.sf2")
     val guitarBank = mutableIntStateOf(0)
     val guitarPreset = mutableIntStateOf(0)
     val guitarChannel = mutableIntStateOf(0)
@@ -976,7 +852,7 @@ val client = createHttpClient()
         if (fromEngine.isNotEmpty()) return fromEngine
         return when (category.lowercase()) {
             "piano" -> listOf("198_Yamaha_SY1_piano.sf2", "Grand_Piano.sf2", "SC55_Piano_V2.sf2")
-            "guitar" -> listOf("Miniis_electric_guitar.sf2", "Seagull_Acoustic_Guitar.sf2", "guitar_samples_clean.sf2")
+            "guitar" -> listOf("Custom Classical Guitar.sf2", "guitar_samples_clean.sf2")
             "drums" -> listOf("Metal_Drums.sf2", "drums_ken_ardency.sf2")
             "metronome" -> listOf("Metronom.sf2")
             "tanpura" -> listOf("Tanpura_drone.sf2")
@@ -1203,7 +1079,7 @@ private fun loadAssets() {
                 }
             }
         } catch (e: Exception) {
-            println("pEQControl: [ENGINE] Tutorial Parsing Error -> ${e.message}")
+            println("pEQLearn: [ENGINE] Tutorial Parsing Error -> ${e.message}")
         }
 
         // 3. Initialize Groove System
@@ -1218,7 +1094,7 @@ private fun loadAssets() {
                 groovePatterns.value = patterns
             }
         } catch (e: Exception) {
-            println("pEQControl: Groove collection failure -> ${e.message}")
+            println("pEQLearn: Groove collection failure -> ${e.message}")
         }
     }
 }
@@ -1662,36 +1538,26 @@ fun scrubSongPlayhead(targetProgress: Float) {
         }
     }
 
-    fun parseIncomingScoreFile(uriString: String) {
+    fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, fileName: String = "Imported Score") {
         isImportingPDF.value = true
         viewModelScope.launch(Dispatchers.Default) {
-            delay(1000)
+            val parsedScore = fileBytes?.let { com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.parse(it, fileName) }
+                ?: com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(fileBytes ?: ByteArray(0))
 
-            // Generate a test score with mixed signatures
-            val mockScore = Score(
-                title = "Mixed Time Signature Test",
+            val finalScore = parsedScore ?: Score(
+                title = fileName.removeSuffix(".mid").removeSuffix(".midi"),
                 tempo = 120f,
                 timeSignature = "4/4",
-                measures = List(8) { mIdx ->
-                    val num = if (mIdx % 2 == 0) 4 else 3
-                    Measure(
-                        timeSignatureNumerator = num,
-                        timeSignatureDenominator = 4,
-                        notes = List(num) { nIdx ->
-                             ScoreNote(midiNote = 60 + (mIdx * 2) + nIdx, position = nIdx.toFloat(), duration = 1.0f)
-                        },
-                        barline = if (mIdx == 7) "final" else "single"
-                    )
-                }
+                measures = listOf(Measure(notes = emptyList()))
             )
 
             withContext(Dispatchers.Main) {
-                currentScore.value = mockScore
+                currentScore.value = finalScore
                 isImportingPDF.value = false
             }
 
             for (progress in 1..100) {
-                delay(10)
+                delay(5)
                 withContext(Dispatchers.Main) {
                     pdfImportProgress.value = progress / 100f
                 }
@@ -1736,7 +1602,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
 
     val liveRiyaazBpm = mutableIntStateOf(100)
 
-    fun startRiyaazEngine(initialScale: String, totalBeats: Int) {
+    fun startRiyaazEngine(initialScale: String, totalBeats: Int, bolSequence: List<String> = emptyList()) {
         stopScorePlayback()
         isSequencerActive.value = true
         sequencerJob?.cancel()
@@ -1748,7 +1614,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 val currentLiveBpm = liveRiyaazBpm.intValue.coerceIn(40, 220)
                 val beatDelayMs = ((60.0 / currentLiveBpm) * 1000).toLong()
 
-                onSequencerStepTick(stepIndex, initialScale)
+                onSequencerStepTick(stepIndex, initialScale, bolSequence)
                 stepIndex = (stepIndex + 1) % totalBeats
 
                 delay(beatDelayMs)
@@ -1756,14 +1622,23 @@ fun scrubSongPlayhead(targetProgress: Float) {
         }
     }
 
-    private fun onSequencerStepTick(stepIndex: Int, selectedScale: String) {
+    private fun onSequencerStepTick(stepIndex: Int, selectedScale: String, bolSequence: List<String> = emptyList()) {
         val stepValue = sequencerSteps.getOrNull(stepIndex)?.value ?: 0
         if (stepValue > 0) {
-            audioEngine.playSample(
-                label = if (stepIndex == 0) "METRONOME-STRONG" else "METRONOME-WEAK",
-                index = stepIndex,
-                string = "SYSTEM"
-            )
+            val bol = bolSequence.getOrNull(stepIndex)
+            if (!bol.isNullOrBlank() && !bol.all { it.isDigit() }) {
+                audioEngine.playSample(
+                    label = bol,
+                    index = stepIndex,
+                    string = "TABLA"
+                )
+            } else {
+                audioEngine.playSample(
+                    label = if (stepIndex == 0) "METRONOME-STRONG" else "METRONOME-WEAK",
+                    index = stepIndex,
+                    string = "SYSTEM"
+                )
+            }
         }
 
         if (stepIndex % 4 == 0) {

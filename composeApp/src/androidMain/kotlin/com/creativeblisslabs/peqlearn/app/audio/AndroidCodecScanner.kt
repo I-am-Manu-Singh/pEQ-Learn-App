@@ -38,7 +38,7 @@ class AndroidCodecScanner(private val context: Context) : CodecScanner {
         val isConnected = bluetoothAdapter?.isEnabled == true
         return if (isConnected) {
             // Physical Handshake: Check if the profile matches the active hardware capability
-            println("pEQControl: [HARDWARE] Auditing Active Codec: ${profile.name}")
+            println("pEQLearn: [HARDWARE] Auditing Active Codec: ${profile.name}")
             // OS-Level Capability Check
             profile.maxBitrate >= 500 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
         } else {

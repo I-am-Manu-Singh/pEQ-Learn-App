@@ -49,70 +49,428 @@ import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine
  * - Navigation Marks (Segno, Coda, Fine, Da Capo, Dal Segno)
  * - Measure barlines and real-time playback note highlighting
  */
+//
+//private fun DrawScope.drawContinuousStaff(
+//    startX: Float,
+//    endX: Float,
+//    trebleBaseline: Float,
+//    bassBaseline: Float,
+//    spacing: Float,
+//    strokeWidth: Float
+//) {
+//    // Treble 5 lines
+//    for (i in 0 until 5) {
+//        val y = trebleBaseline + i * spacing
+//        drawLine(
+//            color = Color.White.copy(alpha = 0.25f),
+//            start = Offset(startX, y),
+//            end = Offset(endX, y),
+//            strokeWidth = strokeWidth
+//        )
+//    }
+//
+//    // Bass 5 lines
+//    for (i in 0 until 5) {
+//        val y = bassBaseline + i * spacing
+//        drawLine(
+//            color = Color.White.copy(alpha = 0.25f),
+//            start = Offset(startX, y),
+//            end = Offset(endX, y),
+//            strokeWidth = strokeWidth
+//        )
+//    }
+//
+//    // Left Grand Staff Connecting Bar
+//    drawLine(
+//        color = Color.White.copy(alpha = 0.6f),
+//        start = Offset(startX, trebleBaseline),
+//        end = Offset(startX, bassBaseline + 4 * spacing),
+//        strokeWidth = strokeWidth * 2.5f
+//    )
+//}
+//
+//private fun DrawScope.drawContinuousTab(
+//    startX: Float,
+//    endX: Float,
+//    baseline: Float,
+//    spacing: Float
+//) {
+//    for (i in 0 until 6) {
+//        val y = baseline + i * spacing
+//        drawLine(
+//            color = Color.White.copy(alpha = 0.35f),
+//            start = Offset(startX, y),
+//            end = Offset(endX, y),
+//            strokeWidth = 1.dp.toPx()
+//        )
+//    }
+//
+//    // Left Tab Bracket Line
+//    drawLine(
+//        color = Color.White.copy(alpha = 0.6f),
+//        start = Offset(startX, baseline),
+//        end = Offset(startX, baseline + 5 * spacing),
+//        strokeWidth = 2.dp.toPx()
+//    )
+//}
 
-private fun DrawScope.drawContinuousStaff(
-    startX: Float,
-    endX: Float,
-    trebleBaseline: Float,
-    bassBaseline: Float,
-    spacing: Float,
-    strokeWidth: Float
-) {
-    // Treble 5 lines
-    for (i in 0 until 5) {
-        val y = trebleBaseline + i * spacing
-        drawLine(
-            color = Color.White.copy(alpha = 0.25f),
-            start = Offset(startX, y),
-            end = Offset(endX, y),
-            strokeWidth = strokeWidth
-        )
-    }
+//
+//private fun DrawScope.drawSlurArc(
+//    startX: Float,
+//    startY: Float,
+//    endX: Float,
+//    endY: Float,
+//    color: Color
+//) {
+//    val path = Path().apply {
+//        moveTo(startX, startY)
+//        quadraticBezierTo(
+//            (startX + endX) / 2f,
+//            minOf(startY, endY) - 16f,
+//            endX,
+//            endY
+//        )
+//    }
+//    drawPath(
+//        path = path,
+//        color = color,
+//        style = Stroke(width = 1.5.dp.toPx())
+//    )
+//}
 
-    // Bass 5 lines
-    for (i in 0 until 5) {
-        val y = bassBaseline + i * spacing
-        drawLine(
-            color = Color.White.copy(alpha = 0.25f),
-            start = Offset(startX, y),
-            end = Offset(endX, y),
-            strokeWidth = strokeWidth
-        )
-    }
+//
+//private fun accidentalOffset(column: Int, spacing: Float): Float = -((column + 1) * spacing * 0.95f)
+//
+//private fun beamGroup(position: Float, timeSignature: String): Int {
+//    val beats = when (timeSignature) {
+//        "6/8" -> 2
+//        "3/4" -> 3
+//        "2/4" -> 2
+//        else -> 4
+//    }
+//    return (position * beats).toInt().coerceAtLeast(0)
+//}
+//
+//private fun dynamicSymbol(dynamic: String): String {
+//    return when (dynamic.lowercase()) {
+//        "ppp" -> "𝄠"
+//        "pp" -> "𝄡"
+//        "p" -> "𝄢"
+//        "mp" -> "𝄣"
+//        "mf" -> "𝄤"
+//        "f" -> "𝄥"
+//        "ff" -> "𝄦"
+//        "fff" -> "𝄧"
+//        else -> dynamic
+//    }
+//}
+//
+//private fun DrawScope.drawGrandStaffBarline(
+//    barlineType: String,
+//    x: Float,
+//    trebleTop: Float,
+//    bassBottom: Float,
+//    color: Color
+//) {
+//    val strokeThin = 1.2f
+//    val strokeThick = 3.5f
+//    when (barlineType) {
+//        "double" -> {
+//            drawLine(color, Offset(x - 4f, trebleTop), Offset(x - 4f, bassBottom), strokeWidth = strokeThin)
+//            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThin)
+//        }
+//        "final" -> {
+//            drawLine(color, Offset(x - 4f, trebleTop), Offset(x - 4f, bassBottom), strokeWidth = strokeThin)
+//            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThick)
+//        }
+//        else -> {
+//            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThin)
+//        }
+//    }
+//}
+//
+//private fun DrawScope.drawGrandStaffBrace(
+//    x: Float,
+//    trebleTop: Float,
+//    bassBottom: Float,
+//    color: Color
+//) {
+//    val path = Path().apply {
+//        val midY = (trebleTop + bassBottom) / 2f
+//        moveTo(x, trebleTop)
+//        cubicTo(x - 8f, trebleTop + 15f, x - 12f, midY - 20f, x - 18f, midY)
+//        cubicTo(x - 12f, midY + 20f, x - 8f, bassBottom - 15f, x, bassBottom)
+//        cubicTo(x - 5f, bassBottom - 15f, x - 9f, midY + 20f, x - 15f, midY)
+//        cubicTo(x - 9f, midY - 20f, x - 5f, trebleTop + 15f, x, trebleTop)
+//        close()
+//    }
+//    drawPath(path, color = color)
+//}
+//
+//private fun DrawScope.drawRepeatStartBarline(
+//    x: Float,
+//    top: Float,
+//    bottom: Float,
+//    color: Color
+//) {
+//    val thin = 1.5f
+//    val thick = 3.5f
+//    val gap = 4.0f
+//    val dotRadius = 2.5f
+//    val centerY = (top + bottom) / 2f
+//    drawLine(color, Offset(x, top), Offset(x, bottom), strokeWidth = thick)
+//    drawLine(color, Offset(x + gap, top), Offset(x + gap, bottom), strokeWidth = thin)
+//    drawCircle(color, radius = dotRadius, center = Offset(x + gap + 5f, centerY - 8f))
+//    drawCircle(color, radius = dotRadius, center = Offset(x + gap + 5f, centerY + 8f))
+//}
+//
+//private fun DrawScope.drawRepeatEndBarline(
+//    x: Float,
+//    top: Float,
+//    bottom: Float,
+//    color: Color
+//) {
+//    val thin = 1.5f
+//    val thick = 3.5f
+//    val gap = 4.0f
+//    val dotRadius = 2.5f
+//    val centerY = (top + bottom) / 2f
+//    drawLine(color, Offset(x - gap, top), Offset(x - gap, bottom), strokeWidth = thin)
+//    drawLine(color, Offset(x, top), Offset(x, bottom), strokeWidth = thick)
+//    drawCircle(color, radius = dotRadius, center = Offset(x - gap - 5f, centerY - 8f))
+//    drawCircle(color, radius = dotRadius, center = Offset(x - gap - 5f, centerY + 8f))
+//}
+//
+//private fun DrawScope.drawEndingBracket(
+//    ending: Int?,
+//    startX: Float,
+//    endX: Float,
+//    baseline: Float,
+//    color: Color
+//) {
+//    if (ending == null) return
+//    val y = baseline - 56.0f
+//    drawLine(color, Offset(startX + 4f, y), Offset(endX - 4f, y), strokeWidth = 1.2f)
+//    drawLine(color, Offset(startX + 4f, y), Offset(startX + 4f, y + 25f), strokeWidth = 1.2f)
+//}
+//
+//private fun DrawScope.drawNavigationMarks(
+//    measure: Measure,
+//    startX: Float,
+//    baseline: Float,
+//    color: Color
+//) {
+//    val y = baseline - 45f
+//    if (measure.segno) {
+//        drawLine(color, Offset(startX + 28f, y - 6f), Offset(startX + 32f, y + 6f), strokeWidth = 1.5f)
+//        drawCircle(color, radius = 2f, center = Offset(startX + 26f, y))
+//        drawCircle(color, radius = 2f, center = Offset(startX + 34f, y))
+//    }
+//    if (measure.coda) {
+//        drawCircle(color, radius = 6f, center = Offset(startX + 52f, y), style = Stroke(width = 1.5f))
+//        drawLine(color, Offset(startX + 44f, y), Offset(startX + 60f, y), strokeWidth = 1.2f)
+//        drawLine(color, Offset(startX + 52f, y - 8f), Offset(startX + 52f, y + 8f), strokeWidth = 1.2f)
+//    }
+//}
 
-    // Left Grand Staff Connecting Bar
-    drawLine(
-        color = Color.White.copy(alpha = 0.6f),
-        start = Offset(startX, trebleBaseline),
-        end = Offset(startX, bassBaseline + 4 * spacing),
-        strokeWidth = strokeWidth * 2.5f
-    )
-}
+//
+//private fun staffY(
+//    midi: Int,
+//    baseline: Float,
+//    referenceStep: Int,
+//    referenceLine: Int,
+//    spacing: Float
+//): Float {
+//    val diatonicStep = com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.getDiatonicStep(midi)
+//    val stepDiff = diatonicStep - referenceStep
+//    return baseline - (referenceLine * spacing) - (stepDiff * (spacing / 2.0f))
+//}
+//
+//private fun slurArch(width: Float): Float = (width * 0.18f).coerceIn(8.0f, 32.0f)
+//
+//private fun tieArch(width: Float): Float = (width * 0.12f).coerceIn(6.0f, 22.0f)
 
-private fun DrawScope.drawContinuousTab(
-    startX: Float,
-    endX: Float,
-    baseline: Float,
-    spacing: Float
-) {
-    for (i in 0 until 6) {
-        val y = baseline + i * spacing
-        drawLine(
-            color = Color.White.copy(alpha = 0.35f),
-            start = Offset(startX, y),
-            end = Offset(endX, y),
-            strokeWidth = 1.dp.toPx()
-        )
-    }
-
-    // Left Tab Bracket Line
-    drawLine(
-        color = Color.White.copy(alpha = 0.6f),
-        start = Offset(startX, baseline),
-        end = Offset(startX, baseline + 5 * spacing),
-        strokeWidth = 2.dp.toPx()
-    )
-}
+//
+//private fun DrawScope.drawHarmonic(
+//    center: Offset,
+//    harmonic: HarmonicType?,
+//    color: Color
+//) {
+//    val size = 8f
+//    val path = Path().apply {
+//        moveTo(center.x, center.y - size)
+//        lineTo(center.x + size, center.y)
+//        lineTo(center.x, center.y + size)
+//        lineTo(center.x - size, center.y)
+//        close()
+//    }
+//    drawPath(path, color = color, style = Stroke(width = 1.5f))
+//}
+//
+//private fun DrawScope.drawBeamPath(
+//    firstStemX: Float,
+//    lastStemX: Float,
+//    firstBeamY: Float,
+//    lastBeamY: Float,
+//    thickness: Float,
+//    color: Color
+//) {
+//    val path = Path().apply {
+//        moveTo(firstStemX, firstBeamY)
+//        lineTo(lastStemX, lastBeamY)
+//        lineTo(lastStemX, lastBeamY + thickness)
+//        lineTo(firstStemX, firstBeamY + thickness)
+//        close()
+//    }
+//    drawPath(path, color = color)
+//}
+//
+//private fun DrawScope.drawTupletBracket(
+//    tuplet: Int,
+//    firstStemX: Float,
+//    lastStemX: Float,
+//    firstBeamY: Float,
+//    lastBeamY: Float,
+//    spacing: Float,
+//    color: Color
+//) {
+//    if (tuplet <= 1) return
+//    val midX = (firstStemX + lastStemX) / 2.0f
+//    val y = minOf(firstBeamY, lastBeamY) - (1.35f * spacing)
+//    drawLine(color, Offset(firstStemX, y), Offset(midX - 9f, y), strokeWidth = 1.2f)
+//    drawLine(color, Offset(midX + 9f, y), Offset(lastStemX, y), strokeWidth = 1.2f)
+//    drawLine(color, Offset(firstStemX, y), Offset(firstStemX, y + 4f), strokeWidth = 1.2f)
+//    drawLine(color, Offset(lastStemX, y), Offset(lastStemX, y + 4f), strokeWidth = 1.2f)
+//}
+//
+//private fun DrawScope.drawSlurs(
+//    notes: List<ScoreNote>,
+//    positionMap: Map<ScoreNote, Float>,
+//    staffAssignmentMap: Map<ScoreNote, Boolean>,
+//    notesStartX: Float,
+//    usableWidth: Float,
+//    config: DrawingConfig,
+//    color: Color
+//) {
+//    val slurStarts = notes.filter { it.slurStart }
+//    for (start in slurStarts) {
+//        val startIndex = notes.indexOf(start)
+//        val end = notes.drop(startIndex + 1).firstOrNull { it.slurEnd } ?: continue
+//
+//        val x1 = snap(notesStartX + (positionMap[start] ?: start.position) * usableWidth)
+//        val x2 = snap(notesStartX + (positionMap[end] ?: end.position) * usableWidth)
+//        val isTreble = staffAssignmentMap[start] ?: (start.midiNote >= 60)
+//        val baseline = if (isTreble) config.trebleBaseline else config.bassBaseline
+//        val refStep = if (isTreble) 64 else 43
+//
+//        val y = staffY(start.midiNote, baseline, refStep, 4, config.lineSpacing)
+//        val width = x2 - x1
+//        val arch = slurArch(width)
+//        val above = start.stemUp != true
+//
+//        val path = Path().apply {
+//            moveTo(x1, y)
+//            cubicTo(x1 + (width * 0.25f), if (above) y - arch else y + arch, x1 + (width * 0.75f), if (above) y - arch else y + arch, x2, y)
+//            cubicTo(x1 + (0.75f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1 + (0.25f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1, y)
+//            close()
+//        }
+//        drawPath(path, color = color)
+//    }
+//}
+//
+//private fun DrawScope.drawTies(
+//    notes: List<ScoreNote>,
+//    positionMap: Map<ScoreNote, Float>,
+//    staffAssignmentMap: Map<ScoreNote, Boolean>,
+//    notesStartX: Float,
+//    usableWidth: Float,
+//    config: DrawingConfig,
+//    color: Color
+//) {
+//    val tieStarts = notes.filter { it.tieStart }
+//    for (start in tieStarts) {
+//        val startIndex = notes.indexOf(start)
+//        val end = notes.drop(startIndex + 1).firstOrNull { it.tieEnd && it.midiNote == start.midiNote } ?: continue
+//
+//        val x1 = snap(notesStartX + (positionMap[start] ?: start.position) * usableWidth)
+//        val x2 = snap(notesStartX + (positionMap[end] ?: end.position) * usableWidth)
+//        val isTreble = staffAssignmentMap[start] ?: (start.midiNote >= 60)
+//        val baseline = if (isTreble) config.trebleBaseline else config.bassBaseline
+//        val refStep = if (isTreble) 64 else 43
+//
+//        val y = staffY(start.midiNote, baseline, refStep, 4, config.lineSpacing)
+//        val width = x2 - x1
+//        val arch = tieArch(width)
+//        val above = start.stemUp != true
+//
+//        val path = Path().apply {
+//            moveTo(x1, y)
+//            cubicTo(x1 + (width * 0.25f), if (above) y - arch else y + arch, x1 + (width * 0.75f), if (above) y - arch else y + arch, x2, y)
+//            cubicTo(x1 + (0.75f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1 + (0.25f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1, y)
+//            close()
+//        }
+//        drawPath(path, color = color)
+//    }
+//}
+//
+//private fun buildRhythmicSpacingMap(notes: List<ScoreNote>): Map<ScoreNote, Float> {
+//    if (notes.isEmpty()) return emptyMap()
+//    val distinctPositions = notes.map { it.position }.distinct().sorted()
+//    if (distinctPositions.size <= 1) return notes.associateWith { it.position }
+//
+//    val minPos = distinctPositions.first()
+//    val maxPos = distinctPositions.last()
+//    val span = if (maxPos > minPos) maxPos - minPos else 1.0f
+//
+//    return notes.associateWith { note ->
+//        (note.position - minPos) / span
+//    }
+//}
+//
+//private fun resolveChordCollisions(notes: List<ScoreNote>): Map<ScoreNote, Float> {
+//    val map = mutableMapOf<ScoreNote, Float>()
+//    val grouped = notes.groupBy { it.position }
+//
+//    for ((_, chord) in grouped) {
+//        val sortedChord = chord.sortedBy { it.midiNote }
+//        for (i in sortedChord.indices) {
+//            val note = sortedChord[i]
+//            if (i > 0 && kotlin.math.abs(sortedChord[i - 1].midiNote - note.midiNote) <= 2) {
+//                map[note] = 12.0f
+//            } else {
+//                map[note] = 0.0f
+//            }
+//        }
+//    }
+//    return map
+//}
+//
+//private fun buildBeamLookup(
+//    beamGroups: List<List<ScoreNote>>,
+//    positionMap: Map<ScoreNote, Float>,
+//    collisionOffsets: Map<ScoreNote, Float>,
+//    staffAssignmentMap: Map<ScoreNote, Boolean>,
+//    stemLengthMap: Map<ScoreNote, Float>,
+//    config: DrawingConfig
+//): Map<ScoreNote, BeamInfo> {
+//    val result = mutableMapOf<ScoreNote, BeamInfo>()
+//    for (group in beamGroups) {
+//        if (group.size < 2) continue
+//        val first = group.first()
+//        val last = group.last()
+//        val info = BeamInfo(
+//            primaryBeam = true,
+//            secondaryBeams = group.size > 2,
+//            stemDirectionUp = first.stemUp ?: true,
+//            beamStartY = config.trebleBaseline - 30f,
+//            beamEndY = config.trebleBaseline - 30f
+//        )
+//        for (note in group) {
+//            result[note] = info
+//        }
+//    }
+//    return result
+//}
 
 private fun DrawScope.drawLedgerLines(
     x: Float,
@@ -124,7 +482,7 @@ private fun DrawScope.drawLedgerLines(
 ) {
     val lineBoundExt = 12f
     val halfSpacing = spacing / 2f
-    
+
     if (y < topY - halfSpacing) {
         var curL = topY - spacing
         while (curL >= y - 0.1f) {
@@ -140,184 +498,9 @@ private fun DrawScope.drawLedgerLines(
     }
 }
 
-private fun DrawScope.drawSlurArc(
-    startX: Float,
-    startY: Float,
-    endX: Float,
-    endY: Float,
-    color: Color
-) {
-    val path = Path().apply {
-        moveTo(startX, startY)
-        quadraticBezierTo(
-            (startX + endX) / 2f,
-            minOf(startY, endY) - 16f,
-            endX,
-            endY
-        )
-    }
-    drawPath(
-        path = path,
-        color = color,
-        style = Stroke(width = 1.5.dp.toPx())
-    )
-}
-
-// ============================================================================
-// COMPLETE 100% RECOVERED ORIGINAL ENGINE HELPERS & SCORING FUNCTIONS
-// ============================================================================
-
 private fun snap(value: Float): Float = kotlin.math.round(value)
 
-private fun staffY(
-    midi: Int,
-    baseline: Float,
-    referenceStep: Int,
-    referenceLine: Int,
-    spacing: Float
-): Float {
-    val diatonicStep = com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.getDiatonicStep(midi)
-    val stepDiff = diatonicStep - referenceStep
-    return baseline - (referenceLine * spacing) - (stepDiff * (spacing / 2.0f))
-}
 
-private fun slurArch(width: Float): Float = (width * 0.18f).coerceIn(8.0f, 32.0f)
-
-private fun tieArch(width: Float): Float = (width * 0.12f).coerceIn(6.0f, 22.0f)
-
-private fun accidentalOffset(column: Int, spacing: Float): Float = -((column + 1) * spacing * 0.95f)
-
-private fun beamGroup(position: Float, timeSignature: String): Int {
-    val beats = when (timeSignature) {
-        "6/8" -> 2
-        "3/4" -> 3
-        "2/4" -> 2
-        else -> 4
-    }
-    return (position * beats).toInt().coerceAtLeast(0)
-}
-
-private fun dynamicSymbol(dynamic: String): String {
-    return when (dynamic.lowercase()) {
-        "ppp" -> "𝄠"
-        "pp" -> "𝄡"
-        "p" -> "𝄢"
-        "mp" -> "𝄣"
-        "mf" -> "𝄤"
-        "f" -> "𝄥"
-        "ff" -> "𝄦"
-        "fff" -> "𝄧"
-        else -> dynamic
-    }
-}
-
-private fun DrawScope.drawGrandStaffBarline(
-    barlineType: String,
-    x: Float,
-    trebleTop: Float,
-    bassBottom: Float,
-    color: Color
-) {
-    val strokeThin = 1.2f
-    val strokeThick = 3.5f
-    when (barlineType) {
-        "double" -> {
-            drawLine(color, Offset(x - 4f, trebleTop), Offset(x - 4f, bassBottom), strokeWidth = strokeThin)
-            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThin)
-        }
-        "final" -> {
-            drawLine(color, Offset(x - 4f, trebleTop), Offset(x - 4f, bassBottom), strokeWidth = strokeThin)
-            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThick)
-        }
-        else -> {
-            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThin)
-        }
-    }
-}
-
-private fun DrawScope.drawGrandStaffBrace(
-    x: Float,
-    trebleTop: Float,
-    bassBottom: Float,
-    color: Color
-) {
-    val path = Path().apply {
-        val midY = (trebleTop + bassBottom) / 2f
-        moveTo(x, trebleTop)
-        cubicTo(x - 8f, trebleTop + 15f, x - 12f, midY - 20f, x - 18f, midY)
-        cubicTo(x - 12f, midY + 20f, x - 8f, bassBottom - 15f, x, bassBottom)
-        cubicTo(x - 5f, bassBottom - 15f, x - 9f, midY + 20f, x - 15f, midY)
-        cubicTo(x - 9f, midY - 20f, x - 5f, trebleTop + 15f, x, trebleTop)
-        close()
-    }
-    drawPath(path, color = color)
-}
-
-private fun DrawScope.drawRepeatStartBarline(
-    x: Float,
-    top: Float,
-    bottom: Float,
-    color: Color
-) {
-    val thin = 1.5f
-    val thick = 3.5f
-    val gap = 4.0f
-    val dotRadius = 2.5f
-    val centerY = (top + bottom) / 2f
-    drawLine(color, Offset(x, top), Offset(x, bottom), strokeWidth = thick)
-    drawLine(color, Offset(x + gap, top), Offset(x + gap, bottom), strokeWidth = thin)
-    drawCircle(color, radius = dotRadius, center = Offset(x + gap + 5f, centerY - 8f))
-    drawCircle(color, radius = dotRadius, center = Offset(x + gap + 5f, centerY + 8f))
-}
-
-private fun DrawScope.drawRepeatEndBarline(
-    x: Float,
-    top: Float,
-    bottom: Float,
-    color: Color
-) {
-    val thin = 1.5f
-    val thick = 3.5f
-    val gap = 4.0f
-    val dotRadius = 2.5f
-    val centerY = (top + bottom) / 2f
-    drawLine(color, Offset(x - gap, top), Offset(x - gap, bottom), strokeWidth = thin)
-    drawLine(color, Offset(x, top), Offset(x, bottom), strokeWidth = thick)
-    drawCircle(color, radius = dotRadius, center = Offset(x - gap - 5f, centerY - 8f))
-    drawCircle(color, radius = dotRadius, center = Offset(x - gap - 5f, centerY + 8f))
-}
-
-private fun DrawScope.drawEndingBracket(
-    ending: Int?,
-    startX: Float,
-    endX: Float,
-    baseline: Float,
-    color: Color
-) {
-    if (ending == null) return
-    val y = baseline - 56.0f
-    drawLine(color, Offset(startX + 4f, y), Offset(endX - 4f, y), strokeWidth = 1.2f)
-    drawLine(color, Offset(startX + 4f, y), Offset(startX + 4f, y + 25f), strokeWidth = 1.2f)
-}
-
-private fun DrawScope.drawNavigationMarks(
-    measure: Measure,
-    startX: Float,
-    baseline: Float,
-    color: Color
-) {
-    val y = baseline - 45f
-    if (measure.segno) {
-        drawLine(color, Offset(startX + 28f, y - 6f), Offset(startX + 32f, y + 6f), strokeWidth = 1.5f)
-        drawCircle(color, radius = 2f, center = Offset(startX + 26f, y))
-        drawCircle(color, radius = 2f, center = Offset(startX + 34f, y))
-    }
-    if (measure.coda) {
-        drawCircle(color, radius = 6f, center = Offset(startX + 52f, y), style = Stroke(width = 1.5f))
-        drawLine(color, Offset(startX + 44f, y), Offset(startX + 60f, y), strokeWidth = 1.2f)
-        drawLine(color, Offset(startX + 52f, y - 8f), Offset(startX + 52f, y + 8f), strokeWidth = 1.2f)
-    }
-}
 
 private fun DrawScope.drawBend(
     start: Offset,
@@ -339,128 +522,6 @@ private fun DrawScope.drawBarre(
     color: Color
 ) {
     drawLine(color, Offset(x, topY), Offset(x, bottomY), strokeWidth = 3f)
-}
-
-private fun DrawScope.drawHarmonic(
-    center: Offset,
-    harmonic: HarmonicType?,
-    color: Color
-) {
-    val size = 8f
-    val path = Path().apply {
-        moveTo(center.x, center.y - size)
-        lineTo(center.x + size, center.y)
-        lineTo(center.x, center.y + size)
-        lineTo(center.x - size, center.y)
-        close()
-    }
-    drawPath(path, color = color, style = Stroke(width = 1.5f))
-}
-
-private fun DrawScope.drawBeamPath(
-    firstStemX: Float,
-    lastStemX: Float,
-    firstBeamY: Float,
-    lastBeamY: Float,
-    thickness: Float,
-    color: Color
-) {
-    val path = Path().apply {
-        moveTo(firstStemX, firstBeamY)
-        lineTo(lastStemX, lastBeamY)
-        lineTo(lastStemX, lastBeamY + thickness)
-        lineTo(firstStemX, firstBeamY + thickness)
-        close()
-    }
-    drawPath(path, color = color)
-}
-
-private fun DrawScope.drawTupletBracket(
-    tuplet: Int,
-    firstStemX: Float,
-    lastStemX: Float,
-    firstBeamY: Float,
-    lastBeamY: Float,
-    spacing: Float,
-    color: Color
-) {
-    if (tuplet <= 1) return
-    val midX = (firstStemX + lastStemX) / 2.0f
-    val y = minOf(firstBeamY, lastBeamY) - (1.35f * spacing)
-    drawLine(color, Offset(firstStemX, y), Offset(midX - 9f, y), strokeWidth = 1.2f)
-    drawLine(color, Offset(midX + 9f, y), Offset(lastStemX, y), strokeWidth = 1.2f)
-    drawLine(color, Offset(firstStemX, y), Offset(firstStemX, y + 4f), strokeWidth = 1.2f)
-    drawLine(color, Offset(lastStemX, y), Offset(lastStemX, y + 4f), strokeWidth = 1.2f)
-}
-
-private fun DrawScope.drawSlurs(
-    notes: List<ScoreNote>,
-    positionMap: Map<ScoreNote, Float>,
-    staffAssignmentMap: Map<ScoreNote, Boolean>,
-    notesStartX: Float,
-    usableWidth: Float,
-    config: DrawingConfig,
-    color: Color
-) {
-    val slurStarts = notes.filter { it.slurStart }
-    for (start in slurStarts) {
-        val startIndex = notes.indexOf(start)
-        val end = notes.drop(startIndex + 1).firstOrNull { it.slurEnd } ?: continue
-
-        val x1 = snap(notesStartX + (positionMap[start] ?: start.position) * usableWidth)
-        val x2 = snap(notesStartX + (positionMap[end] ?: end.position) * usableWidth)
-        val isTreble = staffAssignmentMap[start] ?: (start.midiNote >= 60)
-        val baseline = if (isTreble) config.trebleBaseline else config.bassBaseline
-        val refStep = if (isTreble) 64 else 43
-
-        val y = staffY(start.midiNote, baseline, refStep, 4, config.lineSpacing)
-        val width = x2 - x1
-        val arch = slurArch(width)
-        val above = start.stemUp != true
-
-        val path = Path().apply {
-            moveTo(x1, y)
-            cubicTo(x1 + (width * 0.25f), if (above) y - arch else y + arch, x1 + (width * 0.75f), if (above) y - arch else y + arch, x2, y)
-            cubicTo(x1 + (0.75f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1 + (0.25f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1, y)
-            close()
-        }
-        drawPath(path, color = color)
-    }
-}
-
-private fun DrawScope.drawTies(
-    notes: List<ScoreNote>,
-    positionMap: Map<ScoreNote, Float>,
-    staffAssignmentMap: Map<ScoreNote, Boolean>,
-    notesStartX: Float,
-    usableWidth: Float,
-    config: DrawingConfig,
-    color: Color
-) {
-    val tieStarts = notes.filter { it.tieStart }
-    for (start in tieStarts) {
-        val startIndex = notes.indexOf(start)
-        val end = notes.drop(startIndex + 1).firstOrNull { it.tieEnd && it.midiNote == start.midiNote } ?: continue
-
-        val x1 = snap(notesStartX + (positionMap[start] ?: start.position) * usableWidth)
-        val x2 = snap(notesStartX + (positionMap[end] ?: end.position) * usableWidth)
-        val isTreble = staffAssignmentMap[start] ?: (start.midiNote >= 60)
-        val baseline = if (isTreble) config.trebleBaseline else config.bassBaseline
-        val refStep = if (isTreble) 64 else 43
-
-        val y = staffY(start.midiNote, baseline, refStep, 4, config.lineSpacing)
-        val width = x2 - x1
-        val arch = tieArch(width)
-        val above = start.stemUp != true
-
-        val path = Path().apply {
-            moveTo(x1, y)
-            cubicTo(x1 + (width * 0.25f), if (above) y - arch else y + arch, x1 + (width * 0.75f), if (above) y - arch else y + arch, x2, y)
-            cubicTo(x1 + (0.75f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1 + (0.25f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1, y)
-            close()
-        }
-        drawPath(path, color = color)
-    }
 }
 
 private fun calculateRestsForStaff(
@@ -493,64 +554,6 @@ private fun calculateRestsForStaff(
     return rests
 }
 
-private fun buildRhythmicSpacingMap(notes: List<ScoreNote>): Map<ScoreNote, Float> {
-    if (notes.isEmpty()) return emptyMap()
-    val distinctPositions = notes.map { it.position }.distinct().sorted()
-    if (distinctPositions.size <= 1) return notes.associateWith { it.position }
-
-    val minPos = distinctPositions.first()
-    val maxPos = distinctPositions.last()
-    val span = if (maxPos > minPos) maxPos - minPos else 1.0f
-
-    return notes.associateWith { note ->
-        (note.position - minPos) / span
-    }
-}
-
-private fun resolveChordCollisions(notes: List<ScoreNote>): Map<ScoreNote, Float> {
-    val map = mutableMapOf<ScoreNote, Float>()
-    val grouped = notes.groupBy { it.position }
-
-    for ((_, chord) in grouped) {
-        val sortedChord = chord.sortedBy { it.midiNote }
-        for (i in sortedChord.indices) {
-            val note = sortedChord[i]
-            if (i > 0 && kotlin.math.abs(sortedChord[i - 1].midiNote - note.midiNote) <= 2) {
-                map[note] = 12.0f
-            } else {
-                map[note] = 0.0f
-            }
-        }
-    }
-    return map
-}
-
-private fun buildBeamLookup(
-    beamGroups: List<List<ScoreNote>>,
-    positionMap: Map<ScoreNote, Float>,
-    collisionOffsets: Map<ScoreNote, Float>,
-    staffAssignmentMap: Map<ScoreNote, Boolean>,
-    stemLengthMap: Map<ScoreNote, Float>,
-    config: DrawingConfig
-): Map<ScoreNote, BeamInfo> {
-    val result = mutableMapOf<ScoreNote, BeamInfo>()
-    for (group in beamGroups) {
-        if (group.size < 2) continue
-        val first = group.first()
-        val last = group.last()
-        val info = BeamInfo(
-            primaryBeam = true,
-            secondaryBeams = group.size > 2,
-            stemDirectionUp = first.stemUp ?: true,
-            beamStartY = config.trebleBaseline - 30f,
-            beamEndY = config.trebleBaseline - 30f
-        )
-        for (note in group) {
-            result[note] = info
-        }
-    }
-    return result
-}
 
 @Composable
 fun StaffAndTabNotationViewer(
@@ -605,8 +608,59 @@ fun StaffAndTabNotationViewer(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState)
-                    .padding(vertical = 16.dp)
+                    .padding(vertical = 12.dp)
             ) {
+                // Score Title and Tempo/Key Metadata Header
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = score.title.ifBlank { "Untitled Score" },
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isDark) Color(0xFFEEEEEE) else Color(0xFF1E1E1E),
+                        letterSpacing = 1.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("𝅘𝅥 =", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryColor)
+                            Text(
+                                text = "${score.tempo.toInt()} BPM",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color(0xFFCCCCCC) else Color(0xFF444444)
+                            )
+                        }
+                        Text("•", fontSize = 12.sp, color = Color.Gray.copy(alpha = 0.5f))
+                        Text(
+                            text = score.timeSignature,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFFCCCCCC) else Color(0xFF444444)
+                        )
+                        Text("•", fontSize = 12.sp, color = Color.Gray.copy(alpha = 0.5f))
+                        Text(
+                            text = score.keySignature.keyName,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = primaryColor.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
                 score.measures.chunked(2).forEachIndexed { rowIndex, rowMeasures ->
                     val rowHeight = 260.dp
                     Box(modifier = Modifier.fillMaxWidth().height(rowHeight)) {
@@ -617,55 +671,59 @@ fun StaffAndTabNotationViewer(
                             val bassBaseline = trebleBaseline + (6 * lineSpacing)
                             val tabBaseline = 60f
                             val clefTextColor = if (isDark) Color(0xFFEAEAEA) else Color(0xFF121212)
+                            val leftPadding = 12f
+                            val rightPadding = 12f
+                            val availableWidth = (size.width - leftPadding - rightPadding).coerceAtLeast(100f)
+                            val measureWidth = availableWidth / rowMeasures.size.coerceAtLeast(1)
 
                             rowMeasures.forEachIndexed { mIdxInRow, measure ->
-                                val mIdx = (rowIndex * 2) + mIdxInRow
-                                val startX = snap((mIdxInRow * (size.width / 2f)) + 15f)
-                                val endX = snap((mIdxInRow + 1) * (size.width / 2f))
+                                 val mIdx = (rowIndex * 2) + mIdxInRow
+                                 val startX = snap(leftPadding + (mIdxInRow * measureWidth))
+                                 val endX = snap(startX + measureWidth)
 
-                                val isPlayheadInThisMeasure = (mIdx == playheadMeasure)
+                                 val isPlayheadInThisMeasure = (mIdx == playheadMeasure)
 
-                                // 1. Create config FIRST so it's in scope for all drawing functions
-                                val config = DrawingConfig(
-                                    lineSpacing = lineSpacing,
-                                    trebleBaseline = trebleBaseline,
-                                    bassBaseline = bassBaseline,
-                                    primaryColor = primaryColor,
-                                    leftHandColor = leftHandColor,
-                                    rightHandColor = rightHandColor,
-                                    isLeftHandHidden = isLeftHandHidden,
-                                    isRightHandHidden = isRightHandHidden,
-                                    isDark = isDark,
-                                    isTab = isTab,
-                                    tabBaseline = trebleBaseline,
-                                    showLabels = showLetters,
-                                    showLyrics = showLyrics
-                                )
+                                 // 1. Create config FIRST so it's in scope for all drawing functions
+                                 val config = DrawingConfig(
+                                     lineSpacing = lineSpacing,
+                                     trebleBaseline = trebleBaseline,
+                                     bassBaseline = bassBaseline,
+                                     primaryColor = primaryColor,
+                                     leftHandColor = leftHandColor,
+                                     rightHandColor = rightHandColor,
+                                     isLeftHandHidden = isLeftHandHidden,
+                                     isRightHandHidden = isRightHandHidden,
+                                     isDark = isDark,
+                                     isTab = isTab,
+                                     tabBaseline = trebleBaseline,
+                                     showLabels = showLetters,
+                                     showLyrics = showLyrics
+                                 )
 
-                                // 2. Now call drawGrandStaffSystem using the config
-                                drawGrandStaffSystem(
-                                    ds = this,
-                                    startX = startX,
-                                    endX = endX,
-                                    trebleY = trebleBaseline,
-                                    bassY = bassBaseline,
-                                    spacing = lineSpacing,
-                                    isFinal = (mIdx == score.measures.lastIndex),
-                                    color = Color(0xFF4A4945).copy(alpha = 0.5f),
-                                    drawLeftBar = (mIdxInRow == 0),
-                                    config = config
-                                )
+                                 // 2. Now call drawGrandStaffSystem using the config
+                                 drawGrandStaffSystem(
+                                     ds = this,
+                                     startX = startX,
+                                     endX = endX,
+                                     trebleY = trebleBaseline,
+                                     bassY = bassBaseline,
+                                     spacing = lineSpacing,
+                                     isFinal = (mIdx == score.measures.lastIndex),
+                                     color = Color(0xFF4A4945).copy(alpha = 0.5f),
+                                     drawLeftBar = (mIdxInRow == 0),
+                                     config = config
+                                 )
 
-                                val barType = if (mIdx == score.measures.lastIndex) "final" else "single"
-                                drawGrandStaffSystemBarline(
-                                    type = barType,
-                                    x = endX,
-                                    trebleTop = trebleBaseline,
-                                    trebleBottom = trebleBaseline + (4 * lineSpacing),
-                                    bassTop = bassBaseline,
-                                    bassBottom = bassBaseline + (4 * lineSpacing),
-                                    color = clefTextColor.copy(alpha = 0.2f)
-                                )
+                                 val barType = if (mIdx == score.measures.lastIndex) "final" else "single"
+                                 drawGrandStaffSystemBarline(
+                                     type = barType,
+                                     x = endX,
+                                     trebleTop = trebleBaseline,
+                                     trebleBottom = trebleBaseline + (4 * lineSpacing),
+                                     bassTop = bassBaseline,
+                                     bassBottom = bassBaseline + (4 * lineSpacing),
+                                     color = clefTextColor.copy(alpha = 0.2f)
+                                 )
 
                                 val measureLabel = "M.${mIdx + 1}"
                                 val labelLayout = textMeasurer.measure(
@@ -901,7 +959,13 @@ private fun drawTabMeasureContent(
 
 
         if (playheadOffset != null) {
-            val playheadX = systemContentStartX + (usableMeasureWidth * playheadOffset)
+            val soundingNote = measure.notes.firstOrNull { !it.isRest && isMeasureActive && ((playingNote != null && it.midiNote == playingNote) || activeMidiNotes.contains(it.midiNote)) }
+            val playheadX = if (soundingNote != null) {
+                val beatsPerMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
+                snap(systemContentStartX + (usableMeasureWidth * soundingNote.position / beatsPerMeasure))
+            } else {
+                systemContentStartX + (usableMeasureWidth * playheadOffset)
+            }
             drawLine(
                 color = config.primaryColor,
                 start = Offset(playheadX, tBase - 10f),
@@ -928,39 +992,25 @@ private fun drawStaffMeasureContent(
 
         val symbolAreaWidth = if (drawHeaders) 85f else 0f
         val notesStartX = startX + symbolAreaWidth
-        
+
         // Dynamic horizontal scaling: Adjust usable width based on note density
         val noteDensity = measure.notes.size
         val dynamicMeasureWidth = (endX - notesStartX - 10f).coerceAtLeast(100f)
         val usableMeasureWidth = dynamicMeasureWidth
 
         if (drawHeaders) {
-            // Render Clefs using direct drawing
-            val clefScale = config.lineSpacing / 20f
-            
-            withTransform({
-                translate(left = startX + 10f, top = trebleBaseline - (config.lineSpacing * 1.5f))
-                scale(scaleX = clefScale * 1.6f, scaleY = clefScale * 1.6f, pivot = Offset.Zero)
-            }) {
-                with(MusicVectorSymbols) {
-                    drawTrebleClef(clefTextColor, Size(35f, 90f))
-                }
-            }
+            val clefWidth = 22f
+            val trebleHeight = config.lineSpacing * 3.8f
+            val bassHeight = config.lineSpacing * 2.5f
 
-            withTransform({
-                translate(left = startX + 10f, top = bassBaseline + (config.lineSpacing * 0.2f))
-                scale(scaleX = clefScale * 1.8f, scaleY = clefScale * 1.8f, pivot = Offset.Zero)
-            }) {
-                with(MusicVectorSymbols) {
-                    drawBassClef(clefTextColor, Size(35f, 40f))
-                }
-            }
+            drawTrebleClefSymbol(clefTextColor, Offset(startX + 12f, trebleBaseline - (config.lineSpacing * 0.4f)), Size(clefWidth, trebleHeight))
+            drawBassClefSymbol(clefTextColor, Offset(startX + 12f, bassBaseline - (config.lineSpacing * 0.1f)), Size(clefWidth, bassHeight))
 
             val tsParts = timeSignature.split("/")
             if (tsParts.size == 2) {
                 val tsStyle = TextStyle(color = clefTextColor, fontSize = 20.sp, fontWeight = FontWeight.Black)
-                drawText(textMeasurer.measure(tsParts[0], tsStyle), topLeft = Offset(startX + 50f, trebleBaseline - 0.2f * config.lineSpacing))
-                drawText(textMeasurer.measure(tsParts[1], tsStyle), topLeft = Offset(startX + 50f, trebleBaseline + 1.8f * config.lineSpacing))
+                drawText(textMeasurer.measure(tsParts[0], tsStyle), topLeft = Offset(startX + 44f, trebleBaseline - 0.2f * config.lineSpacing))
+                drawText(textMeasurer.measure(tsParts[1], tsStyle), topLeft = Offset(startX + 44f, trebleBaseline + 1.8f * config.lineSpacing))
             }
         }
 
@@ -969,37 +1019,87 @@ private fun drawStaffMeasureContent(
         // Normalize measure duration beats
         val beatsPerMeasure = measure.timeSignatureNumerator.toFloat()
         
-        measure.notes.forEach { note ->
-            if (note.isRest) return@forEach
+        // Data structure to facilitate beat-level beam grouping for readable notation
+        data class RenderNoteInfo(
+            val note: ScoreNote,
+            val midiNote: Int,
+            val isTrebleClef: Boolean,
+            val nx: Float,
+            val ny: Float,
+            val topY: Float,
+            val bottomY: Float,
+            val beatIndex: Int
+        )
+
+        val visibleNotes = measure.notes.filter { !it.isRest }.mapNotNull { note ->
             val midiNote = note.midiNote
             val isTrebleClef = midiNote >= 60
+            if (isTrebleClef && config.isRightHandHidden) return@mapNotNull null
+            if (!isTrebleClef && config.isLeftHandHidden) return@mapNotNull null
 
-            // Skip hidden hands
-            if (isTrebleClef && config.isRightHandHidden) return@forEach
-            if (!isTrebleClef && config.isLeftHandHidden) return@forEach
-            
-            // Correct relative horizontal placement based on duration & beat position
             val normalizedPosition = (note.position / beatsPerMeasure).coerceIn(0f, 0.95f)
             val nx = snap(notesStartX + (usableMeasureWidth * normalizedPosition))
-            
             val diatonicStep = ChordVoicingEngine.getDiatonicStep(midiNote)
             val ny = if (isTrebleClef) {
                 trebleBaseline + (38.0f - diatonicStep) * halfLineSpacing
             } else {
                 bassBaseline + (26.0f - diatonicStep) * halfLineSpacing
             }
+            val topY = if (isTrebleClef) trebleBaseline else bassBaseline
+            val bottomY = topY + 4 * config.lineSpacing
+            val beatIdx = kotlin.math.floor(note.position).toInt()
+
+            RenderNoteInfo(
+                note = note,
+                midiNote = midiNote,
+                isTrebleClef = isTrebleClef,
+                nx = nx,
+                ny = ny,
+                topY = topY,
+                bottomY = bottomY,
+                beatIndex = beatIdx
+            )
+        }
+
+        // Group notes into beamed clusters (8th/16th notes occurring in the same beat and same clef)
+        data class BeamInfo(
+            val stemDir: Float,
+            val isBeamed: Boolean,
+            val beamGroupKey: String?
+        )
+
+        // Map note to its beam attributes
+        val noteBeamMap = mutableMapOf<ScoreNote, BeamInfo>()
+        val groupedByClefAndBeat = visibleNotes.groupBy { "${if (it.isTrebleClef) "treble" else "bass"}_${it.beatIndex}" }
+
+        for ((groupKey, groupNotes) in groupedByClefAndBeat) {
+            val beamEligible = groupNotes.filter { it.note.duration <= 1.0f }
+            if (beamEligible.size >= 2) {
+                // Determine consistent stem direction for the entire beam group
+                val avgMidi = beamEligible.map { it.midiNote }.average()
+                val isTreble = beamEligible.first().isTrebleClef
+                val groupStemDir = if (isTreble) (if (avgMidi >= 71) 1f else -1f) else (if (avgMidi >= 50) 1f else -1f)
+                
+                beamEligible.forEach { info ->
+                    noteBeamMap[info.note] = BeamInfo(stemDir = groupStemDir, isBeamed = true, beamGroupKey = groupKey)
+                }
+            }
+        }
+
+        // Render each note
+        visibleNotes.forEach { info ->
+            val note = info.note
+            val midiNote = info.midiNote
+            val isTrebleClef = info.isTrebleClef
+            val nx = info.nx
+            val ny = info.ny
+            val topY = info.topY
+            val bottomY = info.bottomY
 
             val isSounding = isMeasureActive && (midiNote == playingNote || activeMidiNotes.contains(midiNote))
             val beadColor = if (isSounding) config.primaryColor else if (isTrebleClef) config.rightHandColor else config.leftHandColor
 
-            val lineBoundExt = 12f
-            val topY = if (isTrebleClef) trebleBaseline else bassBaseline
-            val bottomY = topY + 4 * config.lineSpacing
-
-            val isAboveStaff = ny < topY - halfLineSpacing
-            val isBelowStaff = ny > bottomY + halfLineSpacing
-
-            // Draw Ledger Lines accurately using recalibrated loop logic
+            // Draw Ledger Lines accurately
             drawLedgerLines(
                 x = nx,
                 y = ny,
@@ -1009,7 +1109,8 @@ private fun drawStaffMeasureContent(
                 color = staffLineColor
             )
 
-            val stemDir = if (isTrebleClef) (if (midiNote >= 71) 1f else -1f) else (if (midiNote >= 50) 1f else -1f)
+            val beamInfo = noteBeamMap[note]
+            val stemDir = beamInfo?.stemDir ?: if (isTrebleClef) (if (midiNote >= 71) 1f else -1f) else (if (midiNote >= 50) 1f else -1f)
             val stemX = if (stemDir > 0) nx - 5f else nx + 5f
             
             // Determine Note Duration Visual Type
@@ -1040,8 +1141,8 @@ private fun drawStaffMeasureContent(
                 }
             }
 
-            // Flags, Articulations, and Accidentals...
-            if (duration <= 1.0f && !isHollow) {
+            // Flags only for isolated non-beamed notes
+            if (duration <= 1.0f && !isHollow && beamInfo?.isBeamed != true) {
                 with(MusicVectorSymbols) {
                     drawEighthFlag(clefTextColor, stemX, ny + (stemDir * 24f), stemDir < 0)
                 }
@@ -1070,6 +1171,46 @@ private fun drawStaffMeasureContent(
                     with(MusicVectorSymbols) {
                         if (label.contains("#")) drawSharp(config.primaryColor, accSize) else drawFlat(config.primaryColor, accSize)
                     }
+                }
+            }
+        }
+
+        // Draw Connected Horizontal Beams for beat groups
+        groupedByClefAndBeat.values.forEach { groupNotes ->
+            val beamedNotes = groupNotes.filter { noteBeamMap[it.note]?.isBeamed == true }.sortedBy { it.nx }
+            if (beamedNotes.size >= 2) {
+                val stemDir = noteBeamMap[beamedNotes.first().note]?.stemDir ?: 1f
+                val firstX = if (stemDir > 0) beamedNotes.first().nx - 5f else beamedNotes.first().nx + 5f
+                val lastX = if (stemDir > 0) beamedNotes.last().nx - 5f else beamedNotes.last().nx + 5f
+                
+                // Primary beam connecting all notes in group at stem tips
+                val beamY = if (stemDir > 0) {
+                    beamedNotes.maxOf { it.ny + (stemDir * 24f) }
+                } else {
+                    beamedNotes.minOf { it.ny + (stemDir * 24f) }
+                }
+
+                val beamThickness = 3.5f
+                // First beam (8th note beam)
+                drawLine(
+                    color = clefTextColor,
+                    start = Offset(firstX, beamY),
+                    end = Offset(lastX, beamY),
+                    strokeWidth = beamThickness
+                )
+
+                // Secondary beam for 16th notes (duration <= 0.5f)
+                val sixteenthNotes = beamedNotes.filter { it.note.duration <= 0.5f }
+                if (sixteenthNotes.size >= 2) {
+                    val sFirstX = if (stemDir > 0) sixteenthNotes.first().nx - 5f else sixteenthNotes.first().nx + 5f
+                    val sLastX = if (stemDir > 0) sixteenthNotes.last().nx - 5f else sixteenthNotes.last().nx + 5f
+                    val subBeamY = beamY - (stemDir * 5f)
+                    drawLine(
+                        color = clefTextColor,
+                        start = Offset(sFirstX, subBeamY),
+                        end = Offset(sLastX, subBeamY),
+                        strokeWidth = beamThickness
+                    )
                 }
             }
         }
@@ -1123,7 +1264,13 @@ private fun drawStaffMeasureContent(
 
 
         if (playheadOffset != null) {
-            val playheadX = notesStartX + (usableMeasureWidth * playheadOffset)
+            val soundingNote = measure.notes.firstOrNull { !it.isRest && isMeasureActive && ((playingNote != null && it.midiNote == playingNote) || activeMidiNotes.contains(it.midiNote)) }
+            val playheadX = if (soundingNote != null) {
+                val normalizedPosition = (soundingNote.position / beatsPerMeasure).coerceIn(0f, 0.95f)
+                snap(notesStartX + (usableMeasureWidth * normalizedPosition))
+            } else {
+                notesStartX + (usableMeasureWidth * playheadOffset)
+            }
             drawLine(
                 color = config.primaryColor,
                 start = Offset(playheadX, config.trebleBaseline - 15f),
@@ -1133,7 +1280,34 @@ private fun drawStaffMeasureContent(
         }
     }
 }
+private fun DrawScope.drawTrebleClefSymbol(color: Color, topLeft: Offset, size: Size) {
+    val path = Path().apply {
+        moveTo(topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.95f)
+        cubicTo(topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.90f, topLeft.x + size.width * 0.10f, topLeft.y + size.height * 0.70f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.55f)
+        cubicTo(topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.35f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.20f)
+        cubicTo(topLeft.x + size.width * 0.35f, topLeft.y + size.height * 0.05f, topLeft.x + size.width * 0.65f, topLeft.y + size.height * 0.02f, topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.25f)
+        cubicTo(topLeft.x + size.width * 0.75f, topLeft.y + size.height * 0.50f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.70f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.95f)
+        close()
+    }
+    drawPath(path, color = color)
+}
 
+private fun DrawScope.drawBassClefSymbol(color: Color, topLeft: Offset, size: Size) {
+    val path = Path().apply {
+        moveTo(topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.40f)
+        cubicTo(topLeft.x + size.width * 0.05f, topLeft.y + size.height * 0.20f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.05f, topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.25f)
+        cubicTo(topLeft.x + size.width * 0.75f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.85f, topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.90f)
+        lineTo(topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.90f)
+        lineTo(topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.75f)
+        cubicTo(topLeft.x + size.width * 0.50f, topLeft.y + size.height * 0.75f, topLeft.x + size.width * 0.40f, topLeft.y + size.height * 0.65f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.55f)
+        cubicTo(topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.50f, topLeft.y + size.height * 0.30f, topLeft.x + size.width * 0.38f, topLeft.y + size.height * 0.30f)
+        cubicTo(topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.30f, topLeft.x + size.width * 0.25f, topLeft.y + size.height * 0.35f, topLeft.x + size.width * 0.28f, topLeft.y + size.height * 0.42f)
+        close()
+    }
+    drawPath(path, color = color)
+    drawCircle(color, radius = size.width * 0.08f, center = Offset(topLeft.x + size.width * 0.85f, topLeft.y + size.height * 0.35f))
+    drawCircle(color, radius = size.width * 0.08f, center = Offset(topLeft.x + size.width * 0.85f, topLeft.y + size.height * 0.65f))
+}
 private fun DrawScope.drawGrandStaffSystem(
     ds: DrawScope,
     startX: Float,

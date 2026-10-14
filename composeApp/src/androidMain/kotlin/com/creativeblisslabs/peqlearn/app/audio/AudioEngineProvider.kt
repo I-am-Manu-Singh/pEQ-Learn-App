@@ -110,7 +110,7 @@ object AudioEngineProvider {
         } catch (e: Exception) {
 
             println(
-                "pEQControl: [ENGINE_PROVIDER] Volume Failed: ${e.message}"
+                "pEQLearn: [ENGINE_PROVIDER] Volume Failed: ${e.message}"
             )
         }
     }

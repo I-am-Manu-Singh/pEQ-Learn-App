@@ -15,7 +15,7 @@ import kotlinx.datetime.Clock
  */
 
 fun AppViewModel.refreshLibrary() {
-    println("pEQControl: [LIBRARY] Refreshing local indices")
+    println("pEQLearn: [LIBRARY] Refreshing local indices")
     scanner?.scan(scanFolders.toList(), emptyList())
 }
 

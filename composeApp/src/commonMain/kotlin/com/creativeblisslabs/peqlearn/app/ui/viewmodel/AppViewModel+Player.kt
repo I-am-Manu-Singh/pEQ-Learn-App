@@ -166,7 +166,6 @@ fun AppViewModel.seekRelative(deltaMs: Long) {
 
 fun AppViewModel.playMediaItem(item: pEQMediaItem, addToQueue: Boolean = true, fromHomeScreen: Boolean = false) {
     currentMediaItem.value = item
-    syncedLyrics.clear()
     
     scope.launch {
         val playPath = if (item.path.startsWith("http") && (item.path.contains("youtube.com") || item.path.contains("youtu.be"))) {
@@ -400,10 +399,15 @@ fun AppViewModel.toggleShuffle() {
 fun AppViewModel.toggleAbRepeat() {
     abRepeatActive.value = !abRepeatActive.value
     if (abRepeatActive.value) {
-        showCutter.value = false
+        val pos = currentPosition.value
+        val dur = currentDuration.value.takeIf { it > 0 } ?: (pos + 10000L)
+        abRepeatPointA.value = pos
+        abRepeatPointB.value = (pos + 5000L).coerceAtMost(dur)
+        audioEngine.setLoopPoints(abRepeatPointA.value, abRepeatPointB.value)
     } else {
         abRepeatPointA.value = -1L
         abRepeatPointB.value = -1L
+        audioEngine.setLoopPoints(-1L, -1L)
         updateLoopPoints(-1L, -1L)
     }
 }

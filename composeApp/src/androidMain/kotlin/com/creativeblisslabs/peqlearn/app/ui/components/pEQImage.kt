@@ -135,7 +135,7 @@ actual fun pEQImage(
                     }
                 }
             } catch (e: Exception) {
-                println("pEQControl: [IMAGE] Load Failed: ${e.message}")
+                println("pEQLearn: [IMAGE] Load Failed: ${e.message}")
             }
         }
     }

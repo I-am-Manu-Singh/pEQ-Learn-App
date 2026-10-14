@@ -10,40 +10,33 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.withTransform
 
 object MusicVectorSymbols {
-
-    fun DrawScope.drawTrebleClef(color: Color, size: Size) {
+    private fun DrawScope.drawTrebleClefSymbol(color: Color, topLeft: Offset, size: Size) {
         val path = Path().apply {
-            moveTo(22.5f, 75.4f)
-            cubicTo(19.7f, 75.4f, 17.4f, 73.2f, 17.4f, 70.4f)
-            cubicTo(17.4f, 66.3f, 21.5f, 63.5f, 25.5f, 63.5f)
-            cubicTo(29.5f, 63.5f, 31.6f, 66.6f, 31.6f, 69.6f)
-            cubicTo(31.6f, 72.6f, 28.7f, 75.4f, 22.5f, 75.4f)
-            cubicTo(16.4f, 75.4f, 12.4f, 70.3f, 12.4f, 63.2f)
-            cubicTo(12.4f, 53f, 20.5f, 44.9f, 24.6f, 34.8f)
-            cubicTo(26.6f, 29.7f, 27.6f, 24.6f, 25.6f, 21.6f)
-            cubicTo(24.6f, 19.6f, 22.5f, 18.5f, 20.5f, 20.5f)
-            cubicTo(16.4f, 23.6f, 16.4f, 30.7f, 18.5f, 35.7f)
-            cubicTo(20.5f, 40.8f, 23.6f, 45.9f, 23.6f, 50.9f)
-            cubicTo(23.6f, 61.1f, 15.5f, 67.1f, 11.4f, 67.1f)
-            cubicTo(8.3f, 67.1f, 5.3f, 65.1f, 5.3f, 61f)
-            cubicTo(5.3f, 55.9f, 9.4f, 52.9f, 13.4f, 52.9f)
-            cubicTo(17.4f, 52.9f, 19.5f, 56f, 19.5f, 59f)
-            cubicTo(19.5f, 62.1f, 17.5f, 64.1f, 13.4f, 64.1f)
+            moveTo(topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.95f)
+            cubicTo(topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.90f, topLeft.x + size.width * 0.10f, topLeft.y + size.height * 0.70f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.55f)
+            cubicTo(topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.35f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.20f)
+            cubicTo(topLeft.x + size.width * 0.35f, topLeft.y + size.height * 0.05f, topLeft.x + size.width * 0.65f, topLeft.y + size.height * 0.02f, topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.25f)
+            cubicTo(topLeft.x + size.width * 0.75f, topLeft.y + size.height * 0.50f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.70f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.95f)
+            close()
         }
         drawPath(path, color = color)
     }
 
-    fun DrawScope.drawBassClef(color: Color, size: Size) {
+    private fun DrawScope.drawBassClefSymbol(color: Color, topLeft: Offset, size: Size) {
         val path = Path().apply {
-            moveTo(5.1f, 10.2f)
-            cubicTo(5.1f, 5.1f, 9.2f, 1.1f, 14.2f, 1.1f)
-            cubicTo(20.3f, 1.1f, 25.4f, 6.2f, 25.4f, 12.3f)
-            cubicTo(25.4f, 20.4f, 18.3f, 27.5f, 10.2f, 31.6f)
-            cubicTo(8.2f, 32.6f, 7.1f, 34.6f, 7.1f, 36.6f)
+            moveTo(topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.40f)
+            cubicTo(topLeft.x + size.width * 0.05f, topLeft.y + size.height * 0.20f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.05f, topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.25f)
+            cubicTo(topLeft.x + size.width * 0.75f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.85f, topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.90f)
+            lineTo(topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.90f)
+            lineTo(topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.75f)
+            cubicTo(topLeft.x + size.width * 0.50f, topLeft.y + size.height * 0.75f, topLeft.x + size.width * 0.40f, topLeft.y + size.height * 0.65f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.55f)
+            cubicTo(topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.50f, topLeft.y + size.height * 0.30f, topLeft.x + size.width * 0.38f, topLeft.y + size.height * 0.30f)
+            cubicTo(topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.30f, topLeft.x + size.width * 0.25f, topLeft.y + size.height * 0.35f, topLeft.x + size.width * 0.28f, topLeft.y + size.height * 0.42f)
+            close()
         }
-        drawPath(path, color = color, style = Stroke(width = 2f))
-        drawCircle(color, radius = 2.5f, center = Offset(28.4f, 5.1f))
-        drawCircle(color, radius = 2.5f, center = Offset(28.4f, 15.2f))
+        drawPath(path, color = color)
+        drawCircle(color, radius = size.width * 0.08f, center = Offset(topLeft.x + size.width * 0.85f, topLeft.y + size.height * 0.35f))
+        drawCircle(color, radius = size.width * 0.08f, center = Offset(topLeft.x + size.width * 0.85f, topLeft.y + size.height * 0.65f))
     }
 
     fun DrawScope.drawSharp(color: Color, size: Size) {
