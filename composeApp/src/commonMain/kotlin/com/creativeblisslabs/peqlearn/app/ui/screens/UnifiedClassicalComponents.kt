@@ -377,11 +377,11 @@ fun UnifiedRaagaBrowser(
                         activeSemitones = raga.semitones,
                         currentPlayingMidi = viewModel?.midiPlayingNote?.value,
                         accentColor = accentColor,
-                        onPlayNote = { midiNote ->
+                        onPlayNote = { midiNote: Int ->
                             viewModel?.midiPlayingNote?.value = midiNote
                             getAudioEngine().noteOn(midiNote, 0.85f)
                         },
-                        onStopNote = { midiNote ->
+                        onStopNote = { midiNote: Int ->
                             getAudioEngine().noteOff(midiNote)
                             if (viewModel?.midiPlayingNote?.value == midiNote) {
                                 viewModel.midiPlayingNote.value = null
@@ -841,3 +841,270 @@ fun PlayableInfoRowShared(
         }
     }
 }
+
+@Composable
+fun MetaChip(label: String, value: String, chipColor: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = chipColor.copy(alpha = 0.15f),
+        border = BorderStroke(1.dp, chipColor.copy(alpha = 0.3f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(label, fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+            Text(value, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = chipColor)
+        }
+    }
+}
+
+@Composable
+fun SwaraSthanasVisualizer(
+    activeSemitones: List<Int>,
+    currentPlayingMidi: Int?,
+    accentColor: Color,
+    onPlayNote: (Int) -> Unit,
+    onStopNote: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val swaraSthanasLabels = listOf("S", "R1", "R2/G1", "R3/G2", "G3", "M1", "M2", "P", "D1", "D2/N1", "D3/N2", "N3", "S'")
+    val verifiedSemitones = activeSemitones.ifEmpty { listOf(0, 1, 4, 5, 7, 8, 11, 12) }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "SWARA STHANAS / INTERACTIVE SCALE MAP",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            color = accentColor.copy(alpha = 0.9f),
+            letterSpacing = 0.8.sp,
+            modifier = Modifier.padding(horizontal = 2.dp)
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .background(Color(0xFF0D0F15), RoundedCornerShape(16.dp))
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            for (semi in 0..12) {
+                val isIncluded = verifiedSemitones.contains(semi) || (semi == 12 && verifiedSemitones.contains(0))
+                val isBlackKey = listOf(1, 3, 6, 8, 10).contains(semi % 12)
+                val noteMidi = 60 + semi
+                val isPlaying = currentPlayingMidi == noteMidi
+
+                val keyBackground = when {
+                    isPlaying -> Color(0xFFFFD54F)
+                    isIncluded && isBlackKey -> accentColor.copy(alpha = 0.85f)
+                    isIncluded -> accentColor.copy(alpha = 0.25f)
+                    isBlackKey -> Color(0xFF1A1D26)
+                    else -> Color.White.copy(alpha = 0.04f)
+                }
+
+                val borderTint = when {
+                    isPlaying -> Color(0xFFFFD54F)
+                    isIncluded -> accentColor.copy(alpha = 0.5f)
+                    else -> Color.White.copy(alpha = 0.06f)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(keyBackground)
+                        .border(1.dp, borderTint, RoundedCornerShape(6.dp))
+                        .pointerInput(noteMidi) {
+                            detectTapGestures(
+                                onPress = {
+                                    try {
+                                        onPlayNote(noteMidi)
+                                        tryAwaitRelease()
+                                    } finally {
+                                        onStopNote(noteMidi)
+                                    }
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    val currentLabel = swaraSthanasLabels[semi]
+                    val containsSlash = currentLabel.contains("/")
+
+                    Column(
+                        modifier = Modifier.padding(bottom = 8.dp, start = 1.dp, end = 1.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        if (containsSlash) {
+                            val parts = currentLabel.split("/")
+                            parts.forEach { part ->
+                                Text(
+                                    text = part,
+                                    fontSize = 8.sp,
+                                    lineHeight = 9.sp,
+                                    fontWeight = if (isIncluded) FontWeight.ExtraBold else FontWeight.Medium,
+                                    color = if (isPlaying) Color.Black else if (isIncluded) Color.White else Color.White.copy(alpha = 0.25f)
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = currentLabel,
+                                fontSize = 9.sp,
+                                fontWeight = if (isIncluded) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (isPlaying) Color.Black else if (isIncluded) Color.White else Color.White.copy(alpha = 0.25f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BandishSection(
+    selectedRaga: Raaga,
+    accentColor: Color
+) {
+    var showTranslation by remember { mutableStateOf(false) }
+    val rotationState by animateFloatAsState(targetValue = if (showTranslation) 180f else 0f)
+
+    fun parseSectionLines(fullText: String, prefix: String): List<String> {
+        if (fullText.isEmpty()) return emptyList()
+        val section = fullText.split("Antara:").map { it.trim() }
+        val targetBlock = if (prefix == "Sthai") {
+            section.firstOrNull()?.replace("Sthai:", "")?.trim() ?: ""
+        } else {
+            if (section.size > 1) section[1] else ""
+        }
+        return targetBlock.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    val sthaiLines = selectedRaga.sthai.ifEmpty { "Traditional Classical Verse\nSthai Line 2" }.split("\n")
+    val sthaiTrans = parseSectionLines(selectedRaga.transliteration, "Sthai")
+    val sthaiMean = parseSectionLines(selectedRaga.meaning, "Sthai")
+
+    val antaraLines = selectedRaga.antara.ifEmpty { "Second Movement Verse\nAntara Line 2" }.split("\n")
+    val antaraTrans = parseSectionLines(selectedRaga.transliteration, "Antara")
+    val antaraMean = parseSectionLines(selectedRaga.meaning, "Antara")
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Composition / Bandish / Kriti",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = selectedRaga.bandish.ifEmpty { "Classical Composition" },
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    .clickable { showTranslation = !showTranslation }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (showTranslation) "Hide Meaning" else "Show Meaning",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = "Toggle Translation",
+                    modifier = Modifier.size(14.dp).rotate(rotationState),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Sthai / Pallavi",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF81C784),
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            
+            sthaiLines.forEachIndexed { index, line ->
+                Column(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = Color.White)
+                    val lineTrans = sthaiTrans.getOrNull(index) ?: sthaiTrans.firstOrNull()
+                    if (!lineTrans.isNullOrEmpty()) {
+                        Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = Color.White.copy(alpha = 0.6f))
+                    }
+                    val lineMean = sthaiMean.getOrNull(index) ?: sthaiMean.firstOrNull()
+                    AnimatedVisibility(visible = showTranslation && !lineMean.isNullOrEmpty()) {
+                        if (lineMean != null) {
+                            Text(text = lineMean, fontSize = 11.sp, color = Color(0xFFFFD54F).copy(alpha = 0.9f))
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Antara / Charanam",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF64B5F6),
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            
+            antaraLines.forEachIndexed { index, line ->
+                Column(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = Color.White)
+                    val lineTrans = antaraTrans.getOrNull(index) ?: antaraTrans.firstOrNull()
+                    if (!lineTrans.isNullOrEmpty()) {
+                        Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = Color.White.copy(alpha = 0.6f))
+                    }
+                    val lineMean = antaraMean.getOrNull(index) ?: antaraMean.firstOrNull()
+                    AnimatedVisibility(visible = showTranslation && !lineMean.isNullOrEmpty()) {
+                        if (lineMean != null) {
+                            Text(text = lineMean, fontSize = 11.sp, color = Color(0xFFFFD54F).copy(alpha = 0.9f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
