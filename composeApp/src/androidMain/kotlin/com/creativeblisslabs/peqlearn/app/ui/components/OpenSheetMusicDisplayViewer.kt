@@ -3,6 +3,7 @@ package com.creativeblisslabs.peqlearn.app.ui.components
 import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.ui.text.style.TextAlign
 import android.util.Base64
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient

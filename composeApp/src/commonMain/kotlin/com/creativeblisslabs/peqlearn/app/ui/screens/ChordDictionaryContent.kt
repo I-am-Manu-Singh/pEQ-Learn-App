@@ -649,8 +649,19 @@ Row(
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Staff Notation", "Tab Notation").forEach { fmt ->
-                FilterChip(selected = unifiedFormat == fmt, onClick = { onFormatChange(fmt) }, label = { Text(fmt, fontSize = 11.sp) })
+            listOf("Both", "Staff", "Tab").forEach { fmt ->
+                val isSelected = unifiedFormat.equals(fmt, ignoreCase = true) ||
+                    (fmt == "Staff" && unifiedFormat.contains("staff", ignoreCase = true)) ||
+                    (fmt == "Tab" && unifiedFormat.contains("tab", ignoreCase = true))
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { onFormatChange(fmt) },
+                    label = { Text(fmt, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = partColor.copy(alpha = 0.2f),
+                        selectedLabelColor = partColor
+                    )
+                )
             }
         }
 
@@ -663,7 +674,8 @@ Row(
             primaryColor = partColor,
             currentFormat = unifiedFormat,
             onFormatChange = onFormatChange,
-            modifier = Modifier.fillMaxWidth().height(220.dp),
+            showScoreHeader = false,
+            modifier = Modifier.fillMaxWidth().height(240.dp),
             scrollState = scrollState
         )
 
@@ -1136,8 +1148,12 @@ fun ImmersiveKeyboardFretboardLabDialog(
 ) {
     DisposableEffect(Unit) {
         viewModel.isImmersiveLabActive.value = true
+        setScreenOrientation(pEQOrientation.LANDSCAPE)
+        setSystemBarsVisibility(false)
         onDispose {
             viewModel.isImmersiveLabActive.value = false
+            setScreenOrientation(pEQOrientation.USER)
+            setSystemBarsVisibility(true)
         }
     }
     var activeLabTab by remember { mutableStateOf(if (instrumentType == ChordInstrumentType.PIANO) "Piano" else if (instrumentType == ChordInstrumentType.UKULELE) "Uke" else "Guitar") }

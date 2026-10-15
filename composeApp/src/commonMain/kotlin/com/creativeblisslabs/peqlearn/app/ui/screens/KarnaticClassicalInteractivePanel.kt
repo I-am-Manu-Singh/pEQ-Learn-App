@@ -42,9 +42,9 @@ import kotlinx.coroutines.launch
 internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
     val accentColor = MaterialTheme.colorScheme.primary
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Radel Studio", "72 Melakartas", "Sapta Talas", "35 Alankarams", "Solkattu")
+    val tabs = listOf("72 Melakartas", "Sapta Talas", "35 Alankarams", "Solkattu")
     val tabIcons = listOf(Icons.Default.SurroundSound, Icons.Default.MusicNote, Icons.Default.Speed, Icons.Default.AutoStories, Icons.Default.GraphicEq)
-    var notationFormat by remember { mutableStateOf("Staff Notation") }
+    var notationFormat by remember { mutableStateOf("Staff") }
 
     var selectedRagaState by remember { mutableStateOf<Raaga?>(null) }
     var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Harmonium, 1 = Guitar
@@ -106,11 +106,10 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
             pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
                 Box(modifier = Modifier.padding(12.dp)) {
                     when (selectedTab) {
-                        0 -> RadelTanpuraTablaStudio(viewModel, isCarnatic = true, accentColor = accentColor)
-                        1 -> UnifiedRaagaBrowser(viewModel, accentColor, isCarnatic = true, onSelectRaga = { selectedRagaState = it })
-                        2 -> UnifiedTaalBrowser(viewModel, accentColor, isCarnatic = true)
-                        3 -> UnifiedAlankaarPanel(viewModel, accentColor, isCarnatic = true)
-                        4 -> KarnaticSolkattuPanel(accentColor)
+                        0 -> UnifiedRaagaBrowser(viewModel, accentColor, isCarnatic = true, onSelectRaga = { selectedRagaState = it })
+                        1 -> UnifiedTaalBrowser(viewModel, accentColor, isCarnatic = true)
+                        2 -> UnifiedAlankaarPanel(viewModel, accentColor, isCarnatic = true)
+                        3 -> KarnaticSolkattuPanel(accentColor)
                     }
                 }
             }

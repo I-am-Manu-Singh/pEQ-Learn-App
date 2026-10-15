@@ -46,7 +46,7 @@ fun NotationWorkspaceItem(
     onBack: () -> Unit = {},
     launchFilePicker: () -> Unit = {}
 ) {
-    val formats = listOf("Staff Only", "Tab Only", "Both Viewers")
+    val formats = listOf("Staff", "Tab", "Both")
     val keySignatures = listOf("C Major", "G Major", "D Major", "A Major", "F Major", "B♭ Major", "E♭ Major", "A Minor")
     val timeSignatures = listOf("4/4", "3/4", "2/4", "6/8", "12/8", "5/4", "7/8")
     val instruments = listOf("Guitar", "Piano", "Bass", "Drum kit", "Ukulele")
@@ -76,16 +76,22 @@ fun NotationWorkspaceItem(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip(
-                    selected = isHorizontalScroll,
-                    onClick = { isHorizontalScroll = !isHorizontalScroll },
+                    selected = !viewModel.isVerticalScroll.value,
+                    onClick = { viewModel.isVerticalScroll.value = !viewModel.isVerticalScroll.value },
                     leadingIcon = {
                         Icon(
-                            if (isHorizontalScroll) Icons.Default.SwapHoriz else Icons.Default.SwapVert,
+                            if (!viewModel.isVerticalScroll.value) Icons.Default.SwapHoriz else Icons.Default.SwapVert,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
                     },
-                    label = { Text(if (isHorizontalScroll) "" else "", fontSize = 11.sp) }
+                    label = { 
+                        Text(
+                            if (!viewModel.isVerticalScroll.value) "Flow" else "Page", 
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ) 
+                    }
                 )
 
                 FilterChip(
@@ -100,7 +106,7 @@ fun NotationWorkspaceItem(
                     },
                     label = {
                         Text(
-                            if (viewModel.useOsmdRenderer.value) "OSMD (Web)" else "",
+                            if (viewModel.useOsmdRenderer.value) "Web" else "Canvas",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -134,9 +140,7 @@ fun NotationWorkspaceItem(
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Icon(Icons.Default.IosShare, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+               }
             }
 
         
@@ -177,6 +181,8 @@ fun NotationWorkspaceItem(
                         primaryColor = accentColor,
                         currentFormat = viewModel.notationFormat.value,
                         onFormatChange = { viewModel.notationFormat.value = it },
+                        isVerticalScroll = viewModel.isVerticalScroll.value,
+                        onVerticalScrollChange = { viewModel.isVerticalScroll.value = it },
                         isPedalPressed = viewModel.sustainActive.value,
                         modifier = Modifier.fillMaxSize(),
                         scrollState = scrollState
@@ -312,6 +318,8 @@ fun NotationWorkspaceItem(
                                         primaryColor = accentColor,
                                         currentFormat = viewModel.notationFormat.value,
                                         onFormatChange = { viewModel.notationFormat.value = it },
+                                        isVerticalScroll = viewModel.isVerticalScroll.value,
+                                        onVerticalScrollChange = { viewModel.isVerticalScroll.value = it },
                                         modifier = Modifier.fillMaxSize(),
                                         scrollState = fsScrollState
                                     )

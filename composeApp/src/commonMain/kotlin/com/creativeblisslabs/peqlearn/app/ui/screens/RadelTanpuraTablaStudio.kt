@@ -227,12 +227,8 @@ private fun RadelHardwareEnclosure(
 
     // --- Neural Studio Glass-morphic Enclosure ---
 
-    pEQGlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (isFullscreen) Modifier.fillMaxHeight() else Modifier.wrapContentHeight())
-            .padding(if (isFullscreen) 16.dp else 0.dp)
-            .clip(RoundedCornerShape(24.dp))
+      pEQGlassCard(
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
@@ -909,9 +905,7 @@ private fun RadelParameterDock(
     var stringModeExpanded by remember { mutableStateOf(false) }
     var taalExpanded by remember { mutableStateOf(false) }
 
-    pEQGlassCard(
-        modifier = Modifier.fillMaxWidth()
-    ) {
+ 
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -922,7 +916,7 @@ private fun RadelParameterDock(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "ELECTRONIC CALIBRATION & DRONE TUNING",
+                    text = "DRONE TUNING",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
@@ -935,7 +929,7 @@ private fun RadelParameterDock(
                     onClick = onToggleSyncWithMetronome,
                     label = {
                         Text(
-                            text = if (isSyncWithMetronome) "SYNCED WITH METRONOME" else "SYNC METRONOME",
+                            text = if (isSyncWithMetronome) "SYNCED" else "SYNC",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1132,7 +1126,6 @@ private fun RadelParameterDock(
                     }
                 }
             }
-        }
     }
 }
 

@@ -250,15 +250,7 @@ fun DashboardHome(viewModel: AppViewModel) {
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                // LEFT COLUMN
-                Column(
-                    modifier = Modifier
-                        .weight(0.46f)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    // 📂 QUICK PICK FILE TO OPEN
+                 // 📂 QUICK PICK FILE TO OPEN
                     Button(
                         onClick = {
                             viewModel.onPickTrackRequested?.invoke { pickedItem ->
@@ -283,12 +275,19 @@ fun DashboardHome(viewModel: AppViewModel) {
                             Text("OPEN AUDIO / VIDEO FILE", fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                         }
                     }
+                // LEFT COLUMN
+                Column(
+                    modifier = Modifier
+                        .weight(0.46f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                   
 
                     // MOST PLAYED SECTION
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SectionHeader("MOST PLAYED")
-                        MostPlayedSection(viewModel)
-                    }
+                    MostPlayedSection(viewModel)
+                    
 
                     // PLAYLISTS SECTION
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

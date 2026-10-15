@@ -356,6 +356,7 @@ fun UnifiedPianoKeyboard(
     isPlaying: Boolean = false,
     startNote: Int = 21,
     endNote: Int = 108,
+    fillWidth: Boolean = false,
     onKeyTapped: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -383,9 +384,13 @@ fun UnifiedPianoKeyboard(
     BoxWithConstraints(modifier = modifier) {
         val availableWidth = constraints.maxWidth.toFloat()
         val calculatedKeyWidth = availableWidth / whiteMidiNotes.size.coerceAtLeast(1)
-        val finalWhiteKeyWidthPx = if (calculatedKeyWidth > maxWhiteKeyWidthPx) maxWhiteKeyWidthPx else calculatedKeyWidth
+        val finalWhiteKeyWidthPx = if (fillWidth) {
+            calculatedKeyWidth
+        } else {
+            if (calculatedKeyWidth > maxWhiteKeyWidthPx) maxWhiteKeyWidthPx else calculatedKeyWidth
+        }
         val totalKeyboardWidthPx = finalWhiteKeyWidthPx * whiteMidiNotes.size
-        val startPaddingOffset = (availableWidth - totalKeyboardWidthPx) / 2f
+        val startPaddingOffset = if (fillWidth) 0f else (availableWidth - totalKeyboardWidthPx) / 2f
 
         Canvas(
             modifier = Modifier

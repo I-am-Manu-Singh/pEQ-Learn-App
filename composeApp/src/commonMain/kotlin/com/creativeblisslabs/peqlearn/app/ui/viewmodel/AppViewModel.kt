@@ -1466,9 +1466,11 @@ fun scrubSongPlayhead(targetProgress: Float) {
                     }
                 }
 
-                withContext(Dispatchers.Main) {
-                    scorePlayheadMeasure.value = currentMeasureIdx
-                    scorePlayheadOffset.value = visualOffset
+                if (currentMeasureIdx != scorePlayheadMeasure.value || (visualOffset - scorePlayheadOffset.value).let { if (it < 0) -it else it } > 0.02f) {
+                    withContext(Dispatchers.Main) {
+                        scorePlayheadMeasure.value = currentMeasureIdx
+                        scorePlayheadOffset.value = visualOffset
+                    }
                 }
 
                 measure.notes.forEachIndexed { index: Int, note: ScoreNote ->
@@ -1476,15 +1478,27 @@ fun scrubSongPlayhead(targetProgress: Float) {
 
                     if (currentOffset >= note.position / measure.timeSignatureNumerator && !alreadyFired) {
                         firedNotesMap[index] = true
-                        onMidiEventReceived(note.midiNote, isNoteOn = true)
+                        
+                        // Direct low-latency native audio trigger without main thread hop
+                        audioEngine.noteOn(note.midiNote, 0.8f)
+                        withContext(Dispatchers.Main) {
+                            midiActiveNotes[note.midiNote] = true
+                            midiPlayingNote.value = note.midiNote
+                        }
 
                         launch {
                             delay((note.duration * (60f / score.tempo) * 1000).toLong())
-                            onMidiEventReceived(note.midiNote, isNoteOn = false)
+                            audioEngine.noteOff(note.midiNote)
+                            withContext(Dispatchers.Main) {
+                                midiActiveNotes.remove(note.midiNote)
+                                if (midiPlayingNote.value == note.midiNote) {
+                                    midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                                }
+                            }
                         }
                     }
                 }
-                delay(16)
+                delay(20)
             }
         }
     }

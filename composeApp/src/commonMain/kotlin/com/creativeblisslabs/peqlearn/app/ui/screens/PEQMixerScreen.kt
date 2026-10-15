@@ -114,7 +114,7 @@ fun pEQMixerScreen(
             ) {
                
                     
-                        Column {
+                                Column(modifier = Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 text = "AI STEM MIXER",
                                 style = MaterialTheme.typography.labelLarge,
@@ -268,17 +268,22 @@ fun pEQMixerScreen(
                                     modifier = Modifier.padding(14.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(
-                                        text = "MASTER VOLUME",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "${(masterVolume * 100).toInt()}% • 24-bit Lossless Engine",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                    )
+                                     Text(
+                text = "MASTER VOLUME",
+        color = MaterialTheme.colorScheme.primary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp
+            )
+
+
+            Text(
+                text = "${(masterVolume * 100).toInt()}% • 24-bit Lossless Engine",
+                                    color = MaterialTheme.colorScheme.onSurface
+,                fontSize = 11.sp,
+                letterSpacing = 1.sp
+            )
+                                 
 
                                     Slider(
                                         value = masterVolume,
@@ -570,40 +575,43 @@ fun pEQMixerScreen(
                             }
                         }
 
-                        // Stems Console Channels (Horizontal Scrollable Desk)
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth().weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp)
-                        ) {
-                            items(stems) { stem ->
-                                StemFaderColumn(
-                                    stem = stem,
-                                    onVolumeChange = {
-                                        stem.volume = it
-                                        viewModel.updateStemVolume(stem.name, it)
-                                    },
-                                    onPanChange = {
-                                        stem.pan = it
-                                        viewModel.updateStemPan(stem.name, it)
-                                    },
-                                    onMuteToggle = {
-                                        stem.isMuted = !stem.isMuted
-                                        viewModel.toggleStemMute(stem.name)
-                                    },
-                                    onSoloToggle = {
-                                        val newSolo = !stem.isSolo
-                                        stem.isSolo = newSolo
-                                        viewModel.toggleStemSolo(stem.name, newSolo)
-                                        if (newSolo) {
-                                            stems.forEach { if (it != stem) it.isMuted = true }
-                                        } else {
-                                            stems.forEach { it.isMuted = false }
-                                        }
-                                    }
-                                )
-                            }
-                        }
+                      LazyRow(
+    modifier = Modifier
+        .fillMaxWidth()
+        .weight(1f),
+    // Centers the items horizontally inside the LazyRow viewport
+    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+    contentPadding = PaddingValues(horizontal = 4.dp),
+    verticalAlignment = Alignment.CenterVertically
+) {
+    items(stems) { stem ->
+        StemFaderColumn(
+            stem = stem,
+            onVolumeChange = {
+                stem.volume = it
+                viewModel.updateStemVolume(stem.name, it)
+            },
+            onPanChange = {
+                stem.pan = it
+                viewModel.updateStemPan(stem.name, it)
+            },
+            onMuteToggle = {
+                stem.isMuted = !stem.isMuted
+                viewModel.toggleStemMute(stem.name)
+            },
+            onSoloToggle = {
+                val newSolo = !stem.isSolo
+                stem.isSolo = newSolo
+                viewModel.toggleStemSolo(stem.name, newSolo)
+                if (newSolo) {
+                    stems.forEach { if (it != stem) it.isMuted = true }
+                } else {
+                    stems.forEach { it.isMuted = false }
+                }
+            }
+        )
+    }
+}
                     }
                 }
             }
@@ -965,6 +973,8 @@ fun StemFaderColumn(
                     )
                 }
 
+                val currentVol by rememberUpdatedState(stem.volume)
+                val currentOnVolChange by rememberUpdatedState(onVolumeChange)
                 // Vertical Slider Touch Strip
                 Box(
                     modifier = Modifier
@@ -972,12 +982,12 @@ fun StemFaderColumn(
                         .fillMaxHeight()
                         .clip(MaterialTheme.shapes.extraSmall)
                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .pointerInput(stem.name) {
+                        .pointerInput(Unit) {
                             detectDragGestures(
                                 onDrag = { change, dragAmount ->
                                     change.consume()
                                     val delta = -dragAmount.y / 200f
-                                    onVolumeChange((stem.volume + delta).coerceIn(0f, 1f))
+                                    currentOnVolChange((currentVol + delta).coerceIn(0f, 1f))
                                 }
                             )
                         },
@@ -1022,6 +1032,8 @@ fun PanKnob(
     pan: Float,
     onPanChange: (Float) -> Unit
 ) {
+    val currentPan by rememberUpdatedState(pan)
+    val currentOnPanChange by rememberUpdatedState(onPanChange)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
@@ -1034,7 +1046,7 @@ fun PanKnob(
                         onDrag = { change, dragAmount ->
                             change.consume()
                             val delta = dragAmount.x / 100f
-                            onPanChange((pan + delta).coerceIn(-1f, 1f))
+                            currentOnPanChange((currentPan + delta).coerceIn(-1f, 1f))
                         }
                     )
                 },
@@ -1212,7 +1224,6 @@ fun MasterFaderSection(
         }
     }
 }
-
 @Composable
 fun NeuralStemPipeline(
     viewModel: AppViewModel,
@@ -1234,12 +1245,23 @@ fun NeuralStemPipeline(
                     modifier = Modifier.weight(1f)
                 ) {
                     Column(
-                        modifier = Modifier.padding(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(stem, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                        Text(
+                            text = stem,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                         Spacer(Modifier.height(4.dp))
-                        Text("ACTIVE", style = MaterialTheme.typography.labelSmall, color = primaryColor, fontWeight = FontWeight.Black)
+                        Text(
+                            text = "ACTIVE",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = primaryColor,
+                            fontWeight = FontWeight.Black
+                        )
                     }
                 }
             }

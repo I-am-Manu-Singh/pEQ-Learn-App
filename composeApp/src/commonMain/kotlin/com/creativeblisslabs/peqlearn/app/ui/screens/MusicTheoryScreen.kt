@@ -101,11 +101,14 @@ var isSearchActive by remember { mutableStateOf(false) }
         // TABS + SEARCH ICON MODE
         
         // LazyRow takes up remaining width next to the search icon
+        val visibleMainTabs = remember {
+            TheoryPart.entries.filter { it != TheoryPart.CHORDS && it != TheoryPart.GROOVE }
+        }
         LazyRow(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(TheoryPart.entries) { part ->
+            items(visibleMainTabs) { part ->
                 val isSelected = selectedPart == part
                 pEQFilterChip(
                     selected = isSelected,
@@ -145,6 +148,9 @@ var isSearchActive by remember { mutableStateOf(false) }
             transitionSpec = { fadeIn() togetherWith fadeOut() }
         ) { activeSection ->
             when (activeSection) {
+                TheoryPart.CHORDS -> {
+                    ChordDictionaryPanel(viewModel = viewModel)
+                }
                 TheoryPart.CONCEPTS -> {
                     ConceptsBrowser(
                         concepts = filteredConcepts,
@@ -154,6 +160,9 @@ var isSearchActive by remember { mutableStateOf(false) }
                         onSelectConcept = { selectedConcept = if (selectedConcept == it) null else it }
                     )
                 }
+                TheoryPart.GROOVE -> {
+                    RhythmGrooveWorkstation(viewModel = viewModel)
+                }
                 TheoryPart.STRUCTURE -> {
                     SongStructureAcademyPanel()
                 }
@@ -162,10 +171,6 @@ var isSearchActive by remember { mutableStateOf(false) }
                 }
                 TheoryPart.KARNATIC -> {
                     KarnaticClassicalInteractivePanel(viewModel = viewModel)
-                }
-                else -> {
-                    // Fallback for CHORDS, GROOVE, or future additions
-                    Box(Modifier.fillMaxSize())
                 }
             }
         }
@@ -190,7 +195,7 @@ private fun ConceptsBrowser(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(horizontal = 4.dp)
             ) {
-                val filters = listOf("ALL", "STRUCTURE", "INDIAN_CLASSICAL", "KARNATIC")
+                val filters = listOf("ALL", "CHORDS", "GROOVE", "STRUCTURE", "INDIAN_CLASSICAL", "KARNATIC")
                 items(filters) { f ->
                     pEQFilterChip(
                         selected = subFilterMode == f,
@@ -371,102 +376,59 @@ fun InteractiveStructureLab(
     modifier: Modifier = Modifier
 ) {
     var selectedBlockIdx by remember { mutableStateOf(0) }
-    var activeSubFilterMode by remember { mutableStateOf("Timeline") }
 
-    pEQGlassCard(
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Lab Title & Category Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        shape = CircleShape,
-                        color = accentColor.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, accentColor)
-                    ) {
-                        Icon(
-                            Icons.Default.Insights,
-                            contentDescription = null,
-                            tint = accentColor,
-                            modifier = Modifier.padding(6.dp).size(20.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = concept.title.uppercase(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            letterSpacing = 1.sp
-                        )
-                        Text(
-                            text = concept.subtitle,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-
-                MetadataBadge(
-                    text = concept.category,
-                    color = accentColor
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Interactive Structure Blocks / Sections (if present)
+        if (concept.structureBlocks.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Song Structure Timeline & Cadence Analysis",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
-            }
 
-            // Interactive Structure Blocks / Sections
-            if (concept.structureBlocks.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Song Structure Timeline & Cadence Analysis",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(concept.structureBlocks) { idx, block ->
-                            val isSelected = selectedBlockIdx == idx
-                            Surface(
-                                onClick = { selectedBlockIdx = idx },
-                                shape = MaterialTheme.shapes.medium,
-                                color = if (isSelected) accentColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-                                ),
-                                modifier = Modifier.height(64.dp).defaultMinSize(minWidth = 90.dp)
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(concept.structureBlocks) { idx, block ->
+                        val isSelected = selectedBlockIdx == idx
+                        Surface(
+                            onClick = { selectedBlockIdx = idx },
+                            shape = MaterialTheme.shapes.medium,
+                            color = if (isSelected) accentColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                            ),
+                            modifier = Modifier.height(64.dp).defaultMinSize(minWidth = 90.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(8.dp),
+                                verticalArrangement = Arrangement.SpaceBetween,
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(8.dp),
-                                    verticalArrangement = Arrangement.SpaceBetween,
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        block.label,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Black,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        block.bars,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else accentColor
-                                    )
-                                }
+                                Text(
+                                    block.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    block.bars,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else accentColor
+                                )
                             }
                         }
                     }
                 }
             }
+        }
 
-            // Formula Breakdown & Note Interval Mapping
+        // Formula Breakdown & Note Interval Mapping (if present)
+        if (concept.formula.isNotEmpty() || concept.noteHighlights.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -498,14 +460,6 @@ fun InteractiveStructureLab(
                     }
                 }
             }
-
-            // Concept Description Body
-            Text(
-                text = concept.description,
-                style = MaterialTheme.typography.bodySmall,
-                lineHeight = 18.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-            )
         }
     }
 }

@@ -52,356 +52,6 @@ val ACADEMIC_TIME_SIGNATURES: List<AcademicTimeSignature> = listOf(
     AcademicTimeSignature("7/8 Balkan Groove", 7, listOf("1", "2", "3", "4", "5", "6", "7"), "Seven eighth notes subdivided as 2+2+3 or 3+2+2. Dynamic folk and progressive rock signature.")
 )
 
-@Composable
-fun ScaleSelector(selected: String, onSelect: (String) -> Unit) {
-    val notes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-    ) {
-        items(notes) { note ->
-            val isSelected = note == selected
-            pEQFilterChip(
-                selected = isSelected,
-                onClick = { onSelect(note) },
-                label = { Text(note, fontWeight = FontWeight.Bold) }
-            )
-        }
-    }
-}
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MetronomeControlSection(
-    viewModel: AppViewModel,
-    primaryColor: Color,
-    workstationTab: Int,
-    onTabChange: (Int) -> Unit,
-    currentBpm: Float,
-    onBpmChange: (Float) -> Unit,
-    selectedSigIdx: Int,
-    selectedTaalIdx: Int,
-    selectedKarnaticIdx: Int,
-    totalGridSteps: Int,
-    stepsPerBeat: Int,
-    beatsPerMeasure: Float,
-    selectedScale: String,
-    runEngineSafetyCheck: (Int) -> Unit,
-    onUpdateIndices: (Int, Int, Int) -> Unit
-) {
-    val composableScope = rememberCoroutineScope()
-    val tapTimes = remember { mutableStateListOf<Long>() }
-    val isPlaying = viewModel.isSequencerActive.value
-
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // Slider Control
-     Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Slider(
-                value = currentBpm.coerceIn(40f, 220f),
-                onValueChange = { onBpmChange(it) },
-                valueRange = 40f..220f,
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "${currentBpm.toInt()} BPM",
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.width(64.dp)
-            )
-            OutlinedButton(
-                onClick = {
-                    val now = System.currentTimeMillis()
-                    if (tapTimes.isNotEmpty() && now - tapTimes.last() > 2000) tapTimes.clear()
-                    tapTimes.add(now)
-                    if (tapTimes.size >= 2) {
-                        val avg = tapTimes.zipWithNext { a, b -> b - a }.average()
-                        val calculatedBpm = (60000.0 / avg).toInt().coerceIn(40, 220)
-                        onBpmChange(calculatedBpm.toFloat())
-                    }
-                },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = primaryColor),
-                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)),
-                modifier = Modifier.weight(0.8f).height(46.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("TAP", fontWeight = FontWeight.Black, fontSize = 11.sp)
-            }
-        }
-        // Genre Workstation Tab Row
-        val genreTabs = listOf("Western", "Hindustani", "Carnatic")
-        val genreTabIcons = listOf(Icons.Default.LibraryMusic, Icons.Default.GraphicEq, Icons.Default.SurroundSound)
-        TabRow(
-            selectedTabIndex = workstationTab,
-            indicator = { tabPositions ->
-                if (workstationTab < tabPositions.size) {
-                    TabRowDefaults.SecondaryIndicator(
-                        Modifier.tabIndicatorOffset(tabPositions[workstationTab]),
-                        color = primaryColor
-                    )
-                }
-            }
-        ) {
-            genreTabs.forEachIndexed { index, title ->
-                val isSelected = workstationTab == index
-                Tab(
-                    selected = isSelected,
-                    onClick = { onTabChange(index) },
-                    icon = {
-                        Icon(
-                            imageVector = genreTabIcons.getOrElse(index) { Icons.Default.MusicNote },
-                            contentDescription = title,
-                            tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = title,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                )
-            }
-        }
-
-        // Dropdown Metric Configurations
-        when (workstationTab) {
-            0 -> {
-                var sigExpanded by remember { mutableStateOf(false) }
-                val currentSig = ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx) ?: ACADEMIC_TIME_SIGNATURES.first()
-                ExposedDropdownMenuBox(expanded = sigExpanded, onExpandedChange = { sigExpanded = it }) {
-                    OutlinedTextField(
-                        value = currentSig.name,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("TIME SIGNATURE SCORE") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sigExpanded) },
-                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = sigExpanded, onDismissRequest = { sigExpanded = false }) {
-                        ACADEMIC_TIME_SIGNATURES.forEachIndexed { i, signature ->
-                            DropdownMenuItem(
-                                text = { Text(signature.name) },
-                                onClick = {
-                                    composableScope.launch(Dispatchers.Default) { viewModel.stopRiyaazEngine() }
-                                    onUpdateIndices(i, selectedTaalIdx, selectedKarnaticIdx)
-                                    sigExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-            1 -> {
-                var taalExpanded by remember { mutableStateOf(false) }
-                val currentTaal = INDIAN_TAALS.getOrNull(selectedTaalIdx) ?: INDIAN_TAALS.first()
-                ExposedDropdownMenuBox(expanded = taalExpanded, onExpandedChange = { taalExpanded = it }) {
-                    OutlinedTextField(
-                        value = "${currentTaal.name} (${currentTaal.beats} Beats)",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("SELECT HINDUSTANI TAAL") },
-                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = taalExpanded, onDismissRequest = { taalExpanded = false }, modifier = Modifier.heightIn(max = 240.dp)) {
-                        INDIAN_TAALS.forEachIndexed { i, t ->
-                            DropdownMenuItem(
-                                text = { Text("${t.name} (${t.beats} Matras)") },
-                                onClick = {
-                                    composableScope.launch(Dispatchers.Default) { viewModel.stopRiyaazEngine() }
-                                    onUpdateIndices(selectedSigIdx, i, selectedKarnaticIdx)
-                                    viewModel.currentStep.value = 0
-                                    taalExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-            2 -> {
-                var carnExpanded by remember { mutableStateOf(false) }
-                val currentTala = CARNATIC_TALAS.getOrNull(selectedKarnaticIdx) ?: CARNATIC_TALAS.first()
-                ExposedDropdownMenuBox(expanded = carnExpanded, onExpandedChange = { carnExpanded = it }) {
-                    OutlinedTextField(
-                        value = "${currentTala.name} (${currentTala.beats} Aksharas)",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("SELECT CARNATIC SAPTA TALA") },
-                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = carnExpanded, onDismissRequest = { carnExpanded = false }) {
-                        CARNATIC_TALAS.forEachIndexed { i, t ->
-                            DropdownMenuItem(
-                                text = { Text("${t.name} (${t.beats} Beats)") },
-                                onClick = {
-                                    composableScope.launch(Dispatchers.Default) { viewModel.stopRiyaazEngine() }
-                                    onUpdateIndices(selectedSigIdx, selectedTaalIdx, i)
-                                    carnExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-
-        // Multi-Tonal Beat Accents Highlights Grid Section
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = "BEAT CYCLE HIGHLIGHTS",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                val currentActiveBeat = if (stepsPerBeat > 0) (viewModel.currentStep.value / stepsPerBeat) else 0
-                val totalBeats = beatsPerMeasure.toInt().coerceAtLeast(1)
-
-                for (beat in 0 until totalBeats) {
-                    val playing = isPlaying && currentActiveBeat == beat
-                    val isDownbeat = (beat == 0)
-
-                    val isKhaliBeat = when (workstationTab) {
-                        0 -> selectedSigIdx == 3 && beat >= 3 // Off-beat markers for compound 6/8 grids
-                        1 -> beat == (INDIAN_TAALS.getOrNull(selectedTaalIdx)?.khali ?: -1)
-                        else -> false
-                    }
-
-                    // Multi-tonal dynamic variations matching the selected sub-genres
-                    val cardContainerColor = when {
-                        playing -> primaryColor // Solid focus layer
-                        isDownbeat -> primaryColor.copy(alpha = 0.40f) // Distinct downbeat weight
-                        isKhaliBeat -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f) // Muted drop tint
-                        else -> Color.Transparent // Glass layer base
-                    }
-
-                    val contentTextColor = when {
-                        playing -> MaterialTheme.colorScheme.onPrimary
-                        isDownbeat -> primaryColor
-                        isKhaliBeat -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        else -> primaryColor.copy(alpha = 0.85f)
-                    }
-
-                    pEQGlassCard(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
-                            .clickable {
-                                val labelText = when (workstationTab) {
-                                    1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat)
-                                    2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat)
-                                    else -> null
-                                }
-                                if (!labelText.isNullOrBlank()) {
-                                    viewModel.audioEngine.playSample(labelText, beat, "TABLA")
-                                }
-                            }
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(cardContainerColor), 
-                            Alignment.Center
-                        ) {
-                            val labelText = when (workstationTab) {
-                                0 -> ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx)?.bolSequence?.getOrNull(beat) ?: "${beat + 1}"
-                                1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat) ?: "B"
-                                2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat) ?: "A"
-                                else -> "${beat + 1}"
-                            }
-                            Text(
-                                text = labelText,
-                                fontSize = 10.sp,
-                                fontWeight = if (isDownbeat || playing) FontWeight.Black else FontWeight.Bold,
-                                color = contentTextColor
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Step Sequencer Velocity Grid Row
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("STEP SEQUENCE METER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                val totalRenderedSteps = totalGridSteps.coerceIn(1, 16)
-                for (s in 0 until totalRenderedSteps) {
-                    val stepState = viewModel.sequencerSteps.getOrNull(s)?.value ?: 0
-                    val playing = isPlaying && viewModel.currentStep.value == s
-
-                    pEQGlassCard(
-                        Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    when {
-                                        playing -> MaterialTheme.colorScheme.onSurface
-                                        stepState == 2 -> primaryColor
-                                        stepState == 1 -> primaryColor.copy(alpha = 0.4f)
-                                        else -> Color.Transparent
-                                    }
-                                )
-                                .clickable {
-                                    if (s < viewModel.sequencerSteps.size) {
-                                        val currentState = viewModel.sequencerSteps[s].value
-                                        viewModel.sequencerSteps[s].value = (currentState + 1) % 3
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "${s + 1}",
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (playing) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Dynamic Text Context Description Surface
-        pEQGlassCard(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                when (workstationTab) {
-                    0 -> {
-                        val sig = ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx) ?: ACADEMIC_TIME_SIGNATURES.first()
-                        Text(sig.name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text(sig.description, fontSize = 10.sp, lineHeight = 14.sp)
-                    }
-                    1 -> {
-                        val taal = INDIAN_TAALS.getOrNull(selectedTaalIdx) ?: INDIAN_TAALS.first()
-                        Text("${taal.name} | ${taal.beats} Matras", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text("Vibhag Structure: ${taal.vibhags.joinToString(" • ")}", fontSize = 10.sp)
-                        Text(taal.description, fontSize = 10.sp, lineHeight = 14.sp)
-                    }
-                    2 -> {
-                        val tala = CARNATIC_TALAS.getOrNull(selectedKarnaticIdx) ?: CARNATIC_TALAS.first()
-                        Text("${tala.name} | ${tala.beats} Aksharas", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text("Anga Division: ${tala.vibhags.joinToString(" + ")}", fontSize = 10.sp)
-                        Text(tala.description, fontSize = 10.sp, lineHeight = 14.sp)
-                    }
-                }
-            }
-        }
-    }
-}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RiyaazScreen(
@@ -412,24 +62,19 @@ fun RiyaazScreen(
     onStopTanpura: () -> Unit
 ) {
     val composableScope = rememberCoroutineScope()
-    var workstationTab by remember { mutableIntStateOf(0) }
-    var currentBpm by remember { mutableFloatStateOf(viewModel.liveRiyaazBpm.value.toFloat()) }
-    var selectedScale by remember { mutableStateOf("C#") }
-
-    val isTanpuraPlaying = viewModel.isTanpuraActive.value
     val isPlaying by viewModel.isSequencerActive
 
+    // Workstation mode: 0 = Western Academic, 1 = Hindustani, 2 = Carnatic
+    var workstationTab by remember { mutableIntStateOf(1) } // Default Hindustani classical for Riyaaz
     var selectedSigIdx by remember { mutableIntStateOf(0) }
     var selectedTaalIdx by remember { mutableIntStateOf(0) }
     var selectedKarnaticIdx by remember { mutableIntStateOf(0) }
 
-
-    // Safely look up the active Western signature properties from the global dataset
+    // Safely look up active Western signature
     val currentWesternSig = remember(selectedSigIdx) {
         ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx) ?: ACADEMIC_TIME_SIGNATURES.first()
     }
 
-    // Evaluate steps density cleanly based on global data configurations
     val stepsPerBeat = remember(workstationTab, selectedSigIdx) {
         if (workstationTab == 0) {
             if (currentWesternSig.beats > 4) currentWesternSig.beats / 4 else 1
@@ -438,7 +83,6 @@ fun RiyaazScreen(
         }
     }
 
-    // Handles the downbeats structure layer cleanly without overlapping allocations
     val beatsPerMeasure = remember(workstationTab, selectedSigIdx, selectedTaalIdx, selectedKarnaticIdx) {
         when (workstationTab) {
             0 -> if (currentWesternSig.beats > 4) 4 else currentWesternSig.beats
@@ -446,7 +90,7 @@ fun RiyaazScreen(
             else -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.beats ?: 8
         }
     }
-    
+
     val totalGridSteps = (beatsPerMeasure * stepsPerBeat)
 
     val runEngineSafetyCheck = { steps: Int ->
@@ -459,114 +103,376 @@ fun RiyaazScreen(
         }
     }
 
-    // Synchronize UI slider state if the hardware state object modifications shift
-    LaunchedEffect(viewModel.liveRiyaazBpm.value) {
-        currentBpm = viewModel.liveRiyaazBpm.value.toFloat()
-    }
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // =========================================================================
+        // SECTION 1: RADEL ELECTRONIC TANPURA & TABLA MASTER STUDIO
+        // Full digital LCD telemetry, fine-tune cents, 4/5/6 strings, string motion
+        // visualizer, and 3-channel precision mixer (Tanpura, Tabla, Metronome).
+        // =========================================================================
+        RadelTanpuraTablaStudio(
+            viewModel = viewModel,
+            isCarnatic = (workstationTab == 2),
+            accentColor = primaryColor
+        )
 
-    LearnSectionCard(title = "Riyaaz Guru", icon = Icons.Filled.Mediation) {
-        Column {
+        // =========================================================================
+        // SECTION 2: INTERACTIVE RIYAAZ STEP SEQUENCER & TĀLA CYCLE ENGINE
+        // Eliminates duplicate tempo sliders and duplicate scale chips while giving
+        // deep interactive control over beat accents, bol articulations, and steps.
+        // =========================================================================
+        pEQGlassCard(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header & Tradition Tab Switcher
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Mediation,
+                            contentDescription = null,
+                            tint = primaryColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "STEP SEQUENCER",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.8.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
 
-            // Dynamic pitch alignment on the fly
-            ScaleSelector(
-                selected = selectedScale,
-                onSelect = { newScale ->
-                    selectedScale = newScale
-                    if (isTanpuraPlaying) {
-                        onPlayTanpura(newScale, "PA")
+                    // Sequencer Start / Stop Master Button
+                    Button(
+                        onClick = {
+                            composableScope.launch(Dispatchers.Default) {
+                                if (isPlaying) {
+                                    viewModel.stopRiyaazEngine()
+                                } else {
+                                    runEngineSafetyCheck(totalGridSteps)
+                                    val activeBols = when (workstationTab) {
+                                        1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence ?: emptyList()
+                                        2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence ?: emptyList()
+                                        else -> emptyList()
+                                    }
+                                    viewModel.startRiyaazEngine("C#", totalGridSteps, activeBols)
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isPlaying) MaterialTheme.colorScheme.error else primaryColor,
+                            contentColor = if (isPlaying) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (isPlaying) "STOP CYCLE" else "START CYCLE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black
+                        )
                     }
                 }
-            )
 
-            MetronomeControlSection(
-                viewModel = viewModel,
-                primaryColor = primaryColor,
-                workstationTab = workstationTab,
-                onTabChange = { workstationTab = it },
-                currentBpm = currentBpm,
-                onBpmChange = { newBpm ->
-                    currentBpm = newBpm
-                    viewModel.liveRiyaazBpm.value = newBpm.toInt()
-                },
-                selectedSigIdx = selectedSigIdx,
-                selectedTaalIdx = selectedTaalIdx,
-                selectedKarnaticIdx = selectedKarnaticIdx,
-                totalGridSteps = totalGridSteps,
-                stepsPerBeat = stepsPerBeat,
-                beatsPerMeasure = beatsPerMeasure.toFloat(),
-                runEngineSafetyCheck = runEngineSafetyCheck,
-                selectedScale = selectedScale,
-                onUpdateIndices = { sig, taal, karn ->
-                    selectedSigIdx = sig
-                    selectedTaalIdx = taal
-                    selectedKarnaticIdx = karn
-                }
-            )
-
-            // Fully Decoupled Independent Audio Control Buttons Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Independent Sequencer Controller
-                Button(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isPlaying) MaterialTheme.colorScheme.error else primaryColor
-                    ),
-                    onClick = {
-                        composableScope.launch(Dispatchers.Default) {
-                            if (isPlaying) {
-                                viewModel.stopRiyaazEngine()
-                            } else {
-                                runEngineSafetyCheck(totalGridSteps)
-                                viewModel.liveRiyaazBpm.value = currentBpm.toInt()
-                                val activeBols = when (workstationTab) {
-                                    1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence ?: emptyList()
-                                    2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence ?: emptyList()
-                                    else -> emptyList()
+                // Tradition Tabs
+                val genreTabs = listOf("Western", "Hindustani", "Carnatic")
+                val genreTabIcons = listOf(Icons.Default.LibraryMusic, Icons.Default.GraphicEq, Icons.Default.SurroundSound)
+                TabRow(
+                    selectedTabIndex = workstationTab,
+                    containerColor = Color.Transparent,
+                    indicator = { tabPositions ->
+                        if (workstationTab < tabPositions.size) {
+                            TabRowDefaults.SecondaryIndicator(
+                                Modifier.tabIndicatorOffset(tabPositions[workstationTab]),
+                                color = primaryColor
+                            )
+                        }
+                    }
+                ) {
+                    genreTabs.forEachIndexed { index, title ->
+                        val isSelected = workstationTab == index
+                        Tab(
+                            selected = isSelected,
+                            onClick = {
+                                workstationTab = index
+                                composableScope.launch(Dispatchers.Default) {
+                                    if (isPlaying) viewModel.stopRiyaazEngine()
                                 }
-                                viewModel.startRiyaazEngine(selectedScale, totalGridSteps, activeBols)
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = genreTabIcons.getOrElse(index) { Icons.Default.MusicNote },
+                                    contentDescription = title,
+                                    tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            text = {
+                                Text(
+                                    text = title,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        )
+                    }
+                }
+
+                // Metric & Structure Dropdown Selectors
+                when (workstationTab) {
+                    0 -> {
+                        var sigExpanded by remember { mutableStateOf(false) }
+                        val currentSig = ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx) ?: ACADEMIC_TIME_SIGNATURES.first()
+                        ExposedDropdownMenuBox(expanded = sigExpanded, onExpandedChange = { sigExpanded = it }) {
+                            OutlinedTextField(
+                                value = currentSig.name,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("TIME SIGNATURE SCORE") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sigExpanded) },
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(expanded = sigExpanded, onDismissRequest = { sigExpanded = false }) {
+                                ACADEMIC_TIME_SIGNATURES.forEachIndexed { i, signature ->
+                                    DropdownMenuItem(
+                                        text = { Text(signature.name) },
+                                        onClick = {
+                                            composableScope.launch(Dispatchers.Default) { viewModel.stopRiyaazEngine() }
+                                            selectedSigIdx = i
+                                            sigExpanded = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
-                ) {
-                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = if (isPlaying) "STOP BEAT" else "START BEAT", 
-                        fontWeight = FontWeight.Bold, 
-                        fontSize = 12.sp
-                    )
-                }
-
-                // Independent Tanpura Controller
-                Button(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isTanpuraPlaying) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    ),
-                    onClick = {
-                        if (isTanpuraPlaying) {
-                            onStopTanpura()
-                        } else {
-                            onPlayTanpura(selectedScale, "PA")
+                    1 -> {
+                        var taalExpanded by remember { mutableStateOf(false) }
+                        val currentTaal = INDIAN_TAALS.getOrNull(selectedTaalIdx) ?: INDIAN_TAALS.first()
+                        ExposedDropdownMenuBox(expanded = taalExpanded, onExpandedChange = { taalExpanded = it }) {
+                            OutlinedTextField(
+                                value = "${currentTaal.name} (${currentTaal.beats} Beats)",
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("SELECT HINDUSTANI TAAL") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = taalExpanded) },
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = taalExpanded,
+                                onDismissRequest = { taalExpanded = false },
+                                modifier = Modifier.heightIn(max = 240.dp)
+                            ) {
+                                INDIAN_TAALS.forEachIndexed { i, t ->
+                                    DropdownMenuItem(
+                                        text = { Text("${t.name} (${t.beats} Matras)") },
+                                        onClick = {
+                                            composableScope.launch(Dispatchers.Default) { viewModel.stopRiyaazEngine() }
+                                            selectedTaalIdx = i
+                                            viewModel.currentStep.value = 0
+                                            taalExpanded = false
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
-                ) {
-                    Icon(if (isTanpuraPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null)
-                    Spacer(Modifier.width(6.dp))
+                    2 -> {
+                        var carnExpanded by remember { mutableStateOf(false) }
+                        val currentTala = CARNATIC_TALAS.getOrNull(selectedKarnaticIdx) ?: CARNATIC_TALAS.first()
+                        ExposedDropdownMenuBox(expanded = carnExpanded, onExpandedChange = { carnExpanded = it }) {
+                            OutlinedTextField(
+                                value = "${currentTala.name} (${currentTala.beats} Aksharas)",
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("SELECT CARNATIC SAPTA TALA") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = carnExpanded) },
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(expanded = carnExpanded, onDismissRequest = { carnExpanded = false }) {
+                                CARNATIC_TALAS.forEachIndexed { i, t ->
+                                    DropdownMenuItem(
+                                        text = { Text("${t.name} (${t.beats} Beats)") },
+                                        onClick = {
+                                            composableScope.launch(Dispatchers.Default) { viewModel.stopRiyaazEngine() }
+                                            selectedKarnaticIdx = i
+                                            carnExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Multi-Tonal Beat Cycle Highlights
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = if (isTanpuraPlaying) "STOP DRONE" else "TANPURA", 
-                        fontWeight = FontWeight.Bold, 
-                        fontSize = 12.sp
+                        text = "BEAT HIGHLIGHTS",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
                     )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val currentActiveBeat = if (stepsPerBeat > 0) (viewModel.currentStep.value / stepsPerBeat) else 0
+                        val totalBeats = beatsPerMeasure.toInt().coerceAtLeast(1)
+
+                        for (beat in 0 until totalBeats) {
+                            val playing = isPlaying && currentActiveBeat == beat
+                            val isDownbeat = (beat == 0)
+
+                            val isKhaliBeat = when (workstationTab) {
+                                0 -> selectedSigIdx == 3 && beat >= 3
+                                1 -> beat == (INDIAN_TAALS.getOrNull(selectedTaalIdx)?.khali ?: -1)
+                                else -> false
+                            }
+
+                            val cardContainerColor = when {
+                                playing -> primaryColor
+                                isDownbeat -> primaryColor.copy(alpha = 0.40f)
+                                isKhaliBeat -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                else -> Color.Transparent
+                            }
+
+                            val contentTextColor = when {
+                                playing -> MaterialTheme.colorScheme.onPrimary
+                                isDownbeat -> primaryColor
+                                isKhaliBeat -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                else -> primaryColor.copy(alpha = 0.85f)
+                            }
+
+                            pEQGlassCard(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .clickable {
+                                        val labelText = when (workstationTab) {
+                                            1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat)
+                                            2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat)
+                                            else -> null
+                                        }
+                                        if (!labelText.isNullOrBlank()) {
+                                            viewModel.audioEngine.playSample(labelText, beat, "TABLA")
+                                        }
+                                    }
+                            ) {
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(cardContainerColor),
+                                    Alignment.Center
+                                ) {
+                                    val labelText = when (workstationTab) {
+                                        0 -> ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx)?.bolSequence?.getOrNull(beat) ?: "${beat + 1}"
+                                        1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat) ?: "B"
+                                        2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat) ?: "A"
+                                        else -> "${beat + 1}"
+                                    }
+                                    Text(
+                                        text = labelText,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isDownbeat || playing) FontWeight.Black else FontWeight.Bold,
+                                        color = contentTextColor
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Step Sequencer Velocity Grid Row
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "16-STEP VELOCITY ACCENT GRID",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val totalRenderedSteps = totalGridSteps.coerceIn(1, 16)
+                        for (s in 0 until totalRenderedSteps) {
+                            val stepState = viewModel.sequencerSteps.getOrNull(s)?.value ?: 0
+                            val playing = isPlaying && viewModel.currentStep.value == s
+
+                            pEQGlassCard(
+                                Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                            ) {
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            when {
+                                                playing -> MaterialTheme.colorScheme.onSurface
+                                                stepState == 2 -> primaryColor
+                                                stepState == 1 -> primaryColor.copy(alpha = 0.4f)
+                                                else -> Color.Transparent
+                                            }
+                                        )
+                                        .clickable {
+                                            if (s < viewModel.sequencerSteps.size) {
+                                                val currentState = viewModel.sequencerSteps[s].value
+                                                viewModel.sequencerSteps[s].value = (currentState + 1) % 3
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "${s + 1}",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (playing) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Dynamic Context Structure Description Surface
+                pEQGlassCard(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        when (workstationTab) {
+                            0 -> {
+                                val sig = ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx) ?: ACADEMIC_TIME_SIGNATURES.first()
+                                Text(sig.name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(sig.description, fontSize = 10.sp, lineHeight = 14.sp)
+                            }
+                            1 -> {
+                                val taal = INDIAN_TAALS.getOrNull(selectedTaalIdx) ?: INDIAN_TAALS.first()
+                                Text("${taal.name} | ${taal.beats} Matras", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Vibhag Structure: ${taal.vibhags.joinToString(" • ")}", fontSize = 10.sp)
+                                Text(taal.description, fontSize = 10.sp, lineHeight = 14.sp)
+                            }
+                            2 -> {
+                                val tala = CARNATIC_TALAS.getOrNull(selectedKarnaticIdx) ?: CARNATIC_TALAS.first()
+                                Text("${tala.name} | ${tala.beats} Aksharas", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Anga Division: ${tala.vibhags.joinToString(" + ")}", fontSize = 10.sp)
+                                Text(tala.description, fontSize = 10.sp, lineHeight = 14.sp)
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -48,9 +48,9 @@ enum class IndianClassicalPanelTab(val label: String) {
 internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
     val accentColor = MaterialTheme.colorScheme.primary
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Radel Studio", "Raagas", "Thaats", "Taals", "Alankaars", "Tabla Bols")
+    val tabs = listOf("Raagas", "Thaats", "Taals", "Alankaars", "Tabla Bols")
     val tabIcons = listOf(Icons.Default.SurroundSound, Icons.Default.MusicNote, Icons.Default.LibraryMusic, Icons.Default.Speed, Icons.Default.AutoStories, Icons.Default.GraphicEq)
-    var notationFormat by remember { mutableStateOf("Staff Notation") }
+    var notationFormat by remember { mutableStateOf("Staff") }
 
     var selectedRagaState by remember { mutableStateOf<Raaga?>(null) }
     var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Harmonium, 1 = Guitar
@@ -101,12 +101,11 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
             pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
                 Box(modifier = Modifier.padding(12.dp)) {
                     when (selectedTab) {
-                        0 -> RadelTanpuraTablaStudio(viewModel, isCarnatic = false, accentColor = accentColor)
-                        1 -> UnifiedRaagaBrowser(viewModel, accentColor, isCarnatic = false, onSelectRaga = { selectedRagaState = it })
-                        2 -> UnifiedThaatBrowser(viewModel, accentColor)
-                        3 -> UnifiedTaalBrowser(viewModel, accentColor, isCarnatic = false)
-                        4 -> UnifiedAlankaarPanel(viewModel, accentColor, isCarnatic = false)
-                        5 -> IndianTablaBolsPanel(accentColor)
+                        0 -> UnifiedRaagaBrowser(viewModel, accentColor, isCarnatic = false, onSelectRaga = { selectedRagaState = it })
+                        1 -> UnifiedThaatBrowser(viewModel, accentColor)
+                        2 -> UnifiedTaalBrowser(viewModel, accentColor, isCarnatic = false)
+                        3 -> UnifiedAlankaarPanel(viewModel, accentColor, isCarnatic = false)
+                        4 -> IndianTablaBolsPanel(accentColor)
                     }
                 }
             }

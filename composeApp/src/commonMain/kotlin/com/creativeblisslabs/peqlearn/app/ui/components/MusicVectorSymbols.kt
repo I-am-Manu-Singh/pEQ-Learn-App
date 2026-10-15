@@ -102,27 +102,27 @@ object MusicVectorSymbols {
             '9' -> "timeSig9"
             else -> "timeSig4"
         }
-        drawSmuflSymbol(name, color, topLeft, size, 500f)
+        drawSmuflSymbol(name, color, topLeft, size, 674f)
     }
 
     fun DrawScope.drawTimeSignature(numerator: String, denominator: String, color: Color, topLeft: Offset, lineSpacing: Float) {
         val numDigitW = lineSpacing * 0.9f
-        val numDigitH = lineSpacing * 1.8f
+        val numDigitH = lineSpacing * 1.9f
         numerator.forEachIndexed { i, ch ->
-            drawTimeSigDigit(ch, color, Offset(topLeft.x + (i * numDigitW), topLeft.y), Size(numDigitW, numDigitH))
+            drawTimeSigDigit(ch, color, Offset(topLeft.x + (i * numDigitW), topLeft.y + (lineSpacing * 0.05f)), Size(numDigitW, numDigitH))
         }
         val denDigitW = lineSpacing * 0.9f
-        val denDigitH = lineSpacing * 1.8f
+        val denDigitH = lineSpacing * 1.9f
         denominator.forEachIndexed { i, ch ->
-            drawTimeSigDigit(ch, color, Offset(topLeft.x + (i * denDigitW), topLeft.y + (lineSpacing * 2.0f)), Size(denDigitW, denDigitH))
+            drawTimeSigDigit(ch, color, Offset(topLeft.x + (i * denDigitW), topLeft.y + (lineSpacing * 2.05f)), Size(denDigitW, denDigitH))
         }
     }
 
     fun DrawScope.drawTabClef(color: Color, topLeft: Offset, size: Size) =
-        drawSmuflSymbol("6stringTabClef", color, topLeft, size, 1400f)
+        drawSmuflSymbol("6stringTabClef", color, topLeft, size, 2063f)
 
     fun DrawScope.drawPercussionClef(color: Color, topLeft: Offset, size: Size) =
-        drawSmuflSymbol("unpitchedPercussionClef1", color, topLeft, size, 1000f)
+        drawSmuflSymbol("unpitchedPercussionClef1", color, topLeft, size, 696f)
 
     // Direct High-Performance Draw Scope API for Notation & Tab Renderers
     fun DrawScope.drawTrebleClef(color: Color, topLeft: Offset, size: Size) =
@@ -144,7 +144,7 @@ object MusicVectorSymbols {
         drawSmuflSymbol("accidentalNatural", color, topLeft, size, 925f)
 
     fun DrawScope.drawDoubleSharp(color: Color, size: Size, topLeft: Offset = Offset.Zero) =
-        drawSmuflSymbol("accidentalDoubleSharp", color, topLeft, size, 800f)
+        drawSmuflSymbol("accidentalDoubleSharp", color, topLeft, size, 375f)
 
     fun DrawScope.drawDoubleFlat(color: Color, size: Size, topLeft: Offset = Offset.Zero) =
         drawSmuflSymbol("accidentalDoubleFlat", color, topLeft, size, 861f)

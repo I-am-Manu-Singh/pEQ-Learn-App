@@ -15,6 +15,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -60,6 +61,7 @@ import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.creativeblisslabs.peqlearn.app.ui.components.setScreenOrientation
+import com.creativeblisslabs.peqlearn.app.ui.components.setSystemBarsVisibility
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQOrientation
 import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard
@@ -142,7 +144,7 @@ fun PianoKeyboard88Keys(
     val keyboardWidth = whiteKeyWidth * whiteKeyCount
 
     var keyboardMode by rememberSaveable { mutableStateOf(PianoKeyboardMode.FULL_88) }
-    var notationFormat by rememberSaveable { mutableStateOf("Staff Notation") }
+    var notationFormat by rememberSaveable { mutableStateOf("Staff") }
     val showNoteLabels = viewModel.showPianoKeyLabels.value
     val showWaterfall = viewModel.showWaterfall.value
     val is3DPerspectiveMode = viewModel.is3DPerspectiveMode.value
@@ -288,26 +290,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    
-                    
-
-                        // Corner Connected Piano Name & Velocity Badge
-                        PianoMidiStatusBadge(
-                            deviceName = viewModel.connectedMidiDeviceName.value,
-                            lastVelocity = viewModel.lastMidiVelocity.intValue,
-                            lastChannel = viewModel.lastMidiChannel.intValue,
-                            onDeviceClick = {
-                                viewModel.onScanMidiDevicesRequested?.invoke()
-                            }
-                        )
-                    
-
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (keyboardMode == PianoKeyboardMode.FULL_88) {
                             IconButton(
                                 onClick = { scope.launch { scrollState.animateScrollTo(0) } },
@@ -396,7 +379,35 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                 modifier = Modifier.size(20.dp)
                             )
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PianoMidiStatusBadge(
+                            deviceName = viewModel.connectedMidiDeviceName.value,
+                            lastVelocity = viewModel.lastMidiVelocity.intValue,
+                            lastChannel = viewModel.lastMidiChannel.intValue,
+                            onDeviceClick = {
+                                viewModel.onScanMidiDevicesRequested?.invoke()
+                            }
+                        )
+
+                       LiveChordHud(
+    detectedChord = liveDetectedChord,
+    primaryColor = primaryColor,
+    modifier = Modifier.padding(bottom = 8.dp) // Optional custom modifier overrides
+)
                     }
+                }
+             
+                    
+
+                    // 3-Pedal Grand Piano Unit placed in top control strip above piano bed
+                    PianoThreePedalUnit(
+                        sustainPressed = viewModel.sustainPedalActive.value,
+                        sostenutoPressed = viewModel.sostenutoPedalActive.value,
+                        softPressed = viewModel.softPedalActive.value,
+                        onPedalClick = { type, pressed ->
+                            viewModel.onMidiPedalEventReceived(type, pressed)
+                        }
+                    )
                 }
 
                 Box(
@@ -658,60 +669,10 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                 .padding(vertical = 4.dp)
                         )
                     }
-
-                    // Real-Time Polyphonic Chord Recognition HUD (MIDIVisualizer parity)
-                    liveDetectedChord?.let { chord ->
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(start = 12.dp, top = 6.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF14171E).copy(alpha = 0.88f),
-                            border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.35f)),
-                            shadowElevation = 8.dp
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF00E676))
-                                )
-                                Text(
-                                    text = chord.fullName,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFFD700)
-                                )
-                                Text(
-                                    text = "• ${chord.inversionText}",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-
-                    // 3-Pedal Grand Piano Unit in top right corner above piano keyboard
-                    PianoThreePedalUnit(
-                        sustainPressed = viewModel.sustainPedalActive.value,
-                        sostenutoPressed = viewModel.sostenutoPedalActive.value,
-                        softPressed = viewModel.softPedalActive.value,
-                        onPedalClick = { type, pressed ->
-                            viewModel.onMidiPedalEventReceived(type, pressed)
-                        },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(end = 8.dp, top = 6.dp)
-                    )
                 }
             }
         }
-    }
+    
 
     // Real-Time MIDI Connection & Disconnection Prompt Dialog
     viewModel.midiConnectionPrompt.value?.let { prompt ->
@@ -728,8 +689,10 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
         ) {
             DisposableEffect(Unit) {
                 setScreenOrientation(pEQOrientation.LANDSCAPE)
+                setSystemBarsVisibility(false)
                 onDispose {
                     setScreenOrientation(pEQOrientation.USER)
+                    setSystemBarsVisibility(true)
                 }
             }
             Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF0A0A0A)) {
@@ -780,7 +743,6 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                 val totalTimeStr = "$totalMin:${if (totalSec < 10) "0$totalSec" else totalSec}"
 
                 val fsScrollState = rememberScrollState()
-                val fsKeyboardWidth = 32.dp * whiteKeyCount
 
                 Box(
                     modifier = Modifier
@@ -807,6 +769,108 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                             .fillMaxSize()
                             .graphicsLayer(scaleX = fsZoomFactor, scaleY = fsZoomFactor, translationX = panOffset.x, translationY = panOffset.y)
                     ) {
+                        // Top Controls Toolbar (positioned cleanly at top of screen)
+                        AnimatedVisibility(
+                            visible = areControlsVisible,
+                            enter = fadeIn(tween(250)),
+                            exit = fadeOut(tween(300)),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Surface(
+                                color = Color(0xFF14171E).copy(alpha = 0.95f),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Surface(shape = CircleShape, color = primaryColor, modifier = Modifier.size(32.dp)) {
+                                            IconButton(onClick = { viewModel.toggleScorePlayback() }) {
+                                                Icon(
+                                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                        IconButton(onClick = { viewModel.resetScorePlayhead() }, modifier = Modifier.size(30.dp)) {
+                                            Icon(Icons.Default.Stop, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+                                        }
+                                        Text(text = currentTimeStr, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
+                                        Slider(
+                                            value = timelineProgress,
+                                            onValueChange = { targetProgress ->
+                                                if (currentScore != null && totalSeconds > 0) {
+                                                    val targetTotalSec = targetProgress * totalSeconds.toFloat()
+                                                    var accumulated = 0f
+                                                    var targetM = 0
+                                                    var targetO = 0f
+                                                    for (i in currentScore.measures.indices) {
+                                                        val m = currentScore.measures[i]
+                                                        val mDur = (60f / currentScore.tempo) * m.timeSignatureNumerator
+                                                        if (targetTotalSec < accumulated + mDur) {
+                                                            targetM = i
+                                                            targetO = (targetTotalSec - accumulated) / mDur
+                                                            break
+                                                        }
+                                                        accumulated += mDur
+                                                        if (i == currentScore.measures.lastIndex) {
+                                                            targetM = i
+                                                            targetO = 1.0f
+                                                        }
+                                                    }
+                                                    viewModel.seekToPosition(targetM, targetO)
+                                                }
+                                            },
+                                            modifier = Modifier.width(180.dp),
+                                            colors = SliderDefaults.colors(
+                                                thumbColor = primaryColor,
+                                                activeTrackColor = primaryColor,
+                                                inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
+                                            )
+                                        )
+                                        Text(text = totalTimeStr, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Button(
+                                            onClick = { fsShowLetters = !fsShowLetters },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (fsShowLetters) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.height(26.dp)
+                                        ) {
+                                            Text("Letters", fontSize = 10.sp, color = if (fsShowLetters) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                                        }
+                                        Button(
+                                            onClick = { fsShowLyrics = !fsShowLyrics },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (fsShowLyrics) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.height(26.dp)
+                                        ) {
+                                            Text("Lyrics", fontSize = 10.sp, color = if (fsShowLyrics) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                                        }
+                                        IconButton(onClick = { viewModel.showSettings.value = true }, modifier = Modifier.size(26.dp)) {
+                                            Icon(imageVector = Icons.Default.Tune, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f), modifier = Modifier.size(16.dp))
+                                        }
+                                        IconButton(onClick = { viewModel.isFullscreenKeyboard.value = false }, modifier = Modifier.size(26.dp)) {
+                                            Icon(Icons.Default.FullscreenExit, null, tint = Color(0xFFFF6B35), modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -830,64 +894,41 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                 rightHandColor = viewModel.rightHandColor.value,
                                 isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                 isRightHandHidden = viewModel.isRightHandHidden.value,
+                                showScoreHeader = false,
                                 modifier = Modifier.fillMaxSize()
                             )
-                        }
-                        Box(
-                            modifier = Modifier.fillMaxWidth().wrapContentHeight()
-                        ) {
-                            // Fullscreen Live Polyphonic Chord Recognition HUD
-                            liveDetectedChord?.let { chord ->
-                                Surface(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(start = 16.dp, top = 6.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFF14171E).copy(alpha = 0.9f),
-                                    border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.4f)),
-                                    shadowElevation = 8.dp
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(Color(0xFF00E676))
-                                        )
-                                        Text(
-                                            text = chord.fullName,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFFFFD700)
-                                        )
-                                        Text(
-                                            text = "• ${chord.inversionText}",
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                }
-                            }
 
-                            // Fullscreen 3-Pedal Grand Piano Unit in top right corner above keyboard bed
+
+                            // 3-Pedal Grand Piano Unit cleanly embedded ABOVE piano bed
                             PianoThreePedalUnit(
                                 sustainPressed = viewModel.sustainPedalActive.value,
                                 sostenutoPressed = viewModel.sostenutoPedalActive.value,
                                 softPressed = viewModel.softPedalActive.value,
                                 onPedalClick = { type, pressed ->
                                     viewModel.onMidiPedalEventReceived(type, pressed)
-                                },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(end = 16.dp, top = 6.dp)
+                                }
                             )
 
-                            Column(
-                                modifier = Modifier.fillMaxWidth().wrapContentHeight().horizontalScroll(fsScrollState)
+                        }
+
+                       
+
+                        // Full-fit 88-Key Piano Keyboard container
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(145.dp)
+                                .background(Color(0xFF161616))
+                        ) {
+                            val availableW = maxWidth
+                            // Fit keyboard fully horizontally across screen width without clipping
+                            val naturalKeyboardWidth = 32.dp * whiteKeyCount
+                            val finalWidth = maxOf(availableW, naturalKeyboardWidth)
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .horizontalScroll(fsScrollState)
                             ) {
                                 UnifiedPianoKeyboard(
                                     activeMidiNotes = viewModel.midiActiveNotes,
@@ -897,6 +938,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                     isPlaying = isPlaying,
                                     startNote = 21,
                                     endNote = 108,
+                                    fillWidth = true,
                                     onKeyTapped = { midi ->
                                         viewModel.onMidiNoteOn(midi, 95)
                                         scope.launch {
@@ -904,161 +946,13 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                             viewModel.onMidiNoteOff(midi)
                                         }
                                     },
-                                    modifier = Modifier.width(fsKeyboardWidth).height(160.dp)
+                                    modifier = Modifier.width(finalWidth).fillMaxHeight()
                                 )
                             }
                         }
                     }
 
-                    // Top Toolbar (HUD)
-                    AnimatedVisibility(
-                        visible = areControlsVisible,
-                        enter = fadeIn(tween(250)),
-                        exit = fadeOut(tween(300)),
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 16.dp)
-                            .widthIn(max = 800.dp)
-                    ) {
-                        Surface(
-                                               color = MaterialTheme.colorScheme.surface
-,
-                            shape = RoundedCornerShape(24.dp),
-                            modifier = Modifier.fillMaxWidth(0.92f).wrapContentHeight()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().height(24.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(text = currentTimeStr, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
-                                    Slider(
-                                        value = timelineProgress,
-                                        onValueChange = { targetProgress ->
-                                            if (currentScore != null && totalSeconds > 0) {
-                                                val targetTotalSec = targetProgress * totalSeconds.toFloat()
-                                                var accumulated = 0f
-                                                var targetM = 0
-                                                var targetO = 0f
-                                                for (i in currentScore.measures.indices) {
-                                                    val m = currentScore.measures[i]
-                                                    val mDur = (60f / currentScore.tempo) * m.timeSignatureNumerator
-                                                    if (targetTotalSec < accumulated + mDur) {
-                                                        targetM = i
-                                                        targetO = (targetTotalSec - accumulated) / mDur
-                                                        break
-                                                    }
-                                                    accumulated += mDur
-                                                    if (i == currentScore.measures.lastIndex) {
-                                                        targetM = i
-                                                        targetO = 1.0f
-                                                    }
-                                                }
-                                                viewModel.seekToPosition(targetM, targetO)
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = primaryColor,
-                                            activeTrackColor = primaryColor,
-                                            inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
-                                        )
-                                    )
-                                    Text(text = totalTimeStr, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Surface(shape = RoundedCornerShape(50), color = primaryColor, modifier = Modifier.size(36.dp)) {
-                                            IconButton(onClick = { viewModel.toggleScorePlayback() }) {
-                                                Icon(
-                                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        }
-
-                                        IconButton(onClick = { viewModel.resetScorePlayhead() }) {
-                                            Icon(Icons.Default.Stop, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
-                                        }
-
-                                        Text(
-                                            text = "Speed: 1.0x",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            fontWeight = FontWeight.Bold
-                                        )
-
-                                        Text(
-                                            text = "BPM: ${currentScore?.tempo ?: 120}",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            fontWeight = FontWeight.Bold
-                                        )
-
-                                        IconButton(
-                                            onClick = { viewModel.showSettings.value = true },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Tune,
-                                                contentDescription = "Settings",
-                                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Button(
-                                            onClick = { fsShowLetters = !fsShowLetters },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (fsShowLetters) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
-                                            ),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.height(28.dp)
-                                        ) {
-                                            Text("Letters", fontSize = 10.sp, color = if (fsShowLetters) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                                        }
-                                        Button(
-                                            onClick = { fsShowLyrics = !fsShowLyrics },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (fsShowLyrics) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
-                                            ),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.height(28.dp)
-                                        ) {
-                                            Text("Lyrics", fontSize = 10.sp, color = if (fsShowLyrics) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                                        }
-
-                                        IconButton(onClick = { viewModel.isFullscreenKeyboard.value = false }) {
-                                            Icon(Icons.Default.FullscreenExit, null, tint = Color(0xFFFF6B35), modifier = Modifier.size(22.dp))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Fullscreen Corner MIDI Device Status Badge
+                    // Fullscreen Corner MIDI Device Status Badge moved to Top Start to avoid overlaying piano keys
                     PianoMidiStatusBadge(
                         deviceName = viewModel.connectedMidiDeviceName.value,
                         lastVelocity = viewModel.lastMidiVelocity.intValue,
@@ -1067,13 +961,21 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                             viewModel.onScanMidiDevicesRequested?.invoke()
                         },
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 12.dp, bottom = 12.dp)
+                            .align(Alignment.TopStart)
+                            .padding(start = 12.dp, top = 12.dp)
                     )
+                     // Status & Pedal Bar placed clearly ABOVE the piano keyboard bed (never overlapping keys)
+                       LiveChordHud(
+    detectedChord = liveDetectedChord,
+    primaryColor = primaryColor,
+    modifier = Modifier.padding(bottom = 8.dp) // Optional custom modifier overrides
+)
                 }
             }
         }
     }
+        
+    
 
     if (viewModel.showSettings.value) {
         PlaybackSettingsSheet(
@@ -1091,9 +993,58 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
             initialTab = 1,
             onDismiss = { viewModel.showSettings.value = false }
         )
+}
+}
+@Composable
+fun LiveChordHud(
+    detectedChord: com.creativeblisslabs.peqlearn.app.util.LiveChordDetector.DetectedChord?,
+    primaryColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        if (detectedChord != null) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF14171E).copy(alpha = 0.95f),
+                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.4f)),
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF00E676))
+                    )
+                    Text(
+                        text = detectedChord.fullName,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFFFD700)
+                    )
+                    // Optional inversion text can be re-enabled here if needed:
+                    // Text(
+                    //     text = "• ${detectedChord.inversionText}",
+                    //     fontSize = 11.sp,
+                    //     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    // )
+                }
+            }
+        } else {
+            Spacer(Modifier.width(1.dp))
+        }
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaybackSettingsSheet(
@@ -1193,13 +1144,13 @@ fun PlaybackSettingsSheet(
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Format Mode", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            val formats = listOf("Staff", "Tab", "Both Viewers")
+                            val formats = listOf("Staff", "Tab", "Both")
                             Row(modifier = Modifier.background(MaterialTheme.colorScheme.onSurface.copy(0.05f), RoundedCornerShape(8.dp)).padding(3.dp)) {
                                 formats.forEach { f ->
                                     val currentFmt = viewModel.notationFormat.value
-                                    val active = (f == "Staff" && (currentFmt == "Staff" || currentFmt == "Staff Only")) ||
-                                            (f == "Tab" && (currentFmt == "Tab" || currentFmt == "Tab Only")) ||
-                                            (f == "Both Viewers" && (currentFmt == "Both Viewers" || currentFmt == "Combined"))
+                                    val active = (f == "Staff" && (currentFmt == "Staff" || currentFmt == "Staff")) ||
+                                            (f == "Tab" && (currentFmt == "Tab" || currentFmt == "Tab")) ||
+                                            (f == "Both" && (currentFmt == "Both" || currentFmt == "Both"))
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
@@ -2134,7 +2085,7 @@ private fun SinglePedalBlade(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clickable { onClick() }
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(horizontal = 2.dp, vertical = 0.dp)
     ) {
         // Top Mounting Bracket / Pin Housing (Pedal Top)
         Box(
@@ -2152,8 +2103,8 @@ private fun SinglePedalBlade(
         // Physical Brass Foot-pedal blade shape
         Box(
             modifier = Modifier
-                .width(24.dp)
-                .height(46.dp)
+                .width(14.dp)
+                .height(26.dp)
                 .graphicsLayer {
                     translationY = if (isPressed) 5.dp.toPx() else 0f
                     scaleY = if (isPressed) 0.90f else 1.0f
@@ -2195,8 +2146,6 @@ private fun SinglePedalBlade(
                 )
             }
         }
-
-        Spacer(modifier = Modifier.height(3.dp))
 
         Text(
             text = name,

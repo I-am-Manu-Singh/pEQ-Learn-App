@@ -198,9 +198,7 @@ private fun LearnMainContent(
                                         StrobeTunerSection(viewModel)
                                     }
                                     "DRUMS" -> {
-                                        DrumAcademySection(viewModel, primaryColor)
-                                        Spacer(Modifier.height(16.dp))
-                                        SongArrangerTimeline(viewModel = viewModel, primaryColor = primaryColor, modifier = Modifier)
+                                        DrumAcademySection(viewModel, primaryColor, modifier = Modifier)
                                     }
                                     "NOTATION" -> {
                                         Box(modifier = Modifier.fillMaxWidth().height(650.dp)) {
@@ -333,8 +331,6 @@ private fun LearnMainContent(
                             }
                             "DRUMS" -> {
                                 DrumAcademySection(viewModel, primaryColor)
-                                Spacer(Modifier.height(16.dp))
-                                SongArrangerTimeline(viewModel = viewModel, primaryColor = primaryColor, modifier = Modifier)
                             }
                             "NOTATION" -> {
                                 Box(modifier = Modifier.fillMaxWidth().height(650.dp)) {

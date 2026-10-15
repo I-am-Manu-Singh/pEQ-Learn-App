@@ -534,9 +534,11 @@ fun ExportTabContent(viewModel: AppViewModel) {
 
     // Layout Mode (Combined / Visualizer / Notation)
     SettingsSection("Export Composition Mode", icon = Icons.Default.Dashboard) {
-        Text("Select what visual graphics to render into the exported video.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Combined (Score + Waterfall)", "Visualizer Waterfall Only", "Notation Score Sheet Only").forEach { mode ->
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("Score + Waterfall", "Waterfall", "Notation").forEach { mode ->
                 pEQFilterChip(
                     selected = viewModel.videoExportLayoutMode.value == mode,
                     onClick = { viewModel.videoExportLayoutMode.value = mode },

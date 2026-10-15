@@ -386,6 +386,12 @@ fun MainScreen(
 
 
 
+        val isAnyFullscreen = viewModel.isVideoFullScreen.value ||
+                viewModel.isFullscreenKeyboard.value ||
+                viewModel.isNotationFullscreen.value ||
+                viewModel.isImmersiveLabActive.value ||
+                viewModel.isTanpuraFullscreen.value
+
         Scaffold(
 
             modifier = Modifier
@@ -394,10 +400,7 @@ fun MainScreen(
 
             containerColor = Color.Black,
 
-            contentWindowInsets =
-
-             
-                    WindowInsets.safeDrawing,
+            contentWindowInsets = if (isAnyFullscreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
 
             topBar = {},
 
@@ -410,7 +413,7 @@ fun MainScreen(
 
             bottomBar = {
 
-                if (!isWideScreen) {
+                if (!isWideScreen && !isAnyFullscreen) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -504,17 +507,9 @@ fun MainScreen(
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .then(
-
-                                    if (
-                                        !isWideScreen 
-                                    ) {
-
-                                        Modifier.padding(
-                                            paddingValues
-                                        )
-
+                                    if (!isWideScreen && !isAnyFullscreen) {
+                                        Modifier.padding(paddingValues)
                                     } else {
-
                                         Modifier
                                     }
                                 )

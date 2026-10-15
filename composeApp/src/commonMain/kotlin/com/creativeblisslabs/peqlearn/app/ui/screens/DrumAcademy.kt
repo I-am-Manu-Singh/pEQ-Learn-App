@@ -180,7 +180,9 @@ private fun AnalysisTile(
 @Composable
 fun DrumAcademySection(
     viewModel: AppViewModel,
-    primaryColor: Color = MaterialTheme.colorScheme.primary
+    primaryColor: Color = MaterialTheme.colorScheme.primary,
+    modifier: Modifier = Modifier
+
 ) {
     var workspaceMode by remember { mutableStateOf(0) }
     val padLabels = remember {
@@ -192,10 +194,7 @@ fun DrumAcademySection(
         )
     }
     val activeIndices = remember { mutableStateListOf<Int>() }
-    LearnSectionCard(title = "TRAINING MODULES & MASTER CLOCK", icon = Icons.Filled.Adjust) {
-
-
-
+    LearnSectionCard(title = "DRUM ACADEMY & SEQUENCER", icon = Icons.Filled.Adjust) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -273,9 +272,7 @@ fun DrumAcademySection(
             }
         }
 
-        pEQGlassCard(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+       
             Row(
                 modifier = Modifier.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -319,12 +316,11 @@ fun DrumAcademySection(
                         Text("TAP", fontSize = 8.sp, fontWeight = FontWeight.Black)
                     }
                 }
-            }
+            
         }
         RhythmGrooveWorkstation(viewModel=viewModel, primaryColor=primaryColor)
-    }
-
-    // Workspace switcher: 0 = 16-Pad MPC Grid, 1 = 3D Drum Visualizer, 2 = Drum Kits
+   
+   // Workspace switcher: 0 = 16-Pad MPC Grid, 1 = 3D Drum Visualizer, 2 = Drum Kits
     var drumViewMode by remember { mutableStateOf(0) }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -405,13 +401,16 @@ fun DrumAcademySection(
                                 ) {
                                     Text(if (isSelected) "ACTIVE" else "LOAD", fontSize = 11.sp)
                                 }
+                                }
                             }
                         }
                     }
                 }
             }
+                                                    SongArrangerTimeline(viewModel = viewModel, primaryColor = primaryColor)
+
         }
-    }
+    }    
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -640,9 +639,6 @@ fun RhythmGrooveWorkstation(
         }
     }
 
-    pEQGlassCard(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-    ) {
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             // Header
             Row(
@@ -807,7 +803,6 @@ fun RhythmGrooveWorkstation(
                 }
             }
         }
-    }
 }
 
 @Composable
@@ -835,10 +830,13 @@ fun SongArrangerTimeline(
                     letterSpacing = 1.sp
                 )
                 Text(
-                    text = "${viewModel.songTimeline.size} Active Bars • Sequential Loop Engine",
-                    fontSize = 9.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                            text = if (viewModel.currentPlayingBarIndex.intValue == -1) "IDLE"
+                            else "BAR ${(viewModel.currentPlayingBarIndex.intValue + 1).toString().padStart(2, '0')} / ${viewModel.songTimeline.size.toString().padStart(2, '0')}",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (viewModel.currentPlayingBarIndex.intValue != -1) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
             }
 
             Button(
@@ -867,15 +865,7 @@ fun SongArrangerTimeline(
         }
 
      
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = if (viewModel.currentPlayingBarIndex.intValue == -1) "IDLE"
-                            else "BAR ${(viewModel.currentPlayingBarIndex.intValue + 1).toString().padStart(2, '0')} / ${viewModel.songTimeline.size.toString().padStart(2, '0')}",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (viewModel.currentPlayingBarIndex.intValue != -1) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    
                 val totalBarsCount = viewModel.songTimeline.size
                 val currentPlayingIdx = viewModel.currentPlayingBarIndex.intValue
                 val currentScrubProgress = remember(currentPlayingIdx, totalBarsCount) {
@@ -921,16 +911,8 @@ fun SongArrangerTimeline(
                         }
                     }
                 }
-            }
+            
         
-    
-
-        // Timeline Slot Items Container
-        pEQGlassCard(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(350.dp)
-        ) {
             if (viewModel.songTimeline.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -946,22 +928,17 @@ fun SongArrangerTimeline(
                     )
                 }
             } else {
-                LazyColumn(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    itemsIndexed(
-                        items = viewModel.songTimeline,
-                        key = { _, item: SongBar -> item.stableId }
-                    ) { index: Int, bar: SongBar ->
+                    viewModel.songTimeline.forEachIndexed { index: Int, bar: SongBar ->
                         val isPlayingCurrent = viewModel.currentPlayingBarIndex.intValue == index
                         var showEditContextBox by remember { mutableStateOf(false) }
 
-                        pEQGlassCard(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                     
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1108,34 +1085,32 @@ fun SongArrangerTimeline(
                                     }
                                 }
                             }
-                        }
+                        
                     }
 
-                    item {
-                        Button(
-                            onClick = {
-                                viewModel.addBarToTimeline(
-                                    patternName = viewModel.drumTutorials.firstOrNull()?.name ?: "ELECTRONIC_808: 4/4 Core Foundation",
-                                    isFiller = false
-                                )
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.2f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            contentPadding = PaddingValues(12.dp)
-                        ) {
-                            Icon(Icons.Default.AddCircleOutline, null, tint = primaryColor, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("APPEND BLANK ARRANGEMENT BLOCK", fontSize = 10.sp, fontWeight = FontWeight.Black, color = primaryColor)
-                        }
+                    Button(
+                        onClick = {
+                            viewModel.addBarToTimeline(
+                                patternName = viewModel.drumTutorials.firstOrNull()?.name ?: "ELECTRONIC_808: 4/4 Core Foundation",
+                                isFiller = false
+                            )
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.2f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        contentPadding = PaddingValues(12.dp)
+                    ) {
+                        Icon(Icons.Default.AddCircleOutline, null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("APPEND BLANK ARRANGEMENT BLOCK", fontSize = 10.sp, fontWeight = FontWeight.Black, color = primaryColor)
                     }
                 }
             }
         }
-    }
+    
 }
 @Composable
 fun ProfessionalDrumKitGrid(
