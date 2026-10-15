@@ -23,9 +23,7 @@ fun AppViewModel.updateAccent(accent: pEQAccent) {
     persistSession()
 }
 
-fun AppViewModel.toggleSleepTimer(enabled: Boolean) { 
-    sleepTimerActive.value = enabled
-}
+
 
 
 fun AppViewModel.toggleBackgroundService(active: Boolean) {

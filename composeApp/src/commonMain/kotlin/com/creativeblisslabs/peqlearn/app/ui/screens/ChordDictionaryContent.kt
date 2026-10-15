@@ -151,6 +151,33 @@ fun ChordDictionaryPanel(
     val pianoPitches = remember(activeMidiMap) { activeMidiMap.keys.toList().sorted() }
     val noteNames = remember(pianoPitches, mode) { pianoPitches.map { roots[it % 12] } }
 
+    val pianoFingering = remember(pianoPitches, typeDef.suffix, mode, selectedVoicingIdx) {
+        if (mode == 0) {
+            val baseList = PIANO_RH_FINGERS[typeDef.suffix] ?: when (pianoPitches.size) {
+                1 -> listOf(1)
+                2 -> listOf(1, 5)
+                3 -> when (selectedVoicingIdx) {
+                    1 -> listOf(1, 2, 5) // 1st inversion
+                    2 -> listOf(1, 3, 5) // 2nd inversion
+                    else -> listOf(1, 3, 5) // root position
+                }
+                4 -> listOf(1, 2, 4, 5)
+                else -> listOf(1, 2, 3, 4, 5)
+            }
+            val fingers = pianoPitches.indices.map { i ->
+                baseList.getOrElse(i) { (i % 5) + 1 }
+            }
+            FingeringData(notes = pianoPitches, fingers = fingers)
+        } else {
+            // Scale fingering for right hand
+            val rhScalePattern = listOf(1, 2, 3, 1, 2, 3, 4, 5)
+            val fingers = pianoPitches.indices.map { i ->
+                rhScalePattern[i % rhScalePattern.size]
+            }
+            FingeringData(notes = pianoPitches, fingers = fingers)
+        }
+    }
+
     val guitarShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode) {
         ChordVoicingEngine.generateDynamicShape(
             rootMidiNote = (rootIdx + capoFret) % 12,
@@ -375,11 +402,17 @@ Row(
             }
         }
 
-        Surface(shape = RoundedCornerShape(14.dp), color = partColor.copy(0.08f)) {
+        ElevatedCard(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
+            ),
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+        ) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -393,7 +426,7 @@ Row(
                     )
 
                     Row(
-                        Modifier.padding(top = 4.dp),
+                        Modifier.padding(top = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -406,7 +439,7 @@ Row(
                                 color = if (isActiveStep) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                                 modifier = Modifier
                                     .background(color = if (isActiveStep) partColor else Color.Transparent, shape = RoundedCornerShape(4.dp))
-                                    .padding(horizontal = if (isActiveStep) 4.dp else 0.dp, vertical = 1.dp)
+                                    .padding(horizontal = if (isActiveStep) 6.dp else 2.dp, vertical = 2.dp)
                             )
                             if (idx < noteNames.lastIndex) Text("·", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.3f))
                         }
@@ -418,63 +451,73 @@ Row(
                     label = "Play",
                     isPlaying = isArpeggioRunning,
                     onPlayClick = {
-                        playbackJob?.cancel()
-                        isArpeggioRunning = true
-
-                        val mockNotesList = pianoPitches.mapIndexed { idx: Int, midiPitch: Int ->
-                            val targetString = when (selectedInstrument) {
-                                ChordInstrumentType.GUITAR -> guitarShape.frets.indices.filter { guitarShape.frets[it] != -1 }.getOrNull(idx)
-                                ChordInstrumentType.UKULELE -> ukuShape.frets.indices.filter { ukuShape.frets[it] != -1 }.getOrNull(idx)
-                                else -> null
-                            }
-                            val targetFret = when (selectedInstrument) {
-                                ChordInstrumentType.GUITAR -> targetString?.let { guitarShape.frets[it] }
-                                ChordInstrumentType.UKULELE -> targetString?.let { ukuShape.frets[it] }
-                                else -> null
-                            }
-
-                            ScoreNote(
-                                midiNote = midiPitch,
-                                position = idx.toFloat() / pianoPitches.size.toFloat(),
-                                duration = 0.25f,
-                                string = targetString,
-                                fret = targetFret
-                            )
-                        }
-
-                        viewModel.currentScore.value = Score(
-                            title = "Live Audition",
-                            timeSignature = "4/4",
-                            measures = listOf(Measure(notes = mockNotesList))
-                        )
-
-                        playbackJob = scope.launch {
-                            val instr = if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.UKULELE) "GUITAR" else "PIANO"
-                            try {
-                                viewModel.audioEngine.setInstrument(instr)
-                            } catch (_: Exception) {}
-
-                            pianoPitches.forEachIndexed { idx: Int, midiPitch: Int ->
-                                currentPlayingIdx = idx
-                                viewModel.scorePlayheadMeasure.value = 0
-                                viewModel.scorePlayheadOffset.value = idx.toFloat() / pianoPitches.size.toFloat()
-
-                                viewModel.midiPlayingNote.value = midiPitch
-                                viewModel.midiActiveNotes.clear()
-                                viewModel.midiActiveNotes[midiPitch] = true
-
-                                try {
-                                    viewModel.audioEngine.noteOn(midiPitch, 0.85f)
-                                } catch (_: Exception) {}
-                                delay(500)
-                            }
-
+                        if (isArpeggioRunning) {
+                            playbackJob?.cancel()
                             currentPlayingIdx = -1
                             viewModel.midiPlayingNote.value = null
                             viewModel.currentScore.value = null
                             viewModel.midiActiveNotes.clear()
                             viewModel.midiActiveNotes.putAll(activeMidiMap)
                             isArpeggioRunning = false
+                        } else {
+                            playbackJob?.cancel()
+                            isArpeggioRunning = true
+
+                            val mockNotesList = pianoPitches.mapIndexed { idx: Int, midiPitch: Int ->
+                                val targetString = when (selectedInstrument) {
+                                    ChordInstrumentType.GUITAR -> guitarShape.frets.indices.filter { guitarShape.frets[it] != -1 }.getOrNull(idx)
+                                    ChordInstrumentType.UKULELE -> ukuShape.frets.indices.filter { ukuShape.frets[it] != -1 }.getOrNull(idx)
+                                    else -> null
+                                }
+                                val targetFret = when (selectedInstrument) {
+                                    ChordInstrumentType.GUITAR -> targetString?.let { guitarShape.frets[it] }
+                                    ChordInstrumentType.UKULELE -> targetString?.let { ukuShape.frets[it] }
+                                    else -> null
+                                }
+
+                                ScoreNote(
+                                    midiNote = midiPitch,
+                                    position = idx.toFloat() / pianoPitches.size.toFloat(),
+                                    duration = 0.25f,
+                                    string = targetString,
+                                    fret = targetFret
+                                )
+                            }
+
+                            viewModel.currentScore.value = Score(
+                                title = "Live Audition",
+                                timeSignature = "4/4",
+                                measures = listOf(Measure(notes = mockNotesList))
+                            )
+
+                            playbackJob = scope.launch {
+                                val instr = if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.UKULELE) "GUITAR" else "PIANO"
+                                try {
+                                    viewModel.audioEngine.setInstrument(instr)
+                                } catch (_: Exception) {}
+
+                                pianoPitches.forEachIndexed { idx: Int, midiPitch: Int ->
+                                    currentPlayingIdx = idx
+                                    viewModel.scorePlayheadMeasure.value = 0
+                                    viewModel.scorePlayheadOffset.value = idx.toFloat() / pianoPitches.size.toFloat()
+
+                                    viewModel.midiPlayingNote.value = midiPitch
+                                    viewModel.midiActiveNotes.clear()
+                                    viewModel.midiActiveNotes[midiPitch] = true
+
+                                    try {
+                                        viewModel.audioEngine.noteOn(midiPitch, 0.85f)
+                                    } catch (_: Exception) {}
+                                    delay(500)
+                                }
+
+                                currentPlayingIdx = -1
+                                viewModel.midiPlayingNote.value = null
+                                viewModel.currentScore.value = null
+                                viewModel.midiActiveNotes.clear()
+                                viewModel.midiActiveNotes.putAll(activeMidiMap)
+                                isArpeggioRunning = false
+                            }
                         }
                     }
                 )
@@ -528,15 +571,20 @@ Row(
                         }
                     }
                     ChordInstrumentType.PIANO -> {
+                        val activeMidiToken = viewModel.midiPlayingNote.value
                         val startNoteBoundary = (pianoPitches.minOrNull() ?: 60) - 2
                         val endNoteBoundary = (pianoPitches.maxOrNull() ?: 72) + (if (selectedOctaveSpan == 1) 24 else 12)
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             UnifiedPianoKeyboard(
                                 activeMidiNotes = activeMidiMap,
                                 accentColor = partColor,
+                                rootNote = rootIdx,
+                                fingering = pianoFingering,
+                                activeCoordinate = if (isArpeggioRunning) activeMidiToken else null,
                                 startNote = startNoteBoundary,
                                 endNote = endNoteBoundary,
-                                showNoteNames = true,
+                                showNoteNames = false,
+                                isPlaying = isArpeggioRunning,
                                 onKeyTapped = { midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument("PIANO")
@@ -544,9 +592,13 @@ Row(
                                         viewModel.audioEngine.noteOn(midiNote, 0.85f)
                                     } catch (_: Exception) {}
                                 },
-                                modifier = Modifier.fillMaxWidth().height(105.dp).clip(RoundedCornerShape(8.dp))
+                                modifier = Modifier.fillMaxWidth().height(108.dp).clip(RoundedCornerShape(8.dp))
                             )
-                            PianoFingerLegend(accentColor = partColor, activeSuffix = typeDef.suffix)
+                            PianoFingerLegend(
+                                accentColor = partColor,
+                                fingering = pianoFingering,
+                                noteNames = noteNames
+                            )
                         }
                     }
                     ChordInstrumentType.UKULELE -> {
@@ -659,20 +711,6 @@ Row(
                 }
             }
         )
-
-        Button(
-            onClick = {
-                viewModel.practicingChord.value = if (mode == 0) chordName else "${roots[rootIdx]} Scale"
-                onPracticeTapped()
-            },
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = partColor)
-        ) {
-            Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.onPrimary)
-            Spacer(Modifier.width(8.dp))
-            Text("Practice Workspace Target", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary, fontSize = 13.sp)
-        }
         Spacer(Modifier.height(20.dp))
     }
 
@@ -732,8 +770,11 @@ fun InstrumentSelectionRow(
 }
 
 @Composable
-private fun PianoFingerLegend(accentColor: Color, activeSuffix: String) {
-    val assignedFingersList = remember(activeSuffix) { PIANO_RH_FINGERS[activeSuffix] ?: listOf(1, 3, 5) }
+private fun PianoFingerLegend(
+    accentColor: Color,
+    fingering: FingeringData,
+    noteNames: List<String>
+) {
     val fingerNameLabels = listOf("Thumb", "Index", "Middle", "Ring", "Pinky")
 
     Row(
@@ -741,16 +782,22 @@ private fun PianoFingerLegend(accentColor: Color, activeSuffix: String) {
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        assignedFingersList.forEach { fingerNum ->
+        fingering.fingers.forEachIndexed { idx, fingerNum ->
+            val noteLabel = noteNames.getOrNull(idx) ?: ""
             val structuralLabelName = fingerNameLabels.getOrNull(fingerNum - 1) ?: "Finger"
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(modifier = Modifier.size(18.dp).clip(CircleShape).background(accentColor), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(20.dp).clip(CircleShape).background(accentColor), contentAlignment = Alignment.Center) {
                     Text(
                         text = "$fingerNum", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.White, textAlign = TextAlign.Center, lineHeight = 10.sp,
                         style = TextStyle(lineHeightStyle = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.Both))
                     )
                 }
-                Text(text = structuralLabelName, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+                Text(
+                    text = if (noteLabel.isNotBlank()) "$noteLabel ($structuralLabelName)" else structuralLabelName,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }
@@ -974,12 +1021,12 @@ fun EasyChordQuickRef(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF141724),
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                "⚡ EASY CHORD QUICK REFERENCE & SUBSTITUTIONS",
+                "QUICK REFERENCE & SUBSTITUTIONS",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = accentColor,
@@ -991,7 +1038,7 @@ fun EasyChordQuickRef(
                     Surface(
                         onClick = { onSelectChord(name) },
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFF1E2235),
+        color = MaterialTheme.colorScheme.surface,
                         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {

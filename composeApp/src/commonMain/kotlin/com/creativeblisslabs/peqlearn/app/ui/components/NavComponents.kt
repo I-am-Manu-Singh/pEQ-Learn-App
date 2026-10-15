@@ -157,32 +157,41 @@ fun BottomNavigationBar(
                 }
             }
 
-            // Center Cutout Button: Miniplayer Toggle
-            Column(
-                modifier = Modifier
-                    .weight(0.9f)
-                    .padding(vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Surface(
-                    onClick = { viewModel.showMiniPlayer.value = !viewModel.showMiniPlayer.value },
-                    shape = CircleShape,
-                    color = if (isMiniPlayerVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
-                    shadowElevation = 6.dp,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = if (isMiniPlayerVisible) Icons.Default.MusicNote else Icons.Default.MusicOff,
-                            contentDescription = if (isMiniPlayerVisible) "Hide MiniPlayer" else "Show MiniPlayer",
-                            tint = if (isMiniPlayerVisible) Color.Black else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
+           // Center Cutout Button: Miniplayer Toggle
+Column(
+    modifier = Modifier
+        .weight(0.9f)
+        .padding(vertical = 4.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.Center
+) {
+    Surface(
+        onClick = { viewModel.showMiniPlayer.value = !viewModel.showMiniPlayer.value },
+        shape = CircleShape,
+        color = if (isMiniPlayerVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
+        shadowElevation = 6.dp,
+        modifier = Modifier.size(44.dp)
+    ) {
+        val currentItem = viewModel.currentMediaItem.value
+        Box(contentAlignment = Alignment.Center) {
+            if (currentItem != null) {
+                pEQImage(
+                    data = currentItem.thumbnail,
+                    fallbackPath = currentItem.path,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = null,
+                    tint = if (isMiniPlayerVisible) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
             }
+        }
+    }
+}
 
             // Right Tabs (Mixer, Settings)
             rightTabs.forEach { tab ->

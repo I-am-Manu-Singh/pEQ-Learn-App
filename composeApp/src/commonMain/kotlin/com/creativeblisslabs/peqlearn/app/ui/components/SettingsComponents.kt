@@ -493,62 +493,58 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
             }
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // Falling Notes Speed
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Falling Notes Speed", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Text("Visual speed multiplier of falling notes waterfall.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Slow", "Normal", "Fast", "Extreme").forEach { spd ->
-                    pEQFilterChip(
-                        selected = viewModel.fallingNotesSpeed.value == spd,
-                        onClick = { viewModel.fallingNotesSpeed.value = spd },
-                        label = { Text(spd, style = MaterialTheme.typography.labelSmall) }
-                    )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Text("Unified Piano & Visualizer Studio Settings", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+                Text(
+                    "All real-time MIDI visualizer settings (3D perspective, horizon vanishing depth, falling speed, particle physics, multi-track hand colors, and themes) are unified in the Piano Keyboard studio bottomsheet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                )
+                Button(
+                    onClick = {
+                        viewModel.currentTab.value = com.creativeblisslabs.peqlearn.app.Tab.Learn
+                        viewModel.showSettings.value = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text("Open Visualizer Settings Sheet", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
-
-        Spacer(Modifier.height(6.dp))
-
-        // Waterfall Theme
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Waterfall Theme", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Text("Color palette theme for active note tracks.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Neon Glow", "Cyberpunk", "Classic Staff").forEach { thm ->
-                    pEQFilterChip(
-                        selected = viewModel.waterfallTheme.value == thm,
-                        onClick = { viewModel.waterfallTheme.value = thm },
-                        label = { Text(thm, style = MaterialTheme.typography.labelSmall) }
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(6.dp))
-
-        TogglePreference(
-            label = "Show Key Letter Labels",
-            desc = "Overlay semitone note names (C, D, E...) directly on the piano keyboard keys.",
-            checked = viewModel.showPianoKeyLabels.value,
-            onCheckedChange = { viewModel.showPianoKeyLabels.value = it }
-        )
-
-        TogglePreference(
-            label = "Enable Waterfall Sparks & Particles",
-            desc = "Spawn floating spark particle physics when falling notes hit the keyboard.",
-            checked = viewModel.showWaterfallParticles.value,
-            onCheckedChange = { viewModel.showWaterfallParticles.value = it }
-        )
     }
 }
 
 @Composable
-private fun ExportTabContent(viewModel: AppViewModel) {
+fun ExportTabContent(viewModel: AppViewModel) {
     SectionHeader("ADVANCED CREATIVE EXPORT STUDIO")
     Spacer(Modifier.height(8.dp))
+
+    // Layout Mode (Combined / Visualizer / Notation)
+    SettingsSection("Export Composition Mode", icon = Icons.Default.Dashboard) {
+        Text("Select what visual graphics to render into the exported video.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Combined (Score + Waterfall)", "Visualizer Waterfall Only", "Notation Score Sheet Only").forEach { mode ->
+                pEQFilterChip(
+                    selected = viewModel.videoExportLayoutMode.value == mode,
+                    onClick = { viewModel.videoExportLayoutMode.value = mode },
+                    label = { Text(mode, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+    }
 
     // Rendering Visual Theme
     SettingsSection("Rendering Visual Theme", icon = Icons.Default.Palette) {
@@ -715,16 +711,61 @@ private fun ExportTabContent(viewModel: AppViewModel) {
         }
     }
 
+    // Export Progress & Status
+    if (viewModel.isVideoExporting.value) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Encoding Video Frames & Audio Stream...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "${(viewModel.videoExportProgress.floatValue * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            LinearProgressIndicator(
+                progress = { viewModel.videoExportProgress.floatValue },
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        }
+    }
+
     // Export Button
     Button(
         onClick = { viewModel.exportVideoToFile { } },
+        enabled = !viewModel.isVideoExporting.value,
         modifier = Modifier.fillMaxWidth().height(52.dp),
         shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
     ) {
-        Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
-        Spacer(Modifier.width(8.dp))
-        Text("RENDER & EXPORT CREATIVE VIDEO", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
+        if (viewModel.isVideoExporting.value) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onPrimary
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("EXPORTING VIDEO...", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
+        } else {
+            Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+            Spacer(Modifier.width(8.dp))
+            Text("RENDER & EXPORT CREATIVE VIDEO", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
+        }
     }
 }
 

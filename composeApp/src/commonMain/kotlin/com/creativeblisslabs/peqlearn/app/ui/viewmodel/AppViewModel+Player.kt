@@ -89,7 +89,6 @@ fun AppViewModel.playExternalFile(
         durationMs = durationMs ?: 0L
     )
     
-    isExternalLaunch.value = true
     playMediaItem(item, addToQueue = true)
     
     // Explicitly set player tab and handle video fullscreen if needed
@@ -472,4 +471,22 @@ fun AppViewModel.toggleStemSolo(stem: String, active: Boolean? = null) {
 
 fun AppViewModel.updateStemPan(stem: String, pan: Float) {
     audioEngine.setStemPan(stem, pan)
+}
+
+fun AppViewModel.playStems() {
+    audioEngine.playStems()
+    isStemsPlaying.value = true
+}
+
+fun AppViewModel.pauseStems() {
+    audioEngine.pauseStems()
+    isStemsPlaying.value = false
+}
+
+fun AppViewModel.toggleStemsPlayback() {
+    if (isStemsPlaying.value) {
+        pauseStems()
+    } else {
+        playStems()
+    }
 }

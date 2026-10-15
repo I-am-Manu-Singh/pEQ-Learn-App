@@ -54,29 +54,9 @@ open class AppViewModel(
 // PLACE INSIDE AppViewModel
 // =========================
 
-    enum class LibraryViewMode {
-
-        LIBRARY,
-        FILES,
-        ARTISTS,
-        ALBUMS
-    }
-
-    enum class VisualizerMode {
-        BARS,
-        CIRCULAR,
-        RTA,
-        WAVEFORM
-    }
-    val snackbarFlow =
-
-    MutableSharedFlow<String>()
-    var visualizerMode = mutableStateOf(VisualizerMode.BARS)
-
-    var libraryViewMode =
-        mutableStateOf(
-            LibraryViewMode.LIBRARY
-        )
+   
+   
+ 
     val currentStepIndex = mutableIntStateOf(0)
 val isLandscapeMode =
     mutableStateOf(true)
@@ -104,17 +84,11 @@ val client = createHttpClient()
     private var hasInitialized = false
     // 🎬 Playback Core
     val isPlaying = mutableStateOf(false)
-    val isInPipMode = mutableStateOf(false)
-    val isLockScreenMode = mutableStateOf(false)
-    val isExternalLaunch = mutableStateOf(false)
-    
-    var onEnterPiP: (() -> Unit)? = null
-        val centsDeviation = mutableIntStateOf(0)
 
       val detectedPitch = mutableFloatStateOf(0f)
     val detectedNote = mutableStateOf("-")
+    val centsDeviation = mutableIntStateOf(0)
     val playbackSpeed = mutableStateOf(1.0f)
-    val peakLevelDb = mutableStateOf(-60f)
     val toastMessage = mutableStateOf<String?>(null)
         val isBackgroundServiceRunning = mutableStateOf(true)
 
@@ -150,8 +124,80 @@ val client = createHttpClient()
     val isVerticalScroll = mutableStateOf(false)
     val metronomeEnabled = mutableStateOf(false)
     private var metronomeJob: Job? = null
-    val isBuffering = mutableStateOf(false)
-    val isPiPMode = mutableStateOf(false)
+
+    // System Settings, Notation & SoundFont Preferences
+    val videoExportFormat = mutableStateOf("MP4")
+    val notationFormat = mutableStateOf("Both Viewers")
+    val selectedKeySignature = mutableStateOf("C Major")
+    val selectedTimeSignature = mutableStateOf("4/4")
+    val selectedInstrument = mutableStateOf("Piano")
+    val quantizeDivision = mutableStateOf("1/16")
+    val scrollDirectionHorizontal = mutableStateOf(true)
+    val shiftNotesOffset = mutableStateOf(0)
+    val videoExportEffects = mutableStateMapOf<String, Boolean>("Glow" to true, "Particles" to true)
+    val midiPlayingNote = mutableStateOf<Int?>(null)
+    val selectedSettingsTab = mutableIntStateOf(0)
+    val useOsmdRenderer = mutableStateOf(false)
+    val useVexflow get() = useOsmdRenderer
+    val pitchEngineAlgo = mutableStateOf("Phase Vocoder")
+    val stemSplitQuality = mutableStateOf("Standard")
+    val pianoSf2File = mutableStateOf("piano/198_Yamaha_SY1_piano.sf2")
+    val pianoBank = mutableIntStateOf(0)
+    val pianoPreset = mutableIntStateOf(0)
+    val pianoChannel = mutableIntStateOf(0)
+    val pianoVelocity = mutableIntStateOf(95)
+    val guitarSf2File = mutableStateOf("guitar/guitar_samples_clean.sf2")
+    val guitarBank = mutableIntStateOf(0)
+    val guitarPreset = mutableIntStateOf(0)
+    val guitarChannel = mutableIntStateOf(0)
+    val guitarVelocity = mutableIntStateOf(72)
+    val drumSf2File = mutableStateOf("drums/Metal_Drums.sf2")
+    val drumBank = mutableIntStateOf(0)
+    val drumPreset = mutableIntStateOf(0)
+    val drumChannel = mutableIntStateOf(9)
+    val drumVelocity = mutableIntStateOf(90)
+    val useSf2ForDrums = mutableStateOf(false)
+    val metronomeSf2File = mutableStateOf("metronome/Metronom.sf2")
+    val metronomeBank = mutableIntStateOf(0)
+    val metronomePreset = mutableIntStateOf(0)
+    val metronomeChannel = mutableIntStateOf(10)
+    val metronomeVelocity = mutableIntStateOf(100)
+    val useSf2ForMetronome = mutableStateOf(false)
+    val tanpuraSf2File = mutableStateOf("tanpura/Tanpura_drone.sf2")
+    val tanpuraBank = mutableIntStateOf(0)
+    val tanpuraPreset = mutableIntStateOf(0)
+    val tanpuraChannel = mutableIntStateOf(2)
+    val tanpuraVelocity = mutableIntStateOf(58)
+    val useSf2ForTanpura = mutableStateOf(false)
+    val tablaSf2File = mutableStateOf("tabla/Indian_Ensemble.sf2")
+    val tablaBank = mutableIntStateOf(0)
+    val tablaPreset = mutableIntStateOf(0)
+    val tablaChannel = mutableIntStateOf(9)
+    val tablaVelocity = mutableIntStateOf(74)
+    val tunerReferenceFrequency = mutableFloatStateOf(440f)
+    val metronomeTickSound = mutableStateOf("Woodblock")
+    val metronomeSubdivision = mutableIntStateOf(1)
+    val fallingNotesSpeed = mutableStateOf("Normal")
+    val waterfallTheme = mutableStateOf("Neon Glow")
+    val showPianoKeyLabels = mutableStateOf(true)
+    val showWaterfallParticles = mutableStateOf(true)
+    val is3DPerspectiveMode = mutableStateOf(true)
+    val horizonScale = mutableFloatStateOf(0.68f)
+    val showWaterfall = mutableStateOf(true)
+    val videoExportTheme = mutableStateOf("Cyberpunk")
+    val videoExportResolution = mutableStateOf("1080p")
+    val videoExportFps = mutableStateOf("60 FPS")
+    val videoExportBitrate = mutableStateOf("10 Mbps")
+    val videoExportAudioCodec = mutableStateOf("AAC")
+    val videoExportSampleRate = mutableStateOf("48 kHz")
+    val videoExportCameraYaw = mutableFloatStateOf(0f)
+    val videoExportCameraPitch = mutableFloatStateOf(15f)
+    val videoExportEqBars = mutableIntStateOf(64)
+    val videoExportPeakSensitivity = mutableFloatStateOf(80f)
+    val videoExportLayoutMode = mutableStateOf("Combined (Score + Waterfall)")
+    val isVideoExporting = mutableStateOf(false)
+    val videoExportProgress = mutableFloatStateOf(0f)
+  
     val showMiniPlayer = mutableStateOf(true)
     val isFullscreenKeyboard = mutableStateOf(false)
     val isNotationFullscreen = mutableStateOf(false)
@@ -193,12 +239,6 @@ val client = createHttpClient()
     val isFavorite = mutableStateOf(false)
     val repeatMode = mutableStateOf(RepeatMode.OFF)
 
-    // ⏰ Industrial Utilities
-    val sleepTimerActive = mutableStateOf(false)
-    val sleepTimerMinutes = mutableStateOf(30)
-    val sleepTimerRemainingSec = mutableLongStateOf(0L)
-    
-    val isCasting = mutableStateOf(false)
    
     val audioDelayMs = mutableLongStateOf(0L)
     val openAtStartup = mutableStateOf(false)
@@ -209,19 +249,13 @@ val client = createHttpClient()
     val abRepeatPointB = mutableStateOf(-1L)
     val currentFolder = mutableStateOf<String?>(null)
     
-    val showBrowser = mutableStateOf(false)
-    val browserUrl = mutableStateOf("")
-    val browserTitle = mutableStateOf("pEQ BROWSER")
-     val isCrossfading = mutableStateOf(false)
-    val crossfadeProgress = mutableStateOf(0f)
+  
     internal var activeCrossfadeJob: Job? = null
 
-    private val osClient by lazy { com.creativeblisslabs.peqlearn.app.ai.OpenSubtitlesClient(persistenceManager.openSubtitlesApiKey) }
 
 
    val favorites = mutableStateListOf<String>()
    
-    val isMoodMakerVisible = mutableStateOf(false)
     val selectedItems = mutableStateListOf<pEQMediaItem>()
    
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -229,10 +263,8 @@ val client = createHttpClient()
     internal val scanFolders = mutableStateListOf<String>()
     /** Platform-specific primary external storage root (e.g. /storage/emulated/999 on some tablets). Set by Android before start(). */
     var primaryStoragePath: String = "/storage/emulated/0"
-    val isHapticsEnabled = mutableStateOf(true)
     
    
-    val isNeuralEnvActive = mutableStateOf(false)
     val activeJob = mutableStateOf<SplitJob?>(null)
     val backgroundJobs = mutableStateListOf<SplitJob>()
     private var lastFftTime = 0L
@@ -280,9 +312,6 @@ val client = createHttpClient()
             onTrackLoaded()
         }
 
-        audioEngine.onBufferingChanged = { buffering ->
-            isBuffering.value = buffering
-        }
 
         // 🔄 Sync Playback State
         scope.launch {
@@ -319,21 +348,9 @@ val client = createHttpClient()
     }
     
     internal var lastBeatMs = 0L
-    val bufferSizeFrames = mutableIntStateOf(1024)
-    val hapticIntensity = mutableFloatStateOf(0.5f)
     val platformStorageBase = mutableStateOf("/storage/emulated/0")
 
-    // 📺 Track Management
-    val availableSubtitleTracks = mutableStateListOf<MediaTrack>()
-    val availableAudioTracks = mutableStateListOf<MediaTrack>()
-    val selectedSubtitleTrack = mutableStateOf<MediaTrack?>(null)
-    val selectedAudioTrack = mutableStateOf<MediaTrack?>(null)
-    val showAudioTrackConsole = mutableStateOf(false)
-    val showEqualizer = mutableStateOf(false)
-    val isFetchingEverything = mutableStateOf(false)
-    val isFetchingSubtitles = mutableStateOf(false)
-    val isFocusMode = mutableStateOf(false)
-    val isFloatingLyricsActive = mutableStateOf(false)
+
     val isAppInBackground = mutableStateOf(false)
     
 
@@ -393,36 +410,28 @@ val client = createHttpClient()
     val folderFuture = mutableStateListOf<String>()
     
     
-    // 🎥 Professional Media State
-    val isVideoLocked = mutableStateOf(false)
-    val videoZoom = mutableStateOf(1.0f)
-    val videoAspectRatio = mutableStateOf("FIT")
-    
-    // ✂️ Cutter State
-    val trimStartMs = mutableLongStateOf(0L)
-    val trimEndMs = mutableLongStateOf(0L)
-
-    // 🧠 AI & Sync Engine
-    val currentLyricsLine = mutableStateOf(0)
-    val rtaData = mutableStateOf(FloatArray(32))
+   
     val exportFormat = mutableStateOf("WAV")
     val exportSampleRate = mutableStateOf(48000)
-    val isDitheringEnabled = mutableStateOf(true)
-    val stereoWidth = mutableStateOf(1.0f)
 
     // ⚙️ Workstation System Hooks
     var workstationRegistry = mutableStateMapOf<String, String>()
-    val hardwareSettings get() = workstationRegistry
-    val currentDevice = mutableStateOf(Device.INTERNAL)
     val isStemSplitting = mutableStateOf(false)
-    val isMasterBypassActive = mutableStateOf(false)
-    val showDiagnostics = mutableStateOf(false)
-    val showTrackInfoSheet = mutableStateOf(false)
-    val selectedItemForInfo = mutableStateOf<pEQMediaItem?>(null)
-    val isEditingMetadata = mutableStateOf(false)
-    val connectedDevices = mutableStateListOf<Device>(Device.INTERNAL) 
-    val currentBluetoothProfile = mutableStateOf(com.creativeblisslabs.peqlearn.app.audio.BluetoothProfile.LDAC)
-    val bluetoothResumeEnabled = mutableStateOf(true)
+    val stemSplitProgress = mutableStateOf(0f)
+    val stemSplitStatusMessage = mutableStateOf("Ready for Separation")
+    val isStemsPlaying = mutableStateOf(false)
+    val activeStemMap = mutableStateMapOf<String, String>()
+    val selectedMixerItem = mutableStateOf<pEQMediaItem?>(null)
+    val stemSeparationModel = mutableStateOf("Spleeter (2-Stem: Vocals + Accompaniment)")
+    val customOnnxModelPath = mutableStateOf<String?>(null)
+    val customOnnxModelName = mutableStateOf<String?>(null)
+    val stemExportBitDepth = mutableStateOf("24-bit") // "16-bit", "24-bit", "32-bit Float"
+    val stemExportFormat = mutableStateOf("WAV") // "WAV", "FLAC", "MP3"
+    val stemExportSampleRate = mutableStateOf(44100) // 44100, 48000, 96000
+    val isStemDeReverbEnabled = mutableStateOf(false)
+    val isStemDeNoiseEnabled = mutableStateOf(false)
+    val isStemKaraokeExtraction = mutableStateOf(false)
+    var onPickModelRequested: (((String, String) -> Unit) -> Unit)? = null
 
     // 📂 PLYLIST ENGINE (P-12)
     val customPlaylists = mutableStateMapOf<String, SnapshotStateList<pEQMediaItem>>()
@@ -681,6 +690,28 @@ val client = createHttpClient()
         }
 
         scope.launch {
+            snapshotFlow {
+                listOf(
+                    notationFormat.value,
+                    isSplitStaff.value.toString(),
+                    isVerticalScroll.value.toString(),
+                    showPianoKeyLabels.value.toString(),
+                    is3DPerspectiveMode.value.toString(),
+                    horizonScale.floatValue.toString(),
+                    showWaterfallParticles.value.toString(),
+                    fallingNotesSpeed.value,
+                    selectedKeySignature.value,
+                    selectedTimeSignature.value,
+                    selectedInstrument.value,
+                    quantizeDivision.value,
+                    useOsmdRenderer.value.toString()
+                ).joinToString(",")
+            }.distinctUntilChanged().collect {
+                persistSession()
+            }
+        }
+
+        scope.launch {
             snapshotFlow { metronomeEnabled.value }
                 .distinctUntilChanged()
                 .collect { enabled ->
@@ -741,93 +772,7 @@ val client = createHttpClient()
         }
     }
 
-    // ========================================================================
-    // EXPANDED VIEWMODEL EXTENSION PROPERTIES & SYNTHETIC SOUND METHODS
-    // ========================================================================
-    val videoExportFormat = mutableStateOf("MP4")
-    val selectedKeySignature = mutableStateOf("C Major")
-    val selectedTimeSignature = mutableStateOf("4/4")
-    val scrollDirectionHorizontal = mutableStateOf(true)
-    val shiftNotesOffset = mutableStateOf(0)
-    val videoExportEffects = mutableStateMapOf<String, Boolean>("Glow" to true, "Particles" to true)
 
-    // Interactive note playing state
-    val midiPlayingNote = mutableStateOf<Int?>(null)
-
-    // System Settings & SoundFont / Instrument Customization
-    val selectedSettingsTab = mutableIntStateOf(0)
-    val useOsmdRenderer = mutableStateOf(false)
-    val useVexflow get() = useOsmdRenderer
-    val pitchEngineAlgo = mutableStateOf("Phase Vocoder")
-    val stemSplitQuality = mutableStateOf("Standard")
-
-    // Piano SoundFont
-    val pianoSf2File = mutableStateOf("piano/198_Yamaha_SY1_piano.sf2")
-    val pianoBank = mutableIntStateOf(0)
-    val pianoPreset = mutableIntStateOf(0)
-    val pianoChannel = mutableIntStateOf(0)
-    val pianoVelocity = mutableIntStateOf(95)
-
-    // Guitar SoundFont
-    val guitarSf2File = mutableStateOf("guitar/guitar_samples_clean.sf2")
-    val guitarBank = mutableIntStateOf(0)
-    val guitarPreset = mutableIntStateOf(0)
-    val guitarChannel = mutableIntStateOf(0)
-    val guitarVelocity = mutableIntStateOf(72)
-
-    // Drum SoundFont
-    val drumSf2File = mutableStateOf("drums/Metal_Drums.sf2")
-    val drumBank = mutableIntStateOf(0)
-    val drumPreset = mutableIntStateOf(0)
-    val drumChannel = mutableIntStateOf(9)
-    val drumVelocity = mutableIntStateOf(90)
-    val useSf2ForDrums = mutableStateOf(false)
-
-    // Metronome SoundFont
-    val metronomeSf2File = mutableStateOf("metronome/Metronom.sf2")
-    val metronomeBank = mutableIntStateOf(0)
-    val metronomePreset = mutableIntStateOf(0)
-    val metronomeChannel = mutableIntStateOf(10)
-    val metronomeVelocity = mutableIntStateOf(100)
-    val useSf2ForMetronome = mutableStateOf(false)
-
-    // Tanpura SoundFont
-    val tanpuraSf2File = mutableStateOf("tanpura/Tanpura_drone.sf2")
-    val tanpuraBank = mutableIntStateOf(0)
-    val tanpuraPreset = mutableIntStateOf(0)
-    val tanpuraChannel = mutableIntStateOf(2)
-    val tanpuraVelocity = mutableIntStateOf(58)
-    val useSf2ForTanpura = mutableStateOf(false)
-
-    // Tabla SoundFont
-    val tablaSf2File = mutableStateOf("tabla/Indian_Ensemble.sf2")
-    val tablaBank = mutableIntStateOf(0)
-    val tablaPreset = mutableIntStateOf(0)
-    val tablaChannel = mutableIntStateOf(9)
-    val tablaVelocity = mutableIntStateOf(74)
-
-    // Learn & Creative Studio
-    val tunerReferenceFrequency = mutableFloatStateOf(440f)
-    val metronomeTickSound = mutableStateOf("Woodblock")
-    val metronomeSubdivision = mutableIntStateOf(1)
-    val fallingNotesSpeed = mutableStateOf("Normal")
-    val waterfallTheme = mutableStateOf("Neon Glow")
-    val showPianoKeyLabels = mutableStateOf(true)
-    val showWaterfallParticles = mutableStateOf(true)
-
-    // Advanced Creative Export Studio
-    val videoExportTheme = mutableStateOf("Cyberpunk")
-    val videoExportResolution = mutableStateOf("1080p")
-    val videoExportFps = mutableStateOf("60 FPS")
-    val videoExportBitrate = mutableStateOf("10 Mbps")
-    val videoExportAudioCodec = mutableStateOf("AAC")
-    val videoExportSampleRate = mutableStateOf("48 kHz")
-    val videoExportCameraYaw = mutableFloatStateOf(0f)
-    val videoExportCameraPitch = mutableFloatStateOf(15f)
-    val videoExportEqBars = mutableIntStateOf(64)
-    val videoExportPeakSensitivity = mutableFloatStateOf(80f)
-    val isVideoExporting = mutableStateOf(false)
-    val videoExportProgress = mutableFloatStateOf(0f)
 
     fun syncSoundFontPreferences() {
         audioEngine.updateSoundFontPreferences(
@@ -888,15 +833,47 @@ val client = createHttpClient()
         audioEngine.selectPresetByIndex(instrumentKey, index) ?: Pair(0, index)
 
     fun exportVideoToFile(onComplete: (String) -> Unit) {
-        scope.launch {
-            isVideoExporting.value = true
-            videoExportProgress.value = 0.1f
-            delay(500)
-            videoExportProgress.value = 0.5f
-            delay(500)
-            videoExportProgress.value = 1.0f
-            isVideoExporting.value = false
-            onComplete("/sdcard/Movies/pEQ_Visualizer_${Clock.System.now().toEpochMilliseconds()}.mp4")
+        val score = currentScore.value ?: Score(
+            title = currentMediaItem.value?.title ?: "pEQ Performance",
+            tempo = metronomeBpm.value.toFloat(),
+            timeSignature = "4/4"
+        )
+        val res = videoExportResolution.value
+        val fpsInt = when (videoExportFps.value) {
+            "24 FPS" -> 24
+            "30 FPS" -> 30
+            "120 FPS" -> 120
+            else -> 60
+        }
+        val effects = mapOf(
+            "Glow" to (videoExportPeakSensitivity.floatValue > 30f),
+            "Particles" to showWaterfallParticles.value,
+            "Notation" to (videoExportLayoutMode.value.contains("Score") || videoExportLayoutMode.value.contains("Notation")),
+            "Visualizer" to (videoExportLayoutMode.value.contains("Waterfall") || videoExportLayoutMode.value.contains("Visualizer")),
+            "Theme" to (videoExportTheme.value == "Cyberpunk")
+        )
+
+        isVideoExporting.value = true
+        videoExportProgress.value = 0.01f
+
+        val exporter = onVideoExportRequested
+        if (exporter != null) {
+            exporter(score, res, fpsInt, effects, { progress ->
+                videoExportProgress.value = progress
+            }, { filePath ->
+                isVideoExporting.value = false
+                videoExportProgress.value = 1.0f
+                onComplete(filePath ?: "/sdcard/Movies/pEQ_Visualizer_${Clock.System.now().toEpochMilliseconds()}.mp4")
+            })
+        } else {
+            scope.launch {
+                for (p in 1..10) {
+                    delay(150)
+                    videoExportProgress.value = p / 10f
+                }
+                isVideoExporting.value = false
+                onComplete("/sdcard/Movies/pEQ_Visualizer_${Clock.System.now().toEpochMilliseconds()}.mp4")
+            }
         }
     }
 

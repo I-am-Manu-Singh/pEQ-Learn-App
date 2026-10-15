@@ -10,7 +10,6 @@ interface AudioEngine {
     fun playTrack(url: String, title: String? = null, artist: String? = null, thumbnail: String? = null)
     fun setNeuralSaturation(enabled: Boolean)
     fun loadTrack(url: String, title: String? = null, artist: String? = null, thumbnail: String? = null)
-    fun setVideoSurface(surface: Any?)
     fun setVideoScalingMode(mode: Int)
     fun setAudioDelay(ms: Long)
     var onFftDataReceived: ((FloatArray) -> Unit)?
@@ -100,13 +99,19 @@ interface AudioEngine {
 
     fun getDspLoad(): Float = 0f
     fun isInitialized(): Boolean = true
+    fun loadStems(stems: Map<String, String>) {}
     fun isStemMuted(stem: String): Boolean = false
     fun setStemVolume(stem: String, volume: Float) {}
     fun setStemMute(stem: String, muted: Boolean) {}
     fun isStemSolo(stem: String): Boolean = false
     fun setStemSolo(stem: String, solo: Boolean) {}
     fun setStemPan(stem: String, pan: Float) {}
-
+    fun getStemVolume(stem: String): Float = 0.8f
+    fun getStemPan(stem: String): Float = 0.0f
+    fun playStems() {}
+    fun pauseStems() {}
+    fun stopStems() {}
+    fun isStemsPlaying(): Boolean = false
     fun noteOn(midiNote: Int, velocity: Float = 0.8f) {}
     fun noteOff(midiNote: Int) {}
     fun allNotesOff() {}

@@ -2294,9 +2294,7 @@ class AndroidAudioEngine(
         player = null
     }
 
-    override fun setVideoSurface(surface: Any?) {
-        player?.setVideoSurface(surface as? Surface)
-    }
+
 
     override fun addExternalSubtitle(path: String) {
         val p = player ?: return
@@ -2776,4 +2774,128 @@ class AndroidAudioEngine(
         val mills = ms % 1000
         return "${hr.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')},${mills.toString().padStart(3, '0')}"
     }
+
+    private val stemMutes = ConcurrentHashMap<String, Boolean>()
+    private val stemSolos = ConcurrentHashMap<String, Boolean>()
+    private val stemVolumes = ConcurrentHashMap<String, Float>()
+    private val stemPans = ConcurrentHashMap<String, Float>()
+    private var isStemsActivePlaying = false
+
+    override fun loadStems(stems: Map<String, String>) {
+        Handler(Looper.getMainLooper()).post {
+            try {
+                stemPlayers.values.forEach { it.stop(); it.release() }
+                stemPlayers.clear()
+                stemMutes.clear()
+                stemSolos.clear()
+                stemVolumes.clear()
+                stemPans.clear()
+
+                for ((stemName, filePath) in stems) {
+                    val file = File(filePath)
+                    if (!file.exists()) continue
+                    val stemPlayer = ExoPlayer.Builder(context).build().apply {
+                        setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                        repeatMode = Player.REPEAT_MODE_ALL
+                        volume = 0.85f
+                        prepare()
+                    }
+                    stemPlayers[stemName.lowercase()] = stemPlayer
+                    stemVolumes[stemName.lowercase()] = 0.85f
+                    stemPans[stemName.lowercase()] = 0.0f
+                    stemMutes[stemName.lowercase()] = false
+                    stemSolos[stemName.lowercase()] = false
+                }
+                println("pEQLearn: [STEMS] Loaded ${stemPlayers.size} stems into multi-track engine")
+            } catch (e: Exception) {
+                println("pEQLearn: [STEMS] Failed loading stems: ${e.message}")
+            }
+        }
+    }
+
+    override fun isStemMuted(stem: String): Boolean = stemMutes[stem.lowercase()] ?: false
+
+    override fun setStemVolume(stem: String, volume: Float) {
+        val key = stem.lowercase()
+        stemVolumes[key] = volume.coerceIn(0f, 1f)
+        applyStemVolumes()
+    }
+
+    override fun setStemMute(stem: String, muted: Boolean) {
+        val key = stem.lowercase()
+        stemMutes[key] = muted
+        applyStemVolumes()
+    }
+
+    override fun isStemSolo(stem: String): Boolean = stemSolos[stem.lowercase()] ?: false
+
+    override fun setStemSolo(stem: String, solo: Boolean) {
+        val key = stem.lowercase()
+        stemSolos[key] = solo
+        applyStemVolumes()
+    }
+
+    override fun setStemPan(stem: String, pan: Float) {
+        val key = stem.lowercase()
+        stemPans[key] = pan.coerceIn(-1f, 1f)
+        // ExoPlayer stereo balance/pan can be set via custom audio processors or left/right volume weights
+        val p = stemPans[key] ?: 0f
+        val left = if (p > 0) 1f - p else 1f
+        val right = if (p < 0) 1f + p else 1f
+        val baseVol = stemVolumes[key] ?: 0.8f
+        stemPlayers[key]?.let {
+            if (!(stemMutes[key] ?: false)) {
+                it.volume = baseVol * ((left + right) / 2f)
+            }
+        }
+    }
+
+    override fun getStemVolume(stem: String): Float = stemVolumes[stem.lowercase()] ?: 0.8f
+
+    override fun getStemPan(stem: String): Float = stemPans[stem.lowercase()] ?: 0.0f
+
+    private fun applyStemVolumes() {
+        val anySolo = stemSolos.values.any { it }
+        for ((stem, p) in stemPlayers) {
+            val isSolo = stemSolos[stem] ?: false
+            val isMuted = stemMutes[stem] ?: false
+            val vol = stemVolumes[stem] ?: 0.8f
+
+            if (anySolo) {
+                p.volume = if (isSolo && !isMuted) vol else 0f
+            } else {
+                p.volume = if (isMuted) 0f else vol
+            }
+        }
+    }
+
+    override fun playStems() {
+        Handler(Looper.getMainLooper()).post {
+            isStemsActivePlaying = true
+            val minPos = stemPlayers.values.minOfOrNull { it.currentPosition } ?: 0L
+            stemPlayers.values.forEach {
+                it.seekTo(minPos)
+                it.play()
+            }
+        }
+    }
+
+    override fun pauseStems() {
+        Handler(Looper.getMainLooper()).post {
+            isStemsActivePlaying = false
+            stemPlayers.values.forEach { it.pause() }
+        }
+    }
+
+    override fun stopStems() {
+        Handler(Looper.getMainLooper()).post {
+            isStemsActivePlaying = false
+            stemPlayers.values.forEach {
+                it.stop()
+                it.seekTo(0)
+            }
+        }
+    }
+
+    override fun isStemsPlaying(): Boolean = isStemsActivePlaying
 }

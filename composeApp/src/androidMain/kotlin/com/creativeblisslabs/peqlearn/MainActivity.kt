@@ -155,16 +155,39 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setupLaunchers() {
+        var trackPickerCallback: ((com.creativeblisslabs.peqlearn.app.data.pEQMediaItem) -> Unit)? = null
         val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let {
                 lifecycleScope.launch {
-                    viewModel.playExternalFile(
+                    val displayName = getFileName(it) ?: "Imported Track"
+                    val mimeType = contentResolver.getType(it)
+                    val sizeBytes = getFileSize(it)
+                    val durationMs = getFileDuration(it)
+                    
+                    val item = com.creativeblisslabs.peqlearn.app.data.pEQMediaItem(
+                        id = "external_${it.toString().hashCode()}",
+                        title = displayName.substringBeforeLast(".", displayName),
+                        subtitle = "External Source",
+                        artist = "External Source",
                         path = it.toString(),
-                        displayName = getFileName(it) ?: "Unknown",
-                        mimeType = contentResolver.getType(it),
-                        sizeBytes = getFileSize(it),
-                        durationMs = getFileDuration(it)
+                        type = if (mimeType?.startsWith("video/") == true) com.creativeblisslabs.peqlearn.app.data.MediaType.VIDEO else com.creativeblisslabs.peqlearn.app.data.MediaType.AUDIO,
+                        format = displayName.substringAfterLast(".", "AUDIO").uppercase(),
+                        sizeBytes = sizeBytes,
+                        durationMs = durationMs
                     )
+
+                    if (trackPickerCallback != null) {
+                        trackPickerCallback?.invoke(item)
+                        trackPickerCallback = null
+                    } else {
+                        viewModel.playExternalFile(
+                            path = it.toString(),
+                            displayName = displayName,
+                            mimeType = mimeType,
+                            sizeBytes = sizeBytes,
+                            durationMs = durationMs
+                        )
+                    }
                 }
             }
         }
@@ -183,7 +206,34 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        viewModel.onPickTrackRequested = { filePickerLauncher.launch(arrayOf("audio/*", "video/*")) }
+        var modelPickerCallback: ((String, String) -> Unit)? = null
+        val modelPickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                lifecycleScope.launch {
+                    val name = getFileName(it) ?: "custom_model.onnx"
+                    val modelsDir = File(filesDir, "models").apply { if (!exists()) mkdirs() }
+                    val destFile = File(modelsDir, name)
+                    try {
+                        contentResolver.openInputStream(it)?.use { input ->
+                            destFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        modelPickerCallback?.invoke(destFile.absolutePath, name)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+
+        viewModel.onPickModelRequested = { callback ->
+            modelPickerCallback = callback
+            modelPickerLauncher.launch(arrayOf("*/*"))
+        }
+
+        viewModel.onPickTrackRequested = { callback ->
+            trackPickerCallback = callback
+            filePickerLauncher.launch(arrayOf("audio/*", "video/*"))
+        }
         viewModel.onPickScoreFileRequested = {
             scorePickerLauncher.launch(
                 arrayOf(

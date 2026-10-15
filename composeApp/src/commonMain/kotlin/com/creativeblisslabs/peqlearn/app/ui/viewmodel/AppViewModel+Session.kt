@@ -104,6 +104,19 @@ fun AppViewModel.restoreSession() {
             session.leftHandColor?.let { leftHandColor.value = Color(it.toLong()) }
             session.rightHandColor?.let { rightHandColor.value = Color(it.toLong()) }
             transposition.intValue = session.notationTransposition
+            notationFormat.value = session.notationFormat
+            isSplitStaff.value = session.isSplitStaff
+            isVerticalScroll.value = session.isVerticalScroll
+            showPianoKeyLabels.value = session.showPianoKeyLabels
+            is3DPerspectiveMode.value = session.is3DPerspectiveMode
+            horizonScale.floatValue = session.horizonScale
+            showWaterfallParticles.value = session.showWaterfallParticles
+            fallingNotesSpeed.value = session.fallingNotesSpeed
+            selectedKeySignature.value = session.selectedKeySignature
+            selectedTimeSignature.value = session.selectedTimeSignature
+            selectedInstrument.value = session.selectedInstrument
+            quantizeDivision.value = session.quantizeDivision
+            useOsmdRenderer.value = session.useOsmdRenderer
 
             // 3. Wait for library to populate
             val items = withTimeoutOrNull(4000) { 
@@ -264,6 +277,19 @@ fun AppViewModel.persistSession() {
         leftHandColor = leftHandColor.value.toArgb(),
         rightHandColor = rightHandColor.value.toArgb(),
         notationTransposition = transposition.intValue,
+        notationFormat = notationFormat.value,
+        isSplitStaff = isSplitStaff.value,
+        isVerticalScroll = isVerticalScroll.value,
+        showPianoKeyLabels = showPianoKeyLabels.value,
+        is3DPerspectiveMode = is3DPerspectiveMode.value,
+        horizonScale = horizonScale.floatValue,
+        showWaterfallParticles = showWaterfallParticles.value,
+        fallingNotesSpeed = fallingNotesSpeed.value,
+        selectedKeySignature = selectedKeySignature.value,
+        selectedTimeSignature = selectedTimeSignature.value,
+        selectedInstrument = selectedInstrument.value,
+        quantizeDivision = quantizeDivision.value,
+        useOsmdRenderer = useOsmdRenderer.value
     )
     
     val playlistsToSave = customPlaylists.mapValues { entry -> entry.value.map { item -> item.path } }

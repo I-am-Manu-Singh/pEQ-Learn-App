@@ -56,6 +56,7 @@ data class pEQMediaItem(
     val lyrics: String? = null
 ) {
     val fileName: String get() = path.substringAfterLast("/").ifEmpty { title }
+    val displayName: String get() = title.ifEmpty { fileName }
     val displaySize: String get() = "${(sizeBytes / 1024).toFloat() / 1024.0f}MB"
 }
 
@@ -106,7 +107,20 @@ data class SessionState(
     val notationTransposition: Int = 0,
     val scanFolders: List<String> = emptyList(),
     val playCounts: Map<String, Int> = emptyMap(),
-    val lastPlayed: Map<String, Long> = emptyMap()
+    val lastPlayed: Map<String, Long> = emptyMap(),
+    val notationFormat: String = "Both Viewers",
+    val isSplitStaff: Boolean = true,
+    val isVerticalScroll: Boolean = false,
+    val showPianoKeyLabels: Boolean = true,
+    val is3DPerspectiveMode: Boolean = true,
+    val horizonScale: Float = 0.68f,
+    val showWaterfallParticles: Boolean = true,
+    val fallingNotesSpeed: String = "Normal",
+    val selectedKeySignature: String = "C Major",
+    val selectedTimeSignature: String = "4/4",
+    val selectedInstrument: String = "Piano",
+    val quantizeDivision: String = "1/16",
+    val useOsmdRenderer: Boolean = false
 )
 
 @Serializable

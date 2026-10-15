@@ -491,9 +491,7 @@ fun AppViewModel.updateMetadata(
         currentMediaItem.value = updatedItem
     }
 
-    if (selectedItemForInfo.value?.path == item.path) {
-        selectedItemForInfo.value = updatedItem
-    }
+  
 
     scanner?.updateAudioMetadata(
         path = item.path,

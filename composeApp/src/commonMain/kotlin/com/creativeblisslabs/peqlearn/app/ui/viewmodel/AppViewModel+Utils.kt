@@ -5,9 +5,5 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeoutOrNull
 fun AppViewModel.showToast(message: String) {
-
-    scope.launch {
-
-        snackbarFlow.emit(message)
-    }
+    toastMessage.value = message
 }

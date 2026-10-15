@@ -190,8 +190,6 @@ fun formatTime(ms: Long): String {
     }
 }
 
-@Composable
-expect fun VideoSurface(modifier: Modifier, contentScale: androidx.compose.ui.layout.ContentScale)
 
 @Composable
 expect fun pEQBrowser(

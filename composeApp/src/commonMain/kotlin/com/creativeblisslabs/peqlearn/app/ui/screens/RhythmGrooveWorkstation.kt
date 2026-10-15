@@ -114,6 +114,24 @@ private fun MetronomeControlSection(
                 fontWeight = FontWeight.Black,
                 modifier = Modifier.width(64.dp)
             )
+            OutlinedButton(
+                onClick = {
+                    val now = System.currentTimeMillis()
+                    if (tapTimes.isNotEmpty() && now - tapTimes.last() > 2000) tapTimes.clear()
+                    tapTimes.add(now)
+                    if (tapTimes.size >= 2) {
+                        val avg = tapTimes.zipWithNext { a, b -> b - a }.average()
+                        val calculatedBpm = (60000.0 / avg).toInt().coerceIn(40, 220)
+                        onBpmChange(calculatedBpm.toFloat())
+                    }
+                },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = primaryColor),
+                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)),
+                modifier = Modifier.weight(0.8f).height(46.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("TAP", fontWeight = FontWeight.Black, fontSize = 11.sp)
+            }
         }
         // Genre Workstation Tab Row
         val genreTabs = listOf("Western", "Hindustani", "Carnatic")
@@ -234,56 +252,6 @@ private fun MetronomeControlSection(
             }
         }
 
-        // Core Trigger Toolbar
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(
-                onClick = {
-                    composableScope.launch(Dispatchers.Default) {
-                        if (isPlaying) {
-                            viewModel.stopRiyaazEngine()
-                        } else {
-                            viewModel.stopRiyaazEngine()
-                            runEngineSafetyCheck(totalGridSteps)
-                            val activeBols = when (workstationTab) {
-                                1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence ?: emptyList()
-                                2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence ?: emptyList()
-                                else -> emptyList()
-                            }
-                            viewModel.startRiyaazEngine(selectedScale, totalGridSteps, activeBols)
-                        }
-                    }
-                },
-                modifier = Modifier.weight(1.2f).height(46.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = primaryColor,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) {
-                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(if (isPlaying) "STOP" else "START", fontWeight = FontWeight.Black, fontSize = 12.sp)
-            }
-
-            OutlinedButton(
-                onClick = {
-                    val now = System.currentTimeMillis()
-                    if (tapTimes.isNotEmpty() && now - tapTimes.last() > 2000) tapTimes.clear()
-                    tapTimes.add(now)
-                    if (tapTimes.size >= 2) {
-                        val avg = tapTimes.zipWithNext { a, b -> b - a }.average()
-                        val calculatedBpm = (60000.0 / avg).toInt().coerceIn(40, 220)
-                        onBpmChange(calculatedBpm.toFloat())
-                    }
-                },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = primaryColor),
-                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)),
-                modifier = Modifier.weight(0.8f).height(46.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("TAP", fontWeight = FontWeight.Black, fontSize = 11.sp)
-            }
-        }
 
         // Multi-Tonal Beat Accents Highlights Grid Section
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -463,7 +463,7 @@ fun DashboardHome(viewModel: AppViewModel) {
         color = MaterialTheme.colorScheme.primary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Black,
-                letterSpacing = 4.sp
+                letterSpacing = 2.sp
             )
 
 
@@ -507,13 +507,9 @@ fun DashboardHome(viewModel: AppViewModel) {
 
                 // 🔮 UNIFIED DASHBOARD GLASS CONTAINER
                 item {
-                    Column(
-                        modifier = Modifier,
-                        verticalArrangement = Arrangement.spacedBy(22.dp)
-                    ) {
-                        SectionHeader("MOST PLAYED")
+                  
                         MostPlayedSection(viewModel)
-                    }
+                    
                 }
 
                 // PLAYLISTS SECTION
@@ -533,7 +529,6 @@ fun DashboardHome(viewModel: AppViewModel) {
                             Text("NEW", fontSize = 11.sp, fontWeight = FontWeight.Black)
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
 
                     if (playlists.isEmpty() && favorites.isEmpty()) {
                         pEQGlassCard(
@@ -595,7 +590,6 @@ fun DashboardHome(viewModel: AppViewModel) {
                             )
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
                 }
 
                 if (recentlyPlayed.isEmpty()) {
@@ -604,7 +598,7 @@ fun DashboardHome(viewModel: AppViewModel) {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
-                                modifier = Modifier.padding(32.dp),
+                                modifier = Modifier.padding(16.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
@@ -731,6 +725,26 @@ fun DashboardHome(viewModel: AppViewModel) {
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                             Spacer(Modifier.height(14.dp))
+                        OutlinedTextField(value = newPlaylistName, onValueChange = { newPlaylistName = it }, placeholder = { Text("Playlist Name", fontSize = 14.sp) }, modifier = Modifier.fillMaxWidth(0.85f), shape = RoundedCornerShape(16.dp), singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)))
+                        Button(
+                            onClick = {
+                                if (newPlaylistName.isNotBlank()) {
+                                    viewModel.createPlaylist(newPlaylistName)
+                                    viewModel.addToPlaylist(newPlaylistName, targetTrack)
+                                    newPlaylistName = ""
+                                    showAddTrackToPlaylistDialog = false
+                                }
+                            },
+                            enabled = newPlaylistName.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(0.85f).height(52.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Icon(Icons.Default.Add, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("CREATE PLAYLIST", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
+                   
                         } else {
                             Column(
                                 modifier = Modifier
@@ -787,11 +801,14 @@ private fun MostPlayedSection(viewModel: AppViewModel) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+       Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+            
+            SectionHeader("MOST PLAYED")
+
             listOf("WEEK", "MONTH", "YEAR", "ALL").forEach { filter ->
                 TextButton(
                     onClick = { timeFilter = filter },
@@ -986,7 +1003,6 @@ fun RecentlyOpenedCard(
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(Modifier.height(2.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = item.artist ?: if (isVideo) "Video" else "Unknown Artist",

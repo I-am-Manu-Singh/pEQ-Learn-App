@@ -77,7 +77,9 @@ fun UnifiedGuitarFretboard(
 
         // Realistic Fretboard Taper: nut end (left) is narrower, bridge/body end (right) is wider
         val nutH = playableH * 0.88f
-        val bridgeH = playableH * 1.08f
+        // val bridgeH = playableH * 1.08f
+                val bridgeH = playableH * 0.98f
+
         val midY = topPad + playableH / 2f
         val nutTop = midY - nutH / 2f
         val nutBottom = midY + nutH / 2f
@@ -424,25 +426,38 @@ fun UnifiedPianoKeyboard(
             translate(left = startPaddingOffset) {
                 // 1. Draw Ivory White Keys
                 whiteMidiNotes.forEachIndexed { index, midiNote ->
+                    val isCurrentlyPlaying = activeCoordinate != null && (midiNote == activeCoordinate || (activeCoordinate < 12 && (midiNote % 12) == activeCoordinate) || (activeCoordinate >= 12 && (midiNote % 12) == (activeCoordinate % 12) && (activeCoordinate !in startNote..endNote)))
                     val isExplicitActive = normalizedActiveMidi[midiNote] == true ||
+                            (activeCoordinate != null && activeCoordinate < 12 && (midiNote % 12) == activeCoordinate) ||
                             fingering?.notes?.contains(midiNote) == true ||
-                            midiNote == activeCoordinate
+                            isCurrentlyPlaying
 
                     val x = index * finalWhiteKeyWidthPx
                     val fingerIndex = fingering?.notes?.indexOf(midiNote) ?: -1
-                    val fingerNum = if (fingerIndex != -1) fingering?.fingers?.getOrNull(fingerIndex) else when (midiNote % 12) {
-                        0 -> 1 // Root Thumb
-                        4 -> 3 // Third Middle
-                        7 -> 5 // Fifth Pinky
-                        else -> null
-                    }
+                    val fingerNum = if (fingerIndex != -1) {
+                        fingering?.fingers?.getOrNull(fingerIndex)
+                    } else if (fingering == null) {
+                        // Fallback only if no fingering data was provided at all
+                        when (midiNote % 12) {
+                            (rootNote % 12) -> 1
+                            (rootNote + 4) % 12 -> 3
+                            (rootNote + 7) % 12 -> 5
+                            else -> null
+                        }
+                    } else null
 
-                    // Key Background: Soft glowing warm buttercup yellow for white keys
+                    // Key Background: Distinct highlight for active/sounding key vs chord keys
                     drawRoundRect(
-                        brush = if (isExplicitActive) {
-                            Brush.verticalGradient(listOf(Color(0xFFFFF176), Color(0xFFFFD54F), Color(0xFFFFCA28)))
-                        } else {
-                            Brush.verticalGradient(listOf(baseWhiteStart, baseWhiteMid, baseWhiteEnd))
+                        brush = when {
+                            isCurrentlyPlaying -> Brush.verticalGradient(
+                                listOf(Color(0xFFFF7043), Color(0xFFFF5722), Color(0xFFE64A19))
+                            )
+                            isExplicitActive -> Brush.verticalGradient(
+                                listOf(Color(0xFFFFF176), Color(0xFFFFD54F), Color(0xFFFFCA28))
+                            )
+                            else -> Brush.verticalGradient(
+                                listOf(baseWhiteStart, baseWhiteMid, baseWhiteEnd)
+                            )
                         },
                         topLeft = Offset(x + 1f, 0f),
                         size = Size(finalWhiteKeyWidthPx - 2f, totalHeight),
@@ -477,25 +492,29 @@ fun UnifiedPianoKeyboard(
                         )
                     }
 
-                    // Active Note Pill with Finger Number (like in screenshot)
+                    // Active Note Pill with Finger Number (or Note Name fallback)
                     if (isExplicitActive) {
                         val badgeY = totalHeight - 20.dp.toPx()
-                        val badgeRadius = 10.dp.toPx()
+                        val badgeRadius = if (isCurrentlyPlaying) 11.5.dp.toPx() else 10.dp.toPx()
 
-                        // Circular white pill with finger number
+                        // Circular pill with finger number or note name
                         drawCircle(
-                            color = Color.White,
+                            color = if (isCurrentlyPlaying) Color(0xFFFFEB3B) else Color.White,
                             radius = badgeRadius,
                             center = Offset(centerX, badgeY)
                         )
 
-                        val displayNum = if (showNoteNames || fingerNum == null) NOTE_NAMES[midiNote % 12] else fingerNum.toString()
+                        val displayNum = if (fingerNum != null && fingerNum > 0) {
+                            fingerNum.toString()
+                        } else {
+                            NOTE_NAMES[midiNote % 12]
+                        }
                         drawContext.canvas.nativeCanvas.drawText(
                             displayNum,
                             centerX,
                             badgeY + 3.5.dp.toPx(),
                             android.graphics.Paint().apply {
-                                color = android.graphics.Color.rgb(230, 110, 0)
+                                color = if (isCurrentlyPlaying) android.graphics.Color.rgb(190, 40, 0) else android.graphics.Color.rgb(230, 110, 0)
                                 textSize = 10.5.dp.toPx()
                                 textAlign = android.graphics.Paint.Align.CENTER
                                 typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -509,9 +528,11 @@ fun UnifiedPianoKeyboard(
                 whiteMidiNotes.forEachIndexed { index, midiNote ->
                     if ((midiNote % 12) in listOf(0, 2, 5, 7, 9)) {
                         val blackMidiNote = midiNote + 1
+                        val isCurrentlyPlaying = activeCoordinate != null && (blackMidiNote == activeCoordinate || (activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate) || (activeCoordinate >= 12 && (blackMidiNote % 12) == (activeCoordinate % 12) && (activeCoordinate !in startNote..endNote)))
                         val isExplicitActive = normalizedActiveMidi[blackMidiNote] == true ||
+                                (activeCoordinate != null && activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate) ||
                                 fingering?.notes?.contains(blackMidiNote) == true ||
-                                blackMidiNote == activeCoordinate
+                                isCurrentlyPlaying
 
                         val blackX = (index * finalWhiteKeyWidthPx) + (finalWhiteKeyWidthPx - blackKeyWidthPx / 2f)
                         val fingerIndex = fingering?.notes?.indexOf(blackMidiNote) ?: -1
@@ -525,12 +546,18 @@ fun UnifiedPianoKeyboard(
                             cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx)
                         )
 
-                        // Black Key Body: Deep amber-golden vivid yellow for black keys
+                        // Black Key Body: Deep amber-golden vivid yellow for active black keys, red-orange for currently playing
                         drawRoundRect(
-                            brush = if (isExplicitActive) {
-                                Brush.verticalGradient(listOf(Color(0xFFFFB300), Color(0xFFFF8F00), Color(0xFFFF6F00)))
-                            } else {
-                                Brush.verticalGradient(listOf(baseBlackStart, baseBlackMid, baseBlackEnd))
+                            brush = when {
+                                isCurrentlyPlaying -> Brush.verticalGradient(
+                                    listOf(Color(0xFFFF7043), Color(0xFFFF5722), Color(0xFFE64A19))
+                                )
+                                isExplicitActive -> Brush.verticalGradient(
+                                    listOf(Color(0xFFFFB300), Color(0xFFFF8F00), Color(0xFFFF6F00))
+                                )
+                                else -> Brush.verticalGradient(
+                                    listOf(baseBlackStart, baseBlackMid, baseBlackEnd)
+                                )
                             },
                             topLeft = Offset(blackX, 0f),
                             size = Size(blackKeyWidthPx, blackKeyHeightPx),
@@ -540,21 +567,25 @@ fun UnifiedPianoKeyboard(
                         val centerX = blackX + blackKeyWidthPx / 2f
                         if (isExplicitActive) {
                             val badgeY = blackKeyHeightPx - 16.dp.toPx()
-                            val badgeRadius = 8.5.dp.toPx()
+                            val badgeRadius = if (isCurrentlyPlaying) 10.dp.toPx() else 8.5.dp.toPx()
 
                             drawCircle(
-                                color = Color.White,
+                                color = if (isCurrentlyPlaying) Color(0xFFFFEB3B) else Color.White,
                                 radius = badgeRadius,
                                 center = Offset(centerX, badgeY)
                             )
 
-                            val displayNum = if (showNoteNames || fingerNum == null) NOTE_NAMES[blackMidiNote % 12] else fingerNum.toString()
+                            val displayNum = if (fingerNum != null && fingerNum > 0) {
+                                fingerNum.toString()
+                            } else {
+                                NOTE_NAMES[blackMidiNote % 12]
+                            }
                             drawContext.canvas.nativeCanvas.drawText(
                                 displayNum,
                                 centerX,
                                 badgeY + 3.dp.toPx(),
                                 android.graphics.Paint().apply {
-                                    color = android.graphics.Color.rgb(230, 110, 0)
+                                    color = if (isCurrentlyPlaying) android.graphics.Color.rgb(190, 40, 0) else android.graphics.Color.rgb(230, 110, 0)
                                     textSize = 9.dp.toPx()
                                     textAlign = android.graphics.Paint.Align.CENTER
                                     typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -655,15 +686,18 @@ fun InstrumentPlayButton(
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    imageVector = if (isPlaying) Icons.Default.VolumeUp else Icons.Default.PlayCircle,
-                    contentDescription = "Play notes",
+                    imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Stop" else "Play",
                     tint = if (isPlaying) Color.White else accentColor,
                     modifier = Modifier.size(20.dp)
                 )
             }
         }
-        if (label.isNotBlank()) {
-            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor.copy(alpha = 0.85f))
+        val displayLabel = if (label.isNotBlank()) {
+            if (isPlaying && label.equals("Play", ignoreCase = true)) "Stop" else label
+        } else ""
+        if (displayLabel.isNotBlank()) {
+            Text(displayLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor.copy(alpha = 0.85f))
         }
     }
 }

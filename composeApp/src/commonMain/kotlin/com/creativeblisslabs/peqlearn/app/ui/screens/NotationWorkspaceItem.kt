@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
 import com.creativeblisslabs.peqlearn.app.ui.components.OpenSheetMusicDisplayViewer
+import com.creativeblisslabs.peqlearn.app.ui.components.ExportTabContent
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,26 +46,16 @@ fun NotationWorkspaceItem(
     onBack: () -> Unit = {},
     launchFilePicker: () -> Unit = {}
 ) {
-    var notationFormat by rememberSaveable { mutableStateOf("Both Viewers") }
     val formats = listOf("Staff Only", "Tab Only", "Both Viewers")
-
-    var selectedKeySig by rememberSaveable { mutableStateOf("C Major") }
     val keySignatures = listOf("C Major", "G Major", "D Major", "A Major", "F Major", "B♭ Major", "E♭ Major", "A Minor")
-
-    var selectedTimeSig by rememberSaveable { mutableStateOf("4/4") }
     val timeSignatures = listOf("4/4", "3/4", "2/4", "6/8", "12/8", "5/4", "7/8")
-
-    var selectedInstrument by rememberSaveable { mutableStateOf("Guitar") }
     val instruments = listOf("Guitar", "Piano", "Bass", "Drum kit", "Ukulele")
 
     var videoExportFormat by rememberSaveable { mutableStateOf("MP4") }
     val exportFormats = listOf("MP4", "MKV", "WEBM", "WAV", "MIDI")
 
     var isHorizontalScroll by rememberSaveable { mutableStateOf(true) }
-    var shiftNotesOffset by rememberSaveable { mutableStateOf(0) }
     var inlineZoomFactor by rememberSaveable { mutableStateOf(1.0f) }
-    var isQuantizeActive by rememberSaveable { mutableStateOf(true) }
-    var quantizeDivision by rememberSaveable { mutableStateOf("1/16") }
     var showExportDialog by rememberSaveable { mutableStateOf(false) }
     var showFullscreenPdf by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(showFullscreenPdf) {
@@ -117,6 +108,13 @@ fun NotationWorkspaceItem(
                 )
 
                 IconButton(
+                    onClick = { viewModel.showSettings.value = true },
+                    modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Tune, contentDescription = "Settings", tint = accentColor, modifier = Modifier.size(18.dp))
+                }
+
+                IconButton(
                     onClick = { launchFilePicker() },
                     modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
                 ) {
@@ -141,144 +139,6 @@ fun NotationWorkspaceItem(
                 }
             }
 
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Row 1: Viewer Format + Key Shift
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("Format:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                        formats.forEach { fmt ->
-                            FilterChip(
-                                selected = notationFormat == fmt,
-                                onClick = { notationFormat = fmt },
-                                label = { Text(fmt, fontSize = 11.sp) }
-                            )
-                        }
-                    }
-
-
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "Key Shift: ${if (shiftNotesOffset >= 0) "+$shiftNotesOffset" else "$shiftNotesOffset"}",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = accentColor
-                    )
-                    IconButton(
-                        onClick = { shiftNotesOffset-- },
-                        modifier = Modifier.size(28.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), CircleShape)
-                    ) {
-                        Text("-", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-                    }
-                    IconButton(
-                        onClick = { shiftNotesOffset++ },
-                        modifier = Modifier.size(28.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), CircleShape)
-                    ) {
-                        Text("+", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-                    }
-                }
-                // Row 2: Key Signatures & Time Signatures Pickers
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("Key:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            items(keySignatures) { key ->
-                                FilterChip(
-                                    selected = selectedKeySig == key,
-                                    onClick = { selectedKeySig = key },
-                                    label = { Text(key, fontSize = 10.sp) }
-                                )
-                            }
-                        }
-                    }
-
-
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text("Time:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                    timeSignatures.take(4).forEach { ts ->
-                        FilterChip(
-                            selected = selectedTimeSig == ts,
-                            onClick = { selectedTimeSig = ts },
-                            label = { Text(ts, fontSize = 10.sp) }
-                        )
-                    }
-                }
-                // Row 3: Target Instrument & Quantization Grid
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    item {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                "Instrument:",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
-                            instruments.forEach { inst ->
-                                FilterChip(
-                                    selected = selectedInstrument == inst,
-                                    onClick = { selectedInstrument = inst },
-                                    label = { Text(inst, fontSize = 10.sp) }
-                                )
-                            }
-                        }
-                    }
-
-                }
-                LazyRow {
-                    item {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                "Quantize:",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
-                            listOf("1/4", "1/8", "1/16", "1/32").forEach { q ->
-                                FilterChip(
-                                    selected = isQuantizeActive && quantizeDivision == q,
-                                    onClick = {
-                                        isQuantizeActive = true
-                                        quantizeDivision = q
-                                    },
-                                    label = { Text(q, fontSize = 10.sp) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
         
         // Main Notation Stage Canvas with Zoom Wrapper
         Box(
@@ -315,8 +175,8 @@ fun NotationWorkspaceItem(
                         activeMidiNotes = viewModel.midiActiveNotes,
                         playingNote = viewModel.midiPlayingNote.value,
                         primaryColor = accentColor,
-                        currentFormat = notationFormat,
-                        onFormatChange = { notationFormat = it },
+                        currentFormat = viewModel.notationFormat.value,
+                        onFormatChange = { viewModel.notationFormat.value = it },
                         isPedalPressed = viewModel.sustainActive.value,
                         modifier = Modifier.fillMaxSize(),
                         scrollState = scrollState
@@ -450,8 +310,8 @@ fun NotationWorkspaceItem(
                                         activeMidiNotes = viewModel.midiActiveNotes,
                                         playingNote = viewModel.midiPlayingNote.value,
                                         primaryColor = accentColor,
-                                        currentFormat = notationFormat,
-                                        onFormatChange = { notationFormat = it },
+                                        currentFormat = viewModel.notationFormat.value,
+                                        onFormatChange = { viewModel.notationFormat.value = it },
                                         modifier = Modifier.fillMaxSize(),
                                         scrollState = fsScrollState
                                     )
@@ -606,35 +466,68 @@ fun NotationWorkspaceItem(
             }
         }
 
-        // Export Dialog
+        // Comprehensive Export Studio Modal Bottom Sheet
         if (showExportDialog) {
-            AlertDialog(
+            ModalBottomSheet(
                 onDismissRequest = { showExportDialog = false },
-                title = { Text("Export Notation Score") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Select format for exporting score sheets and audio renders:")
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(exportFormats) { fmt ->
-                                FilterChip(
-                                    selected = videoExportFormat == fmt,
-                                    onClick = { videoExportFormat = fmt },
-                                    label = { Text(fmt) }
-                                )
-                            }
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                dragHandle = { BottomSheetDefaults.DragHandle() },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Movie,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "Video & Notation Exporter",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        IconButton(onClick = { showExportDialog = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
                         }
                     }
-                },
-                confirmButton = {
-                    Button(onClick = { showExportDialog = false }) {
-                        Text("Confirm Export")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showExportDialog = false }) {
-                        Text("Cancel")
-                    }
+
+                    // Render Full Comprehensive Studio Settings
+                    ExportTabContent(viewModel = viewModel)
+
+                    Spacer(Modifier.height(16.dp))
                 }
+            }
+        }
+
+        if (viewModel.showSettings.value) {
+            PlaybackSettingsSheet(
+                viewModel = viewModel,
+                notationFormat = viewModel.notationFormat.value,
+                onFormatChange = { viewModel.notationFormat.value = it },
+                showLetters = viewModel.showPianoKeyLabels.value,
+                onShowLettersChange = { viewModel.showPianoKeyLabels.value = it },
+                is3DPerspective = viewModel.is3DPerspectiveMode.value,
+                on3DPerspectiveChange = { viewModel.is3DPerspectiveMode.value = it },
+                horizonScale = viewModel.horizonScale.floatValue,
+                onHorizonScaleChange = { viewModel.horizonScale.floatValue = it },
+                initialTab = 0,
+                onDismiss = { viewModel.showSettings.value = false }
             )
         }
     }

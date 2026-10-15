@@ -103,7 +103,9 @@ data class ScoreNote(
     val isRest: Boolean = false,
     val isDotted: Boolean = dotted,
     val stringNum: Int = string ?: 0,
-    val fretNum: Int = fret ?: 0
+    val fretNum: Int = fret ?: 0,
+    val pitch: Int = midiNote,
+    val durationFraction: Float = (duration / 4f).coerceAtLeast(0.05f)
 ) {
     // Secondary constructor for existing helper invocations
     constructor(

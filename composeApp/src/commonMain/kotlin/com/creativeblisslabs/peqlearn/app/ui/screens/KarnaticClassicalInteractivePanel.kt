@@ -160,9 +160,8 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                 }
             }
             if (visualizerMode == 0) {
-                val activeMidiMap = remember(activeSemitones, playingNote) {
-                    if (playingNote != null) mapOf(playingNote to true)
-                    else activeSemitones.associate { (60 + it) to true }
+                val baseScaleMap = remember(activeSemitones) {
+                    activeSemitones.associate { (60 + it) to true }
                 }
                 
                 Box(
@@ -170,11 +169,13 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                     contentAlignment = Alignment.Center
                 ) {
                     UnifiedPianoKeyboard(
-                        activeMidiNotes = activeMidiMap,
+                        activeMidiNotes = baseScaleMap,
                         accentColor = accentColor,
+                        activeCoordinate = playingNote,
                         startNote = 48,
                         endNote = 84,
                         showNoteNames = true,
+                        isPlaying = playingNote != null,
                         onKeyTapped = { midi ->
                             viewModel.audioEngine.setInstrument("HARMONIUM")
                             viewModel.onMidiNoteOn(midi, 95)

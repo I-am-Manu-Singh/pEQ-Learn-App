@@ -239,8 +239,8 @@ fun pEQSplashScreen() {
             // =========================
             Text(
                 text = "pEQ Learn",
-                                    color = MaterialTheme.colorScheme.onSurface
-,                fontSize = 34.sp,
+        color = MaterialTheme.colorScheme.primary,
+                fontSize = 34.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 4.sp
             )
@@ -437,16 +437,6 @@ fun MainScreen(
                     .fillMaxSize()
             ) {
 
-                // ALWAYS RENDER BACKGROUND FIRST (Optimized for Focus Modes)
-                if (!viewModel.isLockScreenMode.value || viewModel.isInPipMode.value) {
-                    DynamicBackground(
-                        baseColor = MaterialTheme.colorScheme.primary,
-                        transientImpact = 0.2f
-                    )
-                }
-
-
-
                     // =========================
                     // NORMAL APP LAYOUT
                     // =========================
@@ -575,16 +565,6 @@ fun MainScreen(
                     }
                 
 
-                // =========================
-                // DEVICE SWITCHER
-                // =========================
-
-                if (viewModel.showDeviceSwitcher.value) {
-
-                    DeviceSwitcherDialog(
-                        viewModel
-                    )
-                }
 
                 // =========================
                 // PLAYLIST PICKER

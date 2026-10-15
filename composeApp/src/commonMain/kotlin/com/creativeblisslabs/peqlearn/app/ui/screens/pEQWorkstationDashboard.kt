@@ -76,9 +76,6 @@ fun pEQWorkstationDashboard(viewModel: AppViewModel = LocalAppViewModel.current)
             }
         }
 
-        // 📁 Industrial Archive Registry (Folder Manager)
-        if (viewModel.showFolderManager.value) {
-            PEQArchiveRegistryDialog(onDismiss = { viewModel.showFolderManager.value = false })
-        }
+   
     }
 }
