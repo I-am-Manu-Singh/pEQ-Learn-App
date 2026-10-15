@@ -147,6 +147,11 @@ fun PianoKeyboard88Keys(
     }
 
     var internalKeyboardModeName by rememberSaveable { mutableStateOf("PIANO") }
+    LaunchedEffect(internalKeyboardModeName) {
+        if (internalKeyboardModeName == "PIANO") {
+            viewModel.audioEngine.setInstrument("PIANO")
+        }
+    }
     val fallingBlocks = remember { mutableStateListOf<PianoFallingNoteBlock>() }
     val activeNotesSnapshot = remember {
         derivedStateOf { viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key } }
@@ -179,28 +184,10 @@ fun PianoKeyboard88Keys(
         }
     }
 
-LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
+LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
         Column(
         ) {
-            // Top Toolbar Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-            
-                IconButton(
-                    onClick = { viewModel.isFullscreenKeyboard.value = true },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Fullscreen,
-                        contentDescription = "Fullscreen",
-                        tint = primaryColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
+           
 
             // NOTATION VIEW ON TOP (Takes available weighted space)
             Surface(
@@ -208,7 +195,7 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                     .fillMaxWidth()
                     .weight(1f),
                 shape = RoundedCornerShape(16.dp),
-                color = Color.Black.copy(alpha = 0.25f),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
                 border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.15f))
             ) {
                 StaffAndTabNotationViewer(
@@ -241,26 +228,42 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(22.dp)) {
-                        Row(modifier = Modifier.padding(2.dp)) {
-                            listOf("PIANO", "DRUM").forEach { mode ->
-                                val active = internalKeyboardModeName == mode
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(22.dp))
-                                        .background(if (active) primaryColor else Color.Transparent)
-                                        .clickable { internalKeyboardModeName = mode }
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        mode,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (active) Color.White else MaterialTheme.colorScheme.onSurface.copy(0.6f)
-                                    )
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(22.dp)) {
+                            Row(modifier = Modifier.padding(2.dp)) {
+                                listOf("PIANO", "DRUM").forEach { mode ->
+                                    val active = internalKeyboardModeName == mode
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(22.dp))
+                                            .background(if (active) primaryColor else Color.Transparent)
+                                            .clickable { internalKeyboardModeName = mode }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            mode,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(0.6f)
+                                        )
+                                    }
                                 }
                             }
                         }
+
+                        // Corner Connected Piano Name & Velocity Badge
+                        PianoMidiStatusBadge(
+                            deviceName = viewModel.connectedMidiDeviceName.value,
+                            lastVelocity = viewModel.lastMidiVelocity.intValue,
+                            lastChannel = viewModel.lastMidiChannel.intValue,
+                            onDeviceClick = {
+                                viewModel.onScanMidiDevicesRequested?.invoke()
+                            }
+                        )
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -269,7 +272,7 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                                 onClick = { scope.launch { scrollState.animateScrollTo(0) } },
                                 modifier = Modifier.size(26.dp)
                             ) {
-                                Text("A0", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+                                Text("A0", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                             }
                             IconButton(
                                 onClick = {
@@ -286,7 +289,7 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                                 onClick = { scope.launch { scrollState.animateScrollTo(scrollState.maxValue) } },
                                 modifier = Modifier.size(26.dp)
                             ) {
-                                Text("C8", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+                                Text("C8", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                             }
                         }
 
@@ -297,7 +300,7 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                             Icon(
                                 imageVector = if (showWaterfall) Icons.Default.WaterDrop else Icons.Default.VerticalAlignBottom,
                                 contentDescription = "Waterfall",
-                                tint = if (showWaterfall) primaryColor else Color.White.copy(alpha = 0.7f),
+                                tint = if (showWaterfall) primaryColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -309,7 +312,7 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                             Icon(
                                 imageVector = if (showNoteLabels) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                                 contentDescription = "Labels",
-                                tint = Color.White.copy(alpha = 0.7f),
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -324,71 +327,121 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                             Icon(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = "Mode",
-                                tint = Color.White.copy(alpha = 0.7f),
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
-                    }
-                }
 
-                AnimatedVisibility(visible = showWaterfall) {
-                    SynthesiaWaterfallOverlay(
-                        activeMidiNotes = activeMidiNotes + pressedKeys + activeNotesSnapshot.value,
-                        primaryColor = primaryColor
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(scrollState)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.Black.copy(0.3f))
-                ) {
-                    Canvas(modifier = Modifier.width(keyboardWidth).height(80.dp).background(Color.Black.copy(0.2f))) {
-                        val finalWhiteKeyWidthPx = size.width / whiteNotes.size.coerceAtLeast(1)
-                        fallingBlocks.forEach { block ->
-                            val isBlack = isMidiNoteBlack(block.midiNote)
-                            val wIdx = getWhiteKeyIndexForMidi(block.midiNote) - getWhiteKeyIndexForMidi(startMidi)
-                            val blockWidth = if (isBlack) finalWhiteKeyWidthPx * 0.60f else finalWhiteKeyWidthPx * 0.85f
-                            val xOffset = if (isBlack) (finalWhiteKeyWidthPx - blockWidth) / 2f else 2f
-                            val finalX = (wIdx * finalWhiteKeyWidthPx) + xOffset
-
-                            drawRoundRect(
-                                color = block.color.copy(alpha = 0.85f),
-                                topLeft = Offset(finalX, block.currentY),
-                                size = Size(blockWidth, 20f),
-                                cornerRadius = CornerRadius(4f, 4f)
+                        IconButton(
+                            onClick = { viewModel.isFullscreenKeyboard.value = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Fullscreen,
+                                contentDescription = "Fullscreen",
+                                tint = primaryColor,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
+                }
 
-                    UnifiedPianoKeyboard(
-                        activeMidiNotes = viewModel.midiActiveNotes,
-                        accentColor = primaryColor,
-                        showNoteNames = showNoteLabels,
-                        isPlaying = viewModel.isScorePlaying.value,
-                        startNote = startMidi,
-                        endNote = startMidi + totalKeys - 1,
-                        onKeyTapped = { midiNote ->
-                            pressedKeys.add(midiNote)
-                            onNotePressed(midiNote)
-                            viewModel.onMidiNoteOn(midiNote, 95)
-                            val freq = viewModel.tunerReferenceFrequency.value * 2.0.pow((midiNote - 69) / 12.0).toFloat()
-                            viewModel.detectedPitch.value = freq
-                            viewModel.detectedNote.value = getNoteNameFromMidi(midiNote)
-                            try {
-                                viewModel.audioEngine.noteOn(midiNote, 0.85f)
-                            } catch (_: Exception) {}
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(scrollState)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.Black.copy(0.3f))
+                    ) {
+                        if (showWaterfall) {
+                            Canvas(modifier = Modifier.width(keyboardWidth).height(120.dp).background(Color.Black.copy(0.25f))) {
+                                val availableWidth = size.width
+                                val maxWhiteKeyWidthPx = with(density) { 42.dp.toPx() }
+                                val calculatedKeyWidth = availableWidth / whiteNotes.size.coerceAtLeast(1)
+                                val finalWhiteKeyWidthPx = if (calculatedKeyWidth > maxWhiteKeyWidthPx) maxWhiteKeyWidthPx else calculatedKeyWidth
+                                val totalKeyboardWidthPx = finalWhiteKeyWidthPx * whiteNotes.size
+                                val startPaddingOffset = (availableWidth - totalKeyboardWidthPx) / 2f
+                                val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
+
+                                fallingBlocks.forEach { block ->
+                                    val isBlack = isMidiNoteBlack(block.midiNote)
+                                    val finalX = if (isBlack) {
+                                        val prevWhiteNote = block.midiNote - 1
+                                        val whiteIndex = whiteNotes.indexOf(prevWhiteNote)
+                                        if (whiteIndex >= 0) {
+                                            startPaddingOffset + (whiteIndex * finalWhiteKeyWidthPx) + (finalWhiteKeyWidthPx - blackKeyWidthPx / 2f)
+                                        } else {
+                                            startPaddingOffset
+                                        }
+                                    } else {
+                                        val whiteIndex = whiteNotes.indexOf(block.midiNote)
+                                        val left = if (whiteIndex >= 0) startPaddingOffset + (whiteIndex * finalWhiteKeyWidthPx) else startPaddingOffset
+                                        left + 1f
+                                    }
+                                    val blockWidth = if (isBlack) blackKeyWidthPx else (finalWhiteKeyWidthPx - 2f)
+
+                                    drawRoundRect(
+                                        color = block.color.copy(alpha = 0.85f),
+                                        topLeft = Offset(finalX, block.currentY),
+                                        size = Size(blockWidth, 22f),
+                                        cornerRadius = CornerRadius(4f, 4f)
+                                    )
+                                }
+                            }
+                        }
+                        UnifiedPianoKeyboard(
+                            activeMidiNotes = viewModel.midiActiveNotes,
+                            accentColor = primaryColor,
+                            showNoteNames = showNoteLabels,
+                            isPlaying = viewModel.isScorePlaying.value,
+                            startNote = startMidi,
+                            endNote = startMidi + totalKeys - 1,
+                            onKeyTapped = { midiNote ->
+                                pressedKeys.add(midiNote)
+                                onNotePressed(midiNote)
+                                viewModel.onMidiNoteOn(midiNote, 95)
+                                val freq = viewModel.tunerReferenceFrequency.value * 2.0.pow((midiNote - 69) / 12.0).toFloat()
+                                viewModel.detectedPitch.value = freq
+                                viewModel.detectedNote.value = getNoteNameFromMidi(midiNote)
+                                scope.launch {
+                                    delay(320L)
+                                    viewModel.onMidiNoteOff(midiNote)
+                                    pressedKeys.remove(midiNote)
+                                }
+                            },
+                            modifier = Modifier
+                                .width(keyboardWidth)
+                                .height(whiteKeyHeight)
+                                .padding(vertical = 4.dp)
+                        )
+                    }
+
+                    // 3-Pedal Grand Piano Unit in top right corner above piano keyboard
+                    PianoThreePedalUnit(
+                        sustainPressed = viewModel.sustainPedalActive.value,
+                        sostenutoPressed = viewModel.sostenutoPedalActive.value,
+                        softPressed = viewModel.softPedalActive.value,
+                        onPedalClick = { type, pressed ->
+                            viewModel.onMidiPedalEventReceived(type, pressed)
                         },
                         modifier = Modifier
-                            .width(keyboardWidth)
-                            .height(whiteKeyHeight)
-                            .padding(vertical = 4.dp)
+                            .align(Alignment.TopEnd)
+                            .padding(end = 8.dp, top = 6.dp)
                     )
                 }
             }
         }
+    }
+
+    // Real-Time MIDI Connection & Disconnection Prompt Dialog
+    viewModel.midiConnectionPrompt.value?.let { prompt ->
+        MidiConnectionPromptDialog(
+            prompt = prompt,
+            onDismiss = { viewModel.dismissMidiPrompt() }
+        )
     }
 
     if (viewModel.isFullscreenKeyboard.value) {
@@ -504,23 +557,41 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                             )
                         }
 
-                        Column(
-                            modifier = Modifier.fillMaxWidth().wrapContentHeight().horizontalScroll(fsScrollState)
+                        Box(
+                            modifier = Modifier.fillMaxWidth().wrapContentHeight()
                         ) {
-                            UnifiedPianoKeyboard(
-                                activeMidiNotes = viewModel.midiActiveNotes,
-                                accentColor = primaryColor,
-                                showNoteNames = fsShowLetters,
-                                isPlaying = isPlaying,
-                                startNote = 21,
-                                endNote = 108,
-                                onKeyTapped = { midi ->
-                                    viewModel.onMidiNoteOn(midi, 95)
-                                    try {
-                                        viewModel.audioEngine.noteOn(midi, 0.85f)
-                                    } catch (_: Exception) {}
+                            Column(
+                                modifier = Modifier.fillMaxWidth().wrapContentHeight().horizontalScroll(fsScrollState)
+                            ) {
+                                UnifiedPianoKeyboard(
+                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                    accentColor = primaryColor,
+                                    showNoteNames = fsShowLetters,
+                                    isPlaying = isPlaying,
+                                    startNote = 21,
+                                    endNote = 108,
+                                    onKeyTapped = { midi ->
+                                        viewModel.onMidiNoteOn(midi, 95)
+                                        scope.launch {
+                                            delay(320L)
+                                            viewModel.onMidiNoteOff(midi)
+                                        }
+                                    },
+                                    modifier = Modifier.width(fsKeyboardWidth).height(160.dp)
+                                )
+                            }
+
+                            // Fullscreen 3-Pedal Grand Piano Unit in top right corner above keyboard
+                            PianoThreePedalUnit(
+                                sustainPressed = viewModel.sustainPedalActive.value,
+                                sostenutoPressed = viewModel.sostenutoPedalActive.value,
+                                softPressed = viewModel.softPedalActive.value,
+                                onPedalClick = { type, pressed ->
+                                    viewModel.onMidiPedalEventReceived(type, pressed)
                                 },
-                                modifier = Modifier.width(fsKeyboardWidth).height(160.dp)
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = 12.dp, top = 6.dp)
                             )
                         }
                     }
@@ -536,7 +607,8 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                             .widthIn(max = 800.dp)
                     ) {
                         Surface(
-                            color = Color(0xEE121212),
+                                               color = MaterialTheme.colorScheme.surface
+,
                             shape = RoundedCornerShape(24.dp),
                             modifier = Modifier.fillMaxWidth(0.92f).wrapContentHeight()
                         ) {
@@ -549,7 +621,7 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(text = currentTimeStr, fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
+                                    Text(text = currentTimeStr, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
                                     Slider(
                                         value = timelineProgress,
                                         onValueChange = { targetProgress ->
@@ -579,10 +651,10 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                                         colors = SliderDefaults.colors(
                                             thumbColor = primaryColor,
                                             activeTrackColor = primaryColor,
-                                            inactiveTrackColor = Color.White.copy(alpha = 0.15f)
+                                            inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
                                         )
                                     )
-                                    Text(text = totalTimeStr, fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
+                                    Text(text = totalTimeStr, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
                                 }
 
                                 Row(
@@ -599,27 +671,27 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                                                 Icon(
                                                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                                     contentDescription = null,
-                                                    tint = Color.White,
+                                                    tint = MaterialTheme.colorScheme.onPrimary,
                                                     modifier = Modifier.size(18.dp)
                                                 )
                                             }
                                         }
 
                                         IconButton(onClick = { viewModel.resetScorePlayhead() }) {
-                                            Icon(Icons.Default.Stop, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                            Icon(Icons.Default.Stop, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                                         }
 
                                         Text(
                                             text = "Speed: 1.0x",
                                             fontSize = 11.sp,
-                                            color = Color.White,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             fontWeight = FontWeight.Bold
                                         )
 
                                         Text(
                                             text = "BPM: ${currentScore?.tempo ?: 120}",
                                             fontSize = 11.sp,
-                                            color = Color.White,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             fontWeight = FontWeight.Bold
                                         )
 
@@ -630,7 +702,7 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                                             Icon(
                                                 imageVector = Icons.Default.Tune,
                                                 contentDescription = "Settings",
-                                                tint = Color.White.copy(alpha = 0.8f),
+                                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                                                 modifier = Modifier.size(16.dp)
                                             )
                                         }
@@ -643,24 +715,24 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                                         Button(
                                             onClick = { fsShowLetters = !fsShowLetters },
                                             colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (fsShowLetters) primaryColor else Color.White.copy(0.1f)
+                                                containerColor = if (fsShowLetters) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
                                             ),
                                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                                             shape = RoundedCornerShape(8.dp),
                                             modifier = Modifier.height(28.dp)
                                         ) {
-                                            Text("Letters", fontSize = 10.sp, color = Color.White)
+                                            Text("Letters", fontSize = 10.sp, color = if (fsShowLetters) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                                         }
                                         Button(
                                             onClick = { fsShowLyrics = !fsShowLyrics },
                                             colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (fsShowLyrics) primaryColor else Color.White.copy(0.1f)
+                                                containerColor = if (fsShowLyrics) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
                                             ),
                                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                                             shape = RoundedCornerShape(8.dp),
                                             modifier = Modifier.height(28.dp)
                                         ) {
-                                            Text("Lyrics", fontSize = 10.sp, color = Color.White)
+                                            Text("Lyrics", fontSize = 10.sp, color = if (fsShowLyrics) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                                         }
 
                                         IconButton(onClick = { viewModel.isFullscreenKeyboard.value = false }) {
@@ -671,6 +743,19 @@ LearnSectionCard(title = "Notation & Piano Viewwe", icon = Icons.Filled.List) {
                             }
                         }
                     }
+
+                    // Fullscreen Corner MIDI Device Status Badge
+                    PianoMidiStatusBadge(
+                        deviceName = viewModel.connectedMidiDeviceName.value,
+                        lastVelocity = viewModel.lastMidiVelocity.intValue,
+                        lastChannel = viewModel.lastMidiChannel.intValue,
+                        onDeviceClick = {
+                            viewModel.onScanMidiDevicesRequested?.invoke()
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 12.dp, bottom = 12.dp)
+                    )
                 }
             }
         }
@@ -707,7 +792,7 @@ fun PlaybackSettingsSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF151515),
+        containerColor = MaterialTheme.colorScheme.surface,
         scrimColor = Color.Black.copy(alpha = 0.7f),
         dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFFFFD700).copy(alpha = 0.4f)) }
     ) {
@@ -748,9 +833,9 @@ fun PlaybackSettingsSheet(
             SettingsSection(title = "Visual Controls") {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Notation Format", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text("Notation Format", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                         val formats = listOf("Staff", "Tab", "Combined")
-                        Row(modifier = Modifier.background(Color.White.copy(0.05f), RoundedCornerShape(8.dp)).padding(3.dp)) {
+                        Row(modifier = Modifier.background(MaterialTheme.colorScheme.onSurface.copy(0.05f), RoundedCornerShape(8.dp)).padding(3.dp)) {
                             formats.forEach { f ->
                                 val active = (f == "Staff" && notationFormat.contains("Staff")) ||
                                         (f == "Tab" && notationFormat.contains("Tab")) ||
@@ -762,14 +847,14 @@ fun PlaybackSettingsSheet(
                                         .clickable { onFormatChange(if (f == "Combined") "Combined" else "$f Notation") }
                                         .padding(horizontal = 10.dp, vertical = 5.dp)
                                 ) {
-                                    Text(f, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (active) Color.Black else Color.White)
+                                    Text(f, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                                 }
                             }
                         }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Split Staff (Piano View)", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text("Split Staff (Piano View)", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Switch(
                             checked = viewModel.isSplitStaff.value,
                             onCheckedChange = { viewModel.isSplitStaff.value = it },
@@ -778,7 +863,7 @@ fun PlaybackSettingsSheet(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Vertical Scrolling", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text("Vertical Scrolling", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Switch(
                             checked = viewModel.isVerticalScroll.value,
                             onCheckedChange = { viewModel.isVerticalScroll.value = it },
@@ -787,7 +872,7 @@ fun PlaybackSettingsSheet(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Show Note Names", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text("Show Note Names", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Switch(
                             checked = showLetters,
                             onCheckedChange = onShowLettersChange,
@@ -844,7 +929,7 @@ fun PlaybackSettingsSheet(
                         modifier = Modifier
                             .heightIn(max = 160.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(0.05f))
+                            .background(MaterialTheme.colorScheme.onSurface.copy(0.05f))
                             .verticalScroll(rememberScrollState())
                     ) {
                         viewModel.playbackQueue.forEach { item ->
@@ -859,13 +944,13 @@ fun PlaybackSettingsSheet(
                                 Icon(
                                     imageVector = if (isActive) Icons.Default.PlayArrow else Icons.Default.Tune,
                                     contentDescription = null,
-                                    tint = if (isActive) Color(0xFFFFD700) else Color.White.copy(0.3f),
+                                    tint = if (isActive) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface.copy(0.3f),
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
                                     item.title,
-                                    color = if (isActive) Color(0xFFFFD700) else Color.White,
+                                    color = if (isActive) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface,
                                     fontSize = 13.sp,
                                     fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
                                 )
@@ -883,7 +968,7 @@ fun PlaybackSettingsSheet(
                         val formattedSpeed = (kotlin.math.round(speed * 10) / 10.0).toString()
                         Text(
                             "Tempo Scale: ${formattedSpeed}x",
-                            color = Color.White.copy(0.8f),
+                            color = MaterialTheme.colorScheme.onSurface.copy(0.8f),
                             fontSize = 13.sp,
                             modifier = Modifier.weight(1f)
                         )
@@ -897,7 +982,7 @@ fun PlaybackSettingsSheet(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Metronome Click", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text("Metronome Click", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Switch(
                             checked = viewModel.metronomeEnabled.value,
                             onCheckedChange = { viewModel.metronomeEnabled.value = it },
@@ -906,7 +991,7 @@ fun PlaybackSettingsSheet(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("A-B Loop Active", color = Color.White.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text("A-B Loop Active", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Switch(
                             checked = viewModel.abRepeatActive.value,
                             onCheckedChange = { viewModel.abRepeatActive.value = it },
@@ -950,12 +1035,12 @@ private fun HandControlRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(0.03f))
+            .background(MaterialTheme.colorScheme.onSurface.copy(0.03f))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(Color(0xFF6C63FF), Color(0xFF4A90E2), Color(0xFFFF6B35), Color(0xFFFFD700), Color(0xFF4CAF50)).forEach { c ->
@@ -964,7 +1049,7 @@ private fun HandControlRow(
                             .size(22.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(c)
-                            .border(if (color == c) 2.dp else 0.dp, Color.White, RoundedCornerShape(6.dp))
+                            .border(if (color == c) 2.dp else 0.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(6.dp))
                             .clickable { onColorChange(c) }
                     )
                 }
@@ -975,7 +1060,7 @@ private fun HandControlRow(
             Icon(
                 imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                 contentDescription = null,
-                tint = if (isMuted) Color.Red.copy(0.7f) else Color.White.copy(0.6f)
+                tint = if (isMuted) Color.Red.copy(0.7f) else MaterialTheme.colorScheme.onSurface.copy(0.6f)
             )
         }
 
@@ -983,7 +1068,7 @@ private fun HandControlRow(
             Icon(
                 imageVector = if (isHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                 contentDescription = null,
-                tint = if (isHidden) Color.White.copy(0.2f) else Color(0xFFFFD700)
+                tint = if (isHidden) MaterialTheme.colorScheme.onSurface.copy(0.2f) else Color(0xFFFFD700)
             )
         }
     }
@@ -992,27 +1077,27 @@ private fun HandControlRow(
 @Composable
 private fun StepperControl(label: String, value: Int, onValueChange: (Int) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, color = Color.White.copy(0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = MaterialTheme.colorScheme.onSurface.copy(0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(6.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .background(Color.White.copy(0.08f), RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.onSurface.copy(0.08f), RoundedCornerShape(12.dp))
                 .padding(horizontal = 4.dp)
         ) {
             IconButton(onClick = { onValueChange(value - 1) }) {
-                Icon(Icons.Default.Remove, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Remove, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
             }
             Text(
                 text = if (value > 0) "+$value" else value.toString(),
-                color = if (value != 0) Color(0xFFFFD700) else Color.White,
+                color = if (value != 0) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Black,
                 modifier = Modifier.width(40.dp),
                 textAlign = TextAlign.Center
             )
             IconButton(onClick = { onValueChange(value + 1) }) {
-                Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -1153,4 +1238,300 @@ fun SynthesiaWaterfallOverlay(
             }
         }
     }
+}
+
+/**
+ * High-fidelity 3-Pedal Grand Piano Unit:
+ * 1. Soft / Una Corda Pedal (CC 67)
+ * 2. Sostenuto Pedal (CC 66)
+ * 3. Sustain / Damper Pedal (CC 64)
+ *
+ * Designed with brushed brass/gold physical pedal shapes, deep metallic housing,
+ * mechanical depression translation when pressed, and radiant glowing highlights.
+ */
+@Composable
+fun PianoThreePedalUnit(
+    sustainPressed: Boolean,
+    sostenutoPressed: Boolean,
+    softPressed: Boolean,
+    onPedalClick: ((pedalType: Int, isPressed: Boolean) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .shadow(12.dp, RoundedCornerShape(12.dp))
+            .border(1.dp, Color(0xFF3A3A3C), RoundedCornerShape(12.dp)),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                // 1. Soft / Una Corda (CC 67)
+                SinglePedalBlade(
+                    name = "SOFT",
+                    sub = "Una Corda",
+                    isPressed = softPressed,
+                    onClick = {
+                        onPedalClick?.invoke(67, !softPressed)
+                    }
+                )
+
+                // 2. Sostenuto (CC 66)
+                SinglePedalBlade(
+                    name = "SOST",
+                    sub = "Sostenuto",
+                    isPressed = sostenutoPressed,
+                    onClick = {
+                        onPedalClick?.invoke(66, !sostenutoPressed)
+                    }
+                )
+
+                // 3. Sustain / Damper (CC 64)
+                SinglePedalBlade(
+                    name = "SUST",
+                    sub = "Damper",
+                    isPressed = sustainPressed,
+                    onClick = {
+                        onPedalClick?.invoke(64, !sustainPressed)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SinglePedalBlade(
+    name: String,
+    sub: String,
+    isPressed: Boolean,
+    onClick: () -> Unit
+) {
+    val brassGradientNormal = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFFE5C07B),
+            Color(0xFFC89B3C),
+            Color(0xFF996B1E),
+            Color(0xFF734C0A)
+        )
+    )
+
+    val brassGradientPressed = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFFFFF2A3),
+            Color(0xFFFFD54F),
+            Color(0xFFFF9800),
+            Color(0xFFE65100)
+        )
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(2.dp)
+    ) {
+        // Physical Brass Foot-pedal shape
+        Box(
+            modifier = Modifier
+                .width(22.dp)
+                .height(44.dp)
+                .graphicsLayer {
+                    translationY = if (isPressed) 4.dp.toPx() else 0f
+                    scaleY = if (isPressed) 0.92f else 1.0f
+                }
+                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 9.dp, bottomEnd = 9.dp))
+                .background(if (isPressed) brassGradientPressed else brassGradientNormal)
+                .border(
+                    width = if (isPressed) 1.5.dp else 1.dp,
+                    color = if (isPressed) Color(0xFFFFE082) else Color(0x664A3508),
+                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 9.dp, bottomEnd = 9.dp)
+                )
+        ) {
+            // Shiny highlight bar
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(3.dp)
+                    .align(Alignment.CenterStart)
+                    .padding(start = 2.dp, top = 4.dp, bottom = 4.dp)
+                    .background(Color.White.copy(alpha = if (isPressed) 0.6f else 0.3f), RoundedCornerShape(2.dp))
+            )
+
+            if (isPressed) {
+                // Radiant glow ring when pressed
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0x33FFB300))
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(3.dp))
+
+        Text(
+            text = name,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Black,
+            color = if (isPressed) Color(0xFFFFCA28) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        )
+    }
+}
+
+/**
+ * Corner MIDI Status Badge showing:
+ * - Real Connected Piano / Keyboard Name
+ * - Incoming note velocity badge (e.g. "Vel 112")
+ * - Active MIDI channel
+ */
+@Composable
+fun PianoMidiStatusBadge(
+    deviceName: String?,
+    lastVelocity: Int,
+    lastChannel: Int,
+    onDeviceClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isConnected = !deviceName.isNullOrBlank()
+
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onDeviceClick() },
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(
+            1.dp,
+            if (isConnected) Color(0xFF10B981).copy(alpha = 0.5f) else Color(0xFF6B7280).copy(alpha = 0.3f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            // Glowing status indicator light
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (isConnected) Color(0xFF10B981) else Color(0xFF9CA3AF))
+                    .border(
+                        1.dp,
+                        if (isConnected) Color(0xFF34D399) else Color(0xFF6B7280),
+                        RoundedCornerShape(50)
+                    )
+            )
+
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = if (isConnected) "🎹 $deviceName" else "🎹 No MIDI Piano",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isConnected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        maxLines = 1
+                    )
+                }
+
+                if (isConnected && lastVelocity > 0) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "VEL: $lastVelocity",
+                            fontSize = 7.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFFFB300)
+                        )
+                        Text(
+                            text = "CH: $lastChannel",
+                            fontSize = 7.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Elegant prompt dialog for USB/MIDI Piano connection and disconnection
+ */
+@Composable
+fun MidiConnectionPromptDialog(
+    prompt: com.creativeblisslabs.peqlearn.app.ui.viewmodel.MidiPromptMessage,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = if (prompt.isConnected) "🎹" else "🔌",
+                    fontSize = 20.sp
+                )
+                Text(
+                    text = prompt.title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = if (prompt.isConnected) Color(0xFF34D399) else Color(0xFFFF7043)
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = prompt.message,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                    lineHeight = 18.sp
+                )
+                Surface(
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Device:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                        Text(prompt.deviceName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (prompt.isConnected) Color(0xFF059669) else MaterialTheme.colorScheme.secondary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Dismiss", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp)
+    )
 }

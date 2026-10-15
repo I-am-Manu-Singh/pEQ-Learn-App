@@ -128,6 +128,7 @@ interface AudioEngine {
     fun loadCustomSoundFont(category: String, path: String): Boolean = false
     fun setTanpuraGain(gain: Float) {}
     fun setTablaGain(gain: Float) {}
+    fun setMetronomeGain(gain: Float) {}
     fun getLatency(): Int = 0
     fun getRegistry(): Map<String, String> = emptyMap()
     fun release()

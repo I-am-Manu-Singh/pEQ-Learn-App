@@ -456,10 +456,6 @@ fun AppViewModel.clearQueue() {
     persistSession()
 }
 
-// ============================================================================
-// 100% RECOVERED STEM MIXER & CONSOLE CONTROLLERS
-// ============================================================================
-
 fun AppViewModel.updateStemVolume(stem: String, volume: Float) {
     audioEngine.setStemVolume(stem, volume)
 }

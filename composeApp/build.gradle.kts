@@ -91,6 +91,8 @@ kotlin {
                     "io.ktor:ktor-serialization-kotlinx-json:2.3.8"
                 )
 //                implementation("com.benasher44:uuid:0.8.2")
+            implementation(compose.materialIconsExtended) 
+
             }
         }
 

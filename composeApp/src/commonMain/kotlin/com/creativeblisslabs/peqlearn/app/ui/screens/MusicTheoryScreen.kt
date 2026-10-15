@@ -24,6 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.*
 import androidx.compose.foundation.lazy.itemsIndexed
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQGlassCard
+import com.creativeblisslabs.peqlearn.app.ui.components.MetadataBadge
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,74 +53,89 @@ fun MusicTheoryScreen(
             matchesCategory && matchesQuery
         }
     }
+var isSearchActive by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
        
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Search input
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp,
-                                vertical = 4.dp),
-                            placeholder = { Text("Search chords, scales, ragas ..") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                            trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { searchQuery = "" }) {
-                                        Icon(Icons.Default.Clear, contentDescription = "Clear")
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                            )
-                        )
-                    }
-
-
-                    // Navigation Tabs
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(TheoryPart.entries) { part ->
-                            val isSelected = selectedPart == part
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    selectedPart = part
-                                    searchQuery = ""
-                                },
-                                label = {
-                                    Text(
-                                        text = part.label,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 12.sp
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = part.icon,
-                                        contentDescription = null,
-                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                        }
+             Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 8.dp, vertical = 0.dp),
+    verticalAlignment = Alignment.CenterVertically
+) {
+    if (isSearchActive) {
+        // FULL WIDTH SEARCH BAR MODE
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier.weight(1f), // Takes up all available space
+            placeholder = { Text("Search chords, scales, ragas ..", style = MaterialTheme.typography.bodyMedium) },
+            leadingIcon = { 
+                IconButton(onClick = { 
+                    isSearchActive = false 
+                    searchQuery = "" // Clear search when closing
+                }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack, // Standard back button behavior
+                        contentDescription = "Close search",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear")
                     }
                 }
+            },
+            singleLine = true,
+            shape = MaterialTheme.shapes.medium,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            )
+        )
+    } else {
+        // TABS + SEARCH ICON MODE
+        
+        // LazyRow takes up remaining width next to the search icon
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(TheoryPart.entries) { part ->
+                val isSelected = selectedPart == part
+                pEQFilterChip(
+                    selected = isSelected,
+                    onClick = {
+                        selectedPart = part
+                        searchQuery = ""
+                    },
+                    label = {
+                        Text(
+                            text = part.label,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                )
+            }
+        }
+
+        // The single search icon that triggers full width search
+        IconButton(
+            onClick = { isSearchActive = true },
+            modifier = Modifier.padding(start = 8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "Open search",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
             
         }
     ) { innerPadding ->
@@ -168,13 +186,16 @@ private fun ConceptsBrowser(
         contentPadding = PaddingValues(top = 12.dp, bottom = 100.dp)
     ) {
         item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
+            ) {
                 val filters = listOf("ALL", "STRUCTURE", "INDIAN_CLASSICAL", "KARNATIC")
                 items(filters) { f ->
-                    FilterChip(
+                    pEQFilterChip(
                         selected = subFilterMode == f,
                         onClick = { onSubFilterChange(f) },
-                        label = { Text(f.replace("_", " "), fontSize = 11.sp) }
+                        label = { Text(f.replace("_", " "), style = MaterialTheme.typography.labelSmall) }
                     )
                 }
             }
@@ -191,12 +212,8 @@ private fun ConceptsBrowser(
 
         items(concepts, key = { it.title }) { concept ->
             val isExpanded = selectedConcept == concept
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth().clickable { onSelectConcept(concept) },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
-                )
+            pEQGlassCard(
+                modifier = Modifier.fillMaxWidth().clickable { onSelectConcept(concept) }
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -207,20 +224,17 @@ private fun ConceptsBrowser(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = concept.title,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = concept.shortDef,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        SuggestionChip(
-                            onClick = {},
-                            label = { Text(concept.part.label, fontSize = 10.sp) },
-                            modifier = Modifier.padding(start = 8.dp)
+                        MetadataBadge(
+                            text = concept.part.label
                         )
                     }
 
@@ -230,7 +244,7 @@ private fun ConceptsBrowser(
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = concept.longDef,
-                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 lineHeight = 19.sp,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -249,19 +263,18 @@ private fun ConceptsBrowser(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Formula / Notes:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                                    Text("Formula / Notes:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                     concept.highlightNotes.forEach { note ->
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primaryContainer)
-                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        Surface(
+                                            modifier = Modifier.clip(CircleShape),
+                                            color = MaterialTheme.colorScheme.primaryContainer
                                         ) {
                                             Text(
                                                 text = "$note",
-                                                fontSize = 11.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
@@ -279,15 +292,15 @@ private fun ConceptsBrowser(
 @Composable
 private fun SongStructureAcademyPanel() {
     val sections = listOf(
-        Triple("Intro", 4, Color(0xFF42A5F5)),
-        Triple("Verse 1", 16, Color(0xFF66BB6A)),
-        Triple("Pre-Chorus", 8, Color(0xFFFFA726)),
-        Triple("Chorus", 16, Color(0xFFAB47BC)),
-        Triple("Verse 2", 16, Color(0xFF66BB6A)),
-        Triple("Chorus 2", 16, Color(0xFFAB47BC)),
-        Triple("Bridge", 8, Color(0xFFEC407A)),
-        Triple("Chorus 3", 16, Color(0xFFAB47BC)),
-        Triple("Outro", 8, Color(0xFF78909C))
+        Triple("Intro", 4, MaterialTheme.colorScheme.primary),
+        Triple("Verse 1", 16, MaterialTheme.colorScheme.secondary),
+        Triple("Pre-Chorus", 8, MaterialTheme.colorScheme.tertiary),
+        Triple("Chorus", 16, MaterialTheme.colorScheme.error),
+        Triple("Verse 2", 16, MaterialTheme.colorScheme.secondary),
+        Triple("Chorus 2", 16, MaterialTheme.colorScheme.error),
+        Triple("Bridge", 8, MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)),
+        Triple("Chorus 3", 16, MaterialTheme.colorScheme.error),
+        Triple("Outro", 8, MaterialTheme.colorScheme.outline)
     )
 
     LazyColumn(
@@ -298,22 +311,19 @@ private fun SongStructureAcademyPanel() {
         item {
             Text(
                 text = "SONG STRUCTURE MAP & TIMELINE LAB",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary
             )
         }
 
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f))
+            pEQGlassCard(
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Standard Pop/Rock Structure Timeline", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Standard Pop/Rock Structure Timeline", style = MaterialTheme.typography.titleSmall)
                     Row(
-                        modifier = Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(8.dp))
+                        modifier = Modifier.fillMaxWidth().height(36.dp).clip(MaterialTheme.shapes.small)
                     ) {
                         sections.forEach { (name, bars, col) ->
                             Box(
@@ -326,9 +336,9 @@ private fun SongStructureAcademyPanel() {
                             ) {
                                 Text(
                                     text = "$name (${bars}b)",
-                                    fontSize = 9.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.onPrimary,
                                     maxLines = 1
                                 )
                             }
@@ -354,10 +364,6 @@ private fun SongStructureAcademyPanel() {
     }
 }
 
-// ============================================================================
-// 100% RECOVERED INTERACTIVE STRUCTURE LAB (TIMELINE & CONCEPT ANALYSIS)
-// ============================================================================
-
 @Composable
 fun InteractiveStructureLab(
     concept: TheoryConcept,
@@ -367,11 +373,8 @@ fun InteractiveStructureLab(
     var selectedBlockIdx by remember { mutableStateOf(0) }
     var activeSubFilterMode by remember { mutableStateOf("Timeline") }
 
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = Color(0xFF12141F),
-        border = BorderStroke(1.2.dp, accentColor.copy(alpha = 0.4f))
+    pEQGlassCard(
+        modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             // Lab Title & Category Badge
@@ -396,31 +399,22 @@ fun InteractiveStructureLab(
                     Column {
                         Text(
                             text = concept.title.uppercase(),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
                             letterSpacing = 1.sp
                         )
                         Text(
                             text = concept.subtitle,
-                            fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.6f)
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = accentColor.copy(alpha = 0.2f)
-                ) {
-                    Text(
-                        text = concept.category,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = accentColor
-                    )
-                }
+                MetadataBadge(
+                    text = concept.category,
+                    color = accentColor
+                )
             }
 
             // Interactive Structure Blocks / Sections
@@ -428,9 +422,8 @@ fun InteractiveStructureLab(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "Song Structure Timeline & Cadence Analysis",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.7f)
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
 
                     LazyRow(
@@ -441,11 +434,11 @@ fun InteractiveStructureLab(
                             val isSelected = selectedBlockIdx == idx
                             Surface(
                                 onClick = { selectedBlockIdx = idx },
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isSelected) accentColor else Color(0xFF1E2235),
+                                shape = MaterialTheme.shapes.medium,
+                                color = if (isSelected) accentColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                 border = BorderStroke(
                                     1.dp,
-                                    if (isSelected) Color.White else Color.White.copy(alpha = 0.08f)
+                                    if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                                 ),
                                 modifier = Modifier.height(64.dp).defaultMinSize(minWidth = 90.dp)
                             ) {
@@ -456,15 +449,15 @@ fun InteractiveStructureLab(
                                 ) {
                                     Text(
                                         block.label,
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Black,
-                                        color = if (isSelected) Color.Black else Color.White
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         block.bars,
-                                        fontSize = 10.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.Black.copy(alpha = 0.7f) else accentColor
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else accentColor
                                     )
                                 }
                             }
@@ -477,18 +470,17 @@ fun InteractiveStructureLab(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF0A0C12), RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest, MaterialTheme.shapes.medium)
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("THEORETICAL FORMULA", fontSize = 9.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
+                    Text("THEORETICAL FORMULA", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
                     Text(
                         concept.formula.ifEmpty { "Traditional Classical Structure" },
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -500,7 +492,7 @@ fun InteractiveStructureLab(
                             border = BorderStroke(1.dp, accentColor)
                         ) {
                             Box(modifier = Modifier.size(28.dp), contentAlignment = Alignment.Center) {
-                                Text(note, fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.White)
+                                Text(note, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
@@ -510,9 +502,9 @@ fun InteractiveStructureLab(
             // Concept Description Body
             Text(
                 text = concept.description,
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 lineHeight = 18.sp,
-                color = Color.White.copy(alpha = 0.8f)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
             )
         }
     }

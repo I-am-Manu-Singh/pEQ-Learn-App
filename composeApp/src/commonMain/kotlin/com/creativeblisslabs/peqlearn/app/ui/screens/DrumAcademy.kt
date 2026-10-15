@@ -8,6 +8,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -105,10 +108,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.SongBar
+import com.creativeblisslabs.peqlearn.app.ui.viewmodel.DrumTutorial
+import com.creativeblisslabs.peqlearn.app.ui.viewmodel.switchDrumKit
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.metronomeActive
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.metronomeBpm
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.setMetronomeBpm
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.toggleMetronome
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQGlassCard
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQDesign
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.collections.chunked
@@ -122,14 +130,7 @@ fun LearnSectionCard(
     info: String? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-    ) {
+    pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -167,14 +168,9 @@ private fun AnalysisTile(
     primaryColor: Color,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF14171F),
-        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.08f))
-    ) {
+    pEQGlassCard(modifier = modifier) {
         Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.6f))
+            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             Text(value, fontSize = 13.sp, fontWeight = FontWeight.Black, color = primaryColor)
         }
     }
@@ -277,16 +273,13 @@ fun DrumAcademySection(
             }
         }
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.05f))
+        pEQGlassCard(
+            modifier = Modifier.fillMaxWidth()
         ) {
             Row(
                 modifier = Modifier.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
@@ -341,17 +334,17 @@ fun DrumAcademySection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+                pEQFilterChip(
                     selected = drumViewMode == 0,
                     onClick = { drumViewMode = 0 },
                     label = { Text("16-Pad MPC Grid", fontSize = 11.sp) }
                 )
-                FilterChip(
+                pEQFilterChip(
                     selected = drumViewMode == 1,
                     onClick = { drumViewMode = 1 },
                     label = { Text("3D Drum Visualizer", fontSize = 11.sp) }
                 )
-                FilterChip(
+                pEQFilterChip(
                     selected = drumViewMode == 2,
                     onClick = { drumViewMode = 2 },
                     label = { Text("Drum Kits", fontSize = 11.sp) }
@@ -388,10 +381,7 @@ fun DrumAcademySection(
                     val currentKitName = viewModel.selectedDrumKit.value?.name ?: ""
                     viewModel.drumKits.forEach { kit ->
                         val isSelected = kit.name == currentKitName
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) primaryColor.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.04f),
-                            border = BorderStroke(1.dp, if (isSelected) primaryColor else Color.White.copy(alpha = 0.08f)),
+                        pEQGlassCard(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -400,14 +390,13 @@ fun DrumAcademySection(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(kit.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
-                                    Text("${kit.labels.size} Samples Preloaded", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                                    Text(kit.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("${kit.labels.size} Samples Preloaded", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                                 }
                                 Button(
                                     onClick = {
-                                        viewModel.selectedDrumKit.value = kit
-                                        viewModel.drumPadLabels.clear()
-                                        viewModel.drumPadLabels.addAll(kit.labels)
+                                        viewModel.switchDrumKit(kit)
+                                        viewModel.audioEngine.currentSelectedKitName = kit.id
                                     },
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(
@@ -470,7 +459,7 @@ private fun DrumPadItem(
         label = "pad_scale"
     )
 
-    Surface(
+    pEQGlassCard(
         modifier = modifier
             .aspectRatio(1f)
             .scale(scale)
@@ -497,14 +486,7 @@ private fun DrumPadItem(
                         }
                     }
                 }
-            },
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        border = BorderStroke(
-            width = if (pressed || isActive) 2.dp else 1.dp,
-            color = if (pressed || isActive) padColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)
-        ),
-        tonalElevation = if (pressed) 1.dp else 4.dp
+            }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (pressed || isGuided || isActive) {
@@ -623,9 +605,9 @@ fun DrumPadKitGrid(
         }
     }
 }
-enum class GrooveStudioTab(val label: String) {
-    METRONOME("Metronome"),
-    STEP_SEQUENCER("16-Step Drum Grid"),
+enum class GrooveStudioTab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    METRONOME("Metronome", Icons.Default.Speed),
+    STEP_SEQUENCER("16-Step Drum Grid", Icons.Default.GridView),
 }
 @Composable
 fun RhythmGrooveWorkstation(
@@ -658,11 +640,8 @@ fun RhythmGrooveWorkstation(
         }
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF14171F)),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+    pEQGlassCard(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             // Header
@@ -673,7 +652,7 @@ fun RhythmGrooveWorkstation(
             ) {
                 Column {
                     Text(
-                        text = "RHYTHM & GROOVE WORKSTATION",
+                        text = "RHYTHM WORKSTATION",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Black,
                         color = primaryColor
@@ -681,7 +660,7 @@ fun RhythmGrooveWorkstation(
                     Text(
                         text = "Time Signature: $timeSignatureNumerator/4 • $bpm BPM",
                         fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.6f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
 
@@ -706,9 +685,17 @@ fun RhythmGrooveWorkstation(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(GrooveStudioTab.entries) { tab ->
                     val isSelected = selectedTab == tab
-                    FilterChip(
+                    pEQFilterChip(
                         selected = isSelected,
                         onClick = { selectedTab = tab },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.label,
+                                tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
                         label = { Text(tab.label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
                     )
                 }
@@ -724,7 +711,7 @@ fun RhythmGrooveWorkstation(
                             text = "$bpm",
                             fontSize = 64.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = when {
@@ -776,7 +763,7 @@ fun RhythmGrooveWorkstation(
                                     text = track,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color.White.copy(alpha = 0.8f),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                                     modifier = Modifier.width(60.dp)
                                 )
 
@@ -789,25 +776,29 @@ fun RhythmGrooveWorkstation(
                                         val isCurrentStep = (i == currentStep && isRunning)
                                         val isDownbeat = i % 4 == 0
 
-                                        Box(
+                                        pEQGlassCard(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(26.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(
-                                                    when {
-                                                        isCurrentStep && isActive -> Color.White // Flash white on hit
-                                                        isCurrentStep -> primaryColor.copy(alpha = 0.6f) // Highlight current playhead column
-                                                        isActive -> primaryColor
-                                                        isDownbeat -> Color.White.copy(alpha = 0.12f)
-                                                        else -> Color.White.copy(alpha = 0.05f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(
+                                                        when {
+                                                            isCurrentStep && isActive -> MaterialTheme.colorScheme.onSurface // Flash white on hit
+                                                            isCurrentStep -> primaryColor.copy(alpha = 0.6f) // Highlight current playhead column
+                                                            isActive -> primaryColor
+                                                            isDownbeat -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                                            else -> Color.Transparent
+                                                        }
+                                                    )
+                                                    .clickable {
+                                                        val current = steps[i]
+                                                        steps[i] = !current
                                                     }
-                                                )
-                                                .clickable {
-                                                    val current = steps[i]
-                                                    steps[i] = !current
-                                                }
-                                        )
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -875,28 +866,8 @@ fun SongArrangerTimeline(
             }
         }
 
-        // Sleek Professional Scrubber Card with Bar Markings
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
-        ) {
+     
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.LinearScale, null, tint = primaryColor, modifier = Modifier.size(16.dp))
-                        Text("ARRANGER PLAYHEAD SCRUBBER", fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (viewModel.currentPlayingBarIndex.intValue != -1) primaryColor.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f)
-                    ) {
                         Text(
                             text = if (viewModel.currentPlayingBarIndex.intValue == -1) "IDLE"
                             else "BAR ${(viewModel.currentPlayingBarIndex.intValue + 1).toString().padStart(2, '0')} / ${viewModel.songTimeline.size.toString().padStart(2, '0')}",
@@ -905,9 +876,6 @@ fun SongArrangerTimeline(
                             fontWeight = FontWeight.Black,
                             color = if (viewModel.currentPlayingBarIndex.intValue != -1) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                }
-
                 val totalBarsCount = viewModel.songTimeline.size
                 val currentPlayingIdx = viewModel.currentPlayingBarIndex.intValue
                 val currentScrubProgress = remember(currentPlayingIdx, totalBarsCount) {
@@ -954,24 +922,14 @@ fun SongArrangerTimeline(
                     }
                 }
             }
-        }
-
-        Text(
-            text = "TIMELINE BARS (LONG PRESS & DRAG HANDLE TO REORDER)",
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Black,
-            color = primaryColor.copy(alpha = 0.75f),
-            letterSpacing = 1.sp
-        )
+        
+    
 
         // Timeline Slot Items Container
-        Surface(
+        pEQGlassCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(350.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.06f))
+                .height(350.dp)
         ) {
             if (viewModel.songTimeline.isEmpty()) {
                 Box(
@@ -1001,21 +959,7 @@ fun SongArrangerTimeline(
                         val isPlayingCurrent = viewModel.currentPlayingBarIndex.intValue == index
                         var showEditContextBox by remember { mutableStateOf(false) }
 
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = when {
-                                isPlayingCurrent -> primaryColor.copy(alpha = 0.16f)
-                                bar.isFiller -> Color(0xFFFFC107).copy(alpha = 0.08f)
-                                else -> MaterialTheme.colorScheme.surface
-                            },
-                            border = BorderStroke(
-                                width = if (isPlayingCurrent) 2.dp else 1.dp,
-                                color = when {
-                                    isPlayingCurrent -> primaryColor
-                                    bar.isFiller -> Color(0xFFFFC107).copy(alpha = 0.35f)
-                                    else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.05f)
-                                }
-                            ),
+                        pEQGlassCard(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -1101,6 +1045,52 @@ fun SongArrangerTimeline(
                                         ) {
                                             Icon(Icons.Default.Tune, null, tint = primaryColor, modifier = Modifier.size(14.dp))
                                         }
+
+                                        // Swap Pattern Dropdown Menu anchored directly to Tune button
+                                        DropdownMenu(
+                                            expanded = showEditContextBox,
+                                            onDismissRequest = { showEditContextBox = false },
+                                            modifier = Modifier
+                                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                                .widthIn(min = 220.dp, max = 320.dp)
+                                        ) {
+                                            Text(
+                                                text = "SWAP BAR TRACK TYPE",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = primaryColor,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                            )
+                                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                                            val availablePatterns = if (viewModel.drumTutorials.isNotEmpty()) {
+                                                viewModel.drumTutorials
+                                            } else {
+                                                listOf(
+                                                    DrumTutorial("ELECTRONIC_808: 4/4 Core Foundation", emptyList<List<String>>()),
+                                                    DrumTutorial("ELECTRONIC_808: Club Syncopation", emptyList<List<String>>()),
+                                                    DrumTutorial("ELECTRONIC_808: Build Up Tension Fills", emptyList<List<String>>())
+                                                )
+                                            }
+
+                                            availablePatterns.forEach { selectionPattern ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            selectionPattern.name.uppercase(),
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        val fitsAsFillerTrack = selectionPattern.name.contains("Fill", ignoreCase = true)
+                                                        viewModel.updateBarPattern(index, selectionPattern.name, isFiller = fitsAsFillerTrack)
+                                                        showEditContextBox = false
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
 
                                     Box(
@@ -1114,36 +1104,6 @@ fun SongArrangerTimeline(
                                                 .background(Color(0xFFFF4D6D).copy(alpha = 0.10f), CircleShape)
                                         ) {
                                             Icon(Icons.Default.Delete, null, tint = Color(0xFFFF4D6D), modifier = Modifier.size(14.dp))
-                                        }
-                                    }
-                                }
-
-                                // Swap Pattern Dropdown Menu
-                                Box {
-                                    DropdownMenu(
-                                        expanded = showEditContextBox,
-                                        onDismissRequest = { showEditContextBox = false }
-                                    ) {
-                                        Text(
-                                            text = "SWAP BAR TRACK TYPE",
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color.Gray,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                        )
-                                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
-                                        viewModel.drumTutorials.forEach { selectionPattern ->
-                                            DropdownMenuItem(
-                                                text = {
-                                                    Text(selectionPattern.name.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Black)
-                                                },
-                                                onClick = {
-                                                    val fitsAsFillerTrack = selectionPattern.name.contains("Fill", ignoreCase = true)
-                                                    viewModel.updateBarPattern(index, selectionPattern.name, isFiller = fitsAsFillerTrack)
-                                                    showEditContextBox = false
-                                                }
-                                            )
                                         }
                                     }
                                 }
@@ -1271,12 +1231,9 @@ private fun DrumRackLabel(
     viewModel: AppViewModel,
     primaryColor: Color
 ) {
-    Box(
+    pEQGlassCard(
         modifier = Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
-            .border(1.dp, primaryColor.copy(alpha = 0.10f), RoundedCornerShape(24.dp))
             .padding(18.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -1351,7 +1308,7 @@ private fun DrumRackLabel(
                     items(categories) { category ->
                         val selected = selectedCategory == category
 
-                        FilterChip(
+                        pEQFilterChip(
                             selected = selected,
                             onClick = { selectedCategory = category },
                             label = {
@@ -1360,12 +1317,7 @@ private fun DrumRackLabel(
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                            },
-                            shape = RoundedCornerShape(14.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = primaryColor.copy(alpha = 0.18f),
-                                selectedLabelColor = primaryColor
-                            )
+                            }
                         )
                     }
                 }
@@ -1472,10 +1424,8 @@ fun SpectrumBalanceBar(
     primaryColor: Color,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    pEQGlassCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        color = Color(0xFF151824)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().height(16.dp).padding(2.dp),

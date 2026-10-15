@@ -154,10 +154,14 @@ val client = createHttpClient()
     val isPiPMode = mutableStateOf(false)
     val showMiniPlayer = mutableStateOf(true)
     val isFullscreenKeyboard = mutableStateOf(false)
+    val isNotationFullscreen = mutableStateOf(false)
+    val isImmersiveLabActive = mutableStateOf(false)
+    val isTanpuraFullscreen = mutableStateOf(false)
     val practicingChord = mutableStateOf<String?>(null)
     val isTanpuraActive = mutableStateOf(false)
     val tanpuraGain = mutableFloatStateOf(0.8f)
     val tablaGain = mutableFloatStateOf(1.0f)
+    val metronomeGain = mutableFloatStateOf(1.0f)
 
     // Callback interfaces for platform-specific features
     var onScanMidiDevicesRequested: (() -> Unit)? = null
@@ -344,6 +348,7 @@ val client = createHttpClient()
             _scanner = value
             value?.let { 
                 observeScanner()
+                loadAssets()
                 if (scanFolders.isNotEmpty()) {
                     refreshLibrary()
                 }
@@ -515,11 +520,17 @@ val client = createHttpClient()
     
     private val _selectedTheme = mutableStateOf(pEQTheme.DARK)
     val selectedTheme: State<pEQTheme> = _selectedTheme
-    internal fun setTheme(theme: pEQTheme) { _selectedTheme.value = theme }
+    internal fun setTheme(theme: pEQTheme) {
+        _selectedTheme.value = theme
+        persistSession()
+    }
 
     private val _selectedAccent = mutableStateOf(pEQAccent.AMBER)
     val selectedAccent: State<pEQAccent> = _selectedAccent
-    internal fun setAccent(accent: pEQAccent) { _selectedAccent.value = accent }
+    internal fun setAccent(accent: pEQAccent) {
+        _selectedAccent.value = accent
+        persistSession()
+    }
     
     internal fun enqueueJob(job: SplitJob) {
         backgroundJobs.add(job)
@@ -610,6 +621,13 @@ val client = createHttpClient()
                     audioEngine.setTablaGain(it)
                 }
         }
+        scope.launch {
+            snapshotFlow { metronomeGain.floatValue }
+                .distinctUntilChanged()
+                .collect { 
+                    audioEngine.setMetronomeGain(it)
+                }
+        }
 
         scope.launch {
             snapshotFlow { isLeftHandMuted.value }
@@ -672,6 +690,7 @@ val client = createHttpClient()
         }
 
         start()
+        loadAssets()
     }
 
     private fun startMetronome() {
@@ -737,7 +756,8 @@ val client = createHttpClient()
 
     // System Settings & SoundFont / Instrument Customization
     val selectedSettingsTab = mutableIntStateOf(0)
-    val useVexflow = mutableStateOf(false)
+    val useOsmdRenderer = mutableStateOf(false)
+    val useVexflow get() = useOsmdRenderer
     val pitchEngineAlgo = mutableStateOf("Phase Vocoder")
     val stemSplitQuality = mutableStateOf("Standard")
 
@@ -1037,7 +1057,7 @@ fun playPattern(pattern: DrumTutorial) {
         }
     }
 }
-private fun loadAssets() {
+fun loadAssets() {
     scope.launch {
         // Define your strict blueprint layout sequence once
         val standardLabels = listOf(
@@ -1290,6 +1310,14 @@ fun scrubSongPlayhead(targetProgress: Float) {
     val isExportingPDF = mutableStateOf(false)
 
     val sustainActive = mutableStateOf(false)
+    val sustainPedalActive = mutableStateOf(false) // CC 64 Damper/Sustain
+    val sostenutoPedalActive = mutableStateOf(false) // CC 66 Sostenuto
+    val softPedalActive = mutableStateOf(false) // CC 67 Soft / Una Corda
+    val lastMidiVelocity = mutableIntStateOf(0)
+    val lastMidiChannel = mutableIntStateOf(1)
+    val connectedMidiDeviceName = mutableStateOf<String?>(null)
+    val midiConnectionPrompt = mutableStateOf<MidiPromptMessage?>(null)
+
     private val notesToReleaseOnSustainUp = mutableSetOf<Int>()
     val virtualMidiConnected = mutableStateOf(false)
     val midiConnectedDevices = androidx.compose.runtime.mutableStateListOf<String>()
@@ -1511,41 +1539,78 @@ fun scrubSongPlayhead(targetProgress: Float) {
         audioEngine.seekTo(0L)
     }
 
-    fun onMidiEventReceived(note: Int, isNoteOn: Boolean) {
+    fun onMidiEventReceived(note: Int, isNoteOn: Boolean, velocity: Int = 90, channel: Int = 1) {
         viewModelScope.launch(Dispatchers.Main) {
-            if (isNoteOn) {
-                audioEngine.noteOn(note, 90f)
+            lastMidiChannel.intValue = channel
+            if (isNoteOn && velocity > 0) {
+                lastMidiVelocity.intValue = velocity
+                audioEngine.noteOn(note, velocity.toFloat())
                 midiActiveNotes[note] = true
                 midiPlayingNote.value = note
             } else {
-                audioEngine.noteOff(note)
-                midiActiveNotes.remove(note)
-                if (midiPlayingNote.value == note) {
-                    midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                if (sustainPedalActive.value) {
+                    notesToReleaseOnSustainUp.add(note)
+                } else {
+                    audioEngine.noteOff(note)
+                    midiActiveNotes.remove(note)
+                    if (midiPlayingNote.value == note) {
+                        midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                    }
                 }
             }
         }
     }
 
-    fun onMidiPedalEventReceived(isPressed: Boolean) {
-        sustainActive.value = isPressed
-        if (!isPressed) {
-            notesToReleaseOnSustainUp.forEach { note ->
-                midiActiveNotes[note] = false
-                audioEngine.noteOff(note)
+    fun onMidiPedalEventReceived(pedalType: Int = 64, isPressed: Boolean) {
+        viewModelScope.launch(Dispatchers.Main) {
+            when (pedalType) {
+                64 -> { // Damper / Sustain Pedal
+                    sustainPedalActive.value = isPressed
+                    sustainActive.value = isPressed
+                    if (!isPressed) {
+                        notesToReleaseOnSustainUp.forEach { note ->
+                            midiActiveNotes.remove(note)
+                            audioEngine.noteOff(note)
+                        }
+                        notesToReleaseOnSustainUp.clear()
+                        if (midiPlayingNote.value != null && !midiActiveNotes.containsKey(midiPlayingNote.value)) {
+                            midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                        }
+                    }
+                }
+                66 -> { // Sostenuto Pedal
+                    sostenutoPedalActive.value = isPressed
+                }
+                67 -> { // Soft Pedal / Una Corda
+                    softPedalActive.value = isPressed
+                }
             }
-            notesToReleaseOnSustainUp.clear()
         }
+    }
+
+    fun showMidiPrompt(title: String, message: String, isConnected: Boolean, deviceName: String) {
+        viewModelScope.launch(Dispatchers.Main) {
+            midiConnectionPrompt.value = MidiPromptMessage(
+                title = title,
+                message = message,
+                isConnected = isConnected,
+                deviceName = deviceName
+            )
+        }
+    }
+
+    fun dismissMidiPrompt() {
+        midiConnectionPrompt.value = null
     }
 
     fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, fileName: String = "Imported Score") {
         isImportingPDF.value = true
         viewModelScope.launch(Dispatchers.Default) {
-            val parsedScore = fileBytes?.let { com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.parse(it, fileName) }
+            val parsedScore = fileBytes?.let { com.creativeblisslabs.peqlearn.app.util.UniversalScoreParser.parse(it, fileName, uriString) }
                 ?: com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(fileBytes ?: ByteArray(0))
 
             val finalScore = parsedScore ?: Score(
-                title = fileName.removeSuffix(".mid").removeSuffix(".midi"),
+                title = fileName.substringBeforeLast("."),
                 tempo = 120f,
                 timeSignature = "4/4",
                 measures = listOf(Measure(notes = emptyList()))
@@ -1720,3 +1785,10 @@ fun scrubSongPlayhead(targetProgress: Float) {
         return "${noteNames[noteIndex]}$octave"
     }
 }
+
+data class MidiPromptMessage(
+    val title: String,
+    val message: String,
+    val isConnected: Boolean,
+    val deviceName: String
+)

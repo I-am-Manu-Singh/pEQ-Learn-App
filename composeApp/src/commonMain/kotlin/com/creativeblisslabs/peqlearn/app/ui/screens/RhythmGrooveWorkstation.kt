@@ -22,11 +22,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.LibraryMusic 
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.metronomeActive
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.metronomeBpm
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.toggleMetronome
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.setMetronomeBpm
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQGlassCard
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay    // Added for step timing loop
 import kotlinx.coroutines.isActive // Added for coroutine cancellation checking
@@ -59,14 +62,10 @@ fun ScaleSelector(selected: String, onSelect: (String) -> Unit) {
     ) {
         items(notes) { note ->
             val isSelected = note == selected
-            FilterChip(
+            pEQFilterChip(
                 selected = isSelected,
                 onClick = { onSelect(note) },
-                label = { Text(note, fontWeight = FontWeight.Bold) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                )
+                label = { Text(note, fontWeight = FontWeight.Bold) }
             )
         }
     }
@@ -117,6 +116,8 @@ private fun MetronomeControlSection(
             )
         }
         // Genre Workstation Tab Row
+        val genreTabs = listOf("Western", "Hindustani", "Carnatic")
+        val genreTabIcons = listOf(Icons.Default.LibraryMusic, Icons.Default.GraphicEq, Icons.Default.SurroundSound)
         TabRow(
             selectedTabIndex = workstationTab,
             indicator = { tabPositions ->
@@ -128,15 +129,24 @@ private fun MetronomeControlSection(
                 }
             }
         ) {
-            listOf("Western", "Hindustani", "Carnatic").forEachIndexed { index, title ->
+            genreTabs.forEachIndexed { index, title ->
+                val isSelected = workstationTab == index
                 Tab(
-                    selected = workstationTab == index,
+                    selected = isSelected,
                     onClick = { onTabChange(index) },
+                    icon = {
+                        Icon(
+                            imageVector = genreTabIcons.getOrElse(index) { Icons.Default.MusicNote },
+                            contentDescription = title,
+                            tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
                     text = {
                         Text(
                             text = title,
-                            fontWeight = if (workstationTab == index) FontWeight.Bold else FontWeight.Normal,
-                            color = if (workstationTab == index) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 )
@@ -245,7 +255,10 @@ private fun MetronomeControlSection(
                 },
                 modifier = Modifier.weight(1.2f).height(46.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = primaryColor,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             ) {
                 Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
@@ -299,17 +312,17 @@ private fun MetronomeControlSection(
                         playing -> primaryColor // Solid focus layer
                         isDownbeat -> primaryColor.copy(alpha = 0.40f) // Distinct downbeat weight
                         isKhaliBeat -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f) // Muted drop tint
-                        else -> primaryColor.copy(alpha = 0.15f) // Balanced step layer
+                        else -> Color.Transparent // Glass layer base
                     }
 
                     val contentTextColor = when {
-                        playing -> Color.White
+                        playing -> MaterialTheme.colorScheme.onPrimary
                         isDownbeat -> primaryColor
                         isKhaliBeat -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         else -> primaryColor.copy(alpha = 0.85f)
                     }
 
-                    Card(
+                    pEQGlassCard(
                         modifier = Modifier
                             .weight(1f)
                             .height(42.dp)
@@ -322,16 +335,14 @@ private fun MetronomeControlSection(
                                 if (!labelText.isNullOrBlank()) {
                                     viewModel.audioEngine.playSample(labelText, beat, "TABLA")
                                 }
-                            },
-                        shape = RoundedCornerShape(8.dp),
-                        border = when {
-                            playing -> BorderStroke(2.dp, MaterialTheme.colorScheme.outline)
-                            isDownbeat -> BorderStroke(2.dp, primaryColor)
-                            else -> null
-                        },
-                        colors = CardDefaults.cardColors(containerColor = cardContainerColor)
+                            }
                     ) {
-                        Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(cardContainerColor), 
+                            Alignment.Center
+                        ) {
                             val labelText = when (workstationTab) {
                                 0 -> ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx)?.bolSequence?.getOrNull(beat) ?: "${beat + 1}"
                                 1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat) ?: "B"
@@ -359,42 +370,44 @@ private fun MetronomeControlSection(
                     val stepState = viewModel.sequencerSteps.getOrNull(s)?.value ?: 0
                     val playing = isPlaying && viewModel.currentStep.value == s
 
-                    Box(
+                    pEQGlassCard(
                         Modifier
                             .weight(1f)
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                when {
-                                    playing -> Color.White
-                                    stepState == 2 -> primaryColor
-                                    stepState == 1 -> primaryColor.copy(alpha = 0.4f)
-                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                }
-                            )
-                            .clickable {
-                                if (s < viewModel.sequencerSteps.size) {
-                                    val currentState = viewModel.sequencerSteps[s].value
-                                    viewModel.sequencerSteps[s].value = (currentState + 1) % 3
-                                }
-                            },
-                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "${s + 1}",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (playing) Color.Black else MaterialTheme.colorScheme.onSurface
-                        )
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(
+                                    when {
+                                        playing -> MaterialTheme.colorScheme.onSurface
+                                        stepState == 2 -> primaryColor
+                                        stepState == 1 -> primaryColor.copy(alpha = 0.4f)
+                                        else -> Color.Transparent
+                                    }
+                                )
+                                .clickable {
+                                    if (s < viewModel.sequencerSteps.size) {
+                                        val currentState = viewModel.sequencerSteps[s].value
+                                        viewModel.sequencerSteps[s].value = (currentState + 1) % 3
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${s + 1}",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (playing) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
             }
         }
 
         // Dynamic Text Context Description Surface
-        Surface(
-            color = primaryColor.copy(alpha = 0.06f),
-            shape = RoundedCornerShape(12.dp),
+        pEQGlassCard(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -632,13 +645,112 @@ fun GrooveStudio(viewModel: AppViewModel, primaryColor: Color) {
 
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
         // --- CONTROL BAR ---
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { isPlaying = !isPlaying }) {
-                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null)
+        pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Dropdown to select predefined drum pattern
+                var patternExpanded by remember { mutableStateOf(false) }
+                var selectedPatternName by remember { mutableStateOf<String?>(null) }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedButton(
+                            onClick = { patternExpanded = true },
+                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))
+                        ) {
+                            Text(
+                                text = selectedPatternName ?: "SELECT DRUM PATTERN (${patterns.size})",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = patternExpanded,
+                            onDismissRequest = { patternExpanded = false },
+                            modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        ) {
+                            patterns.forEach { pat ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(pat.name, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                            Text("${pat.genre} • ${pat.bpm} BPM", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedPatternName = pat.name
+                                        patternExpanded = false
+                                        // Load pattern events into grid
+                                        selectedKit?.labels?.forEach { lbl ->
+                                            val steps = gridState[lbl]
+                                            if (steps != null) {
+                                                for (i in 0 until steps.size) steps[i] = 0
+                                            }
+                                        }
+                                        pat.events.forEach { evt ->
+                                            val label = selectedKit?.labels?.getOrNull(evt.padIndex)
+                                                ?: selectedKit?.labels?.firstOrNull()
+                                            if (label != null) {
+                                                val steps = gridState[label]
+                                                if (steps != null && evt.step in 0 until steps.size) {
+                                                    steps[evt.step] = 1
+                                                }
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Kit indicator badge
+                    Surface(
+                        color = primaryColor.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = selectedKit?.name ?: "KIT",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = primaryColor
+                        )
+                    }
                 }
-                Slider(value = bpm, onValueChange = { bpm = it }, valueRange = 60f..200f, modifier = Modifier.weight(1f))
-                Text("${bpm.toInt()} BPM", fontWeight = FontWeight.Bold)
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilledTonalIconButton(
+                        onClick = { isPlaying = !isPlaying },
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = if (isPlaying) MaterialTheme.colorScheme.error else primaryColor
+                        )
+                    ) {
+                        Icon(
+                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Slider(
+                        value = bpm,
+                        onValueChange = { bpm = it },
+                        valueRange = 60f..200f,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("${bpm.toInt()} BPM", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
             }
         }
 
@@ -653,19 +765,22 @@ fun GrooveStudio(viewModel: AppViewModel, primaryColor: Color) {
     Row(Modifier.fillMaxWidth().height(30.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         for (i in 0 until steps.size) {
             val isOn = steps[i] == 1
-            Box(
+            pEQGlassCard(
                 Modifier.weight(1f).fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(
-                        when {
-                            i == currentStep -> Color.White.copy(alpha = 0.5f)
-                            isOn -> primaryColor
-                            else -> surfaceVariantColor
-                        }
-                    )
-                    // Mutates seamlessly because 'steps' is explicitly a SnapshotStateList
-                    .clickable { steps[i] = if (isOn) 0 else 1 } 
-            )
+            ) {
+                Box(
+                    Modifier.fillMaxSize()
+                        .background(
+                            when {
+                                i == currentStep -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                isOn -> primaryColor
+                                else -> Color.Transparent
+                            }
+                        )
+                        // Mutates seamlessly because 'steps' is explicitly a SnapshotStateList
+                        .clickable { steps[i] = if (isOn) 0 else 1 } 
+                )
+            }
         }
     }
 }

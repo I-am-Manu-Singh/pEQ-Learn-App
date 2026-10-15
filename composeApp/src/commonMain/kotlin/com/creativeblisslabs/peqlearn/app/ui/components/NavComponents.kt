@@ -63,7 +63,7 @@ private fun NavRailItem(tab: Tab, isSelected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(48.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         color = backgroundColor
     ) {
         Row(
@@ -80,10 +80,8 @@ private fun NavRailItem(tab: Tab, isSelected: Boolean, onClick: () -> Unit) {
             Spacer(Modifier.width(16.dp))
             Text(
                 tab.label,
-                fontSize = 11.sp,
-                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
-                color = contentColor,
-                letterSpacing = 1.sp
+                style = MaterialTheme.typography.labelLarge,
+                color = contentColor
             )
         }
     }
@@ -116,7 +114,7 @@ fun BottomNavigationBar(
         ) {
             // Left Tabs (Dashboard, Learn)
             leftTabs.forEach { tab ->
-                val isSelected = current == tab
+                val isSelected = current == tab || (current == Tab.Player && tab == Tab.Dashboard)
                 val iconColor = if (isSelected)
                     MaterialTheme.colorScheme.primary
                 else
@@ -125,7 +123,7 @@ fun BottomNavigationBar(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(MaterialTheme.shapes.medium)
                         .clickable { onSelect(tab) }
                         .padding(horizontal = 4.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -137,10 +135,10 @@ fun BottomNavigationBar(
                         tint = iconColor,
                         modifier = Modifier.size(24.dp)
                     )
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = tab.label,
-                        fontSize = 9.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
                         color = iconColor,
                         maxLines = 1
@@ -148,8 +146,8 @@ fun BottomNavigationBar(
                     if (isSelected) {
                         Box(
                             modifier = Modifier
-                                .padding(top = 3.dp)
-                                .size(4.dp)
+                                .padding(top = 4.dp)
+                                .size(3.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primary)
                         )
@@ -197,7 +195,7 @@ fun BottomNavigationBar(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(MaterialTheme.shapes.medium)
                         .clickable { onSelect(tab) }
                         .padding(horizontal = 4.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -209,10 +207,10 @@ fun BottomNavigationBar(
                         tint = iconColor,
                         modifier = Modifier.size(24.dp)
                     )
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = tab.label,
-                        fontSize = 9.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
                         color = iconColor,
                         maxLines = 1
@@ -220,8 +218,8 @@ fun BottomNavigationBar(
                     if (isSelected) {
                         Box(
                             modifier = Modifier
-                                .padding(top = 3.dp)
-                                .size(4.dp)
+                                .padding(top = 4.dp)
+                                .size(3.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primary)
                         )

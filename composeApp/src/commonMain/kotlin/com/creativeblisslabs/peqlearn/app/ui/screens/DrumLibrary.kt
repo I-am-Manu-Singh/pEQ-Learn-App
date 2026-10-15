@@ -47,11 +47,11 @@ fun DrumLibrary(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
                         }
                         Column {
                             Text("DRUM & SAMPLE LIBRARY", fontSize = 15.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
-                            Text("Factory Soundbanks • High-Precision Transient Samples", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+                            Text("Factory Soundbanks • High-Precision Transient Samples", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                         }
                     }
                 }
@@ -80,8 +80,8 @@ fun DrumLibrary(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1E28)),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     ) {
                         Row(
                             modifier = Modifier.padding(16.dp),
@@ -96,8 +96,8 @@ fun DrumLibrary(
                                     Icon(Icons.Default.Album, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                                 }
                                 Column {
-                                    Text(kit, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
-                                    Text("16 Velocity Multi-Samples • 24-bit 48kHz WAV", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+                                    Text(kit, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("16 Velocity Multi-Samples • 24-bit 48kHz WAV", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                                 }
                             }
 

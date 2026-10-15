@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+    <title>OpenSheetMusicDisplay Notation Viewer</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #0c0f12;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 12px;
+            overflow: auto;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #osmdCanvas {
+            min-width: 100%;
+            display: inline-block;
+            background-color: transparent;
+        }
+        #statusOverlay {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(22, 25, 34, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 16px 24px;
+            font-size: 13px;
+            color: #fff;
+            text-align: center;
+            z-index: 999;
+            pointer-events: none;
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+    </style>
+    <script src="file:///android_asset/opensheetmusicdisplay.min.js"></script>
+</head>
+<body>
+    <div id="statusOverlay">Loading score...</div>
+    <div id="osmdCanvas"></div>
+
+    <script>
+        let osmd = null;
+        let isDarkMode = true;
+        let currentZoom = 0.85;
+
+        function showStatus(text, autoHideMs = 0) {
+            const el = document.getElementById("statusOverlay");
+            if (!el) return;
+            el.innerText = text;
+            el.style.display = "block";
+            if (autoHideMs > 0) {
+                setTimeout(() => { el.style.display = "none"; }, autoHideMs);
+            }
+        }
+
+        function hideStatus() {
+            const el = document.getElementById("statusOverlay");
+            if (el) el.style.display = "none";
+        }
+
+        function initOsmd(options = {}) {
+            const container = document.getElementById("osmdCanvas");
+            container.innerHTML = "";
+
+            const defaultOptions = {
+                autoResize: true,
+                backend: "svg",
+                drawingParameters: "default",
+                drawPartNames: true,
+                drawTitle: true,
+                drawSubtitle: true,
+                drawFingerings: true,
+                disableCursor: false,
+                cursorsOptions: [{
+                    type: 1,
+                    color: "#FF4081",
+                    alpha: 0.8,
+                    follow: true
+                }],
+                pageBackgroundColor: isDarkMode ? "#0c0f12" : "#ffffff",
+                pageFormat: "Endless", // Continuous scroll
+                coloringEnabled: true
+            };
+
+            const merged = Object.assign({}, defaultOptions, options);
+            osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(container, merged);
+
+            // Apply dark theme engraving rules if dark mode
+            applyThemeColors();
+        }
+
+        function applyThemeColors() {
+            if (!osmd || !osmd.EngravingRules) return;
+            const primaryColor = isDarkMode ? "#FFFFFF" : "#1A1A1A";
+            const secondaryColor = isDarkMode ? "#9E9E9E" : "#4A4A4A";
+
+            osmd.EngravingRules.DefaultColorMusic = primaryColor;
+            osmd.EngravingRules.DefaultColorNotehead = primaryColor;
+            osmd.EngravingRules.DefaultColorStem = primaryColor;
+            osmd.EngravingRules.DefaultColorRest = primaryColor;
+            osmd.EngravingRules.DefaultColorLabel = primaryColor;
+            osmd.EngravingRules.DefaultColorTitle = primaryColor;
+            osmd.EngravingRules.DefaultFontColor = primaryColor;
+            osmd.EngravingRules.StaffLineColor = isDarkMode ? "#70757d" : "#000000";
+        }
+
+        function scoreJsonToMusicXML(score) {
+            const title = score.title || "Score";
+            const composer = score.composer || "pEQ-Learn";
+            const tempo = score.tempo || 120;
+            const timeSig = score.timeSignature || "4/4";
+            const parts = timeSig.split("/");
+            const beats = parseInt(parts[0]) || 4;
+            const beatType = parseInt(parts[1]) || 4;
+            const measures = score.measures || [];
+
+            function midiToStepAndOctave(midi) {
+                const stepNames = ["C", "C", "D", "D", "E", "F", "F", "G", "G", "A", "A", "B"];
+                const alters = [0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0];
+                const index = midi % 12;
+                const octave = Math.floor(midi / 12) - 1;
+                return {
+                    step: stepNames[index],
+                    alter: alters[index],
+                    octave: octave
+                };
+            }
+
+            let xml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <work><work-title>${title}</work-title></work>
+  <identification>
+    <creator type="composer">${composer}</creator>
+    <encoding><software>pEQ-Learn OSMD Renderer</software></encoding>
+  </identification>
+  <part-list>
+    <score-part id="P1">
+      <part-name>Grand Staff</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1">
+`;
+
+            measures.forEach((m, mIdx) => {
+                const measureNum = mIdx + 1;
+                xml += `    <measure number="${measureNum}">\n`;
+                if (mIdx === 0) {
+                    xml += `      <attributes>
+        <divisions>4</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>${beats}</beats><beat-type>${beatType}</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <direction placement="above">
+        <direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${tempo}</per-minute></metronome></direction-type>
+        <sound tempo="${tempo}"/>
+      </direction>\n`;
+                }
+
+                const notes = m.notes || [];
+                if (notes.length === 0) {
+                    // Whole rest
+                    xml += `      <note>
+        <rest/>
+        <duration>${beats * 4}</duration>
+        <voice>1</voice>
+        <type>whole</type>
+        <staff>1</staff>
+      </note>\n`;
+                } else {
+                    // Sort notes by position
+                    const sortedNotes = [...notes].sort((a, b) => a.position - b.position);
+                    sortedNotes.forEach((n, nIdx) => {
+                        const pitchInfo = midiToStepAndOctave(n.midiNote);
+                        const durQuarter = Math.max(0.25, n.duration || 1.0);
+                        const divisionsVal = Math.round(durQuarter * 4);
+                        const staff = (n.midiNote >= 60) ? 1 : 2;
+
+                        let typeStr = "quarter";
+                        if (durQuarter <= 0.25) typeStr = "16th";
+                        else if (durQuarter <= 0.5) typeStr = "eighth";
+                        else if (durQuarter >= 4.0) typeStr = "whole";
+                        else if (durQuarter >= 2.0) typeStr = "half";
+
+                        xml += `      <note>
+        <pitch>
+          <step>${pitchInfo.step}</step>
+          ${pitchInfo.alter !== 0 ? `<alter>${pitchInfo.alter}</alter>` : ""}
+          <octave>${pitchInfo.octave}</octave>
+        </pitch>
+        <duration>${divisionsVal}</duration>
+        <voice>1</voice>
+        <type>${typeStr}</type>
+        <staff>${staff}</staff>
+      </note>\n`;
+                    });
+                }
+                xml += `    </measure>\n`;
+            });
+
+            xml += `  </part>\n</score-partwise>`;
+            return xml;
+        }
+
+        // Public API functions exposed to WebView / Kotlin
+        window.loadMusicXML = function(xmlString) {
+            try {
+                showStatus("Rendering score...");
+                initOsmd();
+                osmd.load(xmlString).then(() => {
+                    osmd.zoom = currentZoom;
+                    osmd.render();
+                    if (osmd.cursor) {
+                        osmd.cursor.show();
+                        osmd.cursor.reset();
+                    }
+                    hideStatus();
+                }).catch(err => {
+                    showStatus("Error rendering score: " + err, 4000);
+                    console.error(err);
+                });
+            } catch (e) {
+                showStatus("OSMD Load Error: " + e.message, 4000);
+            }
+        };
+
+        window.loadScoreBase64 = function(base64Str) {
+            try {
+                const jsonStr = decodeURIComponent(escape(window.atob(base64Str)));
+                const score = JSON.parse(jsonStr);
+                const xml = scoreJsonToMusicXML(score);
+                window.loadMusicXML(xml);
+            } catch (e) {
+                showStatus("JSON Decode Error: " + e.message, 4000);
+            }
+        };
+
+        window.drawScore = function(scoreJsonStr) {
+            try {
+                const score = (typeof scoreJsonStr === "string") ? JSON.parse(scoreJsonStr) : scoreJsonStr;
+                const xml = scoreJsonToMusicXML(score);
+                window.loadMusicXML(xml);
+            } catch (e) {
+                showStatus("Score Parse Error: " + e.message, 4000);
+            }
+        };
+
+        window.drawScoreBase64 = function(base64Str) {
+            window.loadScoreBase64(base64Str);
+        };
+
+        window.loadSampleScore = function() {
+            fetch("file:///android_asset/osmd_resources/sample.musicxml")
+                .then(res => res.text())
+                .then(xml => window.loadMusicXML(xml))
+                .catch(err => {
+                    // Fallback to minimal built-in score
+                    const fallbackScore = {
+                        title: "Concert Prelude",
+                        tempo: 120,
+                        measures: [
+                            { notes: [{ midiNote: 60, position: 0, duration: 1 }, { midiNote: 64, position: 1, duration: 1 }, { midiNote: 67, position: 2, duration: 1 }, { midiNote: 72, position: 3, duration: 1 }] },
+                            { notes: [{ midiNote: 65, position: 0, duration: 1 }, { midiNote: 69, position: 1, duration: 1 }, { midiNote: 72, position: 2, duration: 2 }] }
+                        ]
+                    };
+                    window.drawScore(fallbackScore);
+                });
+        };
+
+        window.setPlayhead = function(measureIndex, offset) {
+            try {
+                if (!osmd || !osmd.cursor) return;
+                // Move cursor to measure
+                const cursor = osmd.cursor;
+                if (!cursor.iterator) return;
+
+                // Attempt to match measure index
+                if (cursor.iterator.currentMeasureIndex !== measureIndex) {
+                    cursor.reset();
+                    while (cursor.iterator && cursor.iterator.currentMeasureIndex < measureIndex && !cursor.iterator.EndReached) {
+                        cursor.next();
+                    }
+                }
+
+                // Smooth scroll view to follow cursor
+                if (cursor.cursorElement) {
+                    const rect = cursor.cursorElement.getBoundingClientRect();
+                    const targetScroll = window.scrollX + rect.left - (window.innerWidth / 2);
+                    window.scrollTo({ left: Math.max(0, targetScroll), behavior: "auto" });
+                }
+            } catch (e) {
+                console.error("setPlayhead Error: ", e);
+            }
+        };
+
+        window.setZoom = function(zoomLevel) {
+            currentZoom = Math.max(0.3, Math.min(3.0, zoomLevel));
+            if (osmd) {
+                osmd.zoom = currentZoom;
+                osmd.render();
+            }
+        };
+
+        window.setTheme = function(isDark) {
+            isDarkMode = !!isDark;
+            document.body.style.backgroundColor = isDarkMode ? "#0c0f12" : "#ffffff";
+            document.body.style.color = isDarkMode ? "#ffffff" : "#1a1a1a";
+            if (osmd) {
+                osmd.setOptions({ pageBackgroundColor: isDarkMode ? "#0c0f12" : "#ffffff" });
+                applyThemeColors();
+                osmd.render();
+            }
+        };
+
+        // Initialize on DOM load
+        document.addEventListener("DOMContentLoaded", () => {
+            initOsmd();
+            window.loadSampleScore();
+        });
+    </script>
+</body>
+</html>

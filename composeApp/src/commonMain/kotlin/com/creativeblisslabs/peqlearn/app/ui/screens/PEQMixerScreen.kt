@@ -23,6 +23,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.creativeblisslabs.peqlearn.app.ui.components.*
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 
 data class AudioStemChannel(
@@ -56,7 +57,8 @@ fun pEQMixerScreen(
     Scaffold(
         topBar = {
             Surface(
-                tonalElevation = 4.dp
+                color = MaterialTheme.colorScheme.background,
+                tonalElevation = 2.dp
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -66,14 +68,13 @@ fun pEQMixerScreen(
                         Column {
                             Text(
                                 text = "STEM MIXER",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Black,
+                                style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
                                 text = "• 6 Isolated AI Stems",
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.6f)
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
                         }
 
@@ -83,92 +84,232 @@ fun pEQMixerScreen(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isMasterPlaying) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = MaterialTheme.shapes.small
                     ) {
                         Icon(if (isMasterPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(if (isMasterPlaying) "PAUSE" else "PLAY STEMS", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(if (isMasterPlaying) "PAUSE" else "PLAY STEMS", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
         }
     ) { innerPadding ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(Color(0xFF0C0E14))
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            // Master Strip Summary
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF1B1E28),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            val isLandscapeOrWide = maxWidth > 800.dp || maxWidth > maxHeight
+
+            if (isLandscapeOrWide) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Column {
-                        Text("MASTER BUS OUTPUT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Text("${(masterVolume * 100).toInt()}% • 0.0 dB Headroom", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
-                    }
+                    // LEFT PANEL: Master Bus output fader card, presets, headroom
+                    Column(
+                        modifier = Modifier
+                            .width(280.dp)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        pEQGlassCard(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "MASTER BUS OUTPUT",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "${(masterVolume * 100).toInt()}% • 0.0 dB Headroom",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
 
-                    Slider(
-                        value = masterVolume,
-                        onValueChange = { masterVolume = it },
-                        modifier = Modifier.width(180.dp)
-                    )
-                }
-            }
-
-            // Quick Stem Presets Bar
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                item{
-                FilterChip(
-                    selected = false,
-                    onClick = {
-                        stems.forEach { it.isMuted = false; it.isSolo = false; it.volume = 0.8f; it.pan = 0f }
-                    },
-                    label = { Text("Bypass Reset", fontSize = 11.sp) }
-                )
-            }
-                item {
-
-                    FilterChip(
-                        selected = stems.firstOrNull()?.isSolo == true,
-                        onClick = {
-                            stems.forEachIndexed { idx, it ->
-                                it.isSolo = (idx == 0)
-                                it.isMuted = (idx != 0)
+                                Slider(
+                                    value = masterVolume,
+                                    onValueChange = { masterVolume = it },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
-                        },
-                        label = { Text("Acappella Solo", fontSize = 11.sp) }
-                    )
-                }
-                    item {
+                        }
 
-                        FilterChip(
-                            selected = stems.firstOrNull()?.isMuted == true && stems.getOrNull(1)?.isMuted == false,
-                            onClick = {
-                                stems.forEachIndexed { idx, it ->
-                                    it.isMuted = (idx == 0) // Mute Vocals for Karaoke
-                                    it.isSolo = false
-                                }
-                            },
-                            label = { Text("Karaoke Mode", fontSize = 11.sp) }
+                        Text(
+                            text = "QUICK STEM PRESETS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            letterSpacing = 1.sp
                         )
-                    }
-                        item {
 
-                            FilterChip(
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            pEQFilterChip(
+                                selected = false,
+                                onClick = {
+                                    stems.forEach { it.isMuted = false; it.isSolo = false; it.volume = 0.8f; it.pan = 0f }
+                                },
+                                label = { Text("Bypass Reset", style = MaterialTheme.typography.labelSmall) }
+                            )
+
+                            pEQFilterChip(
+                                selected = stems.firstOrNull()?.isSolo == true,
+                                onClick = {
+                                    stems.forEachIndexed { idx, it ->
+                                        it.isSolo = (idx == 0)
+                                        it.isMuted = (idx != 0)
+                                    }
+                                },
+                                label = { Text("Acappella Solo", style = MaterialTheme.typography.labelSmall) }
+                            )
+
+                            pEQFilterChip(
+                                selected = stems.firstOrNull()?.isMuted == true && stems.getOrNull(1)?.isMuted == false,
+                                onClick = {
+                                    stems.forEachIndexed { idx, it ->
+                                        it.isMuted = (idx == 0)
+                                        it.isSolo = false
+                                    }
+                                },
+                                label = { Text("Karaoke Mode", style = MaterialTheme.typography.labelSmall) }
+                            )
+
+                            pEQFilterChip(
+                                selected = stems.getOrNull(1)?.isSolo == true && stems.getOrNull(2)?.isSolo == true,
+                                onClick = {
+                                    stems.forEachIndexed { idx, it ->
+                                        it.isMuted = (idx != 1 && idx != 2)
+                                        it.isSolo = (idx == 1 || idx == 2)
+                                    }
+                                },
+                                label = { Text("Rhythm Solo", style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+
+                        Spacer(Modifier.height(40.dp))
+                    }
+
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f))
+
+                    // RIGHT PANEL: Multi-channel fader desk
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    ) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                        ) {
+                            items(stems) { stem ->
+                                StemFaderColumn(
+                                    stem = stem,
+                                    onVolumeChange = { stem.volume = it },
+                                    onPanChange = { stem.pan = it },
+                                    onMuteToggle = { stem.isMuted = !stem.isMuted },
+                                    onSoloToggle = {
+                                        val newSolo = !stem.isSolo
+                                        stem.isSolo = newSolo
+                                        if (newSolo) {
+                                            stems.forEach { if (it != stem) it.isMuted = true }
+                                        } else {
+                                            stems.forEach { it.isMuted = false }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                // PORTRAIT STACKED LAYOUT
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Master Strip Summary
+                    pEQGlassCard(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "MASTER BUS OUTPUT",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "${(masterVolume * 100).toInt()}% • 0.0 dB Headroom",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+
+                            Slider(
+                                value = masterVolume,
+                                onValueChange = { masterVolume = it },
+                                modifier = Modifier.width(180.dp)
+                            )
+                        }
+                    }
+
+                    // Quick Stem Presets Bar
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            pEQFilterChip(
+                                selected = false,
+                                onClick = {
+                                    stems.forEach { it.isMuted = false; it.isSolo = false; it.volume = 0.8f; it.pan = 0f }
+                                },
+                                label = { Text("Bypass Reset", style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                        item {
+                            pEQFilterChip(
+                                selected = stems.firstOrNull()?.isSolo == true,
+                                onClick = {
+                                    stems.forEachIndexed { idx, it ->
+                                        it.isSolo = (idx == 0)
+                                        it.isMuted = (idx != 0)
+                                    }
+                                },
+                                label = { Text("Acappella Solo", style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                        item {
+                            pEQFilterChip(
+                                selected = stems.firstOrNull()?.isMuted == true && stems.getOrNull(1)?.isMuted == false,
+                                onClick = {
+                                    stems.forEachIndexed { idx, it ->
+                                        it.isMuted = (idx == 0) // Mute Vocals for Karaoke
+                                        it.isSolo = false
+                                    }
+                                },
+                                label = { Text("Karaoke Mode", style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                        item {
+                            pEQFilterChip(
                                 selected = stems.getOrNull(1)?.isSolo == true && stems.getOrNull(2)?.isSolo == true,
                                 onClick = {
                                     stems.forEachIndexed { idx, it ->
@@ -177,33 +318,35 @@ fun pEQMixerScreen(
                                         it.isSolo = (idx == 1 || idx == 2)
                                     }
                                 },
-                                label = { Text("Rhythm Solo", fontSize = 11.sp) }
+                                label = { Text("Rhythm Solo", style = MaterialTheme.typography.labelSmall) }
                             )
                         }
-            }
+                    }
 
-            // Stems Console Channels (Horizontal Scrollable Desk)
-            LazyRow(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) {
-                items(stems) { stem ->
-                    StemFaderColumn(
-                        stem = stem,
-                        onVolumeChange = { stem.volume = it },
-                        onPanChange = { stem.pan = it },
-                        onMuteToggle = { stem.isMuted = !stem.isMuted },
-                        onSoloToggle = {
-                            val newSolo = !stem.isSolo
-                            stem.isSolo = newSolo
-                            if (newSolo) {
-                                stems.forEach { if (it != stem) it.isMuted = true }
-                            } else {
-                                stems.forEach { it.isMuted = false }
-                            }
+                    // Stems Console Channels (Horizontal Scrollable Desk)
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        items(stems) { stem ->
+                            StemFaderColumn(
+                                stem = stem,
+                                onVolumeChange = { stem.volume = it },
+                                onPanChange = { stem.pan = it },
+                                onMuteToggle = { stem.isMuted = !stem.isMuted },
+                                onSoloToggle = {
+                                    val newSolo = !stem.isSolo
+                                    stem.isSolo = newSolo
+                                    if (newSolo) {
+                                        stems.forEach { if (it != stem) it.isMuted = true }
+                                    } else {
+                                        stems.forEach { it.isMuted = false }
+                                    }
+                                }
+                            )
                         }
-                    )
+                    }
                 }
             }
         }
@@ -218,11 +361,8 @@ fun StemFaderColumn(
     onMuteToggle: () -> Unit,
     onSoloToggle: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.width(96.dp).fillMaxHeight(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF151822)),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+    pEQGlassCard(
+        modifier = Modifier.width(96.dp).fillMaxHeight()
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(8.dp),
@@ -233,9 +373,8 @@ fun StemFaderColumn(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = stem.name.uppercase(),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1
                 )
                 Spacer(Modifier.height(4.dp))
@@ -254,25 +393,25 @@ fun StemFaderColumn(
                 Button(
                     onClick = onMuteToggle,
                     modifier = Modifier.weight(1f).height(28.dp),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = MaterialTheme.shapes.extraSmall,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (stem.isMuted) MaterialTheme.colorScheme.error else Color.White.copy(alpha = 0.1f)
+                        containerColor = if (stem.isMuted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                     ),
                     contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("M", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("M", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
 
                 Button(
                     onClick = onSoloToggle,
                     modifier = Modifier.weight(1f).height(28.dp),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = MaterialTheme.shapes.extraSmall,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (stem.isSolo) Color(0xFFFFB300) else Color.White.copy(alpha = 0.1f)
+                        containerColor = if (stem.isSolo) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                     ),
                     contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("S", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("S", style = MaterialTheme.typography.labelMedium, color = if (stem.isSolo) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                 }
             }
 
@@ -284,7 +423,7 @@ fun StemFaderColumn(
             ) {
                 // Peak Meter
                 Column(
-                    modifier = Modifier.width(6.dp).fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(Color(0xFF0C0E14)),
+                    modifier = Modifier.width(6.dp).fillMaxHeight().clip(MaterialTheme.shapes.extraSmall).background(MaterialTheme.colorScheme.surfaceContainerLowest),
                     verticalArrangement = Arrangement.Bottom
                 ) {
                     val activeHeight = if (stem.isMuted) 0f else stem.volume
@@ -294,7 +433,7 @@ fun StemFaderColumn(
                             .fillMaxHeight(activeHeight)
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(Color(0xFFFF5252), Color(0xFFFFEB3B), Color(0xFF4CAF50))
+                                    listOf(MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)
                                 )
                             )
                     )
@@ -305,8 +444,8 @@ fun StemFaderColumn(
                     modifier = Modifier
                         .width(28.dp)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF222634))
+                        .clip(MaterialTheme.shapes.extraSmall)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
@@ -321,14 +460,14 @@ fun StemFaderColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .fillMaxHeight(stem.volume.coerceIn(0.05f, 1f))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
                     )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(18.dp)
                             .offset(y = (-(stem.volume * 160)).dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(MaterialTheme.shapes.extraSmall)
                             .background(MaterialTheme.colorScheme.primary)
                     )
                 }
@@ -337,9 +476,8 @@ fun StemFaderColumn(
             // Volume Readout
             Text(
                 text = "${(stem.volume * 100).toInt()}%",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.7f)
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
     }
@@ -355,8 +493,8 @@ fun PanKnob(
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF222634))
-                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f), CircleShape)
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -387,26 +525,19 @@ fun PanKnob(
                 pan > 0.05f -> "R ${(pan * 100).toInt()}"
                 else -> "C"
             },
-            fontSize = 9.sp,
-            color = Color.White.copy(alpha = 0.6f)
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
     }
 }
-
-// ============================================================================
-// 100% RECOVERED ORIGINAL CONSOLE MODULES & MASTER BUS CONTROLLERS
-// ============================================================================
 
 @Composable
 fun CompactTransportBanner(
     viewModel: AppViewModel,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = Color(0xFF141722),
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+    pEQGlassCard(
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -425,9 +556,8 @@ fun CompactTransportBanner(
                 )
                 Text(
                     "CONCERT MASTER TRANSPORT",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                     letterSpacing = 1.sp
                 )
             }
@@ -436,8 +566,8 @@ fun CompactTransportBanner(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("BPM: 120", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
-                Text("4/4", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("BPM: 120", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                Text("4/4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 FilledTonalIconButton(
                     onClick = {},
                     modifier = Modifier.size(30.dp)
@@ -458,16 +588,15 @@ fun MiniMixerButton(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(6.dp),
-        color = if (active) activeColor else Color(0xFF232738),
+        shape = MaterialTheme.shapes.extraSmall,
+        color = if (active) activeColor else MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.height(26.dp)
     ) {
         Box(modifier = Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
             Text(
                 text = text,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (active) Color.Black else Color.White.copy(alpha = 0.8f)
+                style = MaterialTheme.typography.labelSmall,
+                color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
             )
         }
     }
@@ -480,11 +609,8 @@ fun MixerSectionCard(
     info: String = "",
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFF13151F),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+    pEQGlassCard(
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -494,10 +620,10 @@ fun MixerSectionCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                    Text(title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                 }
                 if (info.isNotEmpty()) {
-                    Text(info, fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                    Text(info, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
                 }
             }
             content()
@@ -526,9 +652,8 @@ fun MasterFaderSection(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Master Volume: ${(masterVol * 100).toInt()}%",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Slider(
                     value = masterVol,
@@ -568,17 +693,17 @@ fun NeuralStemPipeline(
         ) {
             listOf("Vocals", "Drums", "Bass", "Other").forEach { stem ->
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF1E2232),
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.weight(1f)
                 ) {
                     Column(
                         modifier = Modifier.padding(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(stem, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(stem, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.height(4.dp))
-                        Text("ACTIVE", fontSize = 8.sp, color = primaryColor, fontWeight = FontWeight.Black)
+                        Text("ACTIVE", style = MaterialTheme.typography.labelSmall, color = primaryColor, fontWeight = FontWeight.Black)
                     }
                 }
             }

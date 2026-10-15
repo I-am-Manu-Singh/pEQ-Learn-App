@@ -47,106 +47,433 @@ fun DashboardHome(viewModel: AppViewModel) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        val isWide = maxWidth > 1000.dp
+        val isLandscapeOrWide = maxWidth > 800.dp || maxWidth > maxHeight
 
         // 1. PLAYLIST DETAIL VIEW
         if (selectedPlaylistName != null) {
             val playlistName = selectedPlaylistName!!
             val playlistTracks = if (playlistName == "FAVORITES") favorites else playlists[playlistName] ?: emptyList()
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = if (isWide) 32.dp else 16.dp)
-            ) {
-                Spacer(Modifier.height(16.dp))
+            if (isLandscapeOrWide) {
+                // Split playlist view: left side header & actions, right side tracks
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    IconButton(onClick = { selectedPlaylistName = null }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = playlistName,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "${playlistTracks.size} tracks",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
+                    Column(
+                        modifier = Modifier
+                            .width(280.dp)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { selectedPlaylistName = null }) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "PLAYLIST",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = playlistName,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "${playlistTracks.size} tracks total",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+
+                                if (playlistName != "FAVORITES") {
+                                    Button(
+                                        onClick = {
+                                            viewModel.deletePlaylist(playlistName)
+                                            selectedPlaylistName = null
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.2f), contentColor = MaterialTheme.colorScheme.error),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("DELETE PLAYLIST", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    if (playlistName != "FAVORITES") {
-                        IconButton(
-                            onClick = {
-                                viewModel.deletePlaylist(playlistName)
-                                selectedPlaylistName = null
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f))
+
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        if (playlistTracks.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "NO TRACKS IN THIS PLAYLIST",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
                             }
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete Playlist", tint = MaterialTheme.colorScheme.error)
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(bottom = 140.dp)
+                            ) {
+                                items(playlistTracks) { item ->
+                                    TrackListRow(
+                                        item = item,
+                                        onPlay = { viewModel.playMediaItem(item) },
+                                        onRemove = {
+                                            viewModel.removeFromPlaylist(playlistName, item)
+                                        },
+                                        onAddToOtherPlaylist = {
+                                            trackForPlaylistAction = item
+                                            showAddTrackToPlaylistDialog = true
+                                        },
+                                        isFavorite = favorites.contains(item),
+                                        onToggleFavorite = { viewModel.toggleFavorite(item) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-
-                Spacer(Modifier.height(16.dp))
-
-                if (playlistTracks.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            "NO TRACKS IN THIS PLAYLIST",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 140.dp)
-                    ) {
-                        items(playlistTracks) { item ->
-                            TrackListRow(
-                                item = item,
-                                onPlay = { viewModel.playMediaItem(item) },
-                                onRemove = {
-                                    viewModel.removeFromPlaylist(playlistName, item)
-                                },
-                                onAddToOtherPlaylist = {
-                                    trackForPlaylistAction = item
-                                    showAddTrackToPlaylistDialog = true
-                                },
-                                isFavorite = favorites.contains(item),
-                                onToggleFavorite = { viewModel.toggleFavorite(item) }
+                        IconButton(onClick = { selectedPlaylistName = null }) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = playlistName,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
+                            Text(
+                                text = "${playlistTracks.size} tracks",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+
+                        if (playlistName != "FAVORITES") {
+                            IconButton(
+                                onClick = {
+                                    viewModel.deletePlaylist(playlistName)
+                                    selectedPlaylistName = null
+                                }
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete Playlist", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    if (playlistTracks.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "NO TRACKS IN THIS PLAYLIST",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(bottom = 140.dp)
+                        ) {
+                            items(playlistTracks) { item ->
+                                TrackListRow(
+                                    item = item,
+                                    onPlay = { viewModel.playMediaItem(item) },
+                                    onRemove = {
+                                        viewModel.removeFromPlaylist(playlistName, item)
+                                    },
+                                    onAddToOtherPlaylist = {
+                                        trackForPlaylistAction = item
+                                        showAddTrackToPlaylistDialog = true
+                                    },
+                                    isFavorite = favorites.contains(item),
+                                    onToggleFavorite = { viewModel.toggleFavorite(item) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (isLandscapeOrWide) {
+            // 2. MAIN DASHBOARD SPLIT VIEW (Left: Quick Open + Most Played + Playlists, Right: History)
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // LEFT COLUMN
+                Column(
+                    modifier = Modifier
+                        .weight(0.46f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    // 📂 QUICK PICK FILE TO OPEN
+                    Button(
+                        onClick = {
+                            viewModel.onPickTrackRequested?.invoke { pickedItem ->
+                                viewModel.playMediaItem(pickedItem, fromHomeScreen = true)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            contentColor = MaterialTheme.colorScheme.primary
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("OPEN AUDIO / VIDEO FILE", fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        }
+                    }
+
+                    // MOST PLAYED SECTION
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SectionHeader("MOST PLAYED")
+                        MostPlayedSection(viewModel)
+                    }
+
+                    // PLAYLISTS SECTION
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SectionHeader("PLAYLISTS")
+                            TextButton(
+                                onClick = { showCreatePlaylistDialog = true },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("NEW", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+
+                        if (playlists.isEmpty() && favorites.isEmpty()) {
+                            pEQGlassCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(64.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        "No playlists yet — tap NEW to create one",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                                    )
+                                }
+                            }
+                        } else {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                contentPadding = PaddingValues(horizontal = 2.dp)
+                            ) {
+                                item {
+                                    PlaylistCard(
+                                        name = "Favorites",
+                                        count = favorites.size,
+                                        onClick = { selectedPlaylistName = "FAVORITES" }
+                                    )
+                                }
+                                items(playlists.keys.toList()) { name ->
+                                    PlaylistCard(
+                                        name = name,
+                                        count = playlists[name]?.size ?: 0,
+                                        onClick = { selectedPlaylistName = name }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(80.dp))
+                }
+
+                VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f))
+
+                // RIGHT COLUMN: HISTORY & RECENTS
+                Column(
+                    modifier = Modifier
+                        .weight(0.54f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            SectionHeader("HISTORY")
+                            Text(
+                                "${recentlyPlayed.size} files",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                            )
+                        }
+                        IconButton(onClick = { historyViewGrid = !historyViewGrid }) {
+                            Icon(
+                                imageVector = if (historyViewGrid) Icons.Default.ViewList else Icons.Default.GridView,
+                                contentDescription = if (historyViewGrid) "Switch to list view" else "Switch to grid view",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    if (recentlyPlayed.isEmpty()) {
+                        pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp),
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                )
+                                Text(
+                                    "NO HISTORY YET",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                                )
+                                Text(
+                                    "Pick a local file or stream a URL to get started",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                                )
+                            }
+                        }
+                    } else if (historyViewGrid) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(bottom = 140.dp)
+                        ) {
+                            items(recentlyPlayed) { item ->
+                                HistoryGridCard(
+                                    item = item,
+                                    isFavorite = favorites.contains(item),
+                                    onPlay = { viewModel.playMediaItem(item, fromHomeScreen = true) },
+                                    onToggleFavorite = { viewModel.toggleFavorite(item) },
+                                    onAddToPlaylist = {
+                                        trackForPlaylistAction = item
+                                        showAddTrackToPlaylistDialog = true
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(bottom = 140.dp)
+                        ) {
+                            items(recentlyPlayed) { item ->
+                                RecentlyOpenedCard(
+                                    item = item,
+                                    onPlay = { viewModel.playMediaItem(item, fromHomeScreen = true) },
+                                    onAddToPlaylist = {
+                                        trackForPlaylistAction = item
+                                        showAddTrackToPlaylistDialog = true
+                                    },
+                                    isFavorite = favorites.contains(item),
+                                    onToggleFavorite = { viewModel.toggleFavorite(item) }
+                                )
+                            }
                         }
                     }
                 }
             }
         } else {
-            // 2. MAIN DASHBOARD / WORKSTATION VIEW
+            // 2. MAIN DASHBOARD / WORKSTATION VIEW (PORTRAIT SINGLE COLUMN)
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = if (isWide) 32.dp else 16.dp),
+                    .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
                 contentPadding = PaddingValues(top = 20.dp, bottom = 140.dp)
             ) {
+                item{
+                 Text(
+                text = "pEQ Learn",
+        color = MaterialTheme.colorScheme.primary,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 4.sp
+            )
+
+
+            Text(
+                text = "Interactive Music Learning",
+                                    color = MaterialTheme.colorScheme.onSurface
+,                fontSize = 11.sp,
+                letterSpacing = 1.sp
+            )
+                }
                 // ⭐ QUICK PICK FILE TO OPEN
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -180,28 +507,12 @@ fun DashboardHome(viewModel: AppViewModel) {
 
                 // 🔮 UNIFIED DASHBOARD GLASS CONTAINER
                 item {
-
-                        Column(
-                            modifier = Modifier,
-                            verticalArrangement = Arrangement.spacedBy(22.dp)
-                        ) {
-                            if (isWide) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(24.dp)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(22.dp)
-                                    ) {
-                                        SectionHeader("MOST PLAYED")
-                                        MostPlayedSection(viewModel)
-                                    }
-                                }
-                            } else {
-                                SectionHeader("MOST PLAYED")
-                                MostPlayedSection(viewModel)
-                            }
+                    Column(
+                        modifier = Modifier,
+                        verticalArrangement = Arrangement.spacedBy(22.dp)
+                    ) {
+                        SectionHeader("MOST PLAYED")
+                        MostPlayedSection(viewModel)
                     }
                 }
 
@@ -225,12 +536,10 @@ fun DashboardHome(viewModel: AppViewModel) {
                     Spacer(Modifier.height(8.dp))
 
                     if (playlists.isEmpty() && favorites.isEmpty()) {
-                        Surface(
+                        pEQGlassCard(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(64.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f)
+                                .height(64.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
@@ -291,10 +600,8 @@ fun DashboardHome(viewModel: AppViewModel) {
 
                 if (recentlyPlayed.isEmpty()) {
                     item {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.4f)
+                        pEQGlassCard(
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
                                 modifier = Modifier.padding(32.dp),
@@ -502,12 +809,10 @@ private fun MostPlayedSection(viewModel: AppViewModel) {
         }
         
         if (filteredItems.isEmpty()) {
-            Surface(
+            pEQGlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp),
-                shape = RoundedCornerShape(22.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
+                    .height(140.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -541,14 +846,10 @@ fun PlaylistCard(name: String, count: Int, onClick: () -> Unit) {
             .width(140.dp)
             .clickable(onClick = onClick)
     ) {
-        Surface(
+        pEQGlassCard(
             modifier = Modifier
                 .aspectRatio(1f)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-            tonalElevation = 4.dp
+                .fillMaxWidth()
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
@@ -586,13 +887,10 @@ fun SquareMediaCard(item: pEQMediaItem, onClick: () -> Unit) {
             .width(140.dp)
             .clickable(onClick = onClick)
     ) {
-        Surface(
+        pEQGlassCard(
             modifier = Modifier
                 .aspectRatio(1f)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            tonalElevation = 4.dp
+                .fillMaxWidth()
         ) {
             Box {
                 pEQImage(
@@ -602,12 +900,10 @@ fun SquareMediaCard(item: pEQMediaItem, onClick: () -> Unit) {
                 )
                 
                 if (item.playCount > 0) {
-                    Surface(
+                    pEQGlassCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(8.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                            .padding(8.dp)
                     ) {
                         Text(
                             text = item.playCount.toString(),
@@ -653,12 +949,10 @@ fun RecentlyOpenedCard(
         p.contains(".mp4") || p.contains(".mkv") || p.contains(".mov") || p.contains(".webm") || p.contains(".3gp")
     }
 
-    ElevatedCard(
+    pEQGlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onPlay),
-        shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+            .clickable(onClick = onPlay)
     ) {
         Row(
             modifier = Modifier
@@ -666,21 +960,17 @@ fun RecentlyOpenedCard(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                modifier = Modifier.size(56.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+            pEQGlassCard(
+                modifier = Modifier.size(56.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     pEQImage(data = item.thumbnail, fallbackPath = item.path, modifier = Modifier.fillMaxSize())
                     if (isVideo) {
-                        Surface(
-                            modifier = Modifier.size(20.dp),
-                            shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                        pEQGlassCard(
+                            modifier = Modifier.size(20.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
                             }
                         }
                     }
@@ -753,13 +1043,10 @@ fun TrackListRow(
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
-    Surface(
+    pEQGlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onPlay),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.6f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.05f))
+            .clickable(onClick = onPlay)
     ) {
         Row(
             modifier = Modifier
@@ -767,10 +1054,8 @@ fun TrackListRow(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                modifier = Modifier.size(44.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+            pEQGlassCard(
+                modifier = Modifier.size(44.dp)
             ) {
                 pEQImage(
                     data = item.thumbnail,
@@ -856,12 +1141,11 @@ fun HistoryGridCard(
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
-    ElevatedCard(
+    pEQGlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clickable(onClick = onPlay),
-        shape = RoundedCornerShape(18.dp)
+            .clickable(onClick = onPlay)
     ) {
         Box(Modifier.fillMaxSize()) {
             pEQImage(
@@ -918,11 +1202,10 @@ fun HistoryGridCard(
                 }
             }
 
-            Surface(
+            pEQGlassCard(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth(),
-                color = Color.Black.copy(alpha = 0.65f)
+                    .fillMaxWidth()
             ) {
                 Column(Modifier.padding(8.dp)) {
                     Text(
@@ -931,7 +1214,7 @@ fun HistoryGridCard(
                         overflow = TextOverflow.Ellipsis,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     Text(
@@ -939,7 +1222,7 @@ fun HistoryGridCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         fontSize = 10.sp,
-                        color = Color.White.copy(alpha = 0.75f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                     )
                 }
             }

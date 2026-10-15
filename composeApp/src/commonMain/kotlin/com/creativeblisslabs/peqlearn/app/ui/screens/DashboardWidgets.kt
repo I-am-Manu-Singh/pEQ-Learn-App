@@ -47,15 +47,15 @@ private fun Float.formatSize(): String {
 fun StatCard(label: String, value: String, icon: ImageVector, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.05f))
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.height(12.dp))
-            Text(value, fontSize = 18.sp, fontWeight = FontWeight.Black)
-            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), letterSpacing = 1.sp)
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
         }
     }
 }
@@ -97,10 +97,10 @@ fun pEQTabs(
             ) {
                 Surface(
                     onClick = { onTabSelected(index) },
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.82f),
-                    border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)),
-                    tonalElevation = if (selected) 6.dp else 1.dp
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.82f),
+                    border = BorderStroke(0.5.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)),
+                    tonalElevation = if (selected) 4.dp else 0.dp
                 ) {
                     Box(
                         modifier = Modifier.height(44.dp).padding(horizontal = if (selected) 16.dp else 12.dp),
@@ -120,8 +120,8 @@ fun pEQTabs(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(text = title, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.2.sp, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Visible)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(text = title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Visible)
                                 }
                             }
                         }

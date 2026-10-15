@@ -140,7 +140,7 @@ fun ThreeDDrumVisualizer(
                     .fillMaxWidth()
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(if (isSystemInDarkTheme()) Color(0xFF141413) else Color(0xFFECEAE2))
+                    .background(if (isSystemInDarkTheme()) Color(0xFF000000) else Color(0xFFF5F5F5))
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()

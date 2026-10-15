@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -30,6 +31,7 @@ import com.creativeblisslabs.peqlearn.app.audio.getAudioEngine
 import com.creativeblisslabs.peqlearn.app.data.*
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.MusicConverter
+import com.creativeblisslabs.peqlearn.app.ui.components.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -42,7 +44,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun UnifiedRaagaBrowser(
     viewModel: AppViewModel? = null,
-    accentColor: Color,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     isCarnatic: Boolean = false,
     onSelectRaga: (Raaga) -> Unit = {}
 ) {
@@ -121,10 +123,10 @@ fun UnifiedRaagaBrowser(
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = Color.White.copy(alpha = 0.05f),
-                        contentColor = Color.White
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.onSurface
                     ),
-                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Row(
@@ -133,19 +135,19 @@ fun UnifiedRaagaBrowser(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(if (isCarnatic) "Chakra" else "Thaat", fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f))
+                            Text(if (isCarnatic) "Chakra" else "Thaat", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                             Text(
                                 text = currentCategoryLabel,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = accentColor,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1
                             )
                         }
                         Icon(
                             imageVector = if (isCategoryDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
                             contentDescription = "Select Category",
-                            tint = accentColor
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
                 }
@@ -153,7 +155,7 @@ fun UnifiedRaagaBrowser(
                 DropdownMenu(
                     expanded = isCategoryDropdownExpanded,
                     onDismissRequest = { isCategoryDropdownExpanded = false },
-                    modifier = Modifier.fillMaxWidth(0.9f).background(Color(0xFF141724))
+                    modifier = Modifier.fillMaxWidth(0.9f).background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 ) {
                     categories.forEachIndexed { cIdx, catName ->
                         val isSelected = selectedCategoryIdx == cIdx
@@ -163,7 +165,7 @@ fun UnifiedRaagaBrowser(
                                     text = catName,
                                     fontSize = 13.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) accentColor else Color.White
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
                             },
                             onClick = {
@@ -183,10 +185,10 @@ fun UnifiedRaagaBrowser(
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = Color.White.copy(alpha = 0.05f),
-                        contentColor = Color.White
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.onSurface
                     ),
-                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Row(
@@ -195,21 +197,21 @@ fun UnifiedRaagaBrowser(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(if (isCarnatic) "Melakarta Rāga" else "Rāga Selection", fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f))
+                            Text(if (isCarnatic) "Melakarta Rāga" else "Rāga Selection", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                             Text(
                                 text = currentRaga?.let {
                                     if (it.melakarta != null) "${it.melakarta}. ${it.name}" else it.name
                                 } ?: "Select Rāga",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1
                             )
                         }
                         Icon(
                             imageVector = if (isRagaDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
                             contentDescription = "Select Rāga",
-                            tint = accentColor
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
                 }
@@ -217,7 +219,7 @@ fun UnifiedRaagaBrowser(
                 DropdownMenu(
                     expanded = isRagaDropdownExpanded,
                     onDismissRequest = { isRagaDropdownExpanded = false },
-                    modifier = Modifier.fillMaxWidth(0.9f).background(Color(0xFF141724))
+                    modifier = Modifier.fillMaxWidth(0.9f).background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 ) {
                     displayRagas.forEachIndexed { idx, raga ->
                         val isSelected = idx == selectedIdx
@@ -228,7 +230,7 @@ fun UnifiedRaagaBrowser(
                                     text = itemText,
                                     fontSize = 13.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) accentColor else Color.White
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
                             },
                             onClick = {
@@ -242,12 +244,7 @@ fun UnifiedRaagaBrowser(
         }
 
         currentRaga?.let { raga ->
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White.copy(alpha = 0.04f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -260,7 +257,7 @@ fun UnifiedRaagaBrowser(
                                 titleText,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Black,
-                                color = accentColor
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             val subText = if (isCarnatic) {
                                 "Chakra: ${raga.chakra ?: "N/A"} • Jati: ${raga.jati.ifEmpty { "Sampoorna" }}"
@@ -270,7 +267,7 @@ fun UnifiedRaagaBrowser(
                             Text(
                                 subText,
                                 fontSize = 12.sp,
-                                color = Color.White.copy(alpha = 0.7f)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
                         }
 
@@ -279,6 +276,7 @@ fun UnifiedRaagaBrowser(
                                 if (!isAuditionRunning) {
                                     isAuditionRunning = true
                                     val engine = getAudioEngine()
+                                    engine.setInstrument("HARMONIUM")
                                     scope.launch {
                                         try {
                                             val scaleNotes = if (raga.semitones.isNotEmpty()) raga.semitones else listOf(0, 2, 4, 5, 7, 9, 11, 12)
@@ -306,7 +304,7 @@ fun UnifiedRaagaBrowser(
                                     }
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             shape = RoundedCornerShape(12.dp),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                         ) {
@@ -324,10 +322,10 @@ fun UnifiedRaagaBrowser(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        MetaChip("Vadi", raga.vadi.ifEmpty { "Sa" }, Color(0xFF64B5F6))
-                        MetaChip("Samvadi", raga.samvadi.ifEmpty { "Pa" }, Color(0xFF81C784))
-                        MetaChip("Time", raga.time.ifEmpty { "Any" }, Color(0xFFFFB74D))
-                        MetaChip("Mood", raga.mood.ifEmpty { "Devotional" }, Color(0xFFE57373))
+                        MetaChip("Vadi", raga.vadi.ifEmpty { "Sa" }, MaterialTheme.colorScheme.primary)
+                        MetaChip("Samvadi", raga.samvadi.ifEmpty { "Pa" }, MaterialTheme.colorScheme.secondary)
+                        MetaChip("Time", raga.time.ifEmpty { "Any" }, MaterialTheme.colorScheme.tertiary)
+                        MetaChip("Mood", raga.mood.ifEmpty { "Devotional" }, MaterialTheme.colorScheme.outline)
                     }
 
                     PlayableInfoRowShared(
@@ -351,10 +349,10 @@ fun UnifiedRaagaBrowser(
                     )
 
                     if (raga.pakad.isNotEmpty()) {
-                        PlayableInfoRowShared(Icons.Default.Star, "Pakad (Signature Phrase)", raga.pakad, raga.semitones, Color(0xFFFFD54F), scope, viewModel)
+                        PlayableInfoRowShared(Icons.Default.Star, "Pakad (Signature Phrase)", raga.pakad, raga.semitones, MaterialTheme.colorScheme.tertiary, scope, viewModel)
                     }
                     if (raga.chalan.isNotEmpty()) {
-                        PlayableInfoRowShared(Icons.Default.LinearScale, "Chalan (Movement Flow)", raga.chalan, raga.semitones, Color(0xFF81C784), scope, viewModel)
+                        PlayableInfoRowShared(Icons.Default.LinearScale, "Chalan (Movement Flow)", raga.chalan, raga.semitones, MaterialTheme.colorScheme.secondary, scope, viewModel)
                     }
 
                     if (raga.description.isNotEmpty()) {
@@ -362,11 +360,11 @@ fun UnifiedRaagaBrowser(
                             text = raga.description,
                             fontSize = 12.sp,
                             lineHeight = 18.sp,
-                            color = Color.White.copy(alpha = 0.75f)
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                         )
                     }
 
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
                     BandishSection(
                         selectedRaga = raga,
@@ -402,7 +400,7 @@ fun UnifiedRaagaBrowser(
 @Composable
 fun UnifiedTaalBrowser(
     viewModel: AppViewModel? = null,
-    accentColor: Color,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     isCarnatic: Boolean = false
 ) {
     var selectedIdx by remember(isCarnatic) { mutableStateOf(0) }
@@ -418,7 +416,7 @@ fun UnifiedTaalBrowser(
             text = if (isCarnatic) "The Suladi Sapta Tala System (Dhruva, Matya, Rupaka, Jhampa, Triputa, Ata, Eka)"
             else "The Foundational Tāla Systems of Hindustani Classical Music",
             fontSize = 12.sp,
-            color = Color.White.copy(alpha = 0.7f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
 
         // Dropdown Selector for Taals
@@ -428,10 +426,10 @@ fun UnifiedTaalBrowser(
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White.copy(alpha = 0.05f),
-                    contentColor = Color.White
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ),
-                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -442,12 +440,12 @@ fun UnifiedTaalBrowser(
                         text = "Tāla: ${currentTaal.name} (${currentTaal.beats} ${if (isCarnatic) "aksharas" else "matras"})",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = accentColor
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Icon(
                         imageVector = if (isDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
                         contentDescription = "Select Tāla",
-                        tint = accentColor
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
             }
@@ -455,7 +453,7 @@ fun UnifiedTaalBrowser(
             DropdownMenu(
                 expanded = isDropdownExpanded,
                 onDismissRequest = { isDropdownExpanded = false },
-                modifier = Modifier.fillMaxWidth(0.9f).background(Color(0xFF141724))
+                modifier = Modifier.fillMaxWidth(0.9f).background(MaterialTheme.colorScheme.surfaceContainerHigh)
             ) {
                 taals.forEachIndexed { idx, t ->
                     val isSelected = idx == selectedIdx
@@ -465,7 +463,7 @@ fun UnifiedTaalBrowser(
                                 text = "${t.name} (${t.beats} ${if (isCarnatic) "aksharas" else "m"})",
                                 fontSize = 13.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) accentColor else Color.White
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                         },
                         onClick = {
@@ -479,12 +477,7 @@ fun UnifiedTaalBrowser(
             }
         }
 
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = Color.White.copy(alpha = 0.04f),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -496,7 +489,7 @@ fun UnifiedTaalBrowser(
                         Text(
                             text = "${currentTaal.beats} Beats • Vibhag: ${currentTaal.vibhags.joinToString("+")} • Tempo: ${currentTaal.tempo}",
                             fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
 
@@ -525,7 +518,7 @@ fun UnifiedTaalBrowser(
                                 }
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isTaalLooping) Color(0xFFE53935) else accentColor),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isTaalLooping) MaterialTheme.colorScheme.error else accentColor),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                     ) {
@@ -535,19 +528,12 @@ fun UnifiedTaalBrowser(
                     }
                 }
 
-                Text(if (isCarnatic) "Akshara Solkattu Matrix:" else "Theka Matra Matrix:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+                Text(if (isCarnatic) "Akshara Solkattu Matrix:" else "Theka Matra Matrix:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     itemsIndexed(currentTaal.bolSequence) { bIdx, bol ->
                         val isCurrentBeat = currentBeatPlayhead == bIdx
                         val isSam = bIdx == 0
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = when {
-                                isCurrentBeat -> Color(0xFFFFD54F)
-                                isSam -> accentColor.copy(alpha = 0.35f)
-                                else -> Color.White.copy(alpha = 0.05f)
-                            },
-                            border = BorderStroke(1.dp, if (isSam) accentColor else Color.White.copy(alpha = 0.1f)),
+                        pEQGlassCard(
                             modifier = Modifier.clickable {
                                 getAudioEngine().playSample(bol, bIdx, "TABLA")
                             }
@@ -559,20 +545,20 @@ fun UnifiedTaalBrowser(
                                 Text(
                                     text = "${bIdx + 1}",
                                     fontSize = 9.sp,
-                                    color = if (isCurrentBeat) Color.Black.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.4f)
+                                    color = if (isCurrentBeat) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                 )
                                 Text(
                                     text = bol,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isCurrentBeat) Color.Black else Color.White
+                                    color = if (isCurrentBeat) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
                     }
                 }
 
-                Text(currentTaal.description, fontSize = 12.sp, lineHeight = 18.sp, color = Color.White.copy(alpha = 0.75f))
+                Text(currentTaal.description, fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f))
             }
         }
     }
@@ -585,7 +571,7 @@ fun UnifiedTaalBrowser(
 @Composable
 fun UnifiedThaatBrowser(
     viewModel: AppViewModel? = null,
-    accentColor: Color
+    accentColor: Color = MaterialTheme.colorScheme.primary
 ) {
     var selectedIdx by remember { mutableStateOf(0) }
     var isDropdownExpanded by remember { mutableStateOf(false) }
@@ -594,7 +580,7 @@ fun UnifiedThaatBrowser(
     val currentThaat = INDIAN_THAATS.getOrNull(selectedIdx) ?: INDIAN_THAATS.first()
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("The 10 Foundational Parent Thaats of Hindustani Classical Music", fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+        Text("The 10 Foundational Parent Thaats of Hindustani Classical Music", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
 
         // Dropdown Selector for Thaats
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -603,8 +589,8 @@ fun UnifiedThaatBrowser(
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White.copy(alpha = 0.05f),
-                    contentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f))
             ) {
@@ -630,7 +616,7 @@ fun UnifiedThaatBrowser(
             DropdownMenu(
                 expanded = isDropdownExpanded,
                 onDismissRequest = { isDropdownExpanded = false },
-                modifier = Modifier.fillMaxWidth(0.9f).background(Color(0xFF141724))
+                modifier = Modifier.fillMaxWidth(0.9f).background(MaterialTheme.colorScheme.surfaceContainerHigh)
             ) {
                 INDIAN_THAATS.forEachIndexed { idx, thaat ->
                     val isSelected = idx == selectedIdx
@@ -640,7 +626,7 @@ fun UnifiedThaatBrowser(
                                 text = thaat.name,
                                 fontSize = 13.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) accentColor else Color.White
+                                color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface
                             )
                         },
                         onClick = {
@@ -652,12 +638,7 @@ fun UnifiedThaatBrowser(
             }
         }
 
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = Color.White.copy(alpha = 0.04f),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -670,6 +651,7 @@ fun UnifiedThaatBrowser(
                             if (!isPlaying) {
                                 isPlaying = true
                                 val engine = getAudioEngine()
+                                engine.setInstrument("HARMONIUM")
                                 scope.launch {
                                     try {
                                         val notes = currentThaat.semitones.ifEmpty { listOf(0, 2, 4, 5, 7, 9, 11, 12) }
@@ -693,68 +675,160 @@ fun UnifiedThaatBrowser(
                     }
                 }
 
-                Text("Swaras: ${currentThaat.swaras.joinToString("  •  ")}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                Text(currentThaat.description, fontSize = 12.sp, lineHeight = 18.sp, color = Color.White.copy(alpha = 0.75f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Swaras:", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    currentThaat.swaras.forEachIndexed { sIdx, swara ->
+                        val targetNote = 60 + (currentThaat.semitones.getOrNull(sIdx) ?: 0)
+                        val isSounding = viewModel?.midiPlayingNote?.value == targetNote
+                        pEQGlassCard(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                        ) {
+                            Text(
+                                swara,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSounding) FontWeight.ExtraBold else FontWeight.Bold,
+                                color = if (isSounding) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+                Text(currentThaat.description, fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f))
             }
         }
     }
 }
-
 /**
- * Unified Classical Alankaar / Alankaram Panel.
- * Handles both Hindustani graded sequences and Carnatic Suladi Sapta Tala Alankarams.
+- Unified Classical Alankaar / Alankaram Panel.
+- Handles both Hindustani graded sequences and Carnatic Suladi Sapta Tala Alankarams with precise real-time note highlighting.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun UnifiedAlankaarPanel(
     viewModel: AppViewModel? = null,
-    accentColor: Color,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     isCarnatic: Boolean = false
 ) {
     var isRunning by remember { mutableStateOf(false) }
     var activeIdx by remember { mutableIntStateOf(-1) }
+    var activeNoteIndex by remember { mutableIntStateOf(-1) }
     val scope = rememberCoroutineScope()
     val alankaarList = if (isCarnatic) CARNATIC_ALANKARAS else INDIAN_ALAANKARS
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = if (isCarnatic) "35 Suladi Sapta Tala Alankarams in 3 Kaalams (Speeds)"
             else "${INDIAN_ALAANKARS.size} Graded Vocal/Instrumental Exercise Sequences",
             fontSize = 12.sp,
-            color = Color.White.copy(alpha = 0.7f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
 
-        alankaarList.take(15).forEachIndexed { idx, alankaram ->
+        alankaarList.forEachIndexed { idx, alankaram ->
             val isThisRunning = isRunning && activeIdx == idx
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color.White.copy(alpha = 0.03f),
-                border = BorderStroke(1.dp, if (isThisRunning) accentColor else Color.White.copy(alpha = 0.06f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+
+            // Cleanly parse phrases separated by '|' or spaces/commas, grouping them cleanly
+            val phraseGroups = remember(alankaram.pattern) {
+                alankaram.pattern.split("|").map { group ->
+                    group.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+                }.filter { it.isNotEmpty() }
+            }
+
+            // Flattened list of valid individual note tokens to map playback indices accurately
+            val flatTokens = remember(phraseGroups) { phraseGroups.flatten() }
+
+            pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(alankaram.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = accentColor)
-                        Text(alankaram.pattern, fontSize = 12.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace, color = Color.White)
-                        Text(alankaram.description, fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = alankaram.name,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = accentColor
+                        )
+
+                        // Structured visual group layout preventing notes from mixing up
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            var globalTokenCounter = 0
+                            phraseGroups.forEach { group ->
+                                pEQGlassCard(
+                                    modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        group.forEach { token ->
+                                            val currentFlatIdx = globalTokenCounter++
+                                            val isNoteSounding = isThisRunning && activeNoteIndex == currentFlatIdx
+
+                                            pEQGlassCard(
+                                                modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                                            ) {
+                                                Text(
+                                                    text = token,
+                                                    fontSize = 11.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontWeight = if (isNoteSounding) FontWeight.ExtraBold else FontWeight.Medium,
+                                                    color = if (isNoteSounding) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = alankaram.description,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
                     }
+
+                    Spacer(modifier = Modifier.width(10.dp))
 
                     IconButton(
                         onClick = {
                             if (!isRunning) {
                                 isRunning = true
                                 activeIdx = idx
+                                activeNoteIndex = -1
                                 val engine = getAudioEngine()
+                                engine.setInstrument("HARMONIUM")
                                 scope.launch {
                                     try {
                                         val patternSemitones = alankaram.midiPattern.ifEmpty {
                                             if (isCarnatic) listOf(0, 1, 4, 5, 7, 8, 11, 12, 11, 8, 7, 5, 4, 1, 0)
                                             else listOf(0, 2, 4, 5, 7, 9, 11, 12, 11, 9, 7, 5, 4, 2, 0)
                                         }
-                                        patternSemitones.forEach { semi ->
+                                        
+                                        // Fix: Loop directly based on the token indices so highlighting matches 1-to-1 with UI tokens
+                                        val totalSteps = maxOf(flatTokens.size, patternSemitones.size)
+                                        
+                                        for (stepIdx in 0 until totalSteps) {
+                                            activeNoteIndex = stepIdx % flatTokens.size
+                                            val semi = patternSemitones[stepIdx % patternSemitones.size]
+                                            
                                             val note = 60 + semi
                                             viewModel?.midiPlayingNote?.value = note
                                             engine.noteOn(note, 0.85f)
@@ -763,22 +837,29 @@ fun UnifiedAlankaarPanel(
                                         }
                                     } finally {
                                         viewModel?.midiPlayingNote?.value = null
+                                        activeNoteIndex = -1
                                         isRunning = false
                                         activeIdx = -1
                                     }
                                 }
                             }
                         },
-                        modifier = Modifier.size(32.dp).background(accentColor.copy(alpha = 0.2f), CircleShape)
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(accentColor.copy(alpha = 0.2f), CircleShape)
                     ) {
-                        Icon(if (isThisRunning) Icons.Default.GraphicEq else Icons.Default.PlayArrow, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                        Icon(
+                            if (isThisRunning) Icons.Default.GraphicEq else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
             }
         }
     }
 }
-
 @Composable
 fun PlayableInfoRowShared(
     icon: ImageVector,
@@ -790,6 +871,17 @@ fun PlayableInfoRowShared(
     viewModel: AppViewModel?
 ) {
     var isRowPlaying by remember { mutableStateOf(false) }
+    var currentPlayingRowIdx by remember { mutableIntStateOf(-1) }
+
+    // Split value (e.g. "S R1 G2 M1 P D1 N2 Ṡ" or "S - R - G") into tokens for active highlighting
+    val tokens = remember(value) {
+        val parts = value.trim().split(Regex("\\s+"))
+        if (parts.size == 1 && value.contains("-")) {
+            value.split("-").map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+            parts
+        }
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -803,8 +895,31 @@ fun PlayableInfoRowShared(
         ) {
             Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
             Column {
-                Text(label, fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
-                Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                if (tokens.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        tokens.forEachIndexed { idx, token ->
+                            val isHighlighted = isRowPlaying && currentPlayingRowIdx == idx
+                            pEQGlassCard(
+                                modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                            ) {
+                                Text(
+                                    token,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isHighlighted) FontWeight.ExtraBold else FontWeight.Bold,
+                                    color = if (isHighlighted) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = if (isHighlighted) 4.dp else 1.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
             }
         }
 
@@ -813,10 +928,12 @@ fun PlayableInfoRowShared(
                 if (!isRowPlaying) {
                     isRowPlaying = true
                     val engine = getAudioEngine()
+                    engine.setInstrument("HARMONIUM")
                     scope.launch {
                         try {
                             val notes = if (semitones.isNotEmpty()) semitones else listOf(0, 2, 4, 5, 7, 9, 11, 12)
-                            notes.forEach { semi ->
+                            notes.forEachIndexed { idx, semi ->
+                                currentPlayingRowIdx = idx
                                 val note = 60 + semi
                                 viewModel?.midiPlayingNote?.value = note
                                 engine.noteOn(note, 0.85f)
@@ -824,6 +941,7 @@ fun PlayableInfoRowShared(
                                 engine.noteOff(note)
                             }
                         } finally {
+                            currentPlayingRowIdx = -1
                             viewModel?.midiPlayingNote?.value = null
                             isRowPlaying = false
                         }
@@ -844,16 +962,14 @@ fun PlayableInfoRowShared(
 
 @Composable
 fun MetaChip(label: String, value: String, chipColor: Color) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = chipColor.copy(alpha = 0.15f),
-        border = BorderStroke(1.dp, chipColor.copy(alpha = 0.3f))
+    pEQGlassCard(
+        modifier = Modifier.clip(RoundedCornerShape(8.dp))
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(label, fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+            Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             Text(value, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = chipColor)
         }
     }
@@ -887,8 +1003,7 @@ fun SwaraSthanasVisualizer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp)
-                .background(Color(0xFF0D0F15), RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
                 .padding(6.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -900,17 +1015,17 @@ fun SwaraSthanasVisualizer(
                 val isPlaying = currentPlayingMidi == noteMidi
 
                 val keyBackground = when {
-                    isPlaying -> Color(0xFFFFD54F)
+                    isPlaying -> MaterialTheme.colorScheme.tertiary
                     isIncluded && isBlackKey -> accentColor.copy(alpha = 0.85f)
                     isIncluded -> accentColor.copy(alpha = 0.25f)
-                    isBlackKey -> Color(0xFF1A1D26)
-                    else -> Color.White.copy(alpha = 0.04f)
+                    isBlackKey -> MaterialTheme.colorScheme.surfaceContainerHigh
+                    else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
                 }
 
                 val borderTint = when {
-                    isPlaying -> Color(0xFFFFD54F)
+                    isPlaying -> MaterialTheme.colorScheme.tertiary
                     isIncluded -> accentColor.copy(alpha = 0.5f)
-                    else -> Color.White.copy(alpha = 0.06f)
+                    else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                 }
 
                 Box(
@@ -950,7 +1065,7 @@ fun SwaraSthanasVisualizer(
                                     fontSize = 8.sp,
                                     lineHeight = 9.sp,
                                     fontWeight = if (isIncluded) FontWeight.ExtraBold else FontWeight.Medium,
-                                    color = if (isPlaying) Color.Black else if (isIncluded) Color.White else Color.White.copy(alpha = 0.25f)
+                                    color = if (isPlaying) MaterialTheme.colorScheme.onTertiary else if (isIncluded) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
                                 )
                             }
                         } else {
@@ -958,7 +1073,7 @@ fun SwaraSthanasVisualizer(
                                 text = currentLabel,
                                 fontSize = 9.sp,
                                 fontWeight = if (isIncluded) FontWeight.ExtraBold else FontWeight.Medium,
-                                color = if (isPlaying) Color.Black else if (isIncluded) Color.White else Color.White.copy(alpha = 0.25f)
+                                color = if (isPlaying) MaterialTheme.colorScheme.onTertiary else if (isIncluded) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
                             )
                         }
                     }
@@ -1008,7 +1123,7 @@ fun BandishSection(
                 Text(
                     text = "Composition / Bandish / Kriti",
                     fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                     fontWeight = FontWeight.Medium
                 )
                 Text(
@@ -1048,7 +1163,7 @@ fun BandishSection(
                 text = "Sthai / Pallavi",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
-                color = Color(0xFF81C784),
+                color = MaterialTheme.colorScheme.primary,
                 letterSpacing = 0.5.sp
             )
             Spacer(modifier = Modifier.height(2.dp))
@@ -1058,29 +1173,29 @@ fun BandishSection(
                     modifier = Modifier.padding(vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = Color.White)
+                    Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface)
                     val lineTrans = sthaiTrans.getOrNull(index) ?: sthaiTrans.firstOrNull()
                     if (!lineTrans.isNullOrEmpty()) {
-                        Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = Color.White.copy(alpha = 0.6f))
+                        Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
                     val lineMean = sthaiMean.getOrNull(index) ?: sthaiMean.firstOrNull()
                     AnimatedVisibility(visible = showTranslation && !lineMean.isNullOrEmpty()) {
                         if (lineMean != null) {
-                            Text(text = lineMean, fontSize = 11.sp, color = Color(0xFFFFD54F).copy(alpha = 0.9f))
+                            Text(text = lineMean, fontSize = 11.sp, color = MaterialTheme.colorScheme.tertiary)
                         }
                     }
                 }
             }
         }
 
-        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = "Antara / Charanam",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
-                color = Color(0xFF64B5F6),
+                color = MaterialTheme.colorScheme.secondary,
                 letterSpacing = 0.5.sp
             )
             Spacer(modifier = Modifier.height(2.dp))
@@ -1090,15 +1205,15 @@ fun BandishSection(
                     modifier = Modifier.padding(vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = Color.White)
+                    Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface)
                     val lineTrans = antaraTrans.getOrNull(index) ?: antaraTrans.firstOrNull()
                     if (!lineTrans.isNullOrEmpty()) {
-                        Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = Color.White.copy(alpha = 0.6f))
+                        Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
                     val lineMean = antaraMean.getOrNull(index) ?: antaraMean.firstOrNull()
                     AnimatedVisibility(visible = showTranslation && !lineMean.isNullOrEmpty()) {
                         if (lineMean != null) {
-                            Text(text = lineMean, fontSize = 11.sp, color = Color(0xFFFFD54F).copy(alpha = 0.9f))
+                            Text(text = lineMean, fontSize = 11.sp, color = MaterialTheme.colorScheme.tertiary)
                         }
                     }
                 }

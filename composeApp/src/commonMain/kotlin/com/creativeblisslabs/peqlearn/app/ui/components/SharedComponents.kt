@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,38 +22,38 @@ import androidx.compose.ui.window.Dialog
 object pEQDesign {
     val GlassColor
         @Composable
-        get() = if (MaterialTheme.colorScheme.surface.red > 0.9f && MaterialTheme.colorScheme.surface.green > 0.9f) {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+        get() = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
         } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)
         }
 
     val GlassBorder
         @Composable
         get() = BorderStroke(
-            1.dp,
+            0.5.dp,
             Brush.linearGradient(
                 listOf(
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
                     Color.Transparent,
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                 )
             )
         )
 
     val PrimaryGlow
         @Composable
-        get() = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        get() = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
 
     val GlassElevation
         @Composable
-        get() = if (MaterialTheme.colorScheme.surface.red > 0.9f) 2.dp else 8.dp
+        get() = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) 0.dp else 4.dp
 
     val GlassTonalElevation
         @Composable
-        get() = if (MaterialTheme.colorScheme.surface.red > 0.9f) 0.dp else 6.dp
+        get() = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) 0.dp else 2.dp
 
-    val CardShape = RoundedCornerShape(20.dp)
+    val CardShape @Composable get() = MaterialTheme.shapes.medium
 }
 
 @Composable
@@ -103,10 +104,8 @@ fun SectionHeader(
 ) {
     Text(
         text = title.uppercase(),
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Black,
+        style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        letterSpacing = 1.2.sp,
         modifier = modifier.padding(vertical = 4.dp)
     )
 }
@@ -156,12 +155,14 @@ fun pEQFilterChip(
     selected: Boolean,
     onClick: () -> Unit,
     label: @Composable () -> Unit,
+    leadingIcon: @Composable (() -> Unit)? = null,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(12.dp)
 ) {
     FilterChip(
         selected = selected,
         onClick = onClick,
         label = label,
+        leadingIcon = leadingIcon,
         shape = shape,
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),

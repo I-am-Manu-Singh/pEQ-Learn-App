@@ -241,26 +241,37 @@ class AndroidAudioEngine(
         )
     }.build()
 
-    // Dynamically calculate native buffer minimum boundary constraints safely (100ms hardware baseline fallback)
+    // Low-latency hardware buffer size (44.1kHz 16-bit stereo)
     private val stereoBufferSize = AudioTrack.getMinBufferSize(
         44100,
         AudioFormat.CHANNEL_OUT_STEREO,
         AudioFormat.ENCODING_PCM_16BIT
-    ).coerceAtLeast(44100 * 2 * 2 / 10)
+    ).coerceAtLeast(2048)
 
     private val VOICE_COUNT = 12
     private val voicePool = Array(VOICE_COUNT) {
-        AudioTrack(
-            AudioManager.STREAM_MUSIC,
-            44100,
-            AudioFormat.CHANNEL_OUT_STEREO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            stereoBufferSize,
-            AudioTrack.MODE_STREAM
-        ).apply {
-            setVolume(1.0f)
-            play()
-        }
+        AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(44100)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                    .build()
+            )
+            .setBufferSizeInBytes(stereoBufferSize * 2)
+            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+            .apply {
+                setVolume(1.0f)
+                play()
+            }
     }
 
     private val drumKitLoader = DrumKitLoader(context, soundPool)
@@ -288,7 +299,7 @@ class AndroidAudioEngine(
 
     private var tanpuraGain = 0.8f
     private var tablaGain = 1.0f
-
+    private var metronomeGain = 1.0f
     private val tanpuraMidiMap = mapOf(
         "C"  to 60, "C#" to 61, "D"  to 62, "D#" to 63,
         "E"  to 64, "F"  to 65, "F#" to 66, "G"  to 67,
@@ -297,23 +308,40 @@ class AndroidAudioEngine(
 
     private val tablaNoteCache = ConcurrentHashMap<Int, ShortArray>()
 
-    private val tablaMidiMap = ConcurrentHashMap<String, Int>(
-        mapOf(
-            // Hindustani Classical Bols Default Fallbacks
-            "DHA" to 72, "DHIN" to 68, "TIN" to 63, "TA" to 61,
-            "NA" to 64, "GE" to 60, "GHE" to 67, "KA" to 65,
-            "KE" to 65, "TI" to 62, "TE" to 61, "TU" to 69,
-            "TUN" to 69, "DIN" to 70, "DHAGE" to 74, "TIRAKITA" to 66,
-            "KITONE" to 66, "DU" to 60, "DHI" to 68,
+    // Hindustani Classical Bols and Carnatic Solkattu Syllables Mapped to Percussion MIDI Keys
+    private val percussionMidiMap = mapOf(
+        // Hindustani Classical Bols - Exact Tabla SF2 Key Mapping
+        "DHA" to 72, "DHIN" to 68, "DHI" to 68, "DIN" to 70,
+        "TIN" to 63, "TA" to 64, "NA" to 64, "GE" to 60,
+        "GHE" to 60, "GA" to 60, "KA" to 61, "KE" to 61,
+        "KI" to 61, "KAT" to 61, "TI" to 62, "TE" to 62,
+        "TU" to 69, "TUN" to 69, "DHAGE" to 74, "TIRAKITA" to 62,
+        "KITONE" to 61, "DU" to 60, "RA" to 62,
 
-            // Carnatic Solkattu Syllables Default Fallbacks
-            "THA" to 61, "THI" to 62, "THOM" to 60, "THON" to 60,
-            "NAM" to 64, "NU" to 64, "MI" to 62, "KI" to 66,
-            "JO" to 63, "DI" to 68,
-            "THA-KA" to 61, "TAKA" to 61, "THA-KI-TA" to 66, "TAKITA" to 66,
-            "THA-KA-DHI-MI" to 72, "THAKADHIMI" to 72, "THA-KA-THA-KI-TA" to 61,
-            "THA-KI-TA-THA-KA-DHI-MI" to 72, "THA-KA-DHI-MI-THA-KA-THA-KI-TA" to 72
-        )
+        // Carnatic Solkattu Syllables - Exact Solkattu to Percussion Mapping
+        "THA" to 61, "THI" to 62, "THOM" to 60, "THON" to 60,
+        "NAM" to 64, "NU" to 64, "MI" to 62, "JO" to 63, "DI" to 68,
+        "THA-KA" to 61, "TAKA" to 61, "THA-KI-TA" to 62, "TAKITA" to 62,
+        "THA-KA-DHI-MI" to 72, "THAKADHIMI" to 72, "THA-KA-THA-KI-TA" to 61,
+        "THA-KI-TA-THA-KA-DHI-MI" to 72, "THA-KA-DHI-MI-THA-KA-THA-KI-TA" to 72
+    )
+
+    private val tablaMidiMap = ConcurrentHashMap<String, Int>(percussionMidiMap)
+
+    // Helper mapping for compound bols (breaking them down into constituent playable sub-strokes)
+    private val compoundBolMap = mapOf(
+        "DHAGE" to listOf(72, 60),
+        "TIRAKITA" to listOf(62, 61, 62, 61),
+        "KITONE" to listOf(61, 60, 67),
+        "THA-KA" to listOf(61, 61),
+        "TAKA" to listOf(61, 61),
+        "THA-KI-TA" to listOf(61, 62, 61),
+        "TAKITA" to listOf(61, 62, 61),
+        "THA-KA-DHI-MI" to listOf(61, 61, 68, 62),
+        "THAKADHIMI" to listOf(61, 61, 68, 62),
+        "THA-KA-THA-KI-TA" to listOf(61, 61, 61, 62, 61),
+        "THA-KI-TA-THA-KA-DHI-MI" to listOf(61, 62, 61, 61, 61, 68, 62),
+        "THA-KA-DHI-MI-THA-KA-THA-KI-TA" to listOf(61, 61, 68, 62, 61, 61, 61, 62, 61)
     )
 
     private var listenersAttached = false
@@ -488,7 +516,11 @@ class AndroidAudioEngine(
 
     override fun setInstrument(instrument: String) {
         val upper = instrument.uppercase().trim()
-        val targetKey = if (upper.contains("GUITAR")) "GUITAR" else "PIANO"
+        val targetKey = when {
+            upper.contains("HARMONIUM") -> "HARMONIUM"
+            upper.contains("GUITAR") -> "GUITAR"
+            else -> "PIANO"
+        }
 
         if (currentInstrument == targetKey && sf2Loaded.get()) return
 
@@ -500,9 +532,8 @@ class AndroidAudioEngine(
                 sf2Loaded.set(true)
                 println("AudioEngine Architecture: Route active pointer to $targetKey [SUCCESS]")
             } else {
-                if (globalSoundFont == null) {
-                    sf2Loaded.set(false)
-                }
+                // If specific instrument isn't loaded yet, keep sf2Loaded true if piano fallback exists
+                sf2Loaded.set(soundFontPool["PIANO"] != null)
                 println("AudioEngine Warning: Target $targetKey not loaded in RAM pool yet (Background thread processing).")
             }
         }
@@ -524,6 +555,7 @@ class AndroidAudioEngine(
         initAllAssets()
         loadSf2Piano()
         loadSf2Guitar()
+        loadSf2Harmonium()
 
         engineScope.launch(Dispatchers.IO) {
             loadSf2Tanpura()?.let { sf ->
@@ -1205,6 +1237,10 @@ class AndroidAudioEngine(
         }
     }
 
+    override fun setMetronomeGain(gain: Float) {
+        metronomeGain = gain
+    }
+
     override fun setPlaybackSpeed(speed: Float) {
         player?.playbackParameters = PlaybackParameters(
             speed,
@@ -1546,34 +1582,13 @@ class AndroidAudioEngine(
                     }
                 }
 
-                // 3. Fallback to discovered sample pitch clusters if standard names missing
-                val sortedPitches = keyToSampleName.keys.sorted().ifEmpty { sampleNames.map { it.second }.filter { it in 21..108 }.sorted() }
-                if (sortedPitches.isNotEmpty()) {
-                    val lowKey = sortedPitches.first()
-                    val highKey = sortedPitches.last()
-                    val midKey = sortedPitches[sortedPitches.size / 2]
-
-                    newMap.putIfAbsent("GE", lowKey)
-                    newMap.putIfAbsent("THOM", lowKey)
-                    newMap.putIfAbsent("THON", lowKey)
-                    newMap.putIfAbsent("DHA", midKey)
-                    newMap.putIfAbsent("DHIN", midKey)
-                    newMap.putIfAbsent("THA-KA-DHI-MI", midKey)
-                    newMap.putIfAbsent("TA", highKey)
-                    newMap.putIfAbsent("THA", highKey)
-                    newMap.putIfAbsent("NA", highKey)
-                    newMap.putIfAbsent("NAM", highKey)
-                    newMap.putIfAbsent("TIN", (lowKey + highKey) / 2)
-                    newMap.putIfAbsent("TI", (lowKey + highKey) / 2)
-                    newMap.putIfAbsent("MI", (lowKey + highKey) / 2)
-                    newMap.putIfAbsent("DHI", (lowKey + highKey) / 2)
-                    newMap.putIfAbsent("KI", highKey)
-                    newMap.putIfAbsent("KA", lowKey)
-                    newMap.putIfAbsent("KE", lowKey)
+                // Only put in mappings discovered from clear acoustic labels, preserving verified tablaMidiMap defaults
+                newMap.forEach { (bol, note) ->
+                    if (!tablaMidiMap.containsKey(bol)) {
+                        tablaMidiMap[bol] = note
+                    }
                 }
-
-                tablaMidiMap.putAll(newMap)
-                Log.i("AudioEngine", "[AutoMap] Successfully auto-mapped ${tablaMidiMap.size} bols to active SoundFont")
+                Log.i("AudioEngine", "[AutoMap] Retained pristine mappings and indexed ${tablaMidiMap.size} total bols for active SoundFont")
             }
         } catch (e: Exception) {
             Log.e("AudioEngine", "[AutoMap] Error during dynamic SoundFont indexing: ${e.message}")
@@ -1705,37 +1720,74 @@ class AndroidAudioEngine(
         }
     }
 
+    private fun loadSf2Harmonium() {
+        engineScope.launch(Dispatchers.IO) {
+            try {
+                val tempFile = File(context.cacheDir, "harmonium_gm.sf2")
+                if (!tempFile.exists() || tempFile.length() == 0L) {
+                    context.assets.open("harmonium/Wetthasinghe_Harmnium_GM_Ver.sf2").use { input ->
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
+
+                val player = FluidSynthPlayer(AudioConfig(sampleRate = 44100, interpolation = 1, periodSize = 64, periods = 2))
+                player.loadSoundFont(tempFile.absolutePath)
+
+                synchronized(sf2Lock) {
+                    soundFontPool["HARMONIUM"] = player
+                    if (currentInstrument.contains("HARMONIUM")) {
+                        globalSoundFont = player
+                        sf2Loaded.set(true)
+                    }
+                    Log.i("AudioEngine", "Harmonium FluidSynth fully loaded and cached.")
+                }
+            } catch (e: Exception) {
+                Log.e("AudioEngine", "Harmonium SoundFont loading failed: ${e.message}")
+            }
+        }
+    }
+
     override fun noteOn(midiNote: Int, velocity: Float) {
         Log.d("AudioEngine", "Direct noteOn Received -> Note: $midiNote, Velocity: $velocity, Instrument: $currentInstrument")
         engineScope.launch(Dispatchers.Default) {
             synchronized(sf2Lock) {
                 if (sf2Loaded.get()) {
                     val activeSf = when {
-                        currentInstrument.contains("GUITAR") -> soundFontPool["GUITAR"]
+                        currentInstrument.contains("HARMONIUM") -> soundFontPool["HARMONIUM"] ?: soundFontPool["PIANO"]
+                        currentInstrument.contains("GUITAR") -> soundFontPool["GUITAR"] ?: soundFontPool["PIANO"]
                         else -> soundFontPool["PIANO"]
                     }
 
                     activeSf?.let { sf: FluidSynthPlayer ->
                         val vel = (velocity.coerceIn(0f, 1f) * 127).toInt()
-                        sf.noteOn(0, midiNote, vel)
-                        val totalSamplesNeeded = stereoBufferSize / 2
-                        val floatBuffer = sf.renderFloat(totalSamplesNeeded)
-                        sf.noteOff(0, midiNote)
+                        try {
+                            sf.noteOn(0, midiNote, vel)
+                            // Render 0.5s of stereo audio for note ring/sustain (44100 * 0.5 * 2)
+                            val samplesToRender = (44100 * 0.5 * 2).toInt().coerceAtLeast(stereoBufferSize)
+                            val floatBuffer = sf.renderFloat(samplesToRender)
 
-                        val shortBuffer = ShortArray(totalSamplesNeeded) { i ->
-                            val sampleValue = if (i < floatBuffer.size) floatBuffer[i] else 0f
-                            (sampleValue * Short.MAX_VALUE).toInt().coerceIn(-32768, 32767).toShort()
-                        }
+                            if (floatBuffer.isNotEmpty()) {
+                                // Master output scaling factor (0.8f) to prevent inter-sample peaking and distortion
+                                val shortBuffer = ShortArray(floatBuffer.size) { i ->
+                                    val sampleValue = (floatBuffer[i] * 0.8f).coerceIn(-1.0f, 1.0f)
+                                    (sampleValue * Short.MAX_VALUE).toInt().toShort()
+                                }
 
-                        voiceMutex.withLock {
-                            val activeTrack = voicePool[currentVoiceIndex]
-                            try {
-                                activeTrack.play()
-                                activeTrack.write(shortBuffer, 0, shortBuffer.size)
-                            } catch (e: Exception) {
-                                Log.e("AudioEngine", "Arpeggio SoundFont stream write failed: ${e.message}")
+                                voiceMutex.withLock {
+                                    val activeTrack = voicePool[currentVoiceIndex]
+                                    try {
+                                        activeTrack.pause()
+                                        activeTrack.flush()
+                                        activeTrack.play()
+                                        activeTrack.write(shortBuffer, 0, shortBuffer.size, AudioTrack.WRITE_NON_BLOCKING)
+                                    } catch (e: Exception) {
+                                        Log.e("AudioEngine", "SoundFont stream write failed: ${e.message}")
+                                    }
+                                    currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
+                                }
                             }
-                            currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
+                        } catch (e: Throwable) {
+                            Log.e("AudioEngine", "Native synth noteOn error caught: ${e.message}")
                         }
                     }
                 } else {
@@ -1753,7 +1805,8 @@ class AndroidAudioEngine(
         engineScope.launch(Dispatchers.Default) {
             synchronized(sf2Lock) {
                 val activeSf = when {
-                    currentInstrument.contains("GUITAR") -> soundFontPool["GUITAR"]
+                    currentInstrument.contains("HARMONIUM") -> soundFontPool["HARMONIUM"] ?: soundFontPool["PIANO"]
+                    currentInstrument.contains("GUITAR") -> soundFontPool["GUITAR"] ?: soundFontPool["PIANO"]
                     else -> soundFontPool["PIANO"]
                 }
                 activeSf?.noteOff(0, note)
@@ -1949,9 +2002,64 @@ class AndroidAudioEngine(
         }
     }
 
-    private fun handleTabla(target: String) {
+    private fun playTablaMidiNote(midiNote: Int) {
+        val engine = tablaEngine
+        if (engine != null) {
+            val cachedPcm = tablaNoteCache[midiNote]
+            val pcmData: ShortArray? = cachedPcm ?: run {
+                val rendered = engine.renderTablaBol(midiNote, velocity = 110)
+                if (rendered != null) {
+                    tablaNoteCache[midiNote] = rendered
+                }
+                rendered
+            }
+
+            if (pcmData != null) {
+                voiceMutex.withLock {
+                    val normalizedPcm = ShortArray(pcmData.size) { i ->
+                        (pcmData[i] * tablaGain).toInt().coerceIn(-32768, 32767).toShort()
+                    }
+                    try {
+                        val activeTrack = voicePool[currentVoiceIndex]
+                        activeTrack.play()
+                        activeTrack.write(normalizedPcm, 0, normalizedPcm.size)
+                        currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
+                    } catch (e: Exception) {
+                        Log.e("AudioEngine", "Error playing tabla PCM: ${e.message}")
+                    }
+                }
+            } else {
+                Log.w("AudioEngine", "renderTablaBol returned null for MIDI note $midiNote")
+            }
+        } else {
+            Log.w("AudioEngine", "tablaEngine is not loaded yet.")
+        }
+    }
+
+    private suspend fun handleTabla(target: String) {
         val rawBol = target.uppercase().trim().replace(" ", "").replace("-", "")
-        // Find exact or normalized match
+
+        // 1. Check if bol is a compound pattern with rapid sub-strokes (e.g. TiRaKiTa, DhaGe, KiTone, ThaKaDhiMi)
+        val compoundSubNotes = compoundBolMap[rawBol] 
+            ?: compoundBolMap[target.uppercase().trim()]
+            ?: compoundBolMap.entries.firstOrNull { rawBol.equals(it.key, ignoreCase = true) }?.value
+
+        if (compoundSubNotes != null && compoundSubNotes.isNotEmpty()) {
+            val subStrokeDelayMs = when {
+                compoundSubNotes.size >= 4 -> 55L
+                compoundSubNotes.size == 3 -> 70L
+                else -> 85L
+            }
+            compoundSubNotes.forEachIndexed { idx, subNote ->
+                playTablaMidiNote(subNote)
+                if (idx < compoundSubNotes.lastIndex) {
+                    delay(subStrokeDelayMs)
+                }
+            }
+            return
+        }
+
+        // 2. Resolve single MIDI note from mapped dictionary
         val midiNote = tablaMidiMap[rawBol] 
             ?: tablaMidiMap[target.uppercase().trim()]
             ?: tablaMidiMap.entries.firstOrNull { rawBol.startsWith(it.key) || it.key.startsWith(rawBol) }?.value
@@ -1959,39 +2067,7 @@ class AndroidAudioEngine(
         Log.d("AudioEngine", "handleTabla called for '$target' (rawBol='$rawBol') -> resolved MIDI note: $midiNote")
 
         if (midiNote != null) {
-            val engine = tablaEngine
-            if (engine != null) {
-                // Check cache first for 0ms instantaneous triggering
-                val cachedPcm = tablaNoteCache[midiNote]
-                val pcmData: ShortArray? = cachedPcm ?: run {
-                    val rendered = engine.renderTablaBol(midiNote, velocity = 110)
-                    if (rendered != null) {
-                        tablaNoteCache[midiNote] = rendered
-                    }
-                    rendered
-                }
-
-                if (pcmData != null) {
-                    voiceMutex.withLock {
-                        val normalizedPcm = ShortArray(pcmData.size) { i ->
-                            (pcmData[i] * tablaGain).toInt().coerceIn(-32768, 32767).toShort()
-                        }
-                        try {
-                            val activeTrack = voicePool[currentVoiceIndex]
-                            activeTrack.play()
-                            val written = activeTrack.write(normalizedPcm, 0, normalizedPcm.size)
-                            Log.d("AudioEngine", "Tabla PCM written: $written samples (note: $midiNote) to track index $currentVoiceIndex")
-                            currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
-                        } catch (e: Exception) {
-                            Log.e("AudioEngine", "Error playing tabla PCM: ${e.message}")
-                        }
-                    }
-                } else {
-                    Log.w("AudioEngine", "renderTablaBol returned null for MIDI note $midiNote")
-                }
-            } else {
-                Log.w("AudioEngine", "tablaEngine is not loaded yet.")
-            }
+            playTablaMidiNote(midiNote)
         } else {
             Log.w("AudioEngine", "No MIDI note mapping found for tabla bol: '$target'")
         }
@@ -2082,26 +2158,32 @@ class AndroidAudioEngine(
                         val normalizedVelocity = 0.7f
                         globalSoundFont?.let { sf: FluidSynthPlayer ->
                             val vel = (normalizedVelocity * 127).toInt()
-                            sf.noteOn(0, midiNote, vel)
-                            val totalSamplesNeeded = stereoBufferSize / 2
-                            val floatBuffer = sf.renderFloat(totalSamplesNeeded)
-                            sf.noteOff(0, midiNote)
+                            try {
+                                sf.noteOn(0, midiNote, vel)
+                                val samplesToRender = (44100 * 0.5 * 2).toInt().coerceAtLeast(stereoBufferSize)
+                                val floatBuffer = sf.renderFloat(samplesToRender)
 
-                            val shortBuffer = ShortArray(totalSamplesNeeded) { i ->
-                                val sampleValue = if (i < floatBuffer.size) floatBuffer[i] else 0f
-                                (sampleValue * Short.MAX_VALUE).toInt().coerceIn(-32768, 32767).toShort()
-                            }
+                                if (floatBuffer.isNotEmpty()) {
+                                    val shortBuffer = ShortArray(floatBuffer.size) { i ->
+                                        val sampleValue = (floatBuffer[i] * 0.8f).coerceIn(-1.0f, 1.0f)
+                                        (sampleValue * Short.MAX_VALUE).toInt().toShort()
+                                    }
 
-                            voiceMutex.withLock {
-                                val activeTrack = voicePool[currentVoiceIndex]
-                                try {
-                                    activeTrack.play()
-                                    activeTrack.write(shortBuffer, 0, shortBuffer.size)
-                                    Log.d("AudioEngine", "Successfully wrote ${shortBuffer.size} samples to VoicePool Track Index: $currentVoiceIndex")
-                                } catch (e: Exception) {
-                                    Log.e("AudioEngine", "Melodic SoundFont AudioTrack write failed: ${e.message}")
+                                    voiceMutex.withLock {
+                                        val activeTrack = voicePool[currentVoiceIndex]
+                                        try {
+                                            activeTrack.pause()
+                                            activeTrack.flush()
+                                            activeTrack.play()
+                                            activeTrack.write(shortBuffer, 0, shortBuffer.size, AudioTrack.WRITE_NON_BLOCKING)
+                                        } catch (e: Exception) {
+                                            Log.e("AudioEngine", "Melodic SoundFont AudioTrack write failed: ${e.message}")
+                                        }
+                                        currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
+                                    }
                                 }
-                                currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
+                            } catch (e: Throwable) {
+                                Log.e("AudioEngine", "Melodic soundfont note trigger failed: ${e.message}")
                             }
                         }
                     } else {
@@ -2117,7 +2199,8 @@ class AndroidAudioEngine(
                 "SYSTEM" -> {
                     val id = if (target.contains("STRONG")) metronomeStrongId else metronomeWeakId
                     if (id != 0) {
-                        systemSoundPool.play(id, 1.0f, 1.0f, 2, 0, 1f)
+                        val vol = metronomeGain.coerceIn(0f, 1f)
+                        systemSoundPool.play(id, vol, vol, 2, 0, 1f)
                     } else {
                         Log.e("AudioEngine", "Cannot play system metronome step: sound asset ID is uninitialized (0). Target requested: $target")
                     }

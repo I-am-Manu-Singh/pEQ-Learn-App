@@ -24,9 +24,7 @@ class AndroidPersistenceManager(private val context: Context) : PersistenceManag
         get() = getString("open_subtitles_api_key", "") ?: ""
         set(value) = saveString("open_subtitles_api_key", value)
 
-    override fun saveOpenSubtitlesApiKey(key: String) {
-        openSubtitlesApiKey = key
-    }
+
 
     private val prefs: SharedPreferences by lazy {
         context.getSharedPreferences("peq_learn_prefs", Context.MODE_PRIVATE)
@@ -177,6 +175,22 @@ class AndroidPersistenceManager(private val context: Context) : PersistenceManag
         } catch (_: Exception) {
             emptyMap()
         }
+    }
+
+    override fun saveTheme(theme: String) {
+        saveString("selected_theme", theme)
+    }
+
+    override fun loadTheme(): String {
+        return getString("selected_theme", "DARK") ?: "DARK"
+    }
+
+    override fun saveAccent(accent: String) {
+        saveString("selected_accent", accent)
+    }
+
+    override fun loadAccent(): String {
+        return getString("selected_accent", "AMBER") ?: "AMBER"
     }
 
     fun clearCache(activePath: String?) {

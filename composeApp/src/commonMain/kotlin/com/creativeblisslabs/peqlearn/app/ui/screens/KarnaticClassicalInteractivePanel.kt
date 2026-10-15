@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,49 +31,68 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.audio.AudioEngine
 import com.creativeblisslabs.peqlearn.app.audio.getAudioEngine
-import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard
-import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard
-import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
+import com.creativeblisslabs.peqlearn.app.ui.components.*
 import com.creativeblisslabs.peqlearn.app.data.*
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.MusicConverter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
 @Composable
 internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
-    val karnaticColor = Color(0xFF00BCD4) // Vibrant Cyan matching Karnatic theme
+    val accentColor = MaterialTheme.colorScheme.primary
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("72 Melakartas", "Sapta Talas", "35 Alankarams", "Solkattu")
+    val tabs = listOf("Radel Studio", "72 Melakartas", "Sapta Talas", "35 Alankarams", "Solkattu")
+    val tabIcons = listOf(Icons.Default.SurroundSound, Icons.Default.MusicNote, Icons.Default.Speed, Icons.Default.AutoStories, Icons.Default.GraphicEq)
     var notationFormat by remember { mutableStateOf("Staff Notation") }
 
     var selectedRagaState by remember { mutableStateOf<Raaga?>(null) }
-    var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Piano, 1 = Guitar
+    var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Harmonium, 1 = Guitar
+    val scope = rememberCoroutineScope()
 
-    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-        TabRow(
+        // Changed TabRow to ScrollableTabRow to support horizontal scrolling
+        ScrollableTabRow(
             selectedTabIndex = selectedTab,
             containerColor = Color.Transparent,
-            contentColor = karnaticColor,
+            contentColor = accentColor,
+            edgePadding = 0.dp, // Removes default start/end padding for left alignment
             indicator = { tabPositions ->
                 if (selectedTab < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(
                         Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        color = karnaticColor
+                        color = accentColor
                     )
                 }
             }
         ) {
             tabs.forEachIndexed { i, label ->
+                val isSelected = selectedTab == i
                 Tab(
-                    selected = selectedTab == i,
+                    selected = isSelected,
                     onClick = {
                         selectedTab = i
                         viewModel.currentScore.value = null
                     },
-                    text = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    icon = {
+                        Icon(
+                            imageVector = tabIcons.getOrElse(i) { Icons.Default.MusicNote },
+                            contentDescription = label,
+                            tint = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    text = { 
+                        Text(
+                            text = label, 
+                            fontSize = 11.sp, 
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        ) 
+                    }
                 )
             }
         }
@@ -83,11 +103,16 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            when (selectedTab) {
-                0 -> UnifiedRaagaBrowser(viewModel, karnaticColor, isCarnatic = true, onSelectRaga = { selectedRagaState = it })
-                1 -> UnifiedTaalBrowser(viewModel, karnaticColor, isCarnatic = true)
-                2 -> UnifiedAlankaarPanel(viewModel, karnaticColor, isCarnatic = true)
-                3 -> KarnaticSolkattuPanel(karnaticColor)
+            pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.padding(12.dp)) {
+                    when (selectedTab) {
+                        0 -> RadelTanpuraTablaStudio(viewModel, isCarnatic = true, accentColor = accentColor)
+                        1 -> UnifiedRaagaBrowser(viewModel, accentColor, isCarnatic = true, onSelectRaga = { selectedRagaState = it })
+                        2 -> UnifiedTaalBrowser(viewModel, accentColor, isCarnatic = true)
+                        3 -> UnifiedAlankaarPanel(viewModel, accentColor, isCarnatic = true)
+                        4 -> KarnaticSolkattuPanel(accentColor)
+                    }
+                }
             }
 
             // Shared Instrument Selection Row & Piano / Guitar Interactive Visualizer
@@ -97,7 +122,7 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
             val playingNote = viewModel.midiPlayingNote.value
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -105,53 +130,66 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                     text = "INSTRUMENT SCALE VISUALIZER",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = karnaticColor,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     letterSpacing = 0.5.sp
                 )
                 Row(
                     modifier = Modifier
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        .padding(2.dp),
+                        .height(36.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("🎹 Piano", "🎸 Guitar").forEachIndexed { idx, label ->
+                    listOf("🪗 Harmonium", "🎸 Guitar").forEachIndexed { idx, label ->
                         val isSelected = visualizerMode == idx
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) karnaticColor.copy(alpha = 0.25f) else Color.Transparent)
-                                .clickable { visualizerMode = idx }
-                                .padding(horizontal = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) karnaticColor else Color.White.copy(alpha = 0.7f)
-                            )
-                        }
+                        pEQFilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                visualizerMode = idx
+                                val inst = if (idx == 0) "HARMONIUM" else "GUITAR"
+                                getAudioEngine().setInstrument(inst)
+                            },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        )
                     }
                 }
             }
-
             if (visualizerMode == 0) {
                 val activeMidiMap = remember(activeSemitones, playingNote) {
                     if (playingNote != null) mapOf(playingNote to true)
                     else activeSemitones.associate { (60 + it) to true }
                 }
-                UnifiedPianoKeyboard(
-                    activeMidiNotes = activeMidiMap,
-                    accentColor = karnaticColor,
-                    startNote = 60,
-                    endNote = 72,
-                    showNoteNames = true,
-                    modifier = Modifier.fillMaxWidth().height(85.dp).clip(RoundedCornerShape(8.dp))
-                )
+                
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    UnifiedPianoKeyboard(
+                        activeMidiNotes = activeMidiMap,
+                        accentColor = accentColor,
+                        startNote = 48,
+                        endNote = 84,
+                        showNoteNames = true,
+                        onKeyTapped = { midi ->
+                            viewModel.audioEngine.setInstrument("HARMONIUM")
+                            viewModel.onMidiNoteOn(midi, 95)
+                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                            scope.launch {
+                                delay(300L)
+                                viewModel.onMidiNoteOff(midi)
+                            }
+                        },
+                        modifier = Modifier
+                            .height(120.dp)       // Lock the desired height
+                            .wrapContentWidth()  // Let internal key math determine the proportional width
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                }
             } else {
                 val highlightedGuitarList = remember(activeSemitones, playingNote) {
                     if (playingNote != null) listOf(playingNote - 60) else activeSemitones
@@ -160,8 +198,17 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                     numFrets = 12,
                     activeNotes = highlightedGuitarList,
                     rootNote = 0,
-                    accentColor = karnaticColor,
+                    accentColor = accentColor,
                     showNoteNames = true,
+                    onFretTapped = { _, _, midiNote ->
+                        viewModel.audioEngine.setInstrument("GUITAR")
+                        viewModel.onMidiNoteOn(midiNote, 95)
+                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                        scope.launch {
+                            delay(300L)
+                            viewModel.onMidiNoteOff(midiNote)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().height(125.dp).clip(RoundedCornerShape(8.dp))
                 )
             }
@@ -173,7 +220,7 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                 playheadOffset = viewModel.scorePlayheadOffset.value,
                 activeMidiNotes = viewModel.midiActiveNotes,
                 playingNote = viewModel.midiPlayingNote.value,
-                primaryColor = karnaticColor,
+                primaryColor = accentColor,
                 currentFormat = notationFormat,
                 onFormatChange = { notationFormat = it },
                 modifier = Modifier.fillMaxWidth().height(220.dp)
@@ -181,7 +228,6 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
         }
     }
 }
-
 
 
 @Composable
@@ -200,7 +246,7 @@ fun KarnaticSolkattuPanel(accentColor: Color) {
     )
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Mridangam Solkattu Rhythmic Phrasing & Konnakol", fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+        Text("Mridangam Solkattu Rhythmic Phrasing & Konnakol", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         solkattuList.forEach { (syllable, desc) ->
             Row(
                 modifier = Modifier
@@ -216,13 +262,13 @@ fun KarnaticSolkattuPanel(accentColor: Color) {
                     text = syllable,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Black,
-                    color = accentColor,
+                    color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.width(130.dp)
                 )
                 Text(
                     text = desc,
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                     modifier = Modifier.weight(1f)
                 )
             }

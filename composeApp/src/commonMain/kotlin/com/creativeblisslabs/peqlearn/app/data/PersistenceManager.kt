@@ -32,7 +32,11 @@ interface PersistenceManager {
     
     fun saveMostPlayed(playCounts: Map<String, Int>)
     fun loadMostPlayed(): Map<String, Int>
-    fun saveOpenSubtitlesApiKey(key: String)
+
+    fun saveTheme(theme: String)
+    fun loadTheme(): String
+    fun saveAccent(accent: String)
+    fun loadAccent(): String
 }
 
 expect fun getPersistenceManager(): PersistenceManager

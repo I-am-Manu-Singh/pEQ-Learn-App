@@ -164,7 +164,7 @@ fun pEQSplashScreen() {
             transientImpact = 0.2f)
 
         // =========================
-        // SOFT AMBIENT LIGHT (Yellow Glow)
+        // SOFT AMBIENT LIGHT (Primary Glow)
         // =========================
         Box(
             modifier = Modifier
@@ -178,7 +178,7 @@ fun pEQSplashScreen() {
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFFFFD600).copy(alpha = 0.15f), // Yellow accent
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                             Color.Transparent
                         )
                     ),
@@ -204,7 +204,7 @@ fun pEQSplashScreen() {
                 color = Color.White.copy(alpha = 0.06f),
                 border = BorderStroke(
                     1.dp,
-                    Color(0xFFFFD600).copy(alpha = 0.2f) // Yellow border tint
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                 ),
                 tonalElevation = 10.dp,
                 shadowElevation = 20.dp
@@ -217,7 +217,7 @@ fun pEQSplashScreen() {
                                 colors = listOf(
                                     Color.White.copy(alpha = 0.08f),
                                     Color.Transparent,
-                                    Color(0xFFFFD600).copy(alpha = 0.05f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
                                 )
                             )
                         ),
@@ -239,8 +239,8 @@ fun pEQSplashScreen() {
             // =========================
             Text(
                 text = "pEQ Learn",
-                color = Color.White,
-                fontSize = 34.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+,                fontSize = 34.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 4.sp
             )
@@ -248,16 +248,16 @@ fun pEQSplashScreen() {
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = "Media Player",
-                color = Color.White.copy(alpha = 0.58f),
-                fontSize = 13.sp,
+                text = "Interactive Music Learning",
+                                    color = MaterialTheme.colorScheme.onSurface
+,                fontSize = 13.sp,
                 letterSpacing = 1.sp
             )
 
             Spacer(Modifier.height(42.dp))
 
             // =========================
-            // PROGRESS BAR (Yellow Gradient)
+            // PROGRESS BAR (Primary Gradient)
             // =========================
             Box(
                 modifier = Modifier
@@ -274,8 +274,8 @@ fun pEQSplashScreen() {
                         .background(
                             Brush.horizontalGradient(
                                 colors = listOf(
-                                    Color(0xFFFFD600), // Vibrant Yellow
-                                    Color(0xFFFFA000)  // Amber/Orange
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.secondary
                                 )
                             )
                         )
@@ -302,8 +302,8 @@ LaunchedEffect(Unit) {
 }
 Text(
     text = loadingText,
-    color = Color.White.copy(alpha = 0.42f),
-    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+,    fontSize = 11.sp,
     letterSpacing = 0.5.sp
 )
         }
@@ -316,7 +316,7 @@ Text(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 26.dp),
-            color = Color.White.copy(alpha = 0.18f),
+                                    color = MaterialTheme.colorScheme.onSurface,
             fontSize = 10.sp
         )
     }
@@ -458,9 +458,14 @@ fun MainScreen(
                         // =========================
                         // TABLET / LANDSCAPE NAV
                         // =========================
+                        val isAnyFullscreen = viewModel.isVideoFullScreen.value ||
+                                viewModel.isFullscreenKeyboard.value ||
+                                viewModel.isNotationFullscreen.value ||
+                                viewModel.isImmersiveLabActive.value ||
+                                viewModel.isTanpuraFullscreen.value
 
                         if (
-                            isWideScreen 
+                            isWideScreen && !isAnyFullscreen
                         ) {
 
                             Column(

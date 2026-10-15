@@ -35,6 +35,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
+import com.creativeblisslabs.peqlearn.app.ui.components.OpenSheetMusicDisplayViewer
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,6 +67,9 @@ fun NotationWorkspaceItem(
     var quantizeDivision by rememberSaveable { mutableStateOf("1/16") }
     var showExportDialog by rememberSaveable { mutableStateOf(false) }
     var showFullscreenPdf by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(showFullscreenPdf) {
+        viewModel.isNotationFullscreen.value = showFullscreenPdf
+    }
 
     val stablePlayheadMeasure by remember { derivedStateOf { viewModel.scorePlayheadMeasure.value } }
     val stablePlayheadOffset by remember { derivedStateOf { viewModel.scorePlayheadOffset.value } }
@@ -90,7 +94,26 @@ fun NotationWorkspaceItem(
                             modifier = Modifier.size(16.dp)
                         )
                     },
-                    label = { Text(if (isHorizontalScroll) "Horizontal" else "Vertical", fontSize = 11.sp) }
+                    label = { Text(if (isHorizontalScroll) "" else "", fontSize = 11.sp) }
+                )
+
+                FilterChip(
+                    selected = viewModel.useOsmdRenderer.value,
+                    onClick = { viewModel.useOsmdRenderer.value = !viewModel.useOsmdRenderer.value },
+                    leadingIcon = {
+                        Icon(
+                            if (viewModel.useOsmdRenderer.value) Icons.Default.Language else Icons.Default.Brush,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            if (viewModel.useOsmdRenderer.value) "OSMD (Web)" else "",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 )
 
                 IconButton(
@@ -118,12 +141,6 @@ fun NotationWorkspaceItem(
                 }
             }
 
-        // Comprehensive Control Toolbar
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF161922))
-        ) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 // Row 1: Viewer Format + Key Shift
                 Row(
@@ -135,7 +152,7 @@ fun NotationWorkspaceItem(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Format:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+                        Text("Format:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                         formats.forEach { fmt ->
                             FilterChip(
                                 selected = notationFormat == fmt,
@@ -159,15 +176,15 @@ fun NotationWorkspaceItem(
                     )
                     IconButton(
                         onClick = { shiftNotesOffset-- },
-                        modifier = Modifier.size(28.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
+                        modifier = Modifier.size(28.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), CircleShape)
                     ) {
-                        Text("-", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("-", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                     }
                     IconButton(
                         onClick = { shiftNotesOffset++ },
-                        modifier = Modifier.size(28.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
+                        modifier = Modifier.size(28.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), CircleShape)
                     ) {
-                        Text("+", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("+", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                     }
                 }
                 // Row 2: Key Signatures & Time Signatures Pickers
@@ -181,7 +198,7 @@ fun NotationWorkspaceItem(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Key:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+                        Text("Key:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             items(keySignatures) { key ->
                                 FilterChip(
@@ -199,7 +216,7 @@ fun NotationWorkspaceItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("Time:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+                    Text("Time:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                     timeSignatures.take(4).forEach { ts ->
                         FilterChip(
                             selected = selectedTimeSig == ts,
@@ -223,7 +240,7 @@ fun NotationWorkspaceItem(
                                 "Instrument:",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.7f)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
                             instruments.forEach { inst ->
                                 FilterChip(
@@ -246,7 +263,7 @@ fun NotationWorkspaceItem(
                                 "Quantize:",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.7f)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
                             listOf("1/4", "1/8", "1/16", "1/32").forEach { q ->
                                 FilterChip(
@@ -262,8 +279,7 @@ fun NotationWorkspaceItem(
                     }
                 }
             }
-        }
-
+        
         // Main Notation Stage Canvas with Zoom Wrapper
         Box(
             modifier = Modifier
@@ -273,27 +289,39 @@ fun NotationWorkspaceItem(
                 .background(Color(0xFF07080C))
                 .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(
-                        scaleX = inlineZoomFactor,
-                        scaleY = inlineZoomFactor,
-                        transformOrigin = TransformOrigin(0f, 0f)
-                    )
-            ) {
-                StaffAndTabNotationViewer(
+            if (viewModel.useOsmdRenderer.value) {
+                OpenSheetMusicDisplayViewer(
                     score = viewModel.currentScore.value as Score?,
                     playheadMeasure = stablePlayheadMeasure,
                     playheadOffset = stablePlayheadOffset,
-                    activeMidiNotes = viewModel.midiActiveNotes,
-                    playingNote = viewModel.midiPlayingNote.value,
-                    primaryColor = accentColor,
-                    currentFormat = notationFormat,
-                    onFormatChange = { notationFormat = it },
-                    modifier = Modifier.fillMaxSize(),
-                    scrollState = scrollState
+                    isDarkMode = true,
+                    zoom = inlineZoomFactor * 0.85f,
+                    modifier = Modifier.fillMaxSize()
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            scaleX = inlineZoomFactor,
+                            scaleY = inlineZoomFactor,
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        )
+                ) {
+                    StaffAndTabNotationViewer(
+                        score = viewModel.currentScore.value as Score?,
+                        playheadMeasure = stablePlayheadMeasure,
+                        playheadOffset = stablePlayheadOffset,
+                        activeMidiNotes = viewModel.midiActiveNotes,
+                        playingNote = viewModel.midiPlayingNote.value,
+                        primaryColor = accentColor,
+                        currentFormat = notationFormat,
+                        onFormatChange = { notationFormat = it },
+                        isPedalPressed = viewModel.sustainActive.value,
+                        modifier = Modifier.fillMaxSize(),
+                        scrollState = scrollState
+                    )
+                }
             }
         }
 
@@ -405,18 +433,29 @@ fun NotationWorkspaceItem(
                                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                                     )
                             ) {
-                                StaffAndTabNotationViewer(
-                                    score = currentScore as Score?,
-                                    playheadMeasure = currentMeasure,
-                                    playheadOffset = currentOffset,
-                                    activeMidiNotes = viewModel.midiActiveNotes,
-                                    playingNote = viewModel.midiPlayingNote.value,
-                                    primaryColor = accentColor,
-                                    currentFormat = notationFormat,
-                                    onFormatChange = { notationFormat = it },
-                                    modifier = Modifier.fillMaxSize(),
-                                    scrollState = fsScrollState
-                                )
+                                if (viewModel.useOsmdRenderer.value) {
+                                    OpenSheetMusicDisplayViewer(
+                                        score = currentScore as Score?,
+                                        playheadMeasure = currentMeasure,
+                                        playheadOffset = currentOffset,
+                                        isDarkMode = true,
+                                        zoom = fsZoomFactor * 0.95f,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    StaffAndTabNotationViewer(
+                                        score = currentScore as Score?,
+                                        playheadMeasure = currentMeasure,
+                                        playheadOffset = currentOffset,
+                                        activeMidiNotes = viewModel.midiActiveNotes,
+                                        playingNote = viewModel.midiPlayingNote.value,
+                                        primaryColor = accentColor,
+                                        currentFormat = notationFormat,
+                                        onFormatChange = { notationFormat = it },
+                                        modifier = Modifier.fillMaxSize(),
+                                        scrollState = fsScrollState
+                                    )
+                                }
                             }
                         }
 
@@ -431,7 +470,7 @@ fun NotationWorkspaceItem(
                                 .widthIn(max = 680.dp)
                         ) {
                             Surface(
-                                color = Color(0xEE121212),
+                    color = MaterialTheme.colorScheme.surface,
                                 shape = RoundedCornerShape(24.dp),
                                 modifier = Modifier.fillMaxWidth(0.92f).wrapContentHeight()
                             ) {
@@ -473,7 +512,7 @@ fun NotationWorkspaceItem(
                                                 text = "Measure ${currentMeasure + 1} / $totalMeasures",
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.White.copy(alpha = 0.5f)
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                             )
                                                 IconButton(
                                                     onClick = {
@@ -485,14 +524,14 @@ fun NotationWorkspaceItem(
                                                     },
                                                     modifier = Modifier.size(24.dp)
                                                 ) {
-                                                    Icon(Icons.AutoMirrored.Filled.NavigateBefore, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                    Icon(Icons.AutoMirrored.Filled.NavigateBefore, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
                                                 }
 
                                                 Text(
                                                     text = "Page $currentPage / $totalPages",
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color.White.copy(alpha = 0.5f)
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                                 )
 
                                                 IconButton(
@@ -505,10 +544,10 @@ fun NotationWorkspaceItem(
                                                     },
                                                     modifier = Modifier.size(24.dp)
                                                 ) {
-                                                Icon(Icons.AutoMirrored.Filled.NavigateNext, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                Icon(Icons.AutoMirrored.Filled.NavigateNext, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
                                             }
 
-                                            VerticalDivider(modifier = Modifier.height(16.dp).padding(horizontal = 4.dp), color = Color.White.copy(0.2f))
+                                            VerticalDivider(modifier = Modifier.height(16.dp).padding(horizontal = 4.dp), color = MaterialTheme.colorScheme.onSurface.copy(0.2f))
 
                                             IconButton(onClick = { showFullscreenPdf = false }) {
                                                 Icon(Icons.Default.FullscreenExit, null, tint = Color(0xFFFF6B35), modifier = Modifier.size(20.dp))
@@ -525,7 +564,7 @@ fun NotationWorkspaceItem(
                                         Text(
                                             text = currentTimeStr,
                                             fontSize = 10.sp,
-                                            color = Color.White.copy(alpha = 0.6f),
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                             fontWeight = FontWeight.Medium
                                         )
 
@@ -548,14 +587,14 @@ fun NotationWorkspaceItem(
                                             colors = SliderDefaults.colors(
                                                 thumbColor = accentColor,
                                                 activeTrackColor = accentColor,
-                                                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                                                inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
                                             )
                                         )
 
                                         Text(
                                             text = totalTimeStr,
                                             fontSize = 10.sp,
-                                            color = Color.White.copy(alpha = 0.6f),
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                             fontWeight = FontWeight.Medium
                                         )
                                     }

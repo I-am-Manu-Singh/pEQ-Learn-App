@@ -38,440 +38,6 @@ import com.creativeblisslabs.peqlearn.app.ui.screens.*
 import com.creativeblisslabs.peqlearn.app.util.GuitarShape
 import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine
 
-/**
- * StaffAndTabNotationViewer
- * Full-scale industrial notation rendering engine supporting:
- * - Dual Grand Staff (Treble + Bass systems)
- * - 6-String Guitar Tablature
- * - Dynamic ledger lines (notes exceeding stave bounds)
- * - Melodic Ties & Slur arcs (bezier curves)
- * - String Bends & Barres
- * - Navigation Marks (Segno, Coda, Fine, Da Capo, Dal Segno)
- * - Measure barlines and real-time playback note highlighting
- */
-//
-//private fun DrawScope.drawContinuousStaff(
-//    startX: Float,
-//    endX: Float,
-//    trebleBaseline: Float,
-//    bassBaseline: Float,
-//    spacing: Float,
-//    strokeWidth: Float
-//) {
-//    // Treble 5 lines
-//    for (i in 0 until 5) {
-//        val y = trebleBaseline + i * spacing
-//        drawLine(
-//            color = Color.White.copy(alpha = 0.25f),
-//            start = Offset(startX, y),
-//            end = Offset(endX, y),
-//            strokeWidth = strokeWidth
-//        )
-//    }
-//
-//    // Bass 5 lines
-//    for (i in 0 until 5) {
-//        val y = bassBaseline + i * spacing
-//        drawLine(
-//            color = Color.White.copy(alpha = 0.25f),
-//            start = Offset(startX, y),
-//            end = Offset(endX, y),
-//            strokeWidth = strokeWidth
-//        )
-//    }
-//
-//    // Left Grand Staff Connecting Bar
-//    drawLine(
-//        color = Color.White.copy(alpha = 0.6f),
-//        start = Offset(startX, trebleBaseline),
-//        end = Offset(startX, bassBaseline + 4 * spacing),
-//        strokeWidth = strokeWidth * 2.5f
-//    )
-//}
-//
-//private fun DrawScope.drawContinuousTab(
-//    startX: Float,
-//    endX: Float,
-//    baseline: Float,
-//    spacing: Float
-//) {
-//    for (i in 0 until 6) {
-//        val y = baseline + i * spacing
-//        drawLine(
-//            color = Color.White.copy(alpha = 0.35f),
-//            start = Offset(startX, y),
-//            end = Offset(endX, y),
-//            strokeWidth = 1.dp.toPx()
-//        )
-//    }
-//
-//    // Left Tab Bracket Line
-//    drawLine(
-//        color = Color.White.copy(alpha = 0.6f),
-//        start = Offset(startX, baseline),
-//        end = Offset(startX, baseline + 5 * spacing),
-//        strokeWidth = 2.dp.toPx()
-//    )
-//}
-
-//
-//private fun DrawScope.drawSlurArc(
-//    startX: Float,
-//    startY: Float,
-//    endX: Float,
-//    endY: Float,
-//    color: Color
-//) {
-//    val path = Path().apply {
-//        moveTo(startX, startY)
-//        quadraticBezierTo(
-//            (startX + endX) / 2f,
-//            minOf(startY, endY) - 16f,
-//            endX,
-//            endY
-//        )
-//    }
-//    drawPath(
-//        path = path,
-//        color = color,
-//        style = Stroke(width = 1.5.dp.toPx())
-//    )
-//}
-
-//
-//private fun accidentalOffset(column: Int, spacing: Float): Float = -((column + 1) * spacing * 0.95f)
-//
-//private fun beamGroup(position: Float, timeSignature: String): Int {
-//    val beats = when (timeSignature) {
-//        "6/8" -> 2
-//        "3/4" -> 3
-//        "2/4" -> 2
-//        else -> 4
-//    }
-//    return (position * beats).toInt().coerceAtLeast(0)
-//}
-//
-//private fun dynamicSymbol(dynamic: String): String {
-//    return when (dynamic.lowercase()) {
-//        "ppp" -> "𝄠"
-//        "pp" -> "𝄡"
-//        "p" -> "𝄢"
-//        "mp" -> "𝄣"
-//        "mf" -> "𝄤"
-//        "f" -> "𝄥"
-//        "ff" -> "𝄦"
-//        "fff" -> "𝄧"
-//        else -> dynamic
-//    }
-//}
-//
-//private fun DrawScope.drawGrandStaffBarline(
-//    barlineType: String,
-//    x: Float,
-//    trebleTop: Float,
-//    bassBottom: Float,
-//    color: Color
-//) {
-//    val strokeThin = 1.2f
-//    val strokeThick = 3.5f
-//    when (barlineType) {
-//        "double" -> {
-//            drawLine(color, Offset(x - 4f, trebleTop), Offset(x - 4f, bassBottom), strokeWidth = strokeThin)
-//            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThin)
-//        }
-//        "final" -> {
-//            drawLine(color, Offset(x - 4f, trebleTop), Offset(x - 4f, bassBottom), strokeWidth = strokeThin)
-//            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThick)
-//        }
-//        else -> {
-//            drawLine(color, Offset(x, trebleTop), Offset(x, bassBottom), strokeWidth = strokeThin)
-//        }
-//    }
-//}
-//
-//private fun DrawScope.drawGrandStaffBrace(
-//    x: Float,
-//    trebleTop: Float,
-//    bassBottom: Float,
-//    color: Color
-//) {
-//    val path = Path().apply {
-//        val midY = (trebleTop + bassBottom) / 2f
-//        moveTo(x, trebleTop)
-//        cubicTo(x - 8f, trebleTop + 15f, x - 12f, midY - 20f, x - 18f, midY)
-//        cubicTo(x - 12f, midY + 20f, x - 8f, bassBottom - 15f, x, bassBottom)
-//        cubicTo(x - 5f, bassBottom - 15f, x - 9f, midY + 20f, x - 15f, midY)
-//        cubicTo(x - 9f, midY - 20f, x - 5f, trebleTop + 15f, x, trebleTop)
-//        close()
-//    }
-//    drawPath(path, color = color)
-//}
-//
-//private fun DrawScope.drawRepeatStartBarline(
-//    x: Float,
-//    top: Float,
-//    bottom: Float,
-//    color: Color
-//) {
-//    val thin = 1.5f
-//    val thick = 3.5f
-//    val gap = 4.0f
-//    val dotRadius = 2.5f
-//    val centerY = (top + bottom) / 2f
-//    drawLine(color, Offset(x, top), Offset(x, bottom), strokeWidth = thick)
-//    drawLine(color, Offset(x + gap, top), Offset(x + gap, bottom), strokeWidth = thin)
-//    drawCircle(color, radius = dotRadius, center = Offset(x + gap + 5f, centerY - 8f))
-//    drawCircle(color, radius = dotRadius, center = Offset(x + gap + 5f, centerY + 8f))
-//}
-//
-//private fun DrawScope.drawRepeatEndBarline(
-//    x: Float,
-//    top: Float,
-//    bottom: Float,
-//    color: Color
-//) {
-//    val thin = 1.5f
-//    val thick = 3.5f
-//    val gap = 4.0f
-//    val dotRadius = 2.5f
-//    val centerY = (top + bottom) / 2f
-//    drawLine(color, Offset(x - gap, top), Offset(x - gap, bottom), strokeWidth = thin)
-//    drawLine(color, Offset(x, top), Offset(x, bottom), strokeWidth = thick)
-//    drawCircle(color, radius = dotRadius, center = Offset(x - gap - 5f, centerY - 8f))
-//    drawCircle(color, radius = dotRadius, center = Offset(x - gap - 5f, centerY + 8f))
-//}
-//
-//private fun DrawScope.drawEndingBracket(
-//    ending: Int?,
-//    startX: Float,
-//    endX: Float,
-//    baseline: Float,
-//    color: Color
-//) {
-//    if (ending == null) return
-//    val y = baseline - 56.0f
-//    drawLine(color, Offset(startX + 4f, y), Offset(endX - 4f, y), strokeWidth = 1.2f)
-//    drawLine(color, Offset(startX + 4f, y), Offset(startX + 4f, y + 25f), strokeWidth = 1.2f)
-//}
-//
-//private fun DrawScope.drawNavigationMarks(
-//    measure: Measure,
-//    startX: Float,
-//    baseline: Float,
-//    color: Color
-//) {
-//    val y = baseline - 45f
-//    if (measure.segno) {
-//        drawLine(color, Offset(startX + 28f, y - 6f), Offset(startX + 32f, y + 6f), strokeWidth = 1.5f)
-//        drawCircle(color, radius = 2f, center = Offset(startX + 26f, y))
-//        drawCircle(color, radius = 2f, center = Offset(startX + 34f, y))
-//    }
-//    if (measure.coda) {
-//        drawCircle(color, radius = 6f, center = Offset(startX + 52f, y), style = Stroke(width = 1.5f))
-//        drawLine(color, Offset(startX + 44f, y), Offset(startX + 60f, y), strokeWidth = 1.2f)
-//        drawLine(color, Offset(startX + 52f, y - 8f), Offset(startX + 52f, y + 8f), strokeWidth = 1.2f)
-//    }
-//}
-
-//
-//private fun staffY(
-//    midi: Int,
-//    baseline: Float,
-//    referenceStep: Int,
-//    referenceLine: Int,
-//    spacing: Float
-//): Float {
-//    val diatonicStep = com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.getDiatonicStep(midi)
-//    val stepDiff = diatonicStep - referenceStep
-//    return baseline - (referenceLine * spacing) - (stepDiff * (spacing / 2.0f))
-//}
-//
-//private fun slurArch(width: Float): Float = (width * 0.18f).coerceIn(8.0f, 32.0f)
-//
-//private fun tieArch(width: Float): Float = (width * 0.12f).coerceIn(6.0f, 22.0f)
-
-//
-//private fun DrawScope.drawHarmonic(
-//    center: Offset,
-//    harmonic: HarmonicType?,
-//    color: Color
-//) {
-//    val size = 8f
-//    val path = Path().apply {
-//        moveTo(center.x, center.y - size)
-//        lineTo(center.x + size, center.y)
-//        lineTo(center.x, center.y + size)
-//        lineTo(center.x - size, center.y)
-//        close()
-//    }
-//    drawPath(path, color = color, style = Stroke(width = 1.5f))
-//}
-//
-//private fun DrawScope.drawBeamPath(
-//    firstStemX: Float,
-//    lastStemX: Float,
-//    firstBeamY: Float,
-//    lastBeamY: Float,
-//    thickness: Float,
-//    color: Color
-//) {
-//    val path = Path().apply {
-//        moveTo(firstStemX, firstBeamY)
-//        lineTo(lastStemX, lastBeamY)
-//        lineTo(lastStemX, lastBeamY + thickness)
-//        lineTo(firstStemX, firstBeamY + thickness)
-//        close()
-//    }
-//    drawPath(path, color = color)
-//}
-//
-//private fun DrawScope.drawTupletBracket(
-//    tuplet: Int,
-//    firstStemX: Float,
-//    lastStemX: Float,
-//    firstBeamY: Float,
-//    lastBeamY: Float,
-//    spacing: Float,
-//    color: Color
-//) {
-//    if (tuplet <= 1) return
-//    val midX = (firstStemX + lastStemX) / 2.0f
-//    val y = minOf(firstBeamY, lastBeamY) - (1.35f * spacing)
-//    drawLine(color, Offset(firstStemX, y), Offset(midX - 9f, y), strokeWidth = 1.2f)
-//    drawLine(color, Offset(midX + 9f, y), Offset(lastStemX, y), strokeWidth = 1.2f)
-//    drawLine(color, Offset(firstStemX, y), Offset(firstStemX, y + 4f), strokeWidth = 1.2f)
-//    drawLine(color, Offset(lastStemX, y), Offset(lastStemX, y + 4f), strokeWidth = 1.2f)
-//}
-//
-//private fun DrawScope.drawSlurs(
-//    notes: List<ScoreNote>,
-//    positionMap: Map<ScoreNote, Float>,
-//    staffAssignmentMap: Map<ScoreNote, Boolean>,
-//    notesStartX: Float,
-//    usableWidth: Float,
-//    config: DrawingConfig,
-//    color: Color
-//) {
-//    val slurStarts = notes.filter { it.slurStart }
-//    for (start in slurStarts) {
-//        val startIndex = notes.indexOf(start)
-//        val end = notes.drop(startIndex + 1).firstOrNull { it.slurEnd } ?: continue
-//
-//        val x1 = snap(notesStartX + (positionMap[start] ?: start.position) * usableWidth)
-//        val x2 = snap(notesStartX + (positionMap[end] ?: end.position) * usableWidth)
-//        val isTreble = staffAssignmentMap[start] ?: (start.midiNote >= 60)
-//        val baseline = if (isTreble) config.trebleBaseline else config.bassBaseline
-//        val refStep = if (isTreble) 64 else 43
-//
-//        val y = staffY(start.midiNote, baseline, refStep, 4, config.lineSpacing)
-//        val width = x2 - x1
-//        val arch = slurArch(width)
-//        val above = start.stemUp != true
-//
-//        val path = Path().apply {
-//            moveTo(x1, y)
-//            cubicTo(x1 + (width * 0.25f), if (above) y - arch else y + arch, x1 + (width * 0.75f), if (above) y - arch else y + arch, x2, y)
-//            cubicTo(x1 + (0.75f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1 + (0.25f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1, y)
-//            close()
-//        }
-//        drawPath(path, color = color)
-//    }
-//}
-//
-//private fun DrawScope.drawTies(
-//    notes: List<ScoreNote>,
-//    positionMap: Map<ScoreNote, Float>,
-//    staffAssignmentMap: Map<ScoreNote, Boolean>,
-//    notesStartX: Float,
-//    usableWidth: Float,
-//    config: DrawingConfig,
-//    color: Color
-//) {
-//    val tieStarts = notes.filter { it.tieStart }
-//    for (start in tieStarts) {
-//        val startIndex = notes.indexOf(start)
-//        val end = notes.drop(startIndex + 1).firstOrNull { it.tieEnd && it.midiNote == start.midiNote } ?: continue
-//
-//        val x1 = snap(notesStartX + (positionMap[start] ?: start.position) * usableWidth)
-//        val x2 = snap(notesStartX + (positionMap[end] ?: end.position) * usableWidth)
-//        val isTreble = staffAssignmentMap[start] ?: (start.midiNote >= 60)
-//        val baseline = if (isTreble) config.trebleBaseline else config.bassBaseline
-//        val refStep = if (isTreble) 64 else 43
-//
-//        val y = staffY(start.midiNote, baseline, refStep, 4, config.lineSpacing)
-//        val width = x2 - x1
-//        val arch = tieArch(width)
-//        val above = start.stemUp != true
-//
-//        val path = Path().apply {
-//            moveTo(x1, y)
-//            cubicTo(x1 + (width * 0.25f), if (above) y - arch else y + arch, x1 + (width * 0.75f), if (above) y - arch else y + arch, x2, y)
-//            cubicTo(x1 + (0.75f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1 + (0.25f * width), if (above) (y - arch) + 2f else (y + arch) - 2f, x1, y)
-//            close()
-//        }
-//        drawPath(path, color = color)
-//    }
-//}
-//
-//private fun buildRhythmicSpacingMap(notes: List<ScoreNote>): Map<ScoreNote, Float> {
-//    if (notes.isEmpty()) return emptyMap()
-//    val distinctPositions = notes.map { it.position }.distinct().sorted()
-//    if (distinctPositions.size <= 1) return notes.associateWith { it.position }
-//
-//    val minPos = distinctPositions.first()
-//    val maxPos = distinctPositions.last()
-//    val span = if (maxPos > minPos) maxPos - minPos else 1.0f
-//
-//    return notes.associateWith { note ->
-//        (note.position - minPos) / span
-//    }
-//}
-//
-//private fun resolveChordCollisions(notes: List<ScoreNote>): Map<ScoreNote, Float> {
-//    val map = mutableMapOf<ScoreNote, Float>()
-//    val grouped = notes.groupBy { it.position }
-//
-//    for ((_, chord) in grouped) {
-//        val sortedChord = chord.sortedBy { it.midiNote }
-//        for (i in sortedChord.indices) {
-//            val note = sortedChord[i]
-//            if (i > 0 && kotlin.math.abs(sortedChord[i - 1].midiNote - note.midiNote) <= 2) {
-//                map[note] = 12.0f
-//            } else {
-//                map[note] = 0.0f
-//            }
-//        }
-//    }
-//    return map
-//}
-//
-//private fun buildBeamLookup(
-//    beamGroups: List<List<ScoreNote>>,
-//    positionMap: Map<ScoreNote, Float>,
-//    collisionOffsets: Map<ScoreNote, Float>,
-//    staffAssignmentMap: Map<ScoreNote, Boolean>,
-//    stemLengthMap: Map<ScoreNote, Float>,
-//    config: DrawingConfig
-//): Map<ScoreNote, BeamInfo> {
-//    val result = mutableMapOf<ScoreNote, BeamInfo>()
-//    for (group in beamGroups) {
-//        if (group.size < 2) continue
-//        val first = group.first()
-//        val last = group.last()
-//        val info = BeamInfo(
-//            primaryBeam = true,
-//            secondaryBeams = group.size > 2,
-//            stemDirectionUp = first.stemUp ?: true,
-//            beamStartY = config.trebleBaseline - 30f,
-//            beamEndY = config.trebleBaseline - 30f
-//        )
-//        for (note in group) {
-//            result[note] = info
-//        }
-//    }
-//    return result
-//}
-
 private fun DrawScope.drawLedgerLines(
     x: Float,
     y: Float,
@@ -480,20 +46,26 @@ private fun DrawScope.drawLedgerLines(
     spacing: Float,
     color: Color
 ) {
+    if (spacing <= 0f) return
     val lineBoundExt = 12f
     val halfSpacing = spacing / 2f
+    val lineColor = color.copy(alpha = 0.85f)
 
     if (y < topY - halfSpacing) {
         var curL = topY - spacing
-        while (curL >= y - 0.1f) {
-            drawLine(color.copy(alpha = 0.5f), Offset(x - lineBoundExt, curL), Offset(x + lineBoundExt, curL), strokeWidth = 1.2f)
+        var count = 0
+        while (curL >= y - (halfSpacing * 0.8f) && count < 6) {
+            drawLine(lineColor, Offset(x - lineBoundExt, curL), Offset(x + lineBoundExt, curL), strokeWidth = 1.3f)
             curL -= spacing
+            count++
         }
     } else if (y > bottomY + halfSpacing) {
         var curL = bottomY + spacing
-        while (curL <= y + 0.1f) {
-            drawLine(color.copy(alpha = 0.5f), Offset(x - lineBoundExt, curL), Offset(x + lineBoundExt, curL), strokeWidth = 1.2f)
+        var count = 0
+        while (curL <= y + (halfSpacing * 0.8f) && count < 6) {
+            drawLine(lineColor, Offset(x - lineBoundExt, curL), Offset(x + lineBoundExt, curL), strokeWidth = 1.3f)
             curL += spacing
+            count++
         }
     }
 }
@@ -573,9 +145,11 @@ fun StaffAndTabNotationViewer(
     rightHandColor: Color = Color(0xFF4A90E2),
     isLeftHandHidden: Boolean = false,
     isRightHandHidden: Boolean = false,
+    isPedalPressed: Boolean = false,
     modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState()
 ) {
+    val colorScheme = MaterialTheme.colorScheme
     val isDark = isSystemInDarkTheme()
     val textMeasurer = rememberTextMeasurer()
 
@@ -604,12 +178,18 @@ fun StaffAndTabNotationViewer(
             .background(color = MaterialTheme.colorScheme.background)
     ) {
         if (score != null) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(vertical = 12.dp)
-            ) {
+            if (score.isPdfScore && !score.pdfUri.isNullOrBlank()) {
+                PdfDocumentViewer(
+                    uriString = score.pdfUri,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(vertical = 12.dp)
+                ) {
                 // Score Title and Tempo/Key Metadata Header
                 Column(
                     modifier = Modifier
@@ -621,10 +201,27 @@ fun StaffAndTabNotationViewer(
                         text = score.title.ifBlank { "Untitled Score" },
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (isDark) Color(0xFFEEEEEE) else Color(0xFF1E1E1E),
+                        color = MaterialTheme.colorScheme.onBackground,
                         letterSpacing = 1.sp,
                         textAlign = TextAlign.Center
                     )
+                    if (score.composer.isNotBlank() || score.lyricist.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        val byline = buildString {
+                            if (score.composer.isNotBlank()) append(score.composer)
+                            if (score.lyricist.isNotBlank()) {
+                                if (isNotEmpty()) append(" • Words: ")
+                                append(score.lyricist)
+                            }
+                        }
+                        Text(
+                            text = byline,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -636,41 +233,73 @@ fun StaffAndTabNotationViewer(
                         ) {
                             Text("𝅘𝅥 =", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryColor)
                             Text(
-                                text = "${score.tempo.toInt()} BPM",
+                                text = "${score.tempo.toInt()} BPM${if (score.tempoText.isNotBlank() && score.tempoText != "Moderato") " (${score.tempoText})" else ""}",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color(0xFFCCCCCC) else Color(0xFF444444)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text("•", fontSize = 12.sp, color = Color.Gray.copy(alpha = 0.5f))
+                        Text("•", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                         Text(
                             text = score.timeSignature,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color(0xFFCCCCCC) else Color(0xFF444444)
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        Text("•", fontSize = 12.sp, color = Color.Gray.copy(alpha = 0.5f))
+                        Text("•", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                         Text(
                             text = score.keySignature.keyName,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = primaryColor.copy(alpha = 0.9f)
                         )
+                        Text("•", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                        Text(
+                            text = "${score.measures.size} Bars",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    // Interactive Format Switcher Chips
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf("Both Viewers", "Staff Only", "Tab Only").forEach { fmt ->
+                            val isSelected = currentFormat.equals(fmt, ignoreCase = true)
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onFormatChange(fmt) },
+                                label = { Text(fmt, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = primaryColor.copy(alpha = 0.2f),
+                                    selectedLabelColor = primaryColor
+                                )
+                            )
+                        }
                     }
                 }
 
                 Spacer(Modifier.height(8.dp))
 
                 score.measures.chunked(2).forEachIndexed { rowIndex, rowMeasures ->
-                    val rowHeight = 260.dp
+                    val showStaff = !currentFormat.equals("Tab Only", ignoreCase = true)
+                    val showTab = currentFormat.equals("Both Viewers", ignoreCase = true) || currentFormat.equals("Tab Only", ignoreCase = true)
+                    val rowHeight = when {
+                        showStaff && showTab -> 380.dp
+                        showStaff -> 240.dp
+                        else -> 190.dp
+                    }
                     Box(modifier = Modifier.fillMaxWidth().height(rowHeight)) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
-                            val isTab = currentFormat.contains("Tab", ignoreCase = true)
-                            val lineSpacing = if (isTab) 20.dp.toPx() else 14.dp.toPx()
+                            val staffLineSpacing = 14.dp.toPx()
+                            val tabLineSpacing = 16.dp.toPx()
                             val trebleBaseline = 40f
-                            val bassBaseline = trebleBaseline + (6 * lineSpacing)
-                            val tabBaseline = 60f
-                            val clefTextColor = if (isDark) Color(0xFFEAEAEA) else Color(0xFF121212)
+                            val bassBaseline = trebleBaseline + (6 * staffLineSpacing)
+                            val tabBaseline = if (showStaff) bassBaseline + (6 * staffLineSpacing) + 20f else 45f
+                            val onSurface = colorScheme.onSurface
                             val leftPadding = 12f
                             val rightPadding = 12f
                             val availableWidth = (size.width - leftPadding - rightPadding).coerceAtLeast(100f)
@@ -683,9 +312,8 @@ fun StaffAndTabNotationViewer(
 
                                  val isPlayheadInThisMeasure = (mIdx == playheadMeasure)
 
-                                 // 1. Create config FIRST so it's in scope for all drawing functions
-                                 val config = DrawingConfig(
-                                     lineSpacing = lineSpacing,
+                                 val staffConfig = DrawingConfig(
+                                     lineSpacing = staffLineSpacing,
                                      trebleBaseline = trebleBaseline,
                                      bassBaseline = bassBaseline,
                                      primaryColor = primaryColor,
@@ -694,76 +322,108 @@ fun StaffAndTabNotationViewer(
                                      isLeftHandHidden = isLeftHandHidden,
                                      isRightHandHidden = isRightHandHidden,
                                      isDark = isDark,
-                                     isTab = isTab,
-                                     tabBaseline = trebleBaseline,
+                                     isTab = false,
+                                     tabBaseline = tabBaseline,
+                                     isPedalPressed = isPedalPressed,
                                      showLabels = showLetters,
                                      showLyrics = showLyrics
                                  )
 
-                                 // 2. Now call drawGrandStaffSystem using the config
-                                 drawGrandStaffSystem(
-                                     ds = this,
-                                     startX = startX,
-                                     endX = endX,
-                                     trebleY = trebleBaseline,
-                                     bassY = bassBaseline,
-                                     spacing = lineSpacing,
-                                     isFinal = (mIdx == score.measures.lastIndex),
-                                     color = Color(0xFF4A4945).copy(alpha = 0.5f),
-                                     drawLeftBar = (mIdxInRow == 0),
-                                     config = config
+                                 val tabConfig = DrawingConfig(
+                                     lineSpacing = tabLineSpacing,
+                                     trebleBaseline = tabBaseline,
+                                     bassBaseline = tabBaseline,
+                                     primaryColor = primaryColor,
+                                     leftHandColor = leftHandColor,
+                                     rightHandColor = rightHandColor,
+                                     isLeftHandHidden = isLeftHandHidden,
+                                     isRightHandHidden = isRightHandHidden,
+                                     isDark = isDark,
+                                     isTab = true,
+                                     tabBaseline = tabBaseline,
+                                     showLabels = showLetters,
+                                     showLyrics = showLyrics
                                  )
 
-                                 val barType = if (mIdx == score.measures.lastIndex) "final" else "single"
-                                 drawGrandStaffSystemBarline(
-                                     type = barType,
-                                     x = endX,
-                                     trebleTop = trebleBaseline,
-                                     trebleBottom = trebleBaseline + (4 * lineSpacing),
-                                     bassTop = bassBaseline,
-                                     bassBottom = bassBaseline + (4 * lineSpacing),
-                                     color = clefTextColor.copy(alpha = 0.2f)
+                                 val measureLabel = "M.${mIdx + 1}"
+                                 val labelLayout = textMeasurer.measure(
+                                     text = measureLabel,
+                                     style = TextStyle(color = primaryColor.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                  )
 
-                                val measureLabel = "M.${mIdx + 1}"
-                                val labelLayout = textMeasurer.measure(
-                                    text = measureLabel,
-                                    style = TextStyle(color = primaryColor.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                )
+                                 drawText(
+                                     textLayoutResult = labelLayout,
+                                     topLeft = Offset(startX + 5f, if (showStaff) trebleBaseline - (staffLineSpacing * 2f) else tabBaseline - (tabLineSpacing * 2f))
+                                 )
 
-                                drawText(
-                                    textLayoutResult = labelLayout,
-                                    topLeft = Offset(startX + 5f, (if (isTab) tabBaseline else trebleBaseline) - (lineSpacing * 2f))
-                                )
+                                 if (showStaff) {
+                                     drawGrandStaffSystem(
+                                         ds = this,
+                                         startX = startX,
+                                         endX = endX,
+                                         trebleY = trebleBaseline,
+                                         bassY = bassBaseline,
+                                         spacing = staffLineSpacing,
+                                         isFinal = (mIdx == score.measures.lastIndex),
+                                         color = colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                         drawLeftBar = (mIdxInRow == 0),
+                                         config = staffConfig
+                                     )
 
-                                if (isTab) {
-                                    drawTabMeasureContent(
-                                        drawScope = this, startX = startX, endX = endX, h = size.height,
-                                        measure = measure, activeMidiNotes = stableActiveNotes, playingNote = playingNote,
-                                        playheadOffset = if (isPlayheadInThisMeasure) playheadOffset else null,
-                                        config = config, labelLayout = labelLayout, tBase = trebleBaseline, textMeasurer = textMeasurer,
-                                        isFinalBar = (mIdx == score.measures.lastIndex), isMeasureActive = isPlayheadInThisMeasure,
-                                        timeSignature = score.timeSignature, drawHeaders = (mIdxInRow == 0)
-                                    )
-                                } else {
-                                    drawStaffMeasureContent(
-                                        drawScope = this, startX = startX, endX = endX, h = size.height,
-                                        measure = measure, activeMidiNotes = stableActiveNotes, playingNote = playingNote,
-                                        playheadOffset = if (isPlayheadInThisMeasure) playheadOffset else null,
-                                        config = config, textMeasurer = textMeasurer,
-                                        noteLabels = MusicConstants.NOTE_LABELS,
-                                        diatonicSteps = MusicConstants.CHROMATIC_TO_DIATONIC_STEPS,
-                                        isFinalBar = (mIdx == score.measures.lastIndex), isMeasureActive = isPlayheadInThisMeasure,
-                                        timeSignature = score.timeSignature, drawHeaders = (mIdxInRow == 0),
-                                        labelCache = labelCache, sharpCache = sharpCache, flatCache = flatCache
-                                    )
-                                }
+                                     val barType = if (mIdx == score.measures.lastIndex) "final" else "single"
+                                     drawGrandStaffSystemBarline(
+                                         type = barType,
+                                         x = endX,
+                                         trebleTop = trebleBaseline,
+                                         trebleBottom = trebleBaseline + (4 * staffLineSpacing),
+                                         bassTop = bassBaseline,
+                                         bassBottom = bassBaseline + (4 * staffLineSpacing),
+                                         color = onSurface.copy(alpha = 0.2f)
+                                     )
+
+                                     drawStaffMeasureContent(
+                                         drawScope = this, startX = startX, endX = endX, h = size.height,
+                                         measure = measure, activeMidiNotes = stableActiveNotes, playingNote = playingNote,
+                                         playheadOffset = if (isPlayheadInThisMeasure) playheadOffset else null,
+                                         config = staffConfig, textMeasurer = textMeasurer,
+                                         noteLabels = MusicConstants.NOTE_LABELS,
+                                         diatonicSteps = MusicConstants.CHROMATIC_TO_DIATONIC_STEPS,
+                                         isFinalBar = (mIdx == score.measures.lastIndex), isMeasureActive = isPlayheadInThisMeasure,
+                                         timeSignature = score.timeSignature, drawHeaders = (mIdxInRow == 0),
+                                         labelCache = labelCache, sharpCache = sharpCache, flatCache = flatCache
+                                     )
+                                 }
+
+                                 if (showTab) {
+                                     drawGrandStaffSystem(
+                                         ds = this,
+                                         startX = startX,
+                                         endX = endX,
+                                         trebleY = tabBaseline,
+                                         bassY = tabBaseline,
+                                         spacing = tabLineSpacing,
+                                         isFinal = (mIdx == score.measures.lastIndex),
+                                         color = colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                         drawLeftBar = (mIdxInRow == 0),
+                                         config = tabConfig
+                                     )
+
+                                     drawTabMeasureContent(
+                                         drawScope = this, startX = startX, endX = endX, h = size.height,
+                                         measure = measure, activeMidiNotes = stableActiveNotes, playingNote = playingNote,
+                                         playheadOffset = if (isPlayheadInThisMeasure) playheadOffset else null,
+                                         config = tabConfig, labelLayout = labelLayout, tBase = tabBaseline, textMeasurer = textMeasurer,
+                                         isFinalBar = (mIdx == score.measures.lastIndex), isMeasureActive = isPlayheadInThisMeasure,
+                                         timeSignature = score.timeSignature, drawHeaders = (mIdxInRow == 0)
+                                     )
+                                 }
                             }
                         }
                     }
                 }
             }
-        } else {
+        }
+    } else { 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -853,18 +513,31 @@ private fun drawTabMeasureContent(
     isFinalBar: Boolean, isMeasureActive: Boolean, timeSignature: String, drawHeaders: Boolean
 ) {
     with(drawScope) {
-        val clefTextColor = if (config.isDark) Color(0xFFEAEAEA) else Color(0xFF121212)
+        val colorScheme = config.colorScheme
+        val clefTextColor = colorScheme?.onSurface ?: (if (config.isDark) Color(0xFFEAEAEA) else Color(0xFF121212))
         val systemContentStartX = startX + if (drawHeaders) 85f else 0f
         val usableMeasureWidth = (endX - systemContentStartX - 10f).coerceAtLeast(100f)
         
         if (drawHeaders) {
-            val tabHeaderLayout = textMeasurer.measure("T\nA\nB", TextStyle(color = clefTextColor, fontSize = 15.sp, fontWeight = FontWeight.Black))
-            drawText(tabHeaderLayout, topLeft = Offset(startX + 5f, tBase + (config.lineSpacing * 0.5f)))
+            with(MusicVectorSymbols) {
+                drawTabClef(
+                    color = clefTextColor,
+                    topLeft = Offset(startX + 8f, tBase + (config.lineSpacing * 0.3f)),
+                    size = Size(config.lineSpacing * 1.8f, config.lineSpacing * 4.4f)
+                )
+            }
 
             val tsParts = timeSignature.split("/")
             if (tsParts.size == 2) {
-                val tsLayout = textMeasurer.measure("${tsParts[0]}\n${tsParts[1]}", TextStyle(color = clefTextColor, fontSize = 17.sp, fontWeight = FontWeight.Bold))
-                drawText(tsLayout, topLeft = Offset(startX + 45f, tBase + config.lineSpacing * 1.0f))
+                with(MusicVectorSymbols) {
+                    drawTimeSignature(
+                        numerator = tsParts[0],
+                        denominator = tsParts[1],
+                        color = clefTextColor,
+                        topLeft = Offset(startX + 42f, tBase + (config.lineSpacing * 0.6f)),
+                        lineSpacing = config.lineSpacing
+                    )
+                }
             }
         }
 
@@ -882,7 +555,7 @@ private fun drawTabMeasureContent(
             val isSounding = isMeasureActive && ((playingNote != null && note.midiNote == playingNote) || activeMidiNotes.contains(note.midiNote))
 
             drawCircle(
-                color = if (isSounding) config.primaryColor else if (config.isDark) Color(0xFF2C2C2A) else Color(0xFFFCFBF7),
+                color = if (isSounding) config.primaryColor else (colorScheme?.surfaceVariant ?: (if (config.isDark) Color(0xFF2C2C2A) else Color(0xFFFCFBF7))),
                 radius = 9.dp.toPx(),
                 center = Offset(nx, ny)
             )
@@ -899,7 +572,46 @@ private fun drawTabMeasureContent(
                 drawText(lyricLayout, topLeft = Offset(nx - lyricLayout.size.width / 2f, tBase + 6 * config.lineSpacing + 10f))
             }
 
-            // Render Guitar Articulations (Bends, Barres)
+            // Render Guitar Articulations (Bends, Barres, Hammer, Pull, Slide, Vibrato, Palm Mute)
+            when (note.articulation) {
+                TabArticulation.HAMMER_ON -> {
+                    val hLayout = textMeasurer.measure(MusicSymbols.HAMMER_ON, TextStyle(color = config.primaryColor, fontSize = 9.sp, fontWeight = FontWeight.Bold))
+                    drawText(hLayout, topLeft = Offset(nx - hLayout.size.width / 2f, ny - config.lineSpacing * 0.9f))
+                }
+                TabArticulation.PULL_OFF -> {
+                    val pLayout = textMeasurer.measure(MusicSymbols.PULL_OFF, TextStyle(color = config.primaryColor, fontSize = 9.sp, fontWeight = FontWeight.Bold))
+                    drawText(pLayout, topLeft = Offset(nx - pLayout.size.width / 2f, ny - config.lineSpacing * 0.9f))
+                }
+                TabArticulation.SLIDE_UP -> {
+                    drawLine(config.primaryColor, Offset(nx - 8f, ny + 4f), Offset(nx + 8f, ny - 4f), strokeWidth = 1.8f)
+                }
+                TabArticulation.SLIDE_DOWN -> {
+                    drawLine(config.primaryColor, Offset(nx - 8f, ny - 4f), Offset(nx + 8f, ny + 4f), strokeWidth = 1.8f)
+                }
+                TabArticulation.RELEASE -> {
+                    val rLayout = textMeasurer.measure(MusicSymbols.RELEASE, TextStyle(color = config.primaryColor, fontSize = 8.sp, fontWeight = FontWeight.Normal))
+                    drawText(rLayout, topLeft = Offset(nx - rLayout.size.width / 2f, ny - config.lineSpacing * 0.9f))
+                }
+                TabArticulation.TAP -> {
+                    val tLayout = textMeasurer.measure("T", TextStyle(color = config.primaryColor, fontSize = 8.sp, fontWeight = FontWeight.Black))
+                    drawText(tLayout, topLeft = Offset(nx - tLayout.size.width / 2f, ny - config.lineSpacing * 0.9f))
+                }
+                TabArticulation.DEAD_NOTE -> {
+                    // Rendered as cross notehead on fret
+                }
+                TabArticulation.NONE -> {}
+            }
+
+            if (note.palmMute) {
+                val pmLayout = textMeasurer.measure(MusicSymbols.PALM_MUTE, TextStyle(color = clefTextColor.copy(alpha = 0.6f), fontSize = 8.sp, fontWeight = FontWeight.Medium))
+                drawText(pmLayout, topLeft = Offset(nx - pmLayout.size.width / 2f, tBase - 12f))
+            }
+            if (note.vibrato) {
+                with(MusicVectorSymbols) {
+                    drawSmuflSymbol("wiggleArpeggiatoUp", config.primaryColor, Offset(nx - 6f, ny - 14f), Size(12f, 8f), 400f)
+                }
+            }
+
             note.bend?.let { bend ->
                 drawBend(Offset(nx, ny), bend.bendSteps, config.primaryColor)
             }
@@ -916,44 +628,36 @@ private fun drawTabMeasureContent(
         rests.forEach { rest ->
             val rx = snap(systemContentStartX + (usableMeasureWidth * (rest.position / beatsPerMeasure)))
             val ry = tBase + 2.5f * config.lineSpacing
-            
-            val restWidth = 15f
-            val restHeight = if (rest.duration >= 2.0f) 10f else 30f
-            val restScale = config.lineSpacing / 15f
+            val restScale = config.lineSpacing / 14f
+            val restColor = clefTextColor.copy(alpha = 0.55f)
 
-            withTransform({
-                translate(left = rx - (restWidth * restScale) / 2f, top = ry - (restHeight * restScale) / 2f)
-                scale(scaleX = restScale, scaleY = restScale, pivot = Offset.Zero)
-            }) {
-                with(MusicVectorSymbols) {
-                    when {
-                        rest.duration >= 4.0f -> drawRestWhole(clefTextColor.copy(alpha = 0.5f), Size(restWidth, restHeight))
-                        rest.duration >= 2.0f -> drawRestHalf(clefTextColor.copy(alpha = 0.5f), Size(restWidth, restHeight))
-                        rest.duration >= 1.0f -> drawRestQuarter(clefTextColor.copy(alpha = 0.5f), Size(restWidth, restHeight))
-                        rest.duration >= 0.5f -> drawRestEighth(clefTextColor.copy(alpha = 0.5f), Size(restWidth, restHeight))
-                        // Add others if needed
+            with(MusicVectorSymbols) {
+                when {
+                    rest.duration >= 4.0f -> drawRestWhole(restColor, Size(16f * restScale, 10f * restScale), topLeft = Offset(rx - 8f * restScale, ry - 5f * restScale))
+                    rest.duration >= 2.0f -> drawRestHalf(restColor, Size(16f * restScale, 10f * restScale), topLeft = Offset(rx - 8f * restScale, ry))
+                    rest.duration >= 1.0f -> {
+                        val rw = 12f * restScale
+                        val rh = 28f * restScale
+                        drawRestQuarter(restColor, Size(rw, rh), topLeft = Offset(rx - rw / 2f, ry - rh / 2f))
+                    }
+                    else -> {
+                        val rw = 11f * restScale
+                        val rh = 22f * restScale
+                        drawRestEighth(restColor, Size(rw, rh), topLeft = Offset(rx - rw / 2f, ry - rh / 2f))
                     }
                 }
             }
         }
 
         // Navigation marks (Segno, Coda)
-        if (measure.segno) {
-            withTransform({
-                translate(left = startX + 5f, top = config.trebleBaseline - 40f)
-            }) {
-                with(MusicVectorSymbols) {
-                    drawSegno(config.primaryColor, Size(20f, 20f))
-                }
+        if (measure.segno || measure.dalSegno) {
+            with(MusicVectorSymbols) {
+                drawSegno(config.primaryColor, Size(20f, 20f), topLeft = Offset(startX + 5f, tBase - 25f))
             }
         }
-        if (measure.coda) {
-            withTransform({
-                translate(left = endX - 25f, top = config.trebleBaseline - 40f)
-            }) {
-                with(MusicVectorSymbols) {
-                    drawCoda(config.primaryColor, Size(20f, 20f))
-                }
+        if (measure.coda || measure.toCoda) {
+            with(MusicVectorSymbols) {
+                drawCoda(config.primaryColor, Size(20f, 20f), topLeft = Offset(endX - 25f, tBase - 25f))
             }
         }
 
@@ -984,10 +688,11 @@ private fun drawStaffMeasureContent(
     labelCache: Map<Int, TextLayoutResult>, sharpCache: TextLayoutResult, flatCache: TextLayoutResult
 ) {
     with(drawScope) {
-        val clefTextColor = if (config.isDark) Color(0xFFEAEAEA) else Color(0xFF121212)
+        val colorScheme = config.colorScheme
+        val clefTextColor = colorScheme?.onSurface ?: (if (config.isDark) Color(0xFFEAEAEA) else Color(0xFF121212))
         val trebleBaseline = 40f
         val bassBaseline = trebleBaseline + (6 * config.lineSpacing)
-        val staffLineColor = if (config.isDark) Color(0xFF4A4945) else Color(0xFFCCCCCC)
+        val staffLineColor = colorScheme?.outlineVariant ?: (if (config.isDark) Color(0xFF4A4945) else Color(0xFFCCCCCC))
         val halfLineSpacing = config.lineSpacing / 2f
 
         val symbolAreaWidth = if (drawHeaders) 85f else 0f
@@ -998,21 +703,45 @@ private fun drawStaffMeasureContent(
         val dynamicMeasureWidth = (endX - notesStartX - 10f).coerceAtLeast(100f)
         val usableMeasureWidth = dynamicMeasureWidth
 
-        if (drawHeaders) {
-            val clefWidth = 22f
-            val trebleHeight = config.lineSpacing * 3.8f
-            val bassHeight = config.lineSpacing * 2.5f
+      if (drawHeaders) {
+    // 1. CLEFS: Authentic SMuFL / Bravura vector clefs from OSMD
+    val clefH = config.lineSpacing * 5.2f
+    val clefW = clefH * 0.36f // Standard Treble Clef aspect ratio
+    
+    // Treble Clef centered on G line (line 2 from bottom)
+    with(MusicVectorSymbols) {
+        drawTrebleClef(
+            color = clefTextColor,
+            topLeft = Offset(startX + 10f, trebleBaseline - (config.lineSpacing * 0.8f)),
+            size = Size(clefW, clefH)
+        )
+    }
 
-            drawTrebleClefSymbol(clefTextColor, Offset(startX + 12f, trebleBaseline - (config.lineSpacing * 0.4f)), Size(clefWidth, trebleHeight))
-            drawBassClefSymbol(clefTextColor, Offset(startX + 12f, bassBaseline - (config.lineSpacing * 0.1f)), Size(clefWidth, bassHeight))
+    // Bass Clef centered on F line (line 4 from bottom)
+    val bassH = config.lineSpacing * 3.6f
+    val bassW = bassH * 0.81f // Standard Bass Clef aspect ratio
+    with(MusicVectorSymbols) {
+        drawBassClef(
+            color = clefTextColor,
+            topLeft = Offset(startX + 10f, bassBaseline + (config.lineSpacing * 0.1f)),
+            size = Size(bassW, bassH)
+        )
+    }
 
-            val tsParts = timeSignature.split("/")
-            if (tsParts.size == 2) {
-                val tsStyle = TextStyle(color = clefTextColor, fontSize = 20.sp, fontWeight = FontWeight.Black)
-                drawText(textMeasurer.measure(tsParts[0], tsStyle), topLeft = Offset(startX + 44f, trebleBaseline - 0.2f * config.lineSpacing))
-                drawText(textMeasurer.measure(tsParts[1], tsStyle), topLeft = Offset(startX + 44f, trebleBaseline + 1.8f * config.lineSpacing))
-            }
+    // 2. TIME SIGNATURE: Authentic SMuFL engraved digits
+    val tsParts = timeSignature.split("/")
+    if (tsParts.size == 2) {
+        with(MusicVectorSymbols) {
+            drawTimeSignature(
+                numerator = tsParts[0],
+                denominator = tsParts[1],
+                color = clefTextColor,
+                topLeft = Offset(startX + 44f, trebleBaseline + (config.lineSpacing * 0.1f)),
+                lineSpacing = config.lineSpacing
+            )
         }
+    }
+}
 
         drawGrandStaffSystemBarline(if (isFinalBar) "final" else "single", endX, trebleBaseline, trebleBaseline + 4 * config.lineSpacing, bassBaseline, bassBaseline + 4 * config.lineSpacing, clefTextColor.copy(alpha = 0.3f))
 
@@ -1031,22 +760,45 @@ private fun drawStaffMeasureContent(
             val beatIndex: Int
         )
 
-        val visibleNotes = measure.notes.filter { !it.isRest }.mapNotNull { note ->
+        // 1. Calculate Human-Readable, Mathematically Proportional Note Spacing with Collision Avoidance
+        val rawVisibleNotes = measure.notes.filter { !it.isRest }.mapNotNull { note ->
             val midiNote = note.midiNote
             val isTrebleClef = midiNote >= 60
             if (isTrebleClef && config.isRightHandHidden) return@mapNotNull null
             if (!isTrebleClef && config.isLeftHandHidden) return@mapNotNull null
+            Triple(note, midiNote, isTrebleClef)
+        }.sortedBy { it.first.position }
 
-            val normalizedPosition = (note.position / beatsPerMeasure).coerceIn(0f, 0.95f)
-            val nx = snap(notesStartX + (usableMeasureWidth * normalizedPosition))
+        // Compute non-linear collision-free x coordinates for notes across measure
+        val distinctPositions = rawVisibleNotes.map { it.first.position }.distinct().sorted()
+        val minNoteGap = 24f
+        val computedXByPosition = mutableMapOf<Float, Float>()
+
+        if (distinctPositions.isNotEmpty()) {
+            val totalNaturalSpan = usableMeasureWidth - 20f
+            var runningX = notesStartX + 12f
+            distinctPositions.forEachIndexed { idx, pos ->
+                val timeFraction = (pos / beatsPerMeasure).coerceIn(0f, 0.95f)
+                val idealX = notesStartX + 12f + (totalNaturalSpan * timeFraction)
+                val targetX = if (idx == 0) idealX else maxOf(idealX, runningX + minNoteGap)
+                computedXByPosition[pos] = snap(targetX)
+                runningX = targetX
+            }
+        }
+
+        val visibleNotes = rawVisibleNotes.map { (note, midiNote, isTrebleClef) ->
+            val nx = computedXByPosition[note.position] 
+                ?: snap(notesStartX + (usableMeasureWidth * (note.position / beatsPerMeasure).coerceIn(0f, 0.95f)))
             val diatonicStep = ChordVoicingEngine.getDiatonicStep(midiNote)
             val ny = if (isTrebleClef) {
+                // Diatonic step for F5 (top line) = 38. F5 ny = trebleBaseline.
                 trebleBaseline + (38.0f - diatonicStep) * halfLineSpacing
             } else {
+                // Diatonic step for A3 (top line of bass staff) = 26. A3 ny = bassBaseline.
                 bassBaseline + (26.0f - diatonicStep) * halfLineSpacing
             }
             val topY = if (isTrebleClef) trebleBaseline else bassBaseline
-            val bottomY = topY + 4 * config.lineSpacing
+            val bottomY = topY + (4 * config.lineSpacing)
             val beatIdx = kotlin.math.floor(note.position).toInt()
 
             RenderNoteInfo(
@@ -1065,9 +817,10 @@ private fun drawStaffMeasureContent(
         data class BeamInfo(
             val stemDir: Float,
             val isBeamed: Boolean,
-            val beamGroupKey: String?
+            val beamGroupKey: String?,
+            val beamY: Float? = null
         )
-
+        
         // Map note to its beam attributes
         val noteBeamMap = mutableMapOf<ScoreNote, BeamInfo>()
         val groupedByClefAndBeat = visibleNotes.groupBy { "${if (it.isTrebleClef) "treble" else "bass"}_${it.beatIndex}" }
@@ -1080,8 +833,19 @@ private fun drawStaffMeasureContent(
                 val isTreble = beamEligible.first().isTrebleClef
                 val groupStemDir = if (isTreble) (if (avgMidi >= 71) 1f else -1f) else (if (avgMidi >= 50) 1f else -1f)
                 
+                val calculatedBeamY = if (groupStemDir > 0) {
+                    beamEligible.maxOf { it.ny + (groupStemDir * 28f) }
+                } else {
+                    beamEligible.minOf { it.ny + (groupStemDir * 28f) }
+                }
+
                 beamEligible.forEach { info ->
-                    noteBeamMap[info.note] = BeamInfo(stemDir = groupStemDir, isBeamed = true, beamGroupKey = groupKey)
+                    noteBeamMap[info.note] = BeamInfo(
+                        stemDir = groupStemDir, 
+                        isBeamed = true, 
+                        beamGroupKey = groupKey,
+                        beamY = calculatedBeamY
+                    )
                 }
             }
         }
@@ -1117,34 +881,78 @@ private fun drawStaffMeasureContent(
             val duration = note.duration
             val isHollow = duration >= 2.0f
 
-            // Draw Stem for non-whole/non-breve notes
+            // Draw Stem for non-whole/non-breve notes, connecting seamlessly to beam line if beamed
             if (duration < 4.0f) {
-                drawLine(clefTextColor, Offset(stemX, ny), Offset(stemX, ny + (stemDir * 24f)), strokeWidth = 1.2f)
+                val stemEndY = if (beamInfo?.isBeamed == true && beamInfo.beamY != null) {
+                    beamInfo.beamY
+                } else {
+                    ny + (stemDir * 26f)
+                }
+                drawLine(clefTextColor, Offset(stemX, ny), Offset(stemX, stemEndY), strokeWidth = 1.3f)
             }
 
-            // Draw Notehead using Vector Symbols
+            // 1. Draw Notehead using Authentic SMuFL / Bravura Vector Symbols
             val noteScale = config.lineSpacing / 12f
             val noteWidth = when {
-                duration >= 16.0f -> 24f
-                duration >= 8.0f -> 22f
-                duration >= 4.0f -> 20f
-                else -> 15f
+                duration >= 8.0f -> 22f * noteScale
+                duration >= 4.0f -> 20f * noteScale
+                else -> 15f * noteScale
             }
-            val noteHeight = 10f
+            val noteHeight = 10f * noteScale
 
-            withTransform({
-                translate(left = nx - (noteWidth * noteScale) / 2f, top = ny - (noteHeight * noteScale) / 2f)
-                scale(scaleX = noteScale, scaleY = noteScale, pivot = Offset.Zero)
-            }) {
-                with(MusicVectorSymbols) {
-                    drawNoteHead(beadColor, Size(noteWidth, noteHeight), isHollow)
+            with(MusicVectorSymbols) {
+                when {
+                    duration >= 8.0f -> drawSmuflSymbol("noteheadDoubleWhole", beadColor, Offset(nx - noteWidth / 2f, ny - noteHeight / 2f), Size(noteWidth, noteHeight), 373f)
+                    note.harmonic != null -> drawSmuflSymbol("noteheadDiamondBlack", beadColor, Offset(nx - noteWidth / 2f, ny - noteHeight / 2f), Size(noteWidth, noteHeight), 373f)
+                    note.articulation == TabArticulation.DEAD_NOTE -> drawSmuflSymbol("noteheadXBlack", beadColor, Offset(nx - noteWidth / 2f, ny - noteHeight / 2f), Size(noteWidth, noteHeight), 373f)
+                    else -> drawNoteHead(
+                        color = beadColor,
+                        size = Size(noteWidth, noteHeight),
+                        isHollow = isHollow,
+                        isWhole = duration >= 4.0f,
+                        topLeft = Offset(nx - noteWidth / 2f, ny - noteHeight / 2f)
+                    )
+                }
+
+                // 2. Augmentation Dot (SMuFL augmentationDot)
+                if (note.dotted || note.isDotted) {
+                    val dotX = nx + (noteWidth / 2f) + 4f
+                    drawSmuflSymbol("augmentationDot", beadColor, Offset(dotX, ny - 3f), Size(5f, 5f), 200f)
+                }
+
+                // 3. Musical Articulations (Staccato, Accent, Tenuto, Marcato, Fermata)
+                val articY = if (stemDir > 0) ny + (stemDir * 32f) else ny - 16f
+                when (note.musicalArticulation) {
+                    MusicalArticulation.STACCATO -> drawStaccato(clefTextColor, Offset(nx, articY), radius = 2.2f)
+                    MusicalArticulation.ACCENT -> drawAccent(clefTextColor, Size(12f, 8f), Offset(nx - 6f, articY))
+                    MusicalArticulation.TENUTO -> drawTenuto(clefTextColor, Size(12f, 3f), Offset(nx - 6f, articY))
+                    MusicalArticulation.MARCATO -> drawSmuflSymbol("articMarcatoAbove", clefTextColor, Offset(nx - 6f, articY), Size(10f, 10f), 400f)
+                    MusicalArticulation.NONE -> {}
+                }
+
+                // 4. Dynamics (p, mp, mf, f, ff, sfz, etc.)
+                if (note.dynamic.isNotEmpty()) {
+                    val dynY = bassBaseline + 5 * config.lineSpacing + 8f
+                    val dynName = when (note.dynamic.lowercase()) {
+                        "p" -> "dynamicPiano"
+                        "m", "mp" -> "dynamicMezzo"
+                        "f" -> "dynamicForte"
+                        "sfz" -> "dynamicSforzando"
+                        "rfz" -> "dynamicRinforzando"
+                        else -> "dynamicPiano"
+                    }
+                    drawDynamic(dynName, clefTextColor.copy(alpha = 0.85f), Size(12f, 14f), Offset(nx - 6f, dynY))
                 }
             }
 
             // Flags only for isolated non-beamed notes
             if (duration <= 1.0f && !isHollow && beamInfo?.isBeamed != true) {
                 with(MusicVectorSymbols) {
-                    drawEighthFlag(clefTextColor, stemX, ny + (stemDir * 24f), stemDir < 0)
+                    if (duration <= 0.25f) {
+                        drawSmuflSymbol(if (stemDir > 0) "flag16thDown" else "flag16thUp", clefTextColor, Offset(stemX, if (stemDir > 0) ny + (stemDir * 26f) else ny + (stemDir * 26f) - 22f), Size(10f, 22f), 800f)
+                    } else {
+                        drawEighthFlag(clefTextColor, stemX, ny + (stemDir * 26f), stemDir < 0)
+                    }
                 }
             }
             
@@ -1156,41 +964,56 @@ private fun drawStaffMeasureContent(
             if (config.showLyrics && note.lyric.isNotEmpty()) {
                 val lyricStyle = TextStyle(color = clefTextColor.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Normal)
                 val lyricLayout = textMeasurer.measure(note.lyric, lyricStyle)
-                drawText(lyricLayout, topLeft = Offset(nx - lyricLayout.size.width / 2f, bassBaseline + 5 * config.lineSpacing + 10f))
+                drawText(lyricLayout, topLeft = Offset(nx - lyricLayout.size.width / 2f, bassBaseline + 5 * config.lineSpacing + 22f))
             }
 
+            // 5. Accidentals (Sharp, Flat, Natural, Double Sharp, Double Flat, Courtesy Parentheses)
             val label = noteLabels[midiNote % 12]
-            if (label.contains("#") || label.contains("b")) {
-                val accSize = if (label.contains("#")) Size(15f, 30f) else Size(10f, 30f)
-                val accScale = config.lineSpacing / 20f
+            val hasAccidental = label.contains("#") || label.contains("b") || note.accidental != Accidental.NATURAL
+            if (hasAccidental) {
+                val accH = config.lineSpacing * 2.2f
+                val isSharp = label.contains("#") || note.accidental == Accidental.SHARP
+                val isDoubleSharp = note.accidental == Accidental.DOUBLE_SHARP
+                val isDoubleFlat = note.accidental == Accidental.DOUBLE_FLAT
+                val accW = when {
+                    isDoubleSharp -> accH * 0.40f
+                    isDoubleFlat -> accH * 0.45f
+                    isSharp -> accH * 0.30f
+                    else -> accH * 0.32f
+                }
                 
-                withTransform({
-                    translate(left = nx - 22f, top = ny - (accSize.height * accScale) / 2f)
-                    scale(scaleX = accScale, scaleY = accScale, pivot = Offset.Zero)
-                }) {
-                    with(MusicVectorSymbols) {
-                        if (label.contains("#")) drawSharp(config.primaryColor, accSize) else drawFlat(config.primaryColor, accSize)
+                with(MusicVectorSymbols) {
+                    if (note.courtesyAccidental) {
+                        drawSmuflSymbol("accidentalParensLeft", config.primaryColor.copy(alpha = 0.6f), Offset(nx - accW - 14f, ny - accH / 2f), Size(5f, accH), 800f)
+                    }
+                    when {
+                        isDoubleSharp -> drawDoubleSharp(config.primaryColor, Size(accW, accH), Offset(nx - accW - 8f, ny - accH / 2f))
+                        isDoubleFlat -> drawDoubleFlat(config.primaryColor, Size(accW, accH), Offset(nx - accW - 8f, ny - accH * 0.7f))
+                        isSharp -> drawSharp(config.primaryColor, size = Size(accW, accH), topLeft = Offset(nx - accW - 8f, ny - accH / 2f))
+                        else -> drawFlat(config.primaryColor, size = Size(accW, accH), topLeft = Offset(nx - accW - 8f, ny - accH * 0.7f))
+                    }
+                    if (note.courtesyAccidental) {
+                        drawSmuflSymbol("accidentalParensRight", config.primaryColor.copy(alpha = 0.6f), Offset(nx - 7f, ny - accH / 2f), Size(5f, accH), 800f)
                     }
                 }
             }
         }
 
-        // Draw Connected Horizontal Beams for beat groups
+        // Draw Connected Horizontal Beams for beat groups perfectly joining all stems
         groupedByClefAndBeat.values.forEach { groupNotes ->
             val beamedNotes = groupNotes.filter { noteBeamMap[it.note]?.isBeamed == true }.sortedBy { it.nx }
             if (beamedNotes.size >= 2) {
-                val stemDir = noteBeamMap[beamedNotes.first().note]?.stemDir ?: 1f
+                val firstNoteBeam = noteBeamMap[beamedNotes.first().note]
+                val stemDir = firstNoteBeam?.stemDir ?: 1f
                 val firstX = if (stemDir > 0) beamedNotes.first().nx - 5f else beamedNotes.first().nx + 5f
                 val lastX = if (stemDir > 0) beamedNotes.last().nx - 5f else beamedNotes.last().nx + 5f
-                
-                // Primary beam connecting all notes in group at stem tips
-                val beamY = if (stemDir > 0) {
-                    beamedNotes.maxOf { it.ny + (stemDir * 24f) }
+                val beamY = firstNoteBeam?.beamY ?: if (stemDir > 0) {
+                    beamedNotes.maxOf { it.ny + (stemDir * 28f) }
                 } else {
-                    beamedNotes.minOf { it.ny + (stemDir * 24f) }
+                    beamedNotes.minOf { it.ny + (stemDir * 28f) }
                 }
 
-                val beamThickness = 3.5f
+                val beamThickness = 3.8f
                 // First beam (8th note beam)
                 drawLine(
                     color = clefTextColor,
@@ -1215,7 +1038,7 @@ private fun drawStaffMeasureContent(
             }
         }
 
-        // Render Rests
+        // Render Rests using Authentic SMuFL Glyphs
         val trebleRests = if (!config.isRightHandHidden) calculateRestsForStaff(measure.notes, isTreble = true, measure.notes.associateWith { it.midiNote >= 60 }, beatsPerMeasure) else emptyList()
         val bassRests = if (!config.isLeftHandHidden) calculateRestsForStaff(measure.notes, isTreble = false, measure.notes.associateWith { it.midiNote >= 60 }, beatsPerMeasure) else emptyList()
 
@@ -1224,41 +1047,61 @@ private fun drawStaffMeasureContent(
             val rx = snap(notesStartX + (usableMeasureWidth * (rest.position / beatsPerMeasure)))
             val ry = if (isTreble) config.trebleBaseline + 2 * config.lineSpacing else config.bassBaseline + 2 * config.lineSpacing
             
-            val restWidth = 15f
-            val restHeight = if (rest.duration >= 2.0f) 10f else 30f
-            val restScale = config.lineSpacing / 15f
+            val restScale = config.lineSpacing / 14f
+            val restColor = clefTextColor.copy(alpha = 0.55f)
 
-            withTransform({
-                translate(left = rx - (restWidth * restScale) / 2f, top = ry - (restHeight * restScale) / 2f)
-                scale(scaleX = restScale, scaleY = restScale, pivot = Offset.Zero)
-            }) {
-                with(MusicVectorSymbols) {
-                    when {
-                        rest.duration >= 4.0f -> drawRestWhole(clefTextColor.copy(alpha = 0.5f), Size(restWidth, restHeight))
-                        rest.duration >= 2.0f -> drawRestHalf(clefTextColor.copy(alpha = 0.5f), Size(restWidth, restHeight))
-                        rest.duration >= 1.0f -> drawRestQuarter(clefTextColor.copy(alpha = 0.5f), Size(restWidth, restHeight))
-                        rest.duration >= 0.5f -> drawRestEighth(clefTextColor.copy(alpha = 0.5f), Size(restWidth, restHeight))
+            with(MusicVectorSymbols) {
+                when {
+                    rest.duration >= 4.0f -> drawRestWhole(restColor, Size(16f * restScale, 10f * restScale), topLeft = Offset(rx - 8f * restScale, ry - 5f * restScale))
+                    rest.duration >= 2.0f -> drawRestHalf(restColor, Size(16f * restScale, 10f * restScale), topLeft = Offset(rx - 8f * restScale, ry))
+                    rest.duration >= 1.0f -> {
+                        val rw = 12f * restScale
+                        val rh = 28f * restScale
+                        drawRestQuarter(restColor, Size(rw, rh), topLeft = Offset(rx - rw / 2f, ry - rh / 2f))
+                    }
+                    else -> {
+                        val rw = 11f * restScale
+                        val rh = 22f * restScale
+                        drawRestEighth(restColor, Size(rw, rh), topLeft = Offset(rx - rw / 2f, ry - rh / 2f))
                     }
                 }
             }
         }
-        // Navigation marks (Segno, Coda)
-        if (measure.segno) {
-            withTransform({
-                translate(left = startX + 5f, top = config.trebleBaseline - 40f)
-            }) {
-                with(MusicVectorSymbols) {
-                    drawSegno(config.primaryColor, Size(20f, 20f))
-                }
+        // Navigation & Measure Marks (Segno, Coda, Rehearsal, Endings, Fine, D.C., D.S.)
+        if (measure.segno || measure.dalSegno) {
+            with(MusicVectorSymbols) {
+                drawSegno(config.primaryColor, Size(20f, 20f), topLeft = Offset(startX + 5f, config.trebleBaseline - 40f))
             }
         }
-        if (measure.coda) {
-            withTransform({
-                translate(left = endX - 25f, top = config.trebleBaseline - 40f)
-            }) {
-                with(MusicVectorSymbols) {
-                    drawCoda(config.primaryColor, Size(20f, 20f))
-                }
+        if (measure.coda || measure.toCoda) {
+            with(MusicVectorSymbols) {
+                drawCoda(config.primaryColor, Size(20f, 20f), topLeft = Offset(endX - 25f, config.trebleBaseline - 40f))
+            }
+        }
+        if (measure.rehearsalMark.isNotEmpty()) {
+            val rmLayout = textMeasurer.measure(measure.rehearsalMark, TextStyle(color = config.primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Bold))
+            val rmW = rmLayout.size.width.toFloat() + 8f
+            val rmH = rmLayout.size.height.toFloat() + 4f
+            val rmX = startX + 6f
+            val rmY = config.trebleBaseline - 46f
+            drawRect(clefTextColor.copy(alpha = 0.15f), topLeft = Offset(rmX, rmY), size = Size(rmW, rmH))
+            drawRect(config.primaryColor, topLeft = Offset(rmX, rmY), size = Size(rmW, rmH), style = Stroke(width = 1.2f))
+            drawText(rmLayout, topLeft = Offset(rmX + 4f, rmY + 2f))
+        }
+        if (measure.endingNumber != null) {
+            val endLayout = textMeasurer.measure("${measure.endingNumber}.", TextStyle(color = clefTextColor, fontSize = 10.sp, fontWeight = FontWeight.Bold))
+            val bY = config.trebleBaseline - 25f
+            drawLine(clefTextColor, Offset(startX, bY), Offset(endX, bY), strokeWidth = 1.2f)
+            drawLine(clefTextColor, Offset(startX, bY), Offset(startX, bY + 12f), strokeWidth = 1.2f)
+            drawText(endLayout, topLeft = Offset(startX + 6f, bY - 14f))
+        }
+        if (measure.fine) {
+            val fineLayout = textMeasurer.measure("Fine", TextStyle(color = clefTextColor, fontSize = 9.sp, fontWeight = FontWeight.Black))
+            drawText(fineLayout, topLeft = Offset(endX - fineLayout.size.width - 6f, config.trebleBaseline - 24f))
+        }
+        if (config.isPedalPressed) {
+            with(MusicVectorSymbols) {
+                drawPedal(config.primaryColor.copy(alpha = 0.8f), Size(18f, 14f), Offset(startX + 6f, bassBaseline + 5 * config.lineSpacing + 10f))
             }
         }
 
@@ -1280,34 +1123,7 @@ private fun drawStaffMeasureContent(
         }
     }
 }
-private fun DrawScope.drawTrebleClefSymbol(color: Color, topLeft: Offset, size: Size) {
-    val path = Path().apply {
-        moveTo(topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.95f)
-        cubicTo(topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.90f, topLeft.x + size.width * 0.10f, topLeft.y + size.height * 0.70f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.55f)
-        cubicTo(topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.35f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.20f)
-        cubicTo(topLeft.x + size.width * 0.35f, topLeft.y + size.height * 0.05f, topLeft.x + size.width * 0.65f, topLeft.y + size.height * 0.02f, topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.25f)
-        cubicTo(topLeft.x + size.width * 0.75f, topLeft.y + size.height * 0.50f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.70f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.95f)
-        close()
-    }
-    drawPath(path, color = color)
-}
 
-private fun DrawScope.drawBassClefSymbol(color: Color, topLeft: Offset, size: Size) {
-    val path = Path().apply {
-        moveTo(topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.40f)
-        cubicTo(topLeft.x + size.width * 0.05f, topLeft.y + size.height * 0.20f, topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.05f, topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.25f)
-        cubicTo(topLeft.x + size.width * 0.75f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.85f, topLeft.x + size.width * 0.20f, topLeft.y + size.height * 0.90f)
-        lineTo(topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.90f)
-        lineTo(topLeft.x + size.width * 0.70f, topLeft.y + size.height * 0.75f)
-        cubicTo(topLeft.x + size.width * 0.50f, topLeft.y + size.height * 0.75f, topLeft.x + size.width * 0.40f, topLeft.y + size.height * 0.65f, topLeft.x + size.width * 0.45f, topLeft.y + size.height * 0.55f)
-        cubicTo(topLeft.x + size.width * 0.55f, topLeft.y + size.height * 0.45f, topLeft.x + size.width * 0.50f, topLeft.y + size.height * 0.30f, topLeft.x + size.width * 0.38f, topLeft.y + size.height * 0.30f)
-        cubicTo(topLeft.x + size.width * 0.30f, topLeft.y + size.height * 0.30f, topLeft.x + size.width * 0.25f, topLeft.y + size.height * 0.35f, topLeft.x + size.width * 0.28f, topLeft.y + size.height * 0.42f)
-        close()
-    }
-    drawPath(path, color = color)
-    drawCircle(color, radius = size.width * 0.08f, center = Offset(topLeft.x + size.width * 0.85f, topLeft.y + size.height * 0.35f))
-    drawCircle(color, radius = size.width * 0.08f, center = Offset(topLeft.x + size.width * 0.85f, topLeft.y + size.height * 0.65f))
-}
 private fun DrawScope.drawGrandStaffSystem(
     ds: DrawScope,
     startX: Float,
@@ -1321,30 +1137,51 @@ private fun DrawScope.drawGrandStaffSystem(
     config: DrawingConfig
 ) {
     with(ds) {
-        // Treble 5 lines
-        if (!config.isRightHandHidden) {
-            for (i in 0 until 5) {
-                drawLine(color, Offset(startX, trebleY + i * spacing), Offset(endX, trebleY + i * spacing))
-            }
-        }
-        // Bass 5 lines
-        if (!config.isLeftHandHidden) {
-            for (i in 0 until 5) {
-                drawLine(color, Offset(startX, bassY + i * spacing), Offset(endX, bassY + i * spacing))
-            }
-        }
+        val lineColor = if (config.isDark) Color(0xFF6A6B72) else Color(0xFF9E9E9E)
+        val strokeW = 1.3f
 
-        if (drawLeftBar) {
-            val barTop = if (config.isRightHandHidden) bassY else trebleY
-            val barBottom = if (config.isLeftHandHidden) trebleY + 4 * spacing else bassY + 4 * spacing
-            
-            if (!config.isLeftHandHidden || !config.isRightHandHidden) {
+        if (config.isTab) {
+            // Draw 6 Guitar Tab Lines
+            for (i in 0 until 6) {
+                val y = trebleY + (i * spacing)
+                drawLine(lineColor, Offset(startX, y), Offset(endX, y), strokeWidth = strokeW)
+            }
+            if (drawLeftBar) {
                 drawLine(
-                    color = color.copy(alpha = 0.8f),
-                    start = Offset(startX, barTop),
-                    end = Offset(startX, barBottom),
+                    color = lineColor,
+                    start = Offset(startX, trebleY),
+                    end = Offset(startX, trebleY + (5 * spacing)),
                     strokeWidth = 2.dp.toPx()
                 )
+            }
+        } else {
+            // Treble 5 lines
+            if (!config.isRightHandHidden) {
+                for (i in 0 until 5) {
+                    val y = trebleY + (i * spacing)
+                    drawLine(lineColor, Offset(startX, y), Offset(endX, y), strokeWidth = strokeW)
+                }
+            }
+            // Bass 5 lines
+            if (!config.isLeftHandHidden) {
+                for (i in 0 until 5) {
+                    val y = bassY + (i * spacing)
+                    drawLine(lineColor, Offset(startX, y), Offset(endX, y), strokeWidth = strokeW)
+                }
+            }
+
+            if (drawLeftBar) {
+                val barTop = if (config.isRightHandHidden) bassY else trebleY
+                val barBottom = if (config.isLeftHandHidden) trebleY + 4 * spacing else bassY + 4 * spacing
+                
+                if (!config.isLeftHandHidden || !config.isRightHandHidden) {
+                    drawLine(
+                        color = lineColor,
+                        start = Offset(startX, barTop),
+                        end = Offset(startX, barBottom),
+                        strokeWidth = 2.dp.toPx()
+                    )
+                }
             }
         }
     }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,15 +30,12 @@ import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.audio.AudioEngine
 import com.creativeblisslabs.peqlearn.app.audio.getAudioEngine
 import com.creativeblisslabs.peqlearn.app.data.*
-import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard
-import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard
-import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
+import com.creativeblisslabs.peqlearn.app.ui.components.*
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.MusicConverter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
 enum class IndianClassicalPanelTab(val label: String) {
     RAAGAS("Rāga Library"),
     THAATS("10 Thaats"),
@@ -48,28 +46,69 @@ enum class IndianClassicalPanelTab(val label: String) {
 
 @Composable
 internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
-    val indianColor = Color(0xFFFF9933)
+    val accentColor = MaterialTheme.colorScheme.primary
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Raagas", "Thaats", "Taals", "Alankaars", "Tabla Bols")
+    val tabs = listOf("Radel Studio", "Raagas", "Thaats", "Taals", "Alankaars", "Tabla Bols")
+    val tabIcons = listOf(Icons.Default.SurroundSound, Icons.Default.MusicNote, Icons.Default.LibraryMusic, Icons.Default.Speed, Icons.Default.AutoStories, Icons.Default.GraphicEq)
     var notationFormat by remember { mutableStateOf("Staff Notation") }
 
     var selectedRagaState by remember { mutableStateOf<Raaga?>(null) }
-    var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Piano, 1 = Guitar
+    var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Harmonium, 1 = Guitar
+    val scope = rememberCoroutineScope()
 
-    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        TabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent, contentColor = indianColor,
-            indicator = { tabPositions -> if (selectedTab < tabPositions.size) TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTab]), color = indianColor) }
+    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        
+        // Changed TabRow to ScrollableTabRow to support horizontal scrolling
+        ScrollableTabRow(
+            selectedTabIndex = selectedTab, 
+            containerColor = Color.Transparent, 
+            contentColor = accentColor,
+            edgePadding = 0.dp, // Removes default start/end padding for left alignment
+            indicator = { tabPositions -> 
+                if (selectedTab < tabPositions.size) {
+                    TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTab]), color = accentColor) 
+                } 
+            }
         ) {
-            tabs.forEachIndexed { i, label -> Tab(selected = selectedTab == i, onClick = { selectedTab = i; viewModel.currentScore.value = null }, text = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold) }) }
+            tabs.forEachIndexed { i, label -> 
+                val isSelected = selectedTab == i
+                Tab(
+                    selected = isSelected, 
+                    onClick = { selectedTab = i; viewModel.currentScore.value = null }, 
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    icon = {
+                        Icon(
+                            imageVector = tabIcons.getOrElse(i) { Icons.Default.MusicNote },
+                            contentDescription = label,
+                            tint = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    text = { 
+                        Text(
+                            text = label, 
+                            fontSize = 11.sp, 
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        ) 
+                    }
+                ) 
+            }
         }
 
         Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            when (selectedTab) {
-                0 -> UnifiedRaagaBrowser(viewModel, indianColor, isCarnatic = false, onSelectRaga = { selectedRagaState = it })
-                1 -> UnifiedThaatBrowser(viewModel, indianColor)
-                2 -> UnifiedTaalBrowser(viewModel, indianColor, isCarnatic = false)
-                3 -> UnifiedAlankaarPanel(viewModel, indianColor, isCarnatic = false)
-                4 -> IndianTablaBolsPanel(indianColor)
+            pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.padding(12.dp)) {
+                    when (selectedTab) {
+                        0 -> RadelTanpuraTablaStudio(viewModel, isCarnatic = false, accentColor = accentColor)
+                        1 -> UnifiedRaagaBrowser(viewModel, accentColor, isCarnatic = false, onSelectRaga = { selectedRagaState = it })
+                        2 -> UnifiedThaatBrowser(viewModel, accentColor)
+                        3 -> UnifiedTaalBrowser(viewModel, accentColor, isCarnatic = false)
+                        4 -> UnifiedAlankaarPanel(viewModel, accentColor, isCarnatic = false)
+                        5 -> IndianTablaBolsPanel(accentColor)
+                    }
+                }
             }
 
             // Shared Instrument Selection Row & Piano / Guitar Interactive Visualizer
@@ -79,7 +118,7 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
             val playingNote = viewModel.midiPlayingNote.value
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -87,36 +126,32 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                     text = "INSTRUMENT SCALE VISUALIZER",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = indianColor,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     letterSpacing = 0.5.sp
                 )
                 Row(
                     modifier = Modifier
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        .padding(2.dp),
+                        .height(36.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("🎹 Piano", "🎸 Guitar").forEachIndexed { idx, label ->
+                    listOf("🪗 Harmonium", "🎸 Guitar").forEachIndexed { idx, label ->
                         val isSelected = visualizerMode == idx
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) indianColor.copy(alpha = 0.25f) else Color.Transparent)
-                                .clickable { visualizerMode = idx }
-                                .padding(horizontal = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) indianColor else Color.White.copy(alpha = 0.7f)
-                            )
-                        }
+                        pEQFilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                visualizerMode = idx
+                                val inst = if (idx == 0) "HARMONIUM" else "GUITAR"
+                                getAudioEngine().setInstrument(inst)
+                            },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        )
                     }
                 }
             }
@@ -128,11 +163,23 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                 }
                 UnifiedPianoKeyboard(
                     activeMidiNotes = activeMidiMap,
-                    accentColor = indianColor,
-                    startNote = 60,
-                    endNote = 72,
+                    accentColor = accentColor,
+                    startNote = 48,
+                    endNote = 84,
                     showNoteNames = true,
-                    modifier = Modifier.fillMaxWidth().height(85.dp).clip(RoundedCornerShape(8.dp))
+                    onKeyTapped = { midi ->
+                        viewModel.audioEngine.setInstrument("HARMONIUM")
+                        viewModel.onMidiNoteOn(midi, 95)
+                        viewModel.audioEngine.noteOn(midi, 0.85f)
+                        scope.launch {
+                            delay(300L)
+                            viewModel.onMidiNoteOff(midi)
+                        }
+                    },
+                    modifier = Modifier
+                        .height(120.dp) // Maintain fixed height
+                        .wrapContentWidth() // Prevent stretching out horizontally
+                        .clip(RoundedCornerShape(8.dp))
                 )
             } else {
                 val highlightedGuitarList = remember(activeSemitones, playingNote) {
@@ -142,8 +189,17 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                     numFrets = 12,
                     activeNotes = highlightedGuitarList,
                     rootNote = 0,
-                    accentColor = indianColor,
+                    accentColor = accentColor,
                     showNoteNames = true,
+                    onFretTapped = { _, _, midiNote ->
+                        viewModel.audioEngine.setInstrument("GUITAR")
+                        viewModel.onMidiNoteOn(midiNote, 95)
+                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                        scope.launch {
+                            delay(300L)
+                            viewModel.onMidiNoteOff(midiNote)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().height(125.dp).clip(RoundedCornerShape(8.dp))
                 )
             }
@@ -155,7 +211,7 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                 playheadOffset = viewModel.scorePlayheadOffset.value,
                 activeMidiNotes = viewModel.midiActiveNotes,
                 playingNote = viewModel.midiPlayingNote.value,
-                primaryColor = indianColor,
+                primaryColor = accentColor,
                 currentFormat = notationFormat,
                 onFormatChange = { notationFormat = it },
                 modifier = Modifier.fillMaxWidth().height(220.dp)
@@ -164,10 +220,15 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
     }
 }
 
+
 @Composable
 fun InfoChip(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color) {
-    Surface(shape = RoundedCornerShape(8.dp), color = color.copy(0.1f), border = BorderStroke(1.dp, color.copy(0.3f))) {
-        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    pEQGlassCard {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 8.dp, vertical = 4.dp), 
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(icon, null, modifier = Modifier.size(12.dp), tint = color)
             Spacer(Modifier.width(4.dp))
             Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = color)
@@ -183,7 +244,7 @@ fun IndianTablaBolsPanel(accentColor: Color) {
     val engine = getAudioEngine()
     
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Tabla Syllables & Finger Articulations", fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+        Text("Tabla Syllables & Finger Articulations", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         INDIAN_TABLA_BOLS.forEach { (bol, desc) ->
             Row(
                 modifier = Modifier
@@ -198,19 +259,19 @@ fun IndianTablaBolsPanel(accentColor: Color) {
                     text = bol,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Black,
-                    color = accentColor,
+                    color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.width(90.dp)
                 )
                 Text(
                     text = desc,
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
                     Icons.Default.PlayArrow,
                     contentDescription = null,
-                    tint = accentColor.copy(alpha = 0.5f),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                     modifier = Modifier.size(16.dp)
                 )
             }

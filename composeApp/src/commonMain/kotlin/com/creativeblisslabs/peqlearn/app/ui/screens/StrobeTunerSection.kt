@@ -82,9 +82,6 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
     }
 }
 
-// ============================================================================
-// 100% RECOVERED PEG CONTROL NODES & ROTARY STROBE PATTERN GENERATOR
-// ============================================================================
 
 @Composable
 fun PegControlNode(

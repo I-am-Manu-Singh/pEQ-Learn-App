@@ -22,80 +22,179 @@ import com.creativeblisslabs.peqlearn.app.ui.theme.pEQTheme
 import com.creativeblisslabs.peqlearn.app.ui.theme.pEQAccent
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.creativeblisslabs.peqlearn.app.Tab
+import com.creativeblisslabs.peqlearn.app.ui.components.*
 
-/**
- * 100% RECOVERED ORIGINAL SETTINGS SCREEN COMPONENT
- * Matches Settings_systemtab.jpg, Settings_Instrumenttab.jpg, and Settings_exporttab.jpg
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsPanel(viewModel: AppViewModel) {
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        // Header
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    "SYSTEM PREFERENCES",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.5.sp,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-
-        // Main Tabs: SYSTEM | INSTRUMENTS | SOUNDFONTS | EXPORT
+        val isLandscapeOrWide = maxWidth > 800.dp || maxWidth > maxHeight
         val tabs = listOf("SYSTEM", "INSTRUMENTS", "SOUNDFONTS", "EXPORT")
-        TabRow(
-            selectedTabIndex = viewModel.selectedSettingsTab.intValue,
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.primary,
-            indicator = { tabPositions ->
-                TabRowDefaults.SecondaryIndicator(
-                    Modifier.tabIndicatorOffset(tabPositions[viewModel.selectedSettingsTab.intValue]),
-                    color = MaterialTheme.colorScheme.primary
+        val tabIcons = listOf(Icons.Default.Settings, Icons.Default.MusicNote, Icons.Default.GraphicEq, Icons.Default.Share)
+
+        if (isLandscapeOrWide) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                // LEFT NAVIGATION RAIL
+                Column(
+                    modifier = Modifier
+                        .width(240.dp)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        "PREFERENCES",
+                        style = MaterialTheme.typography.labelLarge,
+                        letterSpacing = 1.5.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Black
+                    )
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        tabs.forEachIndexed { index, title ->
+                            val isSelected = viewModel.selectedSettingsTab.intValue == index
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.selectedSettingsTab.intValue = index },
+                                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = tabIcons.getOrElse(index) { Icons.Default.Settings },
+                                        contentDescription = null,
+                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f))
+
+                // RIGHT CONTENT AREA
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    when (viewModel.selectedSettingsTab.intValue) {
+                        0 -> SystemTabContent(viewModel)
+                        1 -> InstrumentsTabContent(viewModel)
+                        2 -> SoundFontManagerTabContent(viewModel)
+                        3 -> ExportTabContent(viewModel)
+                    }
+                    Spacer(Modifier.height(80.dp))
+                }
+            }
+        } else {
+            // PORTRAIT TAB ROW + SCROLLABLE COLUMN
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "SYSTEM PREFERENCES",
+                        style = MaterialTheme.typography.labelLarge,
+                        letterSpacing = 1.5.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                // Main Tabs: SYSTEM | INSTRUMENTS | SOUNDFONTS | EXPORT
+TabRow( // FIXED: Changed ScrollableTabRow to TabRow
+    selectedTabIndex = viewModel.selectedSettingsTab.intValue,
+    containerColor = Color.Transparent,
+    contentColor = MaterialTheme.colorScheme.primary,
+    // REMOVED: edgePadding = 0.dp (Not needed or supported in full-width TabRow)
+    indicator = { tabPositions ->
+        TabRowDefaults.SecondaryIndicator(
+            Modifier.tabIndicatorOffset(tabPositions[viewModel.selectedSettingsTab.intValue]),
+            color = MaterialTheme.colorScheme.primary
+        )
+    },
+    divider = { HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)) }
+) {
+    tabs.forEachIndexed { index, title ->
+        val isSelected = viewModel.selectedSettingsTab.intValue == index
+        Tab(
+            selected = isSelected,
+            onClick = { viewModel.selectedSettingsTab.intValue = index },
+            modifier = Modifier.weight(1f), // Forces tabs to divide the width evenly if they fit
+            icon = {
+                Icon(
+                    imageVector = tabIcons.getOrElse(index) { Icons.Default.Settings },
+                    contentDescription = title,
+                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.size(16.dp)
                 )
             },
-            divider = { HorizontalDivider(color = Color.White.copy(alpha = 0.1f)) }
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = viewModel.selectedSettingsTab.intValue == index,
-                    onClick = { viewModel.selectedSettingsTab.intValue = index },
-                    text = {
-                        Text(
-                            title,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (viewModel.selectedSettingsTab.intValue == index) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f)
-                        )
-                    }
+            text = {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
             }
-        }
+        )
+    }
+}
 
-        Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
-        // Content per tab
-        Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            when (viewModel.selectedSettingsTab.intValue) {
-                0 -> SystemTabContent(viewModel)
-                1 -> InstrumentsTabContent(viewModel)
-                2 -> SoundFontManagerTabContent(viewModel)
-                3 -> ExportTabContent(viewModel)
+                // Content per tab
+                Column(
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    when (viewModel.selectedSettingsTab.intValue) {
+                        0 -> SystemTabContent(viewModel)
+                        1 -> InstrumentsTabContent(viewModel)
+                        2 -> SoundFontManagerTabContent(viewModel)
+                        3 -> ExportTabContent(viewModel)
+                    }
+                    Spacer(Modifier.height(32.dp))
+                }
             }
-            Spacer(Modifier.height(32.dp))
         }
     }
 }
@@ -104,35 +203,31 @@ fun SettingsPanel(viewModel: AppViewModel) {
 private fun SystemTabContent(viewModel: AppViewModel) {
     // AESTHETICS & THEME
     SettingsSection("AESTHETICS & THEME", icon = Icons.Default.Palette) {
-        Text("STATION THEME", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text("STATION THEME", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         ThemeSelectionRow(viewModel)
         Spacer(Modifier.height(8.dp))
 
-        Text("INDUSTRIAL ACCENT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text("INDUSTRIAL ACCENT", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         AccentSelectionRow(viewModel)
         Spacer(Modifier.height(8.dp))
 
         TogglePreference(
-            label = "Use VexFlow Renderer",
-            desc = "Use the high-quality, offline VexFlow engraving engine for sheet music instead of the native canvas renderer.",
-            checked = viewModel.useVexflow.value,
-            onCheckedChange = { viewModel.useVexflow.value = it }
+            label = "Use OpenSheetMusicDisplay (OSMD)",
+            desc = "Use the high-quality OpenSheetMusicDisplay webview engraving engine for sheet music instead of the native canvas renderer.",
+            checked = viewModel.useOsmdRenderer.value,
+            onCheckedChange = { viewModel.useOsmdRenderer.value = it }
         )
     }
 
     // Pitch Detection Algorithm
     SettingsSection("Pitch Detection Algorithm", icon = Icons.Default.GraphicEq) {
-        Text("DSP algorithm used for realtime pitch and chord parsing.", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+        Text("DSP algorithm used for realtime pitch and chord parsing.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("Phase Vocoder", "FFT Pitch", "PSOLA").forEach { algo ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.pitchEngineAlgo.value == algo,
                     onClick = { viewModel.pitchEngineAlgo.value = algo },
-                    label = { Text(algo, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                        selectedLabelColor = MaterialTheme.colorScheme.primary
-                    )
+                    label = { Text(algo, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                 )
             }
         }
@@ -140,17 +235,13 @@ private fun SystemTabContent(viewModel: AppViewModel) {
 
     // AI Stem Quality
     SettingsSection("AI Stem Quality", icon = Icons.Default.AutoAwesome) {
-        Text("Model depth and decoupling quality for source separation.", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+        Text("Model depth and decoupling quality for source separation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("Standard", "Pro Neural").forEach { quality ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.stemSplitQuality.value == quality,
                     onClick = { viewModel.stemSplitQuality.value = quality },
-                    label = { Text(quality, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                        selectedLabelColor = MaterialTheme.colorScheme.primary
-                    )
+                    label = { Text(quality, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                 )
             }
         }
@@ -170,13 +261,8 @@ private fun SystemTabContent(viewModel: AppViewModel) {
 
 @Composable
 private fun InstrumentsTabContent(viewModel: AppViewModel) {
-    Text(
-        "SOUNDFONT & INSTRUMENT CUSTOMIZATION",
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Black,
-        color = MaterialTheme.colorScheme.primary,
-        letterSpacing = 1.sp
-    )
+    SectionHeader("SOUNDFONT & INSTRUMENT CUSTOMIZATION")
+    Spacer(Modifier.height(8.dp))
 
     // 1. Acoustic Piano Customization
     InstrumentCustomizationCard(
@@ -361,10 +447,10 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
         // Tuner Reference Frequency
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Tuner Reference Frequency", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Text("${viewModel.tunerReferenceFrequency.floatValue.toInt()} Hz", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("Tuner Reference Frequency", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text("${viewModel.tunerReferenceFrequency.floatValue.toInt()} Hz", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
-            Text("Standard concert pitch reference frequency (default: 440 Hz).", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+            Text("Standard concert pitch reference frequency (default: 440 Hz).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
             Slider(
                 value = viewModel.tunerReferenceFrequency.floatValue,
                 onValueChange = { viewModel.tunerReferenceFrequency.floatValue = it },
@@ -377,14 +463,14 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
 
         // Metronome Sound
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Metronome Sound", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("Audio sample trigger style for metronome clicks.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+            Text("Metronome Sound", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text("Audio sample trigger style for metronome clicks.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Woodblock", "Cowbell", "Digital Beep").forEach { snd ->
-                    FilterChip(
+                    pEQFilterChip(
                         selected = viewModel.metronomeTickSound.value == snd,
                         onClick = { viewModel.metronomeTickSound.value = snd },
-                        label = { Text(snd, fontSize = 11.sp) }
+                        label = { Text(snd, style = MaterialTheme.typography.labelSmall) }
                     )
                 }
             }
@@ -394,14 +480,14 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
 
         // Metronome Subdivision
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Metronome Subdivision", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("Clicks per beat.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+            Text("Metronome Subdivision", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text("Clicks per beat.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(1 to "1 (Quarter)", 2 to "2 (Eighth)", 4 to "4 (Sixteenth)").forEach { (sub, lbl) ->
-                    FilterChip(
+                    pEQFilterChip(
                         selected = viewModel.metronomeSubdivision.intValue == sub,
                         onClick = { viewModel.metronomeSubdivision.intValue = sub },
-                        label = { Text(lbl, fontSize = 11.sp) }
+                        label = { Text(lbl, style = MaterialTheme.typography.labelSmall) }
                     )
                 }
             }
@@ -411,14 +497,14 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
 
         // Falling Notes Speed
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Falling Notes Speed", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("Visual speed multiplier of falling notes waterfall.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+            Text("Falling Notes Speed", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text("Visual speed multiplier of falling notes waterfall.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Slow", "Normal", "Fast", "Extreme").forEach { spd ->
-                    FilterChip(
+                    pEQFilterChip(
                         selected = viewModel.fallingNotesSpeed.value == spd,
                         onClick = { viewModel.fallingNotesSpeed.value = spd },
-                        label = { Text(spd, fontSize = 11.sp) }
+                        label = { Text(spd, style = MaterialTheme.typography.labelSmall) }
                     )
                 }
             }
@@ -428,14 +514,14 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
 
         // Waterfall Theme
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Waterfall Theme", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("Color palette theme for active note tracks.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+            Text("Waterfall Theme", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text("Color palette theme for active note tracks.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Neon Glow", "Cyberpunk", "Classic Staff").forEach { thm ->
-                    FilterChip(
+                    pEQFilterChip(
                         selected = viewModel.waterfallTheme.value == thm,
                         onClick = { viewModel.waterfallTheme.value = thm },
-                        label = { Text(thm, fontSize = 11.sp) }
+                        label = { Text(thm, style = MaterialTheme.typography.labelSmall) }
                     )
                 }
             }
@@ -461,23 +547,18 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
 
 @Composable
 private fun ExportTabContent(viewModel: AppViewModel) {
-    Text(
-        "ADVANCED CREATIVE EXPORT STUDIO",
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Black,
-        color = MaterialTheme.colorScheme.primary,
-        letterSpacing = 1.sp
-    )
+    SectionHeader("ADVANCED CREATIVE EXPORT STUDIO")
+    Spacer(Modifier.height(8.dp))
 
     // Rendering Visual Theme
     SettingsSection("Rendering Visual Theme", icon = Icons.Default.Palette) {
-        Text("Visual style/colors of the visualizer scene.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text("Visual style/colors of the visualizer scene.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("Cyberpunk", "Classic Staff", "Neon Fall").forEach { theme ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.videoExportTheme.value == theme,
                     onClick = { viewModel.videoExportTheme.value = theme },
-                    label = { Text(theme, fontSize = 11.sp) }
+                    label = { Text(theme, style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
@@ -485,13 +566,13 @@ private fun ExportTabContent(viewModel: AppViewModel) {
 
     // Resolution
     SettingsSection("Resolution", icon = Icons.Default.Hd) {
-        Text("Output dimensions.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text("Output dimensions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("1080p", "4K").forEach { res ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.videoExportResolution.value == res,
                     onClick = { viewModel.videoExportResolution.value = res },
-                    label = { Text(res, fontSize = 11.sp) }
+                    label = { Text(res, style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
@@ -499,13 +580,13 @@ private fun ExportTabContent(viewModel: AppViewModel) {
 
     // Frame Rate (FPS)
     SettingsSection("Frame Rate (FPS)", icon = Icons.Default.Speed) {
-        Text("Target video smoothness.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text("Target video smoothness.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("24 FPS", "30 FPS", "60 FPS", "120 FPS").forEach { fps ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.videoExportFps.value == fps,
                     onClick = { viewModel.videoExportFps.value = fps },
-                    label = { Text(fps, fontSize = 11.sp) }
+                    label = { Text(fps, style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
@@ -513,13 +594,13 @@ private fun ExportTabContent(viewModel: AppViewModel) {
 
     // Bitrate Limit
     SettingsSection("Bitrate Limit", icon = Icons.Default.Compress) {
-        Text("Output compression rate.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text("Output compression rate.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("5 Mbps", "10 Mbps", "20 Mbps").forEach { br ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.videoExportBitrate.value == br,
                     onClick = { viewModel.videoExportBitrate.value = br },
-                    label = { Text(br, fontSize = 11.sp) }
+                    label = { Text(br, style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
@@ -527,13 +608,13 @@ private fun ExportTabContent(viewModel: AppViewModel) {
 
     // Video Container
     SettingsSection("Video Container", icon = Icons.Default.Movie) {
-        Text("Output format container.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text("Output format container.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("MP4", "MKV", "WebM").forEach { fmt ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.videoExportFormat.value == fmt,
                     onClick = { viewModel.videoExportFormat.value = fmt },
-                    label = { Text(fmt, fontSize = 11.sp) }
+                    label = { Text(fmt, style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
@@ -541,13 +622,13 @@ private fun ExportTabContent(viewModel: AppViewModel) {
 
     // Audio Codec
     SettingsSection("Audio Codec", icon = Icons.Default.Audiotrack) {
-        Text("Compression format for the audio stream.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text("Compression format for the audio stream.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("AAC", "FLAC", "Opus").forEach { cdc ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.videoExportAudioCodec.value == cdc,
                     onClick = { viewModel.videoExportAudioCodec.value = cdc },
-                    label = { Text(cdc, fontSize = 11.sp) }
+                    label = { Text(cdc, style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
@@ -555,33 +636,30 @@ private fun ExportTabContent(viewModel: AppViewModel) {
 
     // Audio Sample Rate
     SettingsSection("Audio Sample Rate", icon = Icons.Default.GraphicEq) {
-        Text("Frequency response fidelity.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text("Frequency response fidelity.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("44.1 kHz", "48 kHz", "96 kHz").forEach { sr ->
-                FilterChip(
+                pEQFilterChip(
                     selected = viewModel.videoExportSampleRate.value == sr,
                     onClick = { viewModel.videoExportSampleRate.value = sr },
-                    label = { Text(sr, fontSize = 11.sp) }
+                    label = { Text(sr, style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
     }
 
     // Camera Perspective Yaw & Pitch
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF141724),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
+    pEQGlassCard(
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             // Yaw
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Camera Perspective Yaw", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("${viewModel.videoExportCameraYaw.floatValue.toInt()}°", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Camera Perspective Yaw", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("${viewModel.videoExportCameraYaw.floatValue.toInt()}°", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("Adjust horizontal viewing angle of the scene.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                Text("Adjust horizontal viewing angle of the scene.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Slider(
                     value = viewModel.videoExportCameraYaw.floatValue,
                     onValueChange = { viewModel.videoExportCameraYaw.floatValue = it },
@@ -593,10 +671,10 @@ private fun ExportTabContent(viewModel: AppViewModel) {
             // Pitch
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Camera Perspective Pitch", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("${viewModel.videoExportCameraPitch.floatValue.toInt()}°", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Camera Perspective Pitch", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("${viewModel.videoExportCameraPitch.floatValue.toInt()}°", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("Adjust vertical tilt viewing angle of the scene.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                Text("Adjust vertical tilt viewing angle of the scene.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Slider(
                     value = viewModel.videoExportCameraPitch.floatValue,
                     onValueChange = { viewModel.videoExportCameraPitch.floatValue = it },
@@ -608,10 +686,10 @@ private fun ExportTabContent(viewModel: AppViewModel) {
             // Visualizer EQ Bars Density
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Visualizer EQ Bars Density", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("${viewModel.videoExportEqBars.intValue} Bars", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Visualizer EQ Bars Density", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("${viewModel.videoExportEqBars.intValue} Bars", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("Number of active spectrum analyzer bars.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                Text("Number of active spectrum analyzer bars.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Slider(
                     value = viewModel.videoExportEqBars.intValue.toFloat(),
                     onValueChange = { viewModel.videoExportEqBars.intValue = it.toInt() },
@@ -623,10 +701,10 @@ private fun ExportTabContent(viewModel: AppViewModel) {
             // Audio Reactive Peak Sensitivity
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Audio Reactive Peak Sensitivity", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("${viewModel.videoExportPeakSensitivity.floatValue.toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Audio Reactive Peak Sensitivity", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("${viewModel.videoExportPeakSensitivity.floatValue.toInt()}%", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("Multiplier for volume-based object scaling.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                Text("Multiplier for volume-based object scaling.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Slider(
                     value = viewModel.videoExportPeakSensitivity.floatValue,
                     onValueChange = { viewModel.videoExportPeakSensitivity.floatValue = it },
@@ -641,12 +719,12 @@ private fun ExportTabContent(viewModel: AppViewModel) {
     Button(
         onClick = { viewModel.exportVideoToFile { } },
         modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
     ) {
-        Icon(Icons.Default.Movie, contentDescription = null, tint = Color.Black)
+        Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
         Spacer(Modifier.width(8.dp))
-        Text("RENDER & EXPORT CREATIVE VIDEO", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color.Black)
+        Text("RENDER & EXPORT CREATIVE VIDEO", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
     }
 }
 
@@ -810,24 +888,21 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                 Text(
                     "Automatically matches sample pitches, patches, and bol articulations",
                     fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }
         }
 
         // Custom SoundFont Importer Card
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = Color(0xFF141724),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+        pEQGlassCard(
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Default.CloudUpload, null, tint = MaterialTheme.colorScheme.primary)
                     Column {
-                        Text("IMPORT CUSTOM SOUNDFONT (.SF2)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                        Text("Auto-indexes instruments, presets, and sample pitch boundaries", fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f))
+                        Text("IMPORT CUSTOM SOUNDFONT (.SF2)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Auto-indexes instruments, presets, and sample pitch boundaries", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
                 }
 
@@ -840,10 +915,10 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                     OutlinedTextField(
                         value = customPath,
                         onValueChange = { customPath = it },
-                        placeholder = { Text("/sdcard/Download/my_tabla.sf2", fontSize = 11.sp, color = Color.White.copy(0.4f)) },
+                        placeholder = { Text("/sdcard/Download/my_tabla.sf2", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(0.4f)) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, color = Color.White)
+                        textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
                     )
                     Button(
                         onClick = {
@@ -886,10 +961,10 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                                 )
                             }
                         },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = MaterialTheme.shapes.small,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("LOAD & AUTO-MAP", fontWeight = FontWeight.Black, fontSize = 11.sp, color = Color.Black)
+                        Text("LOAD & AUTO-MAP", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
@@ -901,21 +976,18 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             categories.forEach { cat ->
-                FilterChip(
+                pEQFilterChip(
                     selected = selectedCategory == cat,
                     onClick = { selectedCategory = cat },
-                    label = { Text(cat, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    label = { Text(cat, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                 )
             }
         }
 
         // SoundFont Cards
         filteredList.forEach { sf ->
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF10131F),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+            pEQGlassCard(
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -924,26 +996,15 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            ) {
-                                Text(
-                                    sf.category,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                            Text(sf.fileName, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                            MetadataBadge(sf.category)
+                            Text(sf.fileName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                         }
-                        Text(sf.sizeMb, fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                        Text(sf.sizeMb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                     }
 
                     // Key details
-                    Text("Sample Range: ${sf.samplePitchRange}", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
-                    Text("Presets: ${sf.presets.size} | Instruments: ${sf.instruments.size} | Samples: ${sf.samples.size}", fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                    Text("Sample Range: ${sf.samplePitchRange}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    Text("Presets: ${sf.presets.size} | Instruments: ${sf.instruments.size} | Samples: ${sf.samples.size}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
 
                     // Action Buttons Row: AUDITION, DETAILS SHEET, SET ACTIVE
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -959,26 +1020,26 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                                     "TANPURA" -> engine.playSample("C", 0, "TANPURA")
                                 }
                             },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
+                            shape = MaterialTheme.shapes.small,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)),
                             modifier = Modifier.height(34.dp)
                         ) {
-                            Icon(Icons.Default.VolumeUp, null, Modifier.size(14.dp), tint = Color.White)
+                            Icon(Icons.Default.VolumeUp, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurface)
                             Spacer(Modifier.width(4.dp))
-                            Text("TEST", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("TEST", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                         }
 
                         OutlinedButton(
                             onClick = {
                                 inspectedSoundFont = sf
                             },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = MaterialTheme.shapes.small,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
                             modifier = Modifier.height(34.dp)
                         ) {
                             Icon(Icons.Default.TableChart, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(4.dp))
-                            Text("DETAILS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("DETAILS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
 
                         Button(
@@ -999,11 +1060,11 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                                 }
                                 viewModel.syncSoundFontPreferences()
                             },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = MaterialTheme.shapes.small,
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)),
                             modifier = Modifier.height(34.dp).weight(1f)
                         ) {
-                            Text("SET AS ACTIVE", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                            Text("SET AS ACTIVE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
                 }
@@ -1015,7 +1076,7 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
     inspectedSoundFont?.let { sf ->
         ModalBottomSheet(
             onDismissRequest = { inspectedSoundFont = null },
-            containerColor = Color(0xFF0F121C),
+            containerColor = MaterialTheme.colorScheme.surface,
             scrimColor = Color.Black.copy(alpha = 0.65f),
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
         ) {
@@ -1034,45 +1095,34 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            ) {
-                                Text(
-                                    sf.category,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                            Text(sf.fileName, fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color.White)
+                            MetadataBadge(sf.category)
+                            Text(sf.fileName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
                         }
                         Text(
                             "Size: ${sf.sizeMb} • Pitch Range: ${sf.samplePitchRange}",
-                            fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.6f)
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
 
                     IconButton(onClick = { inspectedSoundFont = null }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
 
-                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
 
                 // Table Header
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("SAMPLES (${sf.samples.size})", fontWeight = FontWeight.Black, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1.2f))
-                    Text("INSTRUMENTS (${sf.instruments.size})", fontWeight = FontWeight.Black, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-                    Text("PRESETS (${sf.presets.size})", fontWeight = FontWeight.Black, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                    Text("SAMPLES (${sf.samples.size})", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1.2f))
+                    Text("INSTRUMENTS (${sf.instruments.size})", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                    Text("PRESETS (${sf.presets.size})", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
                 }
 
                 // Table Content Rows
@@ -1094,7 +1144,7 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    if (rowIdx % 2 == 0) Color.White.copy(alpha = 0.02f) else Color.Transparent,
+                                    if (rowIdx % 2 == 0) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.02f) else Color.Transparent,
                                     RoundedCornerShape(4.dp)
                                 )
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1103,20 +1153,20 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                         ) {
                             Text(
                                 text = sampleText,
-                                fontSize = 11.sp,
-                                color = if (sampleText != "—") Color.White else Color.White.copy(alpha = 0.25f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (sampleText != "—") MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
                                 modifier = Modifier.weight(1.2f)
                             )
                             Text(
                                 text = instText,
-                                fontSize = 11.sp,
-                                color = if (instText != "—") Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.25f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (instText != "—") MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
                                 text = presetText,
-                                fontSize = 11.sp,
-                                color = if (presetText != "—") MaterialTheme.colorScheme.secondary else Color.White.copy(alpha = 0.25f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (presetText != "—") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -1140,13 +1190,13 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                                 "TANPURA" -> engine.playSample("C", 0, "TANPURA")
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f)),
-                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.weight(1f).height(44.dp)
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, Modifier.size(16.dp), tint = Color.White)
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.width(6.dp))
-                        Text("AUDITION", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.White)
+                        Text("AUDITION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     }
 
                     Button(
@@ -1166,12 +1216,12 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                             inspectedSoundFont = null
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.weight(1.5f).height(44.dp)
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, Modifier.size(16.dp), tint = Color.Black)
+                        Icon(Icons.Default.Check, contentDescription = null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(6.dp))
-                        Text("SET ACTIVE & MAP", fontWeight = FontWeight.Black, fontSize = 11.sp, color = Color.Black)
+                        Text("SET ACTIVE & MAP", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
@@ -1201,28 +1251,25 @@ private fun InstrumentCustomizationCard(
     useSoundFont: Boolean? = null,
     onToggleUseSoundFont: ((Boolean) -> Unit)? = null
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF141724),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
+    pEQGlassCard(
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
             // Select Asset
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(assetLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Text(assetDesc, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                Text(assetLabel, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text(assetDesc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     assets.forEach { ast ->
-                        FilterChip(
+                        pEQFilterChip(
                             selected = ast == selectedAsset,
                             onClick = { onSelectAsset(ast) },
-                            label = { Text(ast, fontSize = 10.sp) }
+                            label = { Text(ast, style = MaterialTheme.typography.labelSmall) }
                         )
                     }
                 }
@@ -1230,7 +1277,7 @@ private fun InstrumentCustomizationCard(
 
             // Path & Browse
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("SoundFont SF2 File", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("SoundFont SF2 File", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1241,26 +1288,26 @@ private fun InstrumentCustomizationCard(
                         onValueChange = onPathChange,
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, color = Color.White)
+                        textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
                     )
                     Button(
                         onClick = { },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = MaterialTheme.shapes.small,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
                     ) {
-                        Text("Browse", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        Text("Browse", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
 
             // Preset Dropdown
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Select Preset (Sound)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Text("Choose instrument patch presets directly from the loaded SoundFont.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
-                FilterChip(
+                Text("Select Preset (Sound)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text("Choose instrument patch presets directly from the loaded SoundFont.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                pEQFilterChip(
                     selected = true,
                     onClick = { onSelectPreset(selectedPreset) },
-                    label = { Text(selectedPreset, fontSize = 11.sp) }
+                    label = { Text(selectedPreset, style = MaterialTheme.typography.labelSmall) }
                 )
             }
 
@@ -1277,8 +1324,8 @@ private fun InstrumentCustomizationCard(
             // Channel Slider
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("MIDI Channel (0-15)", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
-                    Text("$channel", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("MIDI Channel (0-15)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    Text("$channel", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
                 Slider(
                     value = channel.toFloat(),
@@ -1291,8 +1338,8 @@ private fun InstrumentCustomizationCard(
             // Velocity Slider
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Fixed Velocity key strike", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
-                    Text("$velocity", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Fixed Velocity key strike", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    Text("$velocity", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
                 Slider(
                     value = velocity.toFloat(),
@@ -1306,8 +1353,8 @@ private fun InstrumentCustomizationCard(
             if (gain != null && onGainChange != null) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Output Gain (Volume)", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
-                        Text("${(gain * 100).toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text("Output Gain (Volume)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Text("${(gain * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                     Slider(
                         value = gain,
@@ -1328,20 +1375,17 @@ fun SettingsSection(
     icon: ImageVector,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF141724),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
+    pEQGlassCard(
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                 Text(
                     title,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Black,
-                    fontSize = 12.sp,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     letterSpacing = 1.sp
                 )
             }
@@ -1363,8 +1407,8 @@ fun TogglePreference(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-            Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-            Text(desc, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f), lineHeight = 14.sp)
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text(desc, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), lineHeight = 14.sp)
         }
         Switch(
             checked = checked,
@@ -1384,7 +1428,7 @@ fun ActionPreference(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = Color.White.copy(alpha = 0.04f),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -1394,8 +1438,8 @@ fun ActionPreference(
         ) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             Column {
-                Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                Text(desc, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text(desc, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
             }
         }
     }
@@ -1413,6 +1457,7 @@ fun ThemeChip(
         color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.04f),
         border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.1f))
     ) {
+        
         Text(
             text = label,
             fontSize = 11.sp,
@@ -1478,8 +1523,8 @@ fun SelectorPreference(
     onSelect: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-        Text(desc, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+        Text(desc, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             options.forEach { opt ->
                 FilterChip(
@@ -1500,13 +1545,13 @@ fun InputPreference(
     onValueChange: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-        Text(desc, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+        Text(desc, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 12.sp)
+            textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
         )
     }
 }

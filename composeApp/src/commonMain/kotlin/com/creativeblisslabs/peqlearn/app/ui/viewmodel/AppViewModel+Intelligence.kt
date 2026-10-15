@@ -10,9 +10,6 @@ import com.creativeblisslabs.peqlearn.app.data.*
  */
 
 
-// ============================================================================
-// 100% RECOVERED STEM SEPARATION & AI ANALYSIS PIPELINE METHODS
-// ============================================================================
 
 fun AppViewModel.startStemSplit() {
     isStemSplitting.value = true

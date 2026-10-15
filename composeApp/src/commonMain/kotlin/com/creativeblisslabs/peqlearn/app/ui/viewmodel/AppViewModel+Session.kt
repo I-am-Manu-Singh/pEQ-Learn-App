@@ -30,6 +30,22 @@ fun AppViewModel.restoreSession() {
             
             val storedCounts = manager.loadMostPlayed()
             playCounts.putAll(storedCounts)
+
+            // Restore Theme & Accent
+            val savedTheme = manager.loadTheme()
+            val savedAccent = manager.loadAccent()
+            
+            try {
+                setTheme(com.creativeblisslabs.peqlearn.app.ui.theme.pEQTheme.valueOf(savedTheme))
+            } catch (e: Exception) {
+                setTheme(com.creativeblisslabs.peqlearn.app.ui.theme.pEQTheme.DARK)
+            }
+            
+            try {
+                setAccent(com.creativeblisslabs.peqlearn.app.ui.theme.pEQAccent.valueOf(savedAccent))
+            } catch (e: Exception) {
+                setAccent(com.creativeblisslabs.peqlearn.app.ui.theme.pEQAccent.AMBER)
+            }
             
             // 🚀 Kick off library scan so items exist when we wait for them
             refreshLibrary()
@@ -260,5 +276,7 @@ fun AppViewModel.persistSession() {
         persistenceManager.saveFavorites(favoritesToSave)
         persistenceManager.saveRecentSessions(recentToSave)
         persistenceManager.saveMostPlayed(playCounts.toMap())
+        persistenceManager.saveTheme(selectedTheme.value.name)
+        persistenceManager.saveAccent(selectedAccent.value.name)
     }
 }

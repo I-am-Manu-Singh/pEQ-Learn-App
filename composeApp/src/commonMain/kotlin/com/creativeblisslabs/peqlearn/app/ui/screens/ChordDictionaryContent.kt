@@ -204,7 +204,11 @@ fun ChordDictionaryPanel(
             else -> "Open"
         }
         try {
-            getAudioEngine().setInstrument(selectedInstrument.name)
+            val instr = when (selectedInstrument) {
+                ChordInstrumentType.GUITAR, ChordInstrumentType.UKULELE -> "GUITAR"
+                ChordInstrumentType.PIANO -> "PIANO"
+            }
+            getAudioEngine().setInstrument(instr)
         } catch (e: Exception) {
             println("pEQLearn: [INSTRUMENT-SWITCH] Failed to sync audio engine pointer: ${e.message}")
         }
@@ -445,6 +449,11 @@ Row(
                         )
 
                         playbackJob = scope.launch {
+                            val instr = if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.UKULELE) "GUITAR" else "PIANO"
+                            try {
+                                viewModel.audioEngine.setInstrument(instr)
+                            } catch (_: Exception) {}
+
                             pianoPitches.forEachIndexed { idx: Int, midiPitch: Int ->
                                 currentPlayingIdx = idx
                                 viewModel.scorePlayheadMeasure.value = 0
@@ -455,8 +464,6 @@ Row(
                                 viewModel.midiActiveNotes[midiPitch] = true
 
                                 try {
-                                    val instr = if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.UKULELE) "GUITAR" else "PIANO"
-                                    viewModel.audioEngine.setInstrument(instr)
                                     viewModel.audioEngine.noteOn(midiPitch, 0.85f)
                                 } catch (_: Exception) {}
                                 delay(500)
@@ -662,9 +669,9 @@ Row(
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = partColor)
         ) {
-            Icon(Icons.Default.PlayArrow, null, tint = Color.White)
+            Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.onPrimary)
             Spacer(Modifier.width(8.dp))
-            Text("Practice Workspace Target", fontWeight = FontWeight.Black, color = Color.White, fontSize = 13.sp)
+            Text("Practice Workspace Target", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary, fontSize = 13.sp)
         }
         Spacer(Modifier.height(20.dp))
     }
@@ -988,11 +995,11 @@ fun EasyChordQuickRef(
                         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                            Text(name, fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color.White)
+                            Text(name, fontWeight = FontWeight.Black, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                             Text(
                                 notes.joinToString(" - ") { NOTE_NAMES_CD[it % 12] },
                                 fontSize = 10.sp,
-                                color = Color.White.copy(alpha = 0.6f)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
                         }
                     }
@@ -1080,6 +1087,12 @@ fun ImmersiveKeyboardFretboardLabDialog(
     accentColor: Color,
     onDismiss: () -> Unit
 ) {
+    DisposableEffect(Unit) {
+        viewModel.isImmersiveLabActive.value = true
+        onDispose {
+            viewModel.isImmersiveLabActive.value = false
+        }
+    }
     var activeLabTab by remember { mutableStateOf(if (instrumentType == ChordInstrumentType.PIANO) "Piano" else if (instrumentType == ChordInstrumentType.UKULELE) "Uke" else "Guitar") }
     var selectedSpeed by remember { mutableStateOf("1.0x") }
     var playbackMode by remember { mutableStateOf("Arpeggio") }
@@ -1254,7 +1267,7 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                             .clickable { guitarConfigStr = strConf },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(strConf, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text(strConf, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                                     }
                                 }
                             }
@@ -1262,7 +1275,7 @@ fun ImmersiveKeyboardFretboardLabDialog(
 
                         // Tuning Dropdown
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Tuning", fontSize = 10.sp, color = Color.White.copy(0.5f))
+                            Text("Tuning", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1274,8 +1287,8 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(tuningOption, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(18.dp))
+                                    Text(tuningOption, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurface.copy(0.7f), modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -1474,19 +1487,19 @@ fun ImmersiveKeyboardFretboardLabDialog(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
                             }
                             Column {
                                 Text(
                                     text = "$currentRootName Workstation",
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "Speed: Normal ($selectedSpeed) | Playback: $playbackMode",
                                     fontSize = 11.sp,
-                                    color = Color.White.copy(0.6f)
+                                    color = MaterialTheme.colorScheme.onSurface.copy(0.6f)
                                 )
                             }
                         }
@@ -1709,10 +1722,10 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     .clickable { rootExpanded = true }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
-                                Text("Root", fontSize = 9.sp, color = Color.White.copy(0.5f))
+                                Text("Root", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(currentRootName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Text(currentRootName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
                                 }
                             }
                             DropdownMenu(expanded = rootExpanded, onDismissRequest = { rootExpanded = false }) {
@@ -1737,10 +1750,10 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     .clickable { suffixExpanded = true }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
-                                Text("Chord Suffix", fontSize = 9.sp, color = Color.White.copy(0.5f))
+                                Text("Chord Suffix", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(currentSuffixName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Text(currentSuffixName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
                                 }
                             }
                             DropdownMenu(expanded = suffixExpanded, onDismissRequest = { suffixExpanded = false }) {
@@ -1765,10 +1778,10 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     .clickable { inversionExpanded = true }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
-                                Text("Inversion", fontSize = 9.sp, color = Color.White.copy(0.5f))
+                                Text("Inversion", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(labInversion, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Text(labInversion, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
                                 }
                             }
                             DropdownMenu(expanded = inversionExpanded, onDismissRequest = { inversionExpanded = false }) {

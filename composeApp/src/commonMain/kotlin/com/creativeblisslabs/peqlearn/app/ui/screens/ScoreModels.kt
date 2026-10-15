@@ -1,5 +1,6 @@
 package com.creativeblisslabs.peqlearn.app.ui.screens
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import kotlinx.serialization.Serializable
 
@@ -161,7 +162,9 @@ data class Score(
     val timeSignature: String = "4/4",
     val pickupMeasure: Boolean = false,
     val measures: List<Measure> = emptyList(),
-    val clef: String = "TREBLE"
+    val clef: String = "TREBLE",
+    val pdfUri: String? = null,
+    val isPdfScore: Boolean = false
 ) {
     val bpm: Int get() = tempo.toInt()
 }
@@ -182,7 +185,8 @@ data class DrawingConfig(
     val strokeWidth: Float = 1.5f,
     val showLabels: Boolean = true,
     val showLyrics: Boolean = true,
-    val isDarkMode: Boolean = isDark
+    val isDarkMode: Boolean = isDark,
+    val colorScheme: ColorScheme? = null
 )
 
 @Serializable
@@ -197,7 +201,8 @@ data class NotationOptions(
     val isPedalPressed: Boolean = false,
     val keySignatureOverride: String = "C",
     val timeSignatureOverride: String = "4/4",
-    val useVexflow: Boolean = false
+    val useOsmdRenderer: Boolean = false,
+    val useVexflow: Boolean = useOsmdRenderer
 )
 
 
