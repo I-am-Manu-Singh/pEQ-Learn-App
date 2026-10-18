@@ -335,10 +335,23 @@
             }
         };
 
+        window.clearScore = function() {
+            if (osmd) {
+                osmd.clear();
+            }
+            const container = document.getElementById("osmdCanvas");
+            if (container) {
+                container.innerHTML = "";
+            }
+            if (playheadEl) {
+                playheadEl.style.display = "none";
+            }
+            showStatus("");
+        };
+
         // Initialize on DOM load
         document.addEventListener("DOMContentLoaded", () => {
             initOsmd();
-            window.loadSampleScore();
         });
     </script>
 </body>

@@ -119,7 +119,6 @@ fun ThinMiniPlayer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp)
-                    .background(Color.White.copy(alpha = 0.08f))
             ) {
                 // Active progress bar
                 Box(

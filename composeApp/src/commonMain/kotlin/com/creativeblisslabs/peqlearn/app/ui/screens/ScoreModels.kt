@@ -230,3 +230,33 @@ data class StaffAssignment(
     val treble: Set<ScoreNote> = trebleNotes,
     val bass: Set<ScoreNote> = bassNotes
 )
+
+enum class PdfPageSize(val displayName: String, val widthPt: Int, val heightPt: Int) {
+    A4("A4 (210 × 297 mm)", 595, 842),
+    LETTER("Letter (8.5 × 11 in)", 612, 792),
+    LEGAL("Legal (8.5 × 14 in)", 612, 1008),
+    A3("A3 Conductor (297 × 420 mm)", 842, 1191)
+}
+
+enum class PdfOrientation(val displayName: String) {
+    PORTRAIT("Portrait"),
+    LANDSCAPE("Landscape")
+}
+
+@Serializable
+data class PdfExportOptions(
+    val title: String = "Untitled Score",
+    val composer: String = "pEQ Learn Studio",
+    val pageSize: String = "A4",
+    val orientation: String = "Portrait",
+    val includeTitleHeader: Boolean = true,
+    val includeMeasureNumbers: Boolean = true,
+    val includeChordLabels: Boolean = true,
+    val includeLyrics: Boolean = true,
+    val staffFormat: String = "Both", // "Staff", "Tab", "Both"
+    val colorTheme: String = "Monochrome", // "Monochrome", "Color (LH/RH)", "Inverted Dark"
+    val staffLineSpacing: Float = 14f,
+    val measuresPerSystem: Int = 4,
+    val authorNotes: String = ""
+)
+

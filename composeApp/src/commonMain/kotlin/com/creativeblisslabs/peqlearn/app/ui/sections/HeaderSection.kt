@@ -105,14 +105,14 @@ fun HeaderSection(
 }
 @Composable
 fun NowPlayingBar(
-    viewModel: AppViewModel, // Or substitute with individual states/lambdas for previews
+    viewModel: AppViewModel,
     isLandscape: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val nowPlaying =
-        viewModel.currentMediaItem.value
-    // 1. Observe your state properly (using collectAsState or direct value if mutableStateOf)
+    val nowPlaying = viewModel.currentMediaItem.value
     val isPlaying by viewModel.isPlaying
+    val speed = viewModel.playbackSpeed.value
+    val abActive = viewModel.abRepeatActive.value
 
     Surface(
         onClick = {
@@ -123,127 +123,199 @@ fun NowPlayingBar(
                 }
             }
         },
-        // 2. Removed .weight(1f) here so it doesn't throw a function invocation error
-        // when called outside a Row/Column scope. Add .weight(1f) at the call-site if needed.
         modifier = modifier
-            .heightIn(
-                min = if (isLandscape) 54.dp else 64.dp,
-                max = if (isLandscape) 62.dp else 74.dp
-            )
+            .fillMaxWidth()
             .auroraBorder(),
-        shape = RoundedCornerShape(if (isLandscape) 22.dp else 28.dp),
+        shape = RoundedCornerShape(if (isLandscape) 18.dp else 24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f)
     ) {
         if (nowPlaying != null) {
-            Column {
-                Row(
+            Column(modifier = Modifier.fillMaxWidth()) {
+                
+                // CONTENT CONTAINER (Vertical Stack)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(
-                            horizontal = if (isLandscape) 10.dp else 12.dp,
-                            vertical = if (isLandscape) 6.dp else 10.dp
-                        ),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = if (isLandscape) 10.dp else 14.dp, vertical = 10.dp)
                 ) {
-                    // =========================
-                    // THUMBNAIL
-                    // =========================
-                    Box(
-                        modifier = Modifier
-                            .size(if (isLandscape) 38.dp else 46.dp)
-                            .clip(RoundedCornerShape(if (isLandscape) 10.dp else 14.dp))
-                            .background(Color.Black)
-                    ) {
-                        pEQImage(
-                            data = nowPlaying.thumbnail,
-                            fallbackPath = nowPlaying.path,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .alpha(0.75f),
-                            contentScale = ContentScale.Crop,
-                            mediaType = nowPlaying.type
-                        )
-                    }
-
-                    Spacer(Modifier.width(if (isLandscape) 8.dp else 10.dp))
-
-                    // =========================
-                    // INFO
-                    // =========================
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(1.dp)
-                    ) {
-                        Text(
-                            text = nowPlaying.title,
-                            fontSize = if (isLandscape) 10.sp else 11.sp,
-                            lineHeight = if (isLandscape) 12.sp else 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        Text(
-                            text = nowPlaying.subtitle,
-                            fontSize = if (isLandscape) 8.sp else 9.sp,
-                            lineHeight = if (isLandscape) 9.sp else 10.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(Modifier.width(if (isLandscape) 2.dp else 6.dp))
-
-                    // =========================
-                    // CONTROLS
-                    // =========================
+                    // ROW 1: Artwork Thumbnail & Title/Subtitle
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 1.dp else 3.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        FilledTonalIconButton(
-                            onClick = { viewModel.previousTrack() },
-                            modifier = Modifier.size(if (isLandscape) 20.dp else 24.dp)
+                        // Artwork Thumbnail Box
+                        Box(
+                            modifier = Modifier
+                                .size(if (isLandscape) 38.dp else 46.dp)
+                                .clip(RoundedCornerShape(if (isLandscape) 10.dp else 14.dp))
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.SkipPrevious,
-                                contentDescription = null,
-                                modifier = Modifier.size(if (isLandscape) 13.dp else 16.dp)
+                            pEQImage(
+                                data = nowPlaying.thumbnail,
+                                fallbackPath = nowPlaying.path,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .alpha(0.85f),
+                                contentScale = ContentScale.Crop,
+                                mediaType = nowPlaying.type
                             )
                         }
 
+                        Spacer(Modifier.width(10.dp))
+
+                        // Title & Subtitle
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Text(
+                                text = nowPlaying.title,
+                                fontSize = if (isLandscape) 11.sp else 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = nowPlaying.subtitle.ifBlank { "pEQ Lossless Audio" },
+                                fontSize = if (isLandscape) 9.sp else 11.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+
+                    // Transport & Action Controls
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // A-B Repeat Button
+                        IconButton(
+                            onClick = { viewModel.toggleAbRepeat() },
+                            modifier = Modifier.size(if (isLandscape) 26.dp else 32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Repeat,
+                                contentDescription = "A-B Repeat",
+                                tint = if (abActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                                modifier = Modifier.size(if (isLandscape) 14.dp else 18.dp)
+                            )
+                        }
+
+                        // Previous Track
+                        IconButton(
+                            onClick = { viewModel.previousTrack() },
+                            modifier = Modifier.size(if (isLandscape) 26.dp else 32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.SkipPrevious,
+                                contentDescription = "Previous",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                modifier = Modifier.size(if (isLandscape) 16.dp else 20.dp)
+                            )
+                        }
+
+                        // Play / Pause
                         FilledIconButton(
                             onClick = { viewModel.togglePlayback() },
-                            modifier = Modifier.size(if (isLandscape) 28.dp else 34.dp)
+                            modifier = Modifier.size(if (isLandscape) 32.dp else 40.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
                         ) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(if (isLandscape) 15.dp else 18.dp)
+                                contentDescription = "Play/Pause",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(if (isLandscape) 18.dp else 22.dp)
                             )
                         }
 
-                        FilledTonalIconButton(
+                        // Next Track
+                        IconButton(
                             onClick = { viewModel.nextTrack() },
-                            modifier = Modifier.size(if (isLandscape) 20.dp else 24.dp)
+                            modifier = Modifier.size(if (isLandscape) 26.dp else 32.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.SkipNext,
-                                contentDescription = null,
-                                modifier = Modifier.size(if (isLandscape) 13.dp else 16.dp)
+                                Icons.Default.SkipNext,
+                                contentDescription = "Next",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                modifier = Modifier.size(if (isLandscape) 16.dp else 20.dp)
+                            )
+                        }
+
+                        // Favorite Button
+                        IconButton(
+                            onClick = { viewModel.toggleFavorite(nowPlaying) },
+                            modifier = Modifier.size(if (isLandscape) 26.dp else 32.dp)
+                        ) {
+                            val isFavorite = viewModel.favoriteItems.any { it.id == nowPlaying.id }
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (isFavorite) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                                modifier = Modifier.size(if (isLandscape) 14.dp else 18.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Secondary Sub-Controls Row (Speed & Playlist actions)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Surface(
+                            onClick = { viewModel.cyclePlaybackSpeed() },
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)),
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        ) {
+                            Text(
+                                text = "${speed}x Speed",
+                                fontSize = if (isLandscape) 9.sp else 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = {
+                                viewModel.selectedItemForPlaylist.value = nowPlaying
+                                viewModel.isPlaylistBulkAction.value = false
+                                viewModel.isPlaylistPickerShown.value = true
+                            },
+                            modifier = Modifier.size(if (isLandscape) 26.dp else 32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlaylistAdd,
+                                contentDescription = "Add to Playlist",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(if (isLandscape) 16.dp else 20.dp)
                             )
                         }
                     }
                 }
 
                 val progress = (
-                        viewModel.currentPosition.value.toFloat() /
-                                viewModel.currentDuration.value.coerceAtLeast(1L).toFloat()
-                        ).coerceIn(0f, 1f)
+                    viewModel.currentPosition.value.toFloat() /
+                        viewModel.currentDuration.value.coerceAtLeast(1L).toFloat()
+                ).coerceIn(0f, 1f)
 
                 LinearProgressIndicator(
-                    progress = { progress },
+                    progress = progress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(if (isLandscape) 2.dp else 3.dp),
@@ -252,11 +324,13 @@ fun NowPlayingBar(
                 )
             }
         } else {
+            // Empty State
             Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = if (isLandscape) 10.dp else 14.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxWidth()
+                    .padding(horizontal = if (isLandscape) 10.dp else 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
                 Surface(
                     shape = RoundedCornerShape(if (isLandscape) 10.dp else 14.dp),

@@ -76,12 +76,19 @@ object MusicVectorSymbols {
     ) {
         val data = GLYPH_DATA[name] ?: return
         val path = getGlyphPath(name) ?: return
-        val scaleX = size.width / data.width
-        val scaleY = size.height / approxHeight
+        val bounds = path.getBounds()
+        val pathW = if (bounds.width > 0f) bounds.width else data.width
+        val pathH = if (bounds.height > 0f) bounds.height else approxHeight
+        val scaleX = size.width / pathW
+        val scaleY = size.height / pathH
         withTransform({
-            translate(topLeft.x, topLeft.y + size.height)
-            scale(scaleX, -scaleY, pivot = Offset.Zero)
-            translate(-data.xMin, 0f)
+            translate(topLeft.x, topLeft.y)
+            scale(scaleX, scaleY, pivot = Offset.Zero)
+            // In SMuFL glyph font coordinates, Y increases upwards.
+            // bounds.bottom is the maximum Y (visual top) and bounds.top is minimum Y (visual bottom).
+            // First flip Y about 0, then pre-translate by (-bounds.left, -bounds.bottom) so visual top maps to 0 and visual bottom to pathH.
+            scale(1f, -1f, pivot = Offset.Zero)
+            translate(-bounds.left, -bounds.bottom)
         }) {
             drawPath(path, color = color)
         }
@@ -175,12 +182,23 @@ object MusicVectorSymbols {
     fun DrawScope.drawRest16th(color: Color, size: Size, topLeft: Offset = Offset.Zero) =
         drawSmuflSymbol("rest16th", color, topLeft, size, 919f)
 
+    fun DrawScope.drawRest32nd(color: Color, size: Size, topLeft: Offset = Offset.Zero) =
+        drawSmuflSymbol("rest32nd", color, topLeft, size, 1221f)
+
+    fun DrawScope.drawRest64th(color: Color, size: Size, topLeft: Offset = Offset.Zero) =
+        drawSmuflSymbol("rest64th", color, topLeft, size, 1598f)
+
+    fun DrawScope.drawRestDoubleWhole(color: Color, size: Size, topLeft: Offset = Offset.Zero) =
+        drawSmuflSymbol("restDoubleWhole", color, topLeft, size, 347f)
+
     fun DrawScope.drawRestWhole(color: Color, size: Size, topLeft: Offset = Offset.Zero) {
-        drawRect(color, topLeft = topLeft + Offset(size.width * 0.1f, 0f), size = Size(size.width * 0.8f, size.height * 0.35f))
+        // Semibreve / whole rest hangs below 4th staff line in SMuFL standard (fills half the space)
+        drawRect(color, topLeft = topLeft + Offset(size.width * 0.1f, 0f), size = Size(size.width * 0.8f, size.height * 0.5f))
     }
 
     fun DrawScope.drawRestHalf(color: Color, size: Size, topLeft: Offset = Offset.Zero) {
-        drawRect(color, topLeft = topLeft + Offset(size.width * 0.1f, size.height * 0.35f), size = Size(size.width * 0.8f, size.height * 0.35f))
+        // Minim / half rest sits on top of 3rd staff line in SMuFL standard (fills half the space)
+        drawRect(color, topLeft = topLeft + Offset(size.width * 0.1f, size.height * 0.5f), size = Size(size.width * 0.8f, size.height * 0.5f))
     }
 
     fun DrawScope.drawSegno(color: Color, size: Size, topLeft: Offset = Offset.Zero) =

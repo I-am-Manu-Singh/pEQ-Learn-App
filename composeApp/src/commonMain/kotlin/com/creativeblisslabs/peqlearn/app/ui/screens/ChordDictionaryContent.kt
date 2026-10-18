@@ -648,11 +648,14 @@ Row(
             }
         }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Interactive Format Switcher (Both, Staff, Tab)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             listOf("Both", "Staff", "Tab").forEach { fmt ->
-                val isSelected = unifiedFormat.equals(fmt, ignoreCase = true) ||
-                    (fmt == "Staff" && unifiedFormat.contains("staff", ignoreCase = true)) ||
-                    (fmt == "Tab" && unifiedFormat.contains("tab", ignoreCase = true))
+                val isSelected = unifiedFormat.equals(fmt, ignoreCase = true)
                 FilterChip(
                     selected = isSelected,
                     onClick = { onFormatChange(fmt) },

@@ -117,6 +117,25 @@ fun AppViewModel.restoreSession() {
             selectedInstrument.value = session.selectedInstrument
             quantizeDivision.value = session.quantizeDivision
             useOsmdRenderer.value = session.useOsmdRenderer
+            showWaterfall.value = session.showWaterfall
+            particleCount.intValue = session.particleCount
+            particleSpeed.floatValue = session.particleSpeed
+            particleScale.floatValue = session.particleScale
+            particleExpansion.floatValue = session.particleExpansion
+            lockParticleColor.value = session.lockParticleColor
+            flashSize.floatValue = session.flashSize
+            flashHaloIntensity.floatValue = session.flashHaloIntensity
+            noteCornerRadius.floatValue = session.noteCornerRadius
+            noteEdgeThickness.floatValue = session.noteEdgeThickness
+            noteStyleOval.value = session.noteStyleOval
+            keyboardHighlightActive.value = session.keyboardHighlightActive
+            keyboardShowChords.value = session.keyboardShowChords
+            keyboardMinorEdges.value = session.keyboardMinorEdges
+            keyboardShowVelvetCloth.value = session.keyboardShowVelvetCloth
+            keyboardShowSideFrames.value = session.keyboardShowSideFrames
+            showPedals.value = session.showPedals
+            pedalScaling.floatValue = session.pedalScaling
+            pedalOpacity.floatValue = session.pedalOpacity
 
             // 3. Wait for library to populate
             val items = withTimeoutOrNull(4000) { 
@@ -246,9 +265,10 @@ fun AppViewModel.restoreSession() {
             
             // Sync now playing metadata to widget
             syncNowPlaying()
-            
+            isSessionRestored.value = true
         } catch (e: Exception) {
             println("pEQLearn: [SYSTEM] Session restore failed: ${e.message}")
+            isSessionRestored.value = true
         } finally {
             completeSplash()
         }
@@ -258,6 +278,11 @@ fun AppViewModel.restoreSession() {
 }
 
 fun AppViewModel.persistSession() {
+    // 🛡️ Prevent wiping playlists, favorites, and recents if persistSession is invoked before restoreSession completes
+    if (!isSessionRestored.value) {
+        return
+    }
+
     // 📸 Capture snapshots on the Main thread to avoid ConcurrentModificationException on IO thread
     val sessionToSave = SessionState(
         lastTrackPath = currentMediaItem.value?.path,
@@ -269,7 +294,7 @@ fun AppViewModel.persistSession() {
         queue = playbackQueue.toList(),
         isShuffle = isShuffleEnabled,
         repeatMode = repeatMode.value,
-        favorites = favorites.toList(),
+        favorites = favoriteItems.map { it.path },
         isLeftHandMuted = isLeftHandMuted.value,
         isRightHandMuted = isRightHandMuted.value,
         isLeftHandHidden = isLeftHandHidden.value,
@@ -289,7 +314,26 @@ fun AppViewModel.persistSession() {
         selectedTimeSignature = selectedTimeSignature.value,
         selectedInstrument = selectedInstrument.value,
         quantizeDivision = quantizeDivision.value,
-        useOsmdRenderer = useOsmdRenderer.value
+        useOsmdRenderer = useOsmdRenderer.value,
+        showWaterfall = showWaterfall.value,
+        particleCount = particleCount.intValue,
+        particleSpeed = particleSpeed.floatValue,
+        particleScale = particleScale.floatValue,
+        particleExpansion = particleExpansion.floatValue,
+        lockParticleColor = lockParticleColor.value,
+        flashSize = flashSize.floatValue,
+        flashHaloIntensity = flashHaloIntensity.floatValue,
+        noteCornerRadius = noteCornerRadius.floatValue,
+        noteEdgeThickness = noteEdgeThickness.floatValue,
+        noteStyleOval = noteStyleOval.value,
+        keyboardHighlightActive = keyboardHighlightActive.value,
+        keyboardShowChords = keyboardShowChords.value,
+        keyboardMinorEdges = keyboardMinorEdges.value,
+        keyboardShowVelvetCloth = keyboardShowVelvetCloth.value,
+        keyboardShowSideFrames = keyboardShowSideFrames.value,
+        showPedals = showPedals.value,
+        pedalScaling = pedalScaling.floatValue,
+        pedalOpacity = pedalOpacity.floatValue
     )
     
     val playlistsToSave = customPlaylists.mapValues { entry -> entry.value.map { item -> item.path } }

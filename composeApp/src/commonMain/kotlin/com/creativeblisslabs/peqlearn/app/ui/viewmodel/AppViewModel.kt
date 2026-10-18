@@ -180,10 +180,49 @@ val client = createHttpClient()
     val fallingNotesSpeed = mutableStateOf("Normal")
     val waterfallTheme = mutableStateOf("Neon Glow")
     val showPianoKeyLabels = mutableStateOf(true)
+    val showNotationNoteNames = mutableStateOf(true)
+    val showWaterfall = mutableStateOf(true)
     val showWaterfallParticles = mutableStateOf(true)
     val is3DPerspectiveMode = mutableStateOf(true)
     val horizonScale = mutableFloatStateOf(0.68f)
-    val showWaterfall = mutableStateOf(true)
+    // --- MIDIVisualizer-master Studio Settings Parameters ---
+    // Particles (Viewer::showParticleOptions)
+    val particleCount = mutableIntStateOf(16) // count per strike / intensity
+    val particleSpeed = mutableFloatStateOf(4.5f) // speed (0..10)
+    val particleScale = mutableFloatStateOf(1.0f) // size/scale (0.2..3.0)
+    val particleExpansion = mutableFloatStateOf(1.0f) // spread (0.2..5.0)
+    val lockParticleColor = mutableStateOf(true) // sync with note color
+    val particleCustomColor = mutableStateOf(Color(0xFFFFD700))
+
+    // Key Flashes & Bloom (Viewer::showFlashOptions)
+    val flashSize = mutableFloatStateOf(1.0f) // 0..2.0
+    val flashHaloIntensity = mutableFloatStateOf(0.65f) // 0..1.0
+    val flashInnerRadius = mutableFloatStateOf(0.3f)
+    val flashOuterRadius = mutableFloatStateOf(0.95f)
+
+    // Notes Style & Appearance (Viewer::showNoteOptions)
+    val noteCornerRadius = mutableFloatStateOf(6.0f) // corner radius
+    val noteEdgeThickness = mutableFloatStateOf(1.2f) // edge width
+    val noteEdgeBrightness = mutableFloatStateOf(0.6f) // edge brightness
+    val noteFadeOutTail = mutableFloatStateOf(0.0f) // tail fade out (0..1)
+    val noteStyleOval = mutableStateOf(false) // oval vs cylindrical tube
+
+    // Piano Interface & Premium Effects (Viewer::showKeyboardOptions)
+    val keyboardHighlightActive = mutableStateOf(true) // highlight active keys
+    val keyboardShowChords = mutableStateOf(true) // show chord overlay
+    val keyboardMinorEdges = mutableStateOf(true) // show black key bevel edges
+    val keyboardShowVelvetCloth = mutableStateOf(true) // studio red velvet cloth strip
+    val keyboardClothColor = mutableStateOf(Color(0xFF8B0000)) // rich crimson velvet
+    val keyboardShowSideFrames = mutableStateOf(true) // mahogany piano side cheeks
+    val keyboardHeightFactor = mutableFloatStateOf(145f) // keyboard height dp
+
+    // Waves & Ambient Effects (Viewer::showWaveOptions)
+    val waveAmplitude = mutableFloatStateOf(0.0f) // 0..1.0
+
+    // Pedals (Viewer::showPedalOptions)
+    val showPedals = mutableStateOf(true)
+    val pedalScaling = mutableFloatStateOf(1.0f) // 0.5..1.5
+    val pedalOpacity = mutableFloatStateOf(0.95f) // 0..1.0
     val videoExportTheme = mutableStateOf("Cyberpunk")
     val videoExportResolution = mutableStateOf("1080p")
     val videoExportFps = mutableStateOf("60 FPS")
@@ -212,6 +251,8 @@ val client = createHttpClient()
     // Callback interfaces for platform-specific features
     var onScanMidiDevicesRequested: (() -> Unit)? = null
     var onVideoExportRequested: ((Score, String, Int, Map<String, Boolean>, (Float) -> Unit, (String?) -> Unit) -> Unit)? = null
+    var onPdfExportRequested: ((Score, PdfExportOptions, (Float) -> Unit, (String?) -> Unit) -> Unit)? = null
+    val pdfExportOptions = mutableStateOf(PdfExportOptions())
 
     internal val _currentQueueIndex = mutableStateOf(-1)
     val currentQueueIndex: State<Int> = _currentQueueIndex             
@@ -387,6 +428,7 @@ val client = createHttpClient()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // 📁 Industrial Library Engine
+    val isSessionRestored = mutableStateOf(false)
     val playlists: Map<String, List<pEQMediaItem>> get() = customPlaylists
     val favoriteItems = mutableStateListOf<pEQMediaItem>()
     val playCounts = mutableStateMapOf<String, Int>()
@@ -1466,7 +1508,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
                     }
                 }
 
-                if (currentMeasureIdx != scorePlayheadMeasure.value || (visualOffset - scorePlayheadOffset.value).let { if (it < 0) -it else it } > 0.02f) {
+                if (currentMeasureIdx != scorePlayheadMeasure.value || visualOffset > scorePlayheadOffset.value) {
                     withContext(Dispatchers.Main) {
                         scorePlayheadMeasure.value = currentMeasureIdx
                         scorePlayheadOffset.value = visualOffset
@@ -1625,18 +1667,38 @@ fun scrubSongPlayhead(targetProgress: Float) {
         }
     }
 
-    fun compileCurrentNotationToPDF() {
+    fun compileCurrentNotationToPDF(options: PdfExportOptions = pdfExportOptions.value, onComplete: ((String?) -> Unit)? = null) {
+        val score = currentScore.value ?: Score(
+            title = options.title.ifBlank { "pEQ Score Study" },
+            composer = options.composer.ifBlank { "pEQ Learn Studio" },
+            tempo = metronomeBpm.value.toFloat(),
+            timeSignature = "4/4"
+        )
         isExportingPDF.value = true
-        viewModelScope.launch(Dispatchers.Default) {
-            for (progress in 1..100) {
-                delay(40)
-                withContext(Dispatchers.Main) {
-                    pdfExportProgress.value = progress / 100f
-                }
-            }
-            withContext(Dispatchers.Main) {
+        pdfExportProgress.value = 0.05f
+
+        val exporter = onPdfExportRequested
+        if (exporter != null) {
+            exporter(score, options, { progress ->
+                pdfExportProgress.value = progress
+            }, { path ->
                 isExportingPDF.value = false
-                pdfExportProgress.value = 0f
+                pdfExportProgress.value = 1.0f
+                onComplete?.invoke(path)
+            })
+        } else {
+            viewModelScope.launch(Dispatchers.Default) {
+                for (progress in 1..100) {
+                    delay(20)
+                    withContext(Dispatchers.Main) {
+                        pdfExportProgress.value = progress / 100f
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    isExportingPDF.value = false
+                    pdfExportProgress.value = 0f
+                    onComplete?.invoke("/sdcard/Documents/pEQ_${score.title.replace(" ", "_")}.pdf")
+                }
             }
         }
     }
@@ -1723,18 +1785,20 @@ fun scrubSongPlayhead(targetProgress: Float) {
         audioEngine.noteOn(note, velocity.toFloat() / 127f)
         notesToReleaseOnSustainUp.remove(note)
         
-        // FOLLOW MODE: Sync notation playhead to incoming MIDI notes
-        currentScore.value?.let { score ->
-            for (mIdx in score.measures.indices) {
-                val measure = score.measures[mIdx]
-                val matchingNote = measure.notes.find { it.midiNote == note }
-                if (matchingNote != null) {
-                    // Only jump if it's in the current or future measure to avoid jumping back constantly
-                    if (mIdx >= scorePlayheadMeasure.value) {
-                        scorePlayheadMeasure.value = mIdx
-                        scorePlayheadOffset.value = matchingNote.position / measure.timeSignatureNumerator
+        // FOLLOW MODE: Sync notation playhead to incoming MIDI notes (only when score playback is paused/interactive follow mode)
+        if (!isScorePlaying.value) {
+            currentScore.value?.let { score ->
+                for (mIdx in score.measures.indices) {
+                    val measure = score.measures[mIdx]
+                    val matchingNote = measure.notes.find { it.midiNote == note }
+                    if (matchingNote != null) {
+                        // Only jump if it's in the current or future measure to avoid jumping back constantly
+                        if (mIdx >= scorePlayheadMeasure.value) {
+                            scorePlayheadMeasure.value = mIdx
+                            scorePlayheadOffset.value = matchingNote.position / measure.timeSignatureNumerator
+                        }
+                        break
                     }
-                    break
                 }
             }
         }

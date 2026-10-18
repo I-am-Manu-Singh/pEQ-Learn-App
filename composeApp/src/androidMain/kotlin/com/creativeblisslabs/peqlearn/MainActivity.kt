@@ -103,6 +103,18 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        viewModel.onPdfExportRequested = { score, options, progressCallback, completeCallback ->
+            lifecycleScope.launch {
+                com.creativeblisslabs.peqlearn.app.pdf.AndroidPdfExporter.exportScoreToPdf(
+                    context = applicationContext,
+                    score = score,
+                    options = options,
+                    onProgress = progressCallback,
+                    onComplete = completeCallback
+                )
+            }
+        }
+
         setupLaunchers()
 
         getPermissionManager().apply {

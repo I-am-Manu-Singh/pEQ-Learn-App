@@ -36,8 +36,9 @@ import kotlinx.coroutines.launch
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
 import com.creativeblisslabs.peqlearn.app.ui.components.OpenSheetMusicDisplayViewer
-import com.creativeblisslabs.peqlearn.app.ui.components.ExportTabContent
+import com.creativeblisslabs.peqlearn.app.ui.components.PdfExportStudioSection
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotationWorkspaceItem(
@@ -70,78 +71,83 @@ fun NotationWorkspaceItem(
    LearnSectionCard(title = "Notation Viewer", icon = Icons.Filled.MusicNote) {
         
 
-            // Quick Tool Buttons (Scroll Direction, Import, Export, Fullscreen)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = !viewModel.isVerticalScroll.value,
-                    onClick = { viewModel.isVerticalScroll.value = !viewModel.isVerticalScroll.value },
-                    leadingIcon = {
-                        Icon(
-                            if (!viewModel.isVerticalScroll.value) Icons.Default.SwapHoriz else Icons.Default.SwapVert,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    label = { 
-                        Text(
-                            if (!viewModel.isVerticalScroll.value) "Flow" else "Page", 
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        ) 
-                    }
-                )
+    @OptIn(ExperimentalLayoutApi::class)
+FlowRow(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    // verticalAlignment = Alignment.CenterVertically
+) {
+    FilterChip(
+        selected = !viewModel.isVerticalScroll.value,
+        onClick = { viewModel.isVerticalScroll.value = !viewModel.isVerticalScroll.value },
+        leadingIcon = {
+            Icon(
+                if (!viewModel.isVerticalScroll.value) Icons.Default.SwapHoriz else Icons.Default.SwapVert,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
+            )
+        },
+        label = { 
+            Text(
+                if (!viewModel.isVerticalScroll.value) "Flow" else "Page", 
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            ) 
+        }
+    )
 
-                FilterChip(
-                    selected = viewModel.useOsmdRenderer.value,
-                    onClick = { viewModel.useOsmdRenderer.value = !viewModel.useOsmdRenderer.value },
-                    leadingIcon = {
-                        Icon(
-                            if (viewModel.useOsmdRenderer.value) Icons.Default.Language else Icons.Default.Brush,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    label = {
-                        Text(
-                            if (viewModel.useOsmdRenderer.value) "Web" else "Canvas",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                )
+    FilterChip(
+        selected = viewModel.useOsmdRenderer.value,
+        onClick = { viewModel.useOsmdRenderer.value = !viewModel.useOsmdRenderer.value },
+        leadingIcon = {
+            Icon(
+                if (viewModel.useOsmdRenderer.value) Icons.Default.Language else Icons.Default.Brush,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
+            )
+        },
+        label = {
+            Text(
+                if (viewModel.useOsmdRenderer.value) "Web" else "Canvas",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    )
 
-                IconButton(
-                    onClick = { viewModel.showSettings.value = true },
-                    modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
-                ) {
-                    Icon(Icons.Default.Tune, contentDescription = "Settings", tint = accentColor, modifier = Modifier.size(18.dp))
-                }
+    IconButton(
+        onClick = { viewModel.showSettings.value = true },
+        modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
+    ) {
+        Icon(Icons.Default.Tune, contentDescription = "Settings", tint = accentColor, modifier = Modifier.size(18.dp))
+    }
 
-                IconButton(
-                    onClick = { launchFilePicker() },
-                    modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
-                ) {
-                    Icon(Icons.Default.FileDownload, contentDescription = "Import", tint = accentColor, modifier = Modifier.size(18.dp))
-                }
+    IconButton(
+        onClick = { launchFilePicker() },
+        modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
+    ) {
+        Icon(Icons.Default.FileDownload, contentDescription = "Import", tint = accentColor, modifier = Modifier.size(18.dp))
+    }
 
-                IconButton(
-                    onClick = { showFullscreenPdf = true },
-                    modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
-                ) {
-                    Icon(Icons.Default.Fullscreen, contentDescription = "Fullscreen", tint = accentColor, modifier = Modifier.size(20.dp))
-                }
+    IconButton(
+        onClick = { showFullscreenPdf = true },
+        modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.05f), CircleShape)
+    ) {
+        Icon(Icons.Default.Fullscreen, contentDescription = "Fullscreen", tint = accentColor, modifier = Modifier.size(20.dp))
+    }
 
-                Button(
-                    onClick = { showExportDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Default.IosShare, contentDescription = null, modifier = Modifier.size(16.dp))
-               }
-            }
+    // Export current score as PDF
+    Button(
+        onClick = { showExportDialog = true },
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+        shape = RoundedCornerShape(10.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF", modifier = Modifier.size(16.dp), tint = Color.White)
+        Spacer(Modifier.width(4.dp))
+        Text("PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+    }
+}
 
         
         // Main Notation Stage Canvas with Zoom Wrapper
@@ -500,12 +506,12 @@ fun NotationWorkspaceItem(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
-                                Icons.Default.Movie,
+                                Icons.Default.PictureAsPdf,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = Color(0xFF4CAF50)
                             )
                             Text(
-                                "Video & Notation Exporter",
+                                "Sheet Music PDF & Video Studio",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
@@ -516,7 +522,7 @@ fun NotationWorkspaceItem(
                     }
 
                     // Render Full Comprehensive Studio Settings
-                    ExportTabContent(viewModel = viewModel)
+                    PdfExportStudioSection(viewModel = viewModel)
 
                     Spacer(Modifier.height(16.dp))
                 }

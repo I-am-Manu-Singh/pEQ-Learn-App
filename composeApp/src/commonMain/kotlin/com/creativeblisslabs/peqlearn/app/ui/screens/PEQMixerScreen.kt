@@ -117,6 +117,8 @@ fun pEQMixerScreen(
                                 Column(modifier = Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 text = "AI STEM MIXER",
+                                                fontSize = 16.sp,
+
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
@@ -124,6 +126,8 @@ fun pEQMixerScreen(
                             Text(
                                 text = currentTrack?.displayName ?: "No Track Loaded • Tap Import",
                                 style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 11.sp,
+
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                 maxLines = 1
                             )
@@ -271,17 +275,12 @@ fun pEQMixerScreen(
                                      Text(
                 text = "MASTER VOLUME",
         color = MaterialTheme.colorScheme.primary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 2.sp
-            )
+                fontWeight = FontWeight.Black            )
 
 
             Text(
                 text = "${(masterVolume * 100).toInt()}% • 24-bit Lossless Engine",
                                     color = MaterialTheme.colorScheme.onSurface
-,                fontSize = 11.sp,
-                letterSpacing = 1.sp
             )
                                  
 

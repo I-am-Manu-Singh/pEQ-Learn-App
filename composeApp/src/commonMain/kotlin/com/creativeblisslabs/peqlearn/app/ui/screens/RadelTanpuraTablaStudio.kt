@@ -322,61 +322,69 @@ private fun RadelHardwareEnclosure(
             // (Tanpura | Tabla | Metronome)
             // ==========================================
             Text(
-                text = "PRECISION 3-CHANNEL MASTER CONSOLE",
+                text = "3-CHANNEL MASTER CONSOLE",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 letterSpacing = 1.sp
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Channel 1: Tanpura Drone (Volume & State only)
-                TanpuraDroneChannelStrip(
-                    modifier = Modifier.weight(1f),
-                    title = "🪕 TANPURA",
-                    gain = viewModel.tanpuraGain.floatValue,
-                    onGainChange = { viewModel.tanpuraGain.floatValue = it },
-                    isRunning = isTanpuraRunning,
-                    onToggleRun = { isTanpuraRunning = !isTanpuraRunning },
-                    selectedScale = pitches[selectedPitchIdx],
-                    accentColor = Color(0xFFFFB300)
-                )
+           Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .height(IntrinsicSize.Max), // 1. Force the row to measure children and find the max height
+    horizontalArrangement = Arrangement.spacedBy(10.dp)
+) {
+    // Channel 1: Tanpura Drone
+    InstrumentChannelStrip(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight(), // 2. Force card to fill that max height
+        title = "🪕 TANPURA",
+        gain = viewModel.tanpuraGain.floatValue,
+        onGainChange = { viewModel.tanpuraGain.floatValue = it },
+        isRunning = isTanpuraRunning,
+        onToggleRun = { isTanpuraRunning = !isTanpuraRunning },
+        selectedScale = pitches[selectedPitchIdx],
+        accentColor = Color(0xFFFFB300)
+    )
 
-                // Channel 2: Tabla Machine
-                InstrumentChannelStrip(
-                    modifier = Modifier.weight(1f),
-                    title = "🥁 TABLA",
-                    gain = viewModel.tablaGain.floatValue,
-                    onGainChange = { viewModel.tablaGain.floatValue = it },
-                    bpm = tablaBpm,
-                    onBpmChange = { tablaBpm = it },
-                    isRunning = isTablaRunning,
-                    onToggleRun = { isTablaRunning = !isTablaRunning },
-                    onTapTempo = {
-                        lastTablaTapTime = handleTapTempo(lastTablaTapTime) { tablaBpm = it }
-                    },
-                    accentColor = Color(0xFF00E676)
-                )
+    // Channel 2: Tabla Machine
+    InstrumentChannelStrip(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight(), // Force card to fill max height
+        title = "🥁 TABLA",
+        gain = viewModel.tablaGain.floatValue,
+        onGainChange = { viewModel.tablaGain.floatValue = it },
+        bpm = tablaBpm,
+        onBpmChange = { tablaBpm = it },
+        isRunning = isTablaRunning,
+        onToggleRun = { isTablaRunning = !isTablaRunning },
+        onTapTempo = {
+            lastTablaTapTime = handleTapTempo(lastTablaTapTime) { tablaBpm = it }
+        },
+        accentColor = Color(0xFF00E676)
+    )
 
-                // Channel 3: Precision Metronome
-                InstrumentChannelStrip(
-                    modifier = Modifier.weight(1f),
-                    title = "⏱ METRONOME",
-                    gain = viewModel.metronomeGain.floatValue,
-                    onGainChange = { viewModel.metronomeGain.floatValue = it },
-                    bpm = metronomeBpm,
-                    onBpmChange = { viewModel.setMetronomeBpm(it) },
-                    isRunning = isMetronomeActive,
-                    onToggleRun = { viewModel.toggleMetronome() },
-                    onTapTempo = {
-                        lastMetronomeTapTime = handleTapTempo(lastMetronomeTapTime) { viewModel.setMetronomeBpm(it) }
-                    },
-                    accentColor = Color(0xFF00BCD4)
-                )
-            }
+    // Channel 3: Precision Metronome
+    InstrumentChannelStrip(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight(), // Force card to fill max height
+        title = "⏱ METRONOME",
+        gain = viewModel.metronomeGain.floatValue,
+        onGainChange = { viewModel.metronomeGain.floatValue = it },
+        bpm = metronomeBpm,
+        onBpmChange = { viewModel.setMetronomeBpm(it) },
+        isRunning = isMetronomeActive,
+        onToggleRun = { viewModel.toggleMetronome() },
+        onTapTempo = {
+            lastMetronomeTapTime = handleTapTempo(lastMetronomeTapTime) { viewModel.setMetronomeBpm(it) }
+        },
+        accentColor = Color(0xFF00BCD4)
+    )
+}
 
             // ==========================================
             // RADEL DIGITAL PARAMETER DOCK (PITCH, STRINGS, TAAL)
@@ -601,148 +609,21 @@ private fun TanpuraStringsMotionVisualizer(
         }
     }
 }
-
-/**
- * Clean & Professional Tanpura Drone Channel Strip (Volume & Scale status only, no tap BPM)
- */
-@Composable
-private fun TanpuraDroneChannelStrip(
-    modifier: Modifier = Modifier,
-    title: String,
-    gain: Float,
-    onGainChange: (Float) -> Unit,
-    isRunning: Boolean,
-    onToggleRun: () -> Unit,
-    selectedScale: String,
-    accentColor: Color
-) {
-    ElevatedCard(
-        modifier = modifier.then(
-            if (isRunning) Modifier.border(2.dp, accentColor, MaterialTheme.shapes.large) else Modifier
-        ),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (isRunning) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerLow
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Title & Run Status
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (isRunning) accentColor else MaterialTheme.colorScheme.onSurface,
-                letterSpacing = 0.5.sp
-            )
-
-            // Play / Stop Button - Material 3 Expressive Button
-            Button(
-                onClick = onToggleRun,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(38.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) MaterialTheme.colorScheme.error else accentColor,
-                    contentColor = if (isRunning) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
-                ),
-                contentPadding = PaddingValues(0.dp)
-            ) {
-                Icon(
-                    imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = if (isRunning) "STOP" else "START",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Black
-                )
-            }
-
-            // Volume Control Slider
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        "VOLUME",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        "${(gain * 100).toInt()}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Black,
-                        color = accentColor
-                    )
-                }
-                Slider(
-                    value = gain,
-                    onValueChange = onGainChange,
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = accentColor,
-                        activeTrackColor = accentColor,
-                        inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
-                    ),
-                    modifier = Modifier.height(24.dp)
-                )
-            }
-
-            // Scale Display Status Badge
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = accentColor.copy(alpha = 0.14f),
-                shape = MaterialTheme.shapes.small,
-                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "KEY",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        selectedScale,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Black,
-                        color = accentColor,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Precision Channel Strip for Tabla or Metronome with Material 3 Expressive styling
- */
 @Composable
 private fun InstrumentChannelStrip(
     modifier: Modifier = Modifier,
     title: String,
     gain: Float,
     onGainChange: (Float) -> Unit,
-    bpm: Int,
-    onBpmChange: (Int) -> Unit,
     isRunning: Boolean,
     onToggleRun: () -> Unit,
-    onTapTempo: () -> Unit,
-    accentColor: Color
+    accentColor: Color,
+    // Optional configuration for instruments with tempo (Tabla / Metronome)
+    bpm: Int? = null,
+    onBpmChange: ((Int) -> Unit)? = null,
+    onTapTempo: (() -> Unit)? = null,
+    // Optional configuration for instruments with pitch/scale (Tanpura / Drone)
+    selectedScale: String? = null
 ) {
     ElevatedCard(
         modifier = modifier.then(
@@ -825,53 +706,84 @@ private fun InstrumentChannelStrip(
                 )
             }
 
-            // BPM Adjuster Controls
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilledTonalIconButton(
-                    onClick = { onBpmChange((bpm - 1).coerceAtLeast(30)) },
-                    modifier = Modifier.size(30.dp),
-                    shape = CircleShape
+            // Optional: BPM Adjuster Controls & Tap Tempo (for Tabla/Metronome)
+            if (bpm != null && onBpmChange != null && onTapTempo != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    FilledTonalIconButton(
+                        onClick = { onBpmChange((bpm - 1).coerceAtLeast(30)) },
+                        modifier = Modifier.size(30.dp),
+                        shape = CircleShape
+                    ) {
+                        Text("-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    }
+
+                    Text(
+                        text = "$bpm",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontFamily = FontFamily.Monospace
+                    )
+
+                    FilledTonalIconButton(
+                        onClick = { onBpmChange((bpm + 1).coerceAtMost(280)) },
+                        modifier = Modifier.size(30.dp),
+                        shape = CircleShape
+                    ) {
+                        Text("+", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    }
                 }
 
-                Text(
-                    text = "$bpm",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontFamily = FontFamily.Monospace
-                )
-
-                FilledTonalIconButton(
-                    onClick = { onBpmChange((bpm + 1).coerceAtMost(280)) },
-                    modifier = Modifier.size(30.dp),
-                    shape = CircleShape
+                OutlinedButton(
+                    onClick = onTapTempo,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp),
+                    shape = MaterialTheme.shapes.small,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = accentColor
+                    ),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+                    contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("+", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("TAP BPM", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
                 }
             }
 
-            // Dedicated TAP TEMPO Button
-            OutlinedButton(
-                onClick = onTapTempo,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(32.dp),
-                shape = MaterialTheme.shapes.small,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = accentColor
-                ),
-                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
-                contentPadding = PaddingValues(0.dp)
-            ) {
-                Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("TAP BPM", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
+            // Optional: Scale Display Status Badge (for Tanpura/Drone)
+            if (selectedScale != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = accentColor.copy(alpha = 0.14f),
+                    shape = MaterialTheme.shapes.small,
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "KEY",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            selectedScale,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Black,
+                            color = accentColor,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
             }
         }
     }

@@ -120,7 +120,26 @@ data class SessionState(
     val selectedTimeSignature: String = "4/4",
     val selectedInstrument: String = "Piano",
     val quantizeDivision: String = "1/16",
-    val useOsmdRenderer: Boolean = false
+    val useOsmdRenderer: Boolean = false,
+    val showWaterfall: Boolean = true,
+    val particleCount: Int = 16,
+    val particleSpeed: Float = 4.5f,
+    val particleScale: Float = 1.0f,
+    val particleExpansion: Float = 1.0f,
+    val lockParticleColor: Boolean = true,
+    val flashSize: Float = 1.0f,
+    val flashHaloIntensity: Float = 0.65f,
+    val noteCornerRadius: Float = 6.0f,
+    val noteEdgeThickness: Float = 1.2f,
+    val noteStyleOval: Boolean = false,
+    val keyboardHighlightActive: Boolean = true,
+    val keyboardShowChords: Boolean = true,
+    val keyboardMinorEdges: Boolean = true,
+    val keyboardShowVelvetCloth: Boolean = true,
+    val keyboardShowSideFrames: Boolean = true,
+    val showPedals: Boolean = true,
+    val pedalScaling: Float = 1.0f,
+    val pedalOpacity: Float = 0.95f
 )
 
 @Serializable

@@ -111,7 +111,7 @@ actual fun OpenSheetMusicDisplayViewer(
                         e.printStackTrace()
                     }
                 } else {
-                    wv.evaluateJavascript("window.loadSampleScore && window.loadSampleScore();", null)
+                    wv.evaluateJavascript("window.clearScore && window.clearScore();", null)
                 }
             }
         }

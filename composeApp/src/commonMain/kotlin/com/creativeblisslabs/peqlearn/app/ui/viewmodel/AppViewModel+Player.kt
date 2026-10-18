@@ -31,11 +31,25 @@ fun AppViewModel.togglePlayback() {
         syncNowPlaying()
         return
     }
-    
-    // Safety check: If engine is idle and we have an item, load it
-    if (!enginePlaying && audioEngine.getDuration() <= 0L) {
-        currentMediaItem.value?.let { item ->
-            audioEngine.loadTrack(item.path, item.title, item.artist, item.thumbnail)
+
+    // Restored track or paused idle engine check
+    if (!enginePlaying) {
+        val current = currentMediaItem.value
+        val currentUri = audioEngine.getCurrentTrackUri()
+        
+        // If engine does not have the current track loaded yet, load it and restore position
+        if (current != null && (currentUri == null || normalizePath(currentUri) != normalizePath(current.path))) {
+            val savedPos = currentPosition.value
+            audioEngine.loadTrack(current.path, current.title, current.artist, current.thumbnail)
+            if (savedPos > 0L) {
+                audioEngine.seekTo(savedPos)
+            }
+            audioEngine.resume()
+            isPlaying.value = true
+            syncNowPlaying()
+            return
+        } else if (current != null && currentUri != null) {
+            // Already loaded in player (e.g. from restoreSession), just resume!
             audioEngine.resume()
             isPlaying.value = true
             syncNowPlaying()
@@ -43,8 +57,13 @@ fun AppViewModel.togglePlayback() {
         }
     }
 
-    if (isPlaying.value) audioEngine.pause() else audioEngine.resume()
-    isPlaying.value = !isPlaying.value
+    if (isPlaying.value) {
+        audioEngine.pause()
+        isPlaying.value = false
+    } else {
+        audioEngine.resume()
+        isPlaying.value = true
+    }
     syncNowPlaying()
 }
 

@@ -23,6 +23,7 @@ import com.creativeblisslabs.peqlearn.app.ui.theme.pEQAccent
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.creativeblisslabs.peqlearn.app.Tab
 import com.creativeblisslabs.peqlearn.app.ui.components.*
+import com.creativeblisslabs.peqlearn.app.ui.screens.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -526,12 +527,22 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
         }
     }
 }
-
 @Composable
 fun ExportTabContent(viewModel: AppViewModel) {
-    SectionHeader("ADVANCED CREATIVE EXPORT STUDIO")
+    SectionHeader("EXPORT STUDIO")
     Spacer(Modifier.height(8.dp))
 
+    // Video & Composition Export Section
+    VideoExportStudioSection(viewModel)
+
+    Spacer(Modifier.height(16.dp))
+
+    // High-Resolution Sheet Music PDF Export Section
+    PdfExportStudioSection(viewModel)
+}
+
+@Composable
+fun VideoExportStudioSection(viewModel: AppViewModel) {
     // Layout Mode (Combined / Visualizer / Notation)
     SettingsSection("Export Composition Mode", icon = Icons.Default.Dashboard) {
         Row(
@@ -646,7 +657,7 @@ fun ExportTabContent(viewModel: AppViewModel) {
         }
     }
 
-    // Camera Perspective Yaw & Pitch
+    // Camera Perspective Yaw & Pitch & Visualizer Configs
     pEQGlassCard(
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -771,6 +782,201 @@ fun ExportTabContent(viewModel: AppViewModel) {
     }
 }
 
+@Composable
+fun PdfExportStudioSection(viewModel: AppViewModel) {
+    SectionHeader("HIGH-RESOLUTION SHEET MUSIC PDF EXPORT")
+    Spacer(Modifier.height(8.dp))
+
+    val pdfOpts = viewModel.pdfExportOptions.value
+
+    // PDF Paper Size & Orientation
+    SettingsSection("Page Dimensions & Orientation", icon = Icons.Default.Description) {
+        Text("Standard sheet music print formats.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("A4", "Letter", "Legal", "A3").forEach { size ->
+                pEQFilterChip(
+                    selected = pdfOpts.pageSize == size,
+                    onClick = { viewModel.pdfExportOptions.value = pdfOpts.copy(pageSize = size) },
+                    label = { Text(size, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Portrait", "Landscape").forEach { orient ->
+                pEQFilterChip(
+                    selected = pdfOpts.orientation == orient,
+                    onClick = { viewModel.pdfExportOptions.value = pdfOpts.copy(orientation = orient) },
+                    label = { Text(orient, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+    }
+
+    // PDF Notation Layout Format
+    SettingsSection("Score Notation Format", icon = Icons.Default.LibraryMusic) {
+        Text("Choose which staves to include in exported sheet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Both", "Staff", "Tab").forEach { fmt ->
+                pEQFilterChip(
+                    selected = pdfOpts.staffFormat == fmt,
+                    onClick = { viewModel.pdfExportOptions.value = pdfOpts.copy(staffFormat = fmt) },
+                    label = { Text(if (fmt == "Both") "Grand Staff + TAB" else fmt, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+    }
+
+    // PDF Visual Color Theme
+    SettingsSection("Color Theme", icon = Icons.Default.InvertColors) {
+        Text("Print contrast style.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("Monochrome", "Color (LH/RH)", "Inverted Dark").forEach { theme ->
+                pEQFilterChip(
+                    selected = pdfOpts.colorTheme == theme,
+                    onClick = { viewModel.pdfExportOptions.value = pdfOpts.copy(colorTheme = theme) },
+                    label = { Text(theme, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+    }
+
+    // PDF Engraving Options (Switches)
+    SettingsSection("Engraving & Notation Detail Elements", icon = Icons.Default.Checklist) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    viewModel.pdfExportOptions.value = pdfOpts.copy(includeTitleHeader = !pdfOpts.includeTitleHeader)
+                },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Include Title & Composer Header", style = MaterialTheme.typography.bodyMedium)
+                Switch(
+                    checked = pdfOpts.includeTitleHeader,
+                    onCheckedChange = { viewModel.pdfExportOptions.value = pdfOpts.copy(includeTitleHeader = it) }
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    viewModel.pdfExportOptions.value = pdfOpts.copy(includeMeasureNumbers = !pdfOpts.includeMeasureNumbers)
+                },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Include Measure Numbers (M.1, M.2...)", style = MaterialTheme.typography.bodyMedium)
+                Switch(
+                    checked = pdfOpts.includeMeasureNumbers,
+                    onCheckedChange = { viewModel.pdfExportOptions.value = pdfOpts.copy(includeMeasureNumbers = it) }
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    viewModel.pdfExportOptions.value = pdfOpts.copy(includeChordLabels = !pdfOpts.includeChordLabels)
+                },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Include Note Letters Inside Noteheads", style = MaterialTheme.typography.bodyMedium)
+                Switch(
+                    checked = pdfOpts.includeChordLabels,
+                    onCheckedChange = { viewModel.pdfExportOptions.value = pdfOpts.copy(includeChordLabels = it) }
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    viewModel.pdfExportOptions.value = pdfOpts.copy(includeLyrics = !pdfOpts.includeLyrics)
+                },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Include Lyrics Line", style = MaterialTheme.typography.bodyMedium)
+                Switch(
+                    checked = pdfOpts.includeLyrics,
+                    onCheckedChange = { viewModel.pdfExportOptions.value = pdfOpts.copy(includeLyrics = it) }
+                )
+            }
+        }
+    }
+
+    // Measures per System Slider
+    SettingsSection("Density: Measures Per System (${pdfOpts.measuresPerSystem})", icon = Icons.Default.ViewColumn) {
+        Slider(
+            value = pdfOpts.measuresPerSystem.toFloat(),
+            onValueChange = { viewModel.pdfExportOptions.value = pdfOpts.copy(measuresPerSystem = it.toInt()) },
+            valueRange = 2f..8f,
+            steps = 5,
+            colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
+        )
+    }
+
+    // PDF Export Progress Bar
+    if (viewModel.isExportingPDF.value) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Compiling High-Resolution Vector PDF Pages...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "${(viewModel.pdfExportProgress.value * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            LinearProgressIndicator(
+                progress = { viewModel.pdfExportProgress.value },
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        }
+    }
+
+    // Compile & Export PDF Button
+    Button(
+        onClick = { viewModel.compileCurrentNotationToPDF() },
+        enabled = !viewModel.isExportingPDF.value,
+        modifier = Modifier.fillMaxWidth().height(52.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+    ) {
+        if (viewModel.isExportingPDF.value) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = Color.White
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("COMPILING PDF...", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = Color.White)
+        } else {
+            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White)
+            Spacer(Modifier.width(8.dp))
+            Text("EXPORT SHEET MUSIC PDF", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = Color.White)
+        }
+    }
+}
 data class Sf2InspectionItem(
     val category: String,
     val fileName: String,
