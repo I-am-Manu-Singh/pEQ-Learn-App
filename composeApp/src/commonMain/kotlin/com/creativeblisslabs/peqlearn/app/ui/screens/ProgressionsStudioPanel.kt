@@ -43,6 +43,7 @@ fun ProgressionsStudioPanel(
     val scope = rememberCoroutineScope()
     val roots = remember { listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B") }
     var selectedKey by remember { mutableStateOf("C") }
+    var selectedInstrument by remember { mutableStateOf("guitar") } // "guitar", "piano", "ukulele"
 
     val allCategories = remember {
         listOf("All") + RealProgressionsDb.list.map { it.category }.distinct()
@@ -92,11 +93,34 @@ fun ProgressionsStudioPanel(
         return chordRoot to suffix
     }
 
-    val progressionChords = remember(currentProgression, selectedKey) {
+    // Structure containing chord degree, display name, guitar/uku position, and piano MIDI pitches
+    data class ProgressionChordItem(
+        val degree: String,
+        val chordName: String,
+        val guitarPos: RealChordPosition?,
+        val pianoMidi: List<Int>
+    )
+
+    val progressionChords = remember(currentProgression, selectedKey, selectedInstrument) {
         currentProgression.degrees.map { deg ->
             val (cRoot, cSuffix) = resolveChordForDegree(selectedKey, deg)
-            val posList = RealChordsDb.getGuitarPositions(cRoot, cSuffix)
-            Triple(deg, "$cRoot $cSuffix", posList.firstOrNull())
+            val posList = if (selectedInstrument == "ukulele") {
+                RealChordsDb.getUkulelePositions(cRoot, cSuffix)
+            } else {
+                RealChordsDb.getGuitarPositions(cRoot, cSuffix)
+            }
+            val pianoPitches = RealPianoChordsDb.getChord(cRoot, cSuffix)?.midi?.takeIf { it.isNotEmpty() }
+                ?: run {
+                    val rIdx = roots.indexOf(cRoot).coerceAtLeast(0)
+                    com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.buildPianoShape(
+                        rootIdx = rIdx,
+                        suffix = cSuffix,
+                        style = com.creativeblisslabs.peqlearn.app.util.PianoVoicingStyle.CLOSE,
+                        inversion = com.creativeblisslabs.peqlearn.app.util.InversionStyle.ROOT,
+                        octave = 4
+                    )
+                }
+            ProgressionChordItem(deg, "$cRoot $cSuffix", posList.firstOrNull(), pianoPitches)
         }
     }
 
@@ -109,16 +133,20 @@ fun ProgressionsStudioPanel(
         isPlaying = true
         scope.launch {
             try {
-                viewModel.audioEngine.setInstrument("GUITAR")
+                val instr = if (selectedInstrument == "piano") "PIANO" else "GUITAR"
+                viewModel.audioEngine.setInstrument(instr)
                 for (i in progressionChords.indices) {
                     if (!isPlaying) break
                     currentPlayingChordIdx = i
-                    val (_, _, pos) = progressionChords[i]
-                    if (pos != null) {
-                        pos.midi.forEach { midi ->
-                            viewModel.audioEngine.noteOn(midi, 0.85f)
-                            delay(40L)
-                        }
+                    val chordItem = progressionChords[i]
+                    val midiNotes = if (selectedInstrument == "piano") {
+                        chordItem.pianoMidi
+                    } else {
+                        chordItem.guitarPos?.midi ?: chordItem.pianoMidi
+                    }
+                    midiNotes.forEach { midi ->
+                        viewModel.audioEngine.noteOn(midi, 0.85f)
+                        delay(35L)
                     }
                     delay(700L)
                 }
@@ -177,6 +205,37 @@ fun ProgressionsStudioPanel(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
+                }
+            }
+        }
+
+        // Instrument switch row: Guitar, Ukulele, Piano
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "INSTRUMENT",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF7E8B9B),
+                letterSpacing = 1.sp
+            )
+            SingleChoiceSegmentedButtonRow {
+                listOf("guitar" to "🎸 Guitar", "ukulele" to "🪕 Ukulele", "piano" to "🎹 Piano").forEachIndexed { idx, (key, label) ->
+                    SegmentedButton(
+                        selected = selectedInstrument == key,
+                        onClick = {
+                            selectedInstrument = key
+                            try {
+                                viewModel.audioEngine.setInstrument(if (key == "piano") "PIANO" else "GUITAR")
+                            } catch (_: Exception) {}
+                        },
+                        shape = SegmentedButtonDefaults.itemShape(index = idx, count = 3)
+                    ) {
+                        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -411,29 +470,70 @@ fun ProgressionsStudioPanel(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(progressionChords.indices.toList()) { idx ->
-                        val (deg, name, pos) = progressionChords[idx]
+                        val chordItem = progressionChords[idx]
                         val isCurrentChordPlaying = isPlaying && currentPlayingChordIdx == idx
 
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = deg,
+                                text = chordItem.degree,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isCurrentChordPlaying) Color(0xFFFF9E1B) else Color(0xFFB0BEC5)
                             )
                             Spacer(Modifier.height(4.dp))
-                            if (pos != null) {
+                            if (selectedInstrument == "piano") {
+                                val activeMap = remember(chordItem.pianoMidi, isCurrentChordPlaying) {
+                                    chordItem.pianoMidi.associateWith { true }
+                                }
+                                Surface(
+                                    modifier = Modifier
+                                        .width(170.dp)
+                                        .height(130.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            scope.launch {
+                                                viewModel.audioEngine.setInstrument("PIANO")
+                                                chordItem.pianoMidi.forEach { midi ->
+                                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                                    delay(30L)
+                                                }
+                                            }
+                                        },
+                                    color = if (isCurrentChordPlaying) Color(0xFF2A2038) else Color(0xFF1B1F2A),
+                                    border = BorderStroke(1.dp, if (isCurrentChordPlaying) Color(0xFFFF9E1B) else Color(0xFF333D4F)),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(6.dp),
+                                        verticalArrangement = Arrangement.SpaceBetween,
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(chordItem.chordName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isCurrentChordPlaying) Color(0xFFFF9E1B) else Color(0xFFCE93D8))
+                                        com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
+                                            activeMidiNotes = activeMap,
+                                            accentColor = if (isCurrentChordPlaying) Color(0xFFFF9E1B) else Color(0xFFCE93D8),
+                                            startNote = 48,
+                                            endNote = 72,
+                                            fillWidth = true,
+                                            showNoteNames = false,
+                                            modifier = Modifier.fillMaxWidth().height(85.dp).clip(RoundedCornerShape(6.dp))
+                                        )
+                                    }
+                                }
+                            } else if (chordItem.guitarPos != null) {
                                 SvgChordBox(
-                                    chord = pos,
-                                    chordName = name,
-                                    instrument = "guitar",
+                                    chord = chordItem.guitarPos,
+                                    chordName = chordItem.chordName,
+                                    instrument = selectedInstrument,
                                     accentColor = if (isCurrentChordPlaying) Color(0xFFFF9E1B) else Color(0xFFCE93D8),
                                     cardBackground = if (isCurrentChordPlaying) Color(0xFF2A2038) else Color(0xFF1B1F2A),
                                     width = 110.dp,
                                     height = 145.dp,
                                     onClick = {
                                         scope.launch {
-                                            pos.midi.forEach { midi ->
+                                            val instr = if (selectedInstrument == "ukulele") "GUITAR" else "GUITAR"
+                                            viewModel.audioEngine.setInstrument(instr)
+                                            chordItem.guitarPos.midi.forEach { midi ->
                                                 viewModel.audioEngine.noteOn(midi, 0.85f)
                                                 delay(35L)
                                             }

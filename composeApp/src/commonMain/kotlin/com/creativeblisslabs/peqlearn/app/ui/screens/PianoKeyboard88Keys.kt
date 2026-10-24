@@ -9,8 +9,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.foundation.Canvas
 import com.creativeblisslabs.peqlearn.app.ui.components.VideoExportStudioSection
-import androidx.compose.foundation.background
+import com.creativeblisslabs.peqlearn.app.ui.components.PdfExportStudioSection
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.FileOpen
@@ -22,6 +24,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -88,6 +91,7 @@ import com.creativeblisslabs.peqlearn.app.ui.components.setSystemBarsVisibility
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQOrientation
 import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard
+import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.playMediaItem
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.persistSession
@@ -171,7 +175,7 @@ fun PianoKeyboard88Keys(
     val keyboardWidth = whiteKeyWidth * whiteKeyCount
 
     var keyboardMode by rememberSaveable { mutableStateOf(PianoKeyboardMode.FULL_88) }
-    var notationFormat by rememberSaveable { mutableStateOf("Staff") }
+    var notationFormat by viewModel.notationFormat
     val showNoteLabels = viewModel.showPianoKeyLabels.value
     val showWaterfall = viewModel.showWaterfall.value
     val is3DPerspectiveMode = viewModel.is3DPerspectiveMode.value
@@ -428,15 +432,17 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                     
                                     
                                         Button(
-                                            onClick = { showFullscreenNotation = true },
+                                            onClick = {
+                                                viewModel.isFullscreenKeyboard.value = true
+                                            },
                                             colors = ButtonDefaults.buttonColors(containerColor = primaryColor.copy(alpha = 0.2f)),
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             modifier = Modifier.height(26.dp)
                                         ) {
-                                            Icon(Icons.Default.MusicNote, contentDescription = "Full Notation", modifier = Modifier.size(13.dp), tint = primaryColor)
+                                            Icon(Icons.Default.Fullscreen, contentDescription = "Studio Mode", modifier = Modifier.size(13.dp), tint = primaryColor)
                                             Spacer(Modifier.width(3.dp))
-                                            Text("Notation", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = primaryColor)
+                                            Text("Studio", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = primaryColor)
                                         }
 
                         IconButton(
@@ -842,25 +848,84 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
         )
     }
 
-    if (showFullscreenNotation) {
+    // Score / MIDI / PDF Import Computation Loading Dialog
+    if (viewModel.isImportingPDF.value) {
         Dialog(
-            onDismissRequest = { showFullscreenNotation = false },
+            onDismissRequest = { /* Modal processing */ },
             properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false
             )
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF07080C))
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xFF140F24),
+                border = BorderStroke(1.dp, Color(0xFF3D2D5E)),
+                shadowElevation = 16.dp,
+                modifier = Modifier.padding(16.dp)
             ) {
-                NotationWorkspaceItem(
-                    viewModel = viewModel,
-                    accentColor = primaryColor,
-                    onBack = { showFullscreenNotation = false },
-                    launchFilePicker = { viewModel.onPickScoreFileRequested?.invoke() }
-                )
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(primaryColor.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(36.dp),
+                            color = primaryColor,
+                            strokeWidth = 3.dp
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Importing & Parsing Score",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Analyzing MIDI measures, voices, and notation layouts...",
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    val progress = viewModel.pdfImportProgress.value
+                    if (progress > 0f) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = primaryColor,
+                                trackColor = Color(0xFF281E38)
+                            )
+                            Text(
+                                text = "${(progress * 100).toInt()}%",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryColor,
+                                modifier = Modifier.align(Alignment.End)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -888,9 +953,10 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                 var fsShowLetters by rememberSaveable { mutableStateOf(showNoteLabels) }
                 var fsShowLyrics by rememberSaveable { mutableStateOf(true) }
                 var fsShowWaterfall by rememberSaveable { mutableStateOf(viewModel.showWaterfall.value) }
-                // Layout Mode: "Split" (Notation on Top + Waterfall + Keyboard on Bottom), "Waterfall", or "Notation"
-                var fsLayoutMode by rememberSaveable { mutableStateOf("Split") }
+                // Layout Mode: "Split" (Notation on Top + Waterfall), "KeyboardWaterfall", "Waterfall", "Notation", or "Keyboard"
+                var fsLayoutMode by viewModel.visualizerLayoutMode
                 var fsLayoutMenuExpanded by remember { mutableStateOf(false) }
+                var fsNotationMenuExpanded by remember { mutableStateOf(false) }
                 var fsInstrumentMenuExpanded by remember { mutableStateOf(false) }
                 val fsManualPressedKeys = remember { mutableStateListOf<Int>() }
                 var showSpeedOptimizationDialog by remember { mutableStateOf(false) }
@@ -965,6 +1031,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                         enter = fadeIn(tween(250)),
                         exit = fadeOut(tween(300)),
                         modifier = Modifier
+                            .zIndex(20f)
                             .fillMaxWidth()
                             .align(Alignment.TopCenter)
                     ) {
@@ -996,14 +1063,6 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                                 .clip(CircleShape)
                                                 .background(Color(0xFF5C6BC0))
                                         )
-                                        Column {
-                                            Text(
-                                                "NOW PLAYING",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF7986CB),
-                                                letterSpacing = 1.sp
-                                            )
                                             val songTitle = currentScore?.title 
                                                 ?: viewModel.currentMediaItem.value?.title 
                                                 ?: viewModel.selectedMixerItem.value?.displayName 
@@ -1028,7 +1087,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                                 )
                                             }
                                         }
-                                    }
+                                    
 
                                     // Right: Clean Non-redundant Action Icons
                                     Row(
@@ -1153,10 +1212,87 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                                         },
                                                         onClick = {
                                                             fsLayoutMode = modeKey
-                                                            fsShowWaterfall = (modeKey == "Waterfall" || modeKey == "Split" || modeKey == "KeyboardWaterfall")
+                                                            viewModel.visualizerLayoutMode.value = modeKey
+                                                            val showWf = (modeKey == "Waterfall" || modeKey == "Split" || modeKey == "KeyboardWaterfall")
+                                                            fsShowWaterfall = showWf
+                                                            viewModel.showWaterfall.value = showWf
                                                             fsLayoutMenuExpanded = false
                                                         }
                                                     )
+                                                }
+                                            }
+                                        }
+
+                                        // Notation Format Selector (Visible when Split or Notation layout is active)
+                                        if (fsLayoutMode == "Split" || fsLayoutMode == "Notation") {
+                                            Box {
+                                                Surface(
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    color = Color(0xFF1E162E),
+                                                    border = BorderStroke(1.dp, Color(0xFF4A3468)),
+                                                    modifier = Modifier.clickable { fsNotationMenuExpanded = true }
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.MusicNote,
+                                                            contentDescription = "Notation Format",
+                                                            tint = Color(0xFFFFD700),
+                                                            modifier = Modifier.size(13.dp)
+                                                        )
+                                                        val formatLabel = when (viewModel.notationFormat.value.trim().lowercase()) {
+                                                            "tab", "tab only" -> "Tab"
+                                                            "staff", "staff only" -> "Staff"
+                                                            else -> "Both"
+                                                        }
+                                                        Text(
+                                                            formatLabel,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = Color(0xFFFFD700)
+                                                        )
+                                                        Icon(
+                                                            Icons.Default.ArrowDropDown,
+                                                            contentDescription = null,
+                                                            tint = Color.White.copy(0.7f),
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                }
+                                                DropdownMenu(
+                                                    expanded = fsNotationMenuExpanded,
+                                                    onDismissRequest = { fsNotationMenuExpanded = false }
+                                                ) {
+                                                    listOf(
+                                                        "Grand Staff" to "Staff Only",
+                                                        "Guitar Tab" to "Tab Only",
+                                                        "Both (Staff + Tab)" to "Both Viewers"
+                                                    ).forEach { (label, fmtKey) ->
+                                                        val currentFmt = viewModel.notationFormat.value.trim().lowercase()
+                                                        val isSelected = when (fmtKey) {
+                                                            "Staff Only" -> currentFmt == "staff" || currentFmt == "staff only"
+                                                            "Tab Only" -> currentFmt == "tab" || currentFmt == "tab only"
+                                                            else -> currentFmt == "both" || currentFmt == "both viewers"
+                                                        }
+                                                        DropdownMenuItem(
+                                                            text = {
+                                                                Text(
+                                                                    label,
+                                                                    fontSize = 12.sp,
+                                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                                    color = if (isSelected) Color(0xFFFFD700) else Color.Unspecified
+                                                                )
+                                                            },
+                                                            onClick = {
+                                                                viewModel.notationFormat.value = fmtKey
+                                                                notationFormat = fmtKey
+                                                                fsNotationMenuExpanded = false
+                                                            }
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -1216,6 +1352,13 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                                         text = { Text(inst, fontSize = 12.sp) },
                                                         onClick = {
                                                             viewModel.selectedInstrument.value = inst
+                                                            if (inst == "Guitar") {
+                                                                viewModel.notationFormat.value = "Tab Only"
+                                                                notationFormat = "Tab Only"
+                                                            } else if (inst == "Piano") {
+                                                                viewModel.notationFormat.value = "Staff Only"
+                                                                notationFormat = "Staff Only"
+                                                            }
                                                             fsInstrumentMenuExpanded = false
                                                         }
                                                     )
@@ -1318,6 +1461,12 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                             }
 
                             Box(modifier = scrollModifier) {
+                                val activeMidiNoteSet by remember {
+                                    derivedStateOf {
+                                        viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet()
+                                    }
+                                }
+
                                 Column(
                                     modifier = Modifier
                                         .width(finalWidth)
@@ -1374,7 +1523,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                                     .background(Color.Black)
                                             ) {
                                                 SynthesiaWaterfallOverlay(
-                                                    activeMidiNotes = viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet(),
+                                                    activeMidiNotes = activeMidiNoteSet,
                                                     manualPressedNotes = fsManualPressedKeys.toSet(),
                                                     score = currentScore,
                                                     playheadMeasure = viewModel.scorePlayheadMeasure.value,
@@ -1440,8 +1589,8 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                             }
                                         }
                                         "Keyboard" -> {
-                                            // Keyboard Only: Spacer for upper visual area so piano keyboard dominates
-                                            Spacer(modifier = Modifier.weight(0.12f))
+                                            // Keyboard Only: Spacer for upper visual area so instrument dominates with true aspect ratio
+                                            Spacer(modifier = Modifier.weight(1f))
                                         }
                                         else -> {
                                             // Waterfall Only full height
@@ -1452,7 +1601,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                                     .background(Color.Black)
                                             ) {
                                                 SynthesiaWaterfallOverlay(
-                                                    activeMidiNotes = viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet(),
+                                                    activeMidiNotes = activeMidiNoteSet,
                                                     manualPressedNotes = fsManualPressedKeys.toSet(),
                                                     score = currentScore,
                                                     playheadMeasure = viewModel.scorePlayheadMeasure.value,
@@ -1488,12 +1637,14 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                         }
                                     }
 
-                                    // Full-fit 88-Key Piano Keyboard (Visible in Split, Keyboard + Waterfall, and Keyboard Only modes)
+                                    // Bottom Instrument Visualizer: UnifiedPianoKeyboard or UnifiedGuitarFretboard
+                                    // Visible in Split, Keyboard + Waterfall, and Keyboard Only modes
                                     if (fsLayoutMode != "Notation" && fsLayoutMode != "Waterfall") {
+                                        val isGuitarFamily = viewModel.selectedInstrument.value == "Guitar" || viewModel.selectedInstrument.value == "Ukulele"
                                         val keyboardModifier = if (fsLayoutMode == "Keyboard") {
                                             Modifier
                                                 .fillMaxWidth()
-                                                .weight(0.88f)
+                                                .heightIn(min = 190.dp, max = 225.dp)
                                                 .background(Color(0xFF161616))
                                         } else {
                                             Modifier
@@ -1503,45 +1654,66 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                         }
 
                                         Box(modifier = keyboardModifier) {
-                                            UnifiedPianoKeyboard(
-                                                activeMidiNotes = viewModel.midiActiveNotes,
-                                                accentColor = primaryColor,
-                                                activeCoordinate = viewModel.midiPlayingNote.value,
-                                                // showNoteNames = fsShowLetters,
-                                                isPlaying = isPlaying,
-                                                startNote = 21,
-                                                endNote = 108,
-                                                fillWidth = true,
-                                                leftHandColor = viewModel.leftHandColor.value,
-                                                rightHandColor = viewModel.rightHandColor.value,
-                                                onKeyTapped = { midi ->
-                                                    if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                    viewModel.onMidiNoteOn(midi, 95)
-                                                },
-                                                onKeyReleased = { midi ->
-                                                    fsManualPressedKeys.remove(midi)
-                                                    viewModel.onMidiNoteOff(midi)
-                                                },
-                                                modifier = Modifier.fillMaxSize()
-                                            )
+                                            if (isGuitarFamily) {
+                                                val isUkulele = viewModel.selectedInstrument.value == "Ukulele"
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                UnifiedGuitarFretboard(
+                                                    numFrets = if (isUkulele) 15 else 22,
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    accentColor = primaryColor,
+                                                    showNoteNames = fsShowLetters,
+                                                    stringLabels = if (isUkulele) listOf("A", "E", "C", "G") else listOf("e", "B", "G", "D", "A", "E"),
+                                                    openStringsSemis = if (isUkulele) listOf(9, 4, 0, 7) else listOf(4, 11, 7, 2, 9, 4),
+                                                    onFretTapped = { _, _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                UnifiedPianoKeyboard(
+                                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                                    accentColor = primaryColor,
+                                                    activeCoordinate = viewModel.midiPlayingNote.value,
+                                                    // showNoteNames = fsShowLetters,
+                                                    isPlaying = isPlaying,
+                                                    startNote = 21,
+                                                    endNote = 108,
+                                                    fillWidth = true,
+                                                    leftHandColor = viewModel.leftHandColor.value,
+                                                    rightHandColor = viewModel.rightHandColor.value,
+                                                    onKeyTapped = { midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    onKeyReleased = { midi ->
+                                                        fsManualPressedKeys.remove(midi)
+                                                        viewModel.onMidiNoteOff(midi)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
 
-                                            // Studio Red Velvet Cloth Strip (from MIDIVisualizer-master velvet.frag)
-                                            if (viewModel.keyboardShowVelvetCloth.value) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(4.dp)
-                                                        .align(Alignment.TopCenter)
-                                                        .background(
-                                                            Brush.verticalGradient(
-                                                                listOf(
-                                                                    viewModel.keyboardClothColor.value,
-                                                                    viewModel.keyboardClothColor.value.copy(alpha = 0.85f),
-                                                                    Color(0xFF330000)
+                                                // Studio Red Velvet Cloth Strip (from MIDIVisualizer-master velvet.frag)
+                                                if (viewModel.keyboardShowVelvetCloth.value) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(4.dp)
+                                                            .align(Alignment.TopCenter)
+                                                            .background(
+                                                                Brush.verticalGradient(
+                                                                    listOf(
+                                                                        viewModel.keyboardClothColor.value,
+                                                                        viewModel.keyboardClothColor.value.copy(alpha = 0.85f),
+                                                                        Color(0xFF330000)
+                                                                    )
                                                                 )
                                                             )
-                                                        )
-                                                )
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -1577,6 +1749,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                         enter = fadeIn(tween(250)),
                         exit = fadeOut(tween(300)),
                         modifier = Modifier
+                            .zIndex(20f)
                             .align(Alignment.BottomCenter)
                             .padding(bottom = controlsBottomPadding)
                     ) {
@@ -1899,6 +2072,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
         
      // Comprehensive Export Studio Modal Bottom Sheet
         if (showExportDialog) {
+            var exportStudioTab by rememberSaveable { mutableIntStateOf(0) }
             ModalBottomSheet(
                 onDismissRequest = { showExportDialog = false },
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -1923,12 +2097,12 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
-                                Icons.Default.Movie,
+                                if (exportStudioTab == 0) Icons.Default.Movie else Icons.Default.PictureAsPdf,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                "Performance Video & Notation Studio",
+                                if (exportStudioTab == 0) "Performance Video Studio" else "Sheet Music PDF Export",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
@@ -1938,8 +2112,41 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                         }
                     }
 
-                    // Render Full Comprehensive Studio Settings
-                    VideoExportStudioSection(viewModel = viewModel)
+                    // Tab selector between Video Export and PDF Score Export
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        val tabs = listOf("Video Studio", "Sheet Music PDF")
+                        tabs.forEachIndexed { index, title ->
+                            val isSelected = exportStudioTab == index
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                    .clickable { exportStudioTab = index }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = title,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    if (exportStudioTab == 0) {
+                        VideoExportStudioSection(viewModel = viewModel)
+                    } else {
+                        PdfExportStudioSection(viewModel = viewModel)
+                    }
 
                     Spacer(Modifier.height(16.dp))
                 }
@@ -2124,16 +2331,22 @@ fun PlaybackSettingsSheet(
                             val formats = listOf("Staff", "Tab", "Both")
                             Row(modifier = Modifier.background(MaterialTheme.colorScheme.onSurface.copy(0.05f), RoundedCornerShape(8.dp)).padding(3.dp)) {
                                 formats.forEach { f ->
-                                    val currentFmt = viewModel.notationFormat.value
-                                    val active = (f == "Staff" && (currentFmt == "Staff" || currentFmt == "Staff")) ||
-                                            (f == "Tab" && (currentFmt == "Tab" || currentFmt == "Tab")) ||
-                                            (f == "Both" && (currentFmt == "Both" || currentFmt == "Both"))
+                                    val currentFmt = viewModel.notationFormat.value.trim().lowercase()
+                                    val active = when (f) {
+                                        "Staff" -> currentFmt == "staff" || currentFmt == "staff only"
+                                        "Tab" -> currentFmt == "tab" || currentFmt == "tab only"
+                                        "Both" -> currentFmt == "both" || currentFmt == "both viewers"
+                                        else -> false
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(if (active) Color(0xFFFFD700) else Color.Transparent)
                                             .clickable {
-                                                val target = if (f == "Both Viewers") "Both Viewers" else "$f Only"
+                                                val target = when (f) {
+                                                    "Both" -> "Both Viewers"
+                                                    else -> "$f Only"
+                                                }
                                                 viewModel.notationFormat.value = target
                                                 onFormatChange(target)
                                             }
@@ -2306,7 +2519,17 @@ fun PlaybackSettingsSheet(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(if (selected) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface.copy(0.06f))
-                                        .clickable { viewModel.selectedInstrument.value = inst }
+                                        .clickable {
+                                            viewModel.selectedInstrument.value = inst
+                                            // Piano88 Screen Rule: Guitar shows Tab, Piano shows Staff notation
+                                            if (inst == "Guitar" || inst == "Ukulele") {
+                                                viewModel.notationFormat.value = "Tab Only"
+                                                onFormatChange("Tab Only")
+                                            } else if (inst == "Piano") {
+                                                viewModel.notationFormat.value = "Staff Only"
+                                                onFormatChange("Staff Only")
+                                            }
+                                        }
                                         .padding(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text(
@@ -2324,6 +2547,75 @@ fun PlaybackSettingsSheet(
                 // =========================================================================
                 // TAB 1: KEYBOARD & VISUALIZER STUDIO SETTINGS (MIDIVisualizer-master Parity)
                 // =========================================================================
+                // Visualizer Mode Selector
+                SettingsSection(title = "VISUALIZER DISPLAY MODE") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Choose what visualizer to show on screen",
+                            color = MaterialTheme.colorScheme.onSurface.copy(0.7f),
+                            fontSize = 12.sp
+                        )
+                        val visualizers = listOf(
+                            "Split (Notation + Waterfall)" to "Split",
+                            "Keyboard + Waterfall" to "KeyboardWaterfall",
+                            "Waterfall Only" to "Waterfall",
+                            "Notation Only" to "Notation",
+                            "Keyboard Only" to "Keyboard"
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            visualizers.forEach { (label, modeKey) ->
+                                val isSelected = viewModel.visualizerLayoutMode.value == modeKey
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) Color(0xFFFFD700).copy(alpha = 0.15f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f))
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) Color(0xFFFFD700) else Color.Transparent,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable {
+                                            viewModel.visualizerLayoutMode.value = modeKey
+                                            when (modeKey) {
+                                                "Waterfall" -> {
+                                                    viewModel.showWaterfall.value = true
+                                                }
+                                                "Notation" -> {
+                                                    viewModel.showWaterfall.value = false
+                                                }
+                                                "Keyboard" -> {
+                                                    viewModel.showWaterfall.value = false
+                                                }
+                                                "Split", "KeyboardWaterfall" -> {
+                                                    viewModel.showWaterfall.value = true
+                                                }
+                                            }
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Tune,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFD700),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 1. NOTE STYLE & COLORS (Viewer::showNoteOptions)
                 SettingsSection(title = "NOTE STYLE & APPEARANCE") {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -2887,6 +3179,66 @@ fun getPitchOnlyFromMidi(midiNote: Int): String {
     return names[midiNote % 12]
 }
 
+/**
+ * Phase 2 High-Performance Waterfall Precomputations:
+ * 1. Static Geometry Cache per MIDI key (21..108) calculated once per canvas width change.
+ * 2. Flat temporal timeline of notes with absolute beat offsets allowing O(log N) temporal windowing.
+ */
+data class MidiKeyGeometry(
+    val midiNote: Int,
+    val isBlack: Boolean,
+    val whiteKeyIndex: Float,
+    val pitchName: String,
+    val baseWidthFraction: Float // Fraction of whiteKeyWidth
+)
+
+object WaterfallKeyGeometryLookup {
+    val keyGeometries: Array<MidiKeyGeometry> = Array(128) { midi ->
+        val isBlack = isMidiNoteBlack(midi)
+        val wIdx = getWhiteKeyIndexForMidi(midi)
+        val pitch = getPitchOnlyFromMidi(midi)
+        val widthFrac = if (isBlack) 0.58f else 0.82f
+        MidiKeyGeometry(
+            midiNote = midi,
+            isBlack = isBlack,
+            whiteKeyIndex = wIdx,
+            pitchName = pitch,
+            baseWidthFraction = widthFrac
+        )
+    }
+}
+
+data class FlatWaterfallNote(
+    val midiNote: Int,
+    val absoluteBeatStart: Float,
+    val durationBeats: Float,
+    val isRightHand: Boolean
+)
+
+data class WaterfallTimeline(
+    val notes: List<FlatWaterfallNote>,
+    val measureCumulativeBeats: FloatArray
+) {
+    /**
+     * Binary search to find the lower bound index for notes starting on or after [targetBeat].
+     */
+    fun findStartWindowIndex(targetBeat: Float): Int {
+        var low = 0
+        var high = notes.lastIndex
+        var result = notes.size
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            if (notes[mid].absoluteBeatStart + notes[mid].durationBeats >= targetBeat) {
+                result = mid
+                high = mid - 1
+            } else {
+                low = mid + 1
+            }
+        }
+        return result
+    }
+}
+
 @Composable
 fun SynthesiaWaterfallOverlay(
     activeMidiNotes: Set<Int>,
@@ -2923,6 +3275,53 @@ fun SynthesiaWaterfallOverlay(
     var canvasWidthPx by remember { mutableFloatStateOf(1200f) }
     var canvasHeightPx by remember { mutableFloatStateOf(500f) }
     val whiteKeyCount = 52
+
+    // Precomputed flattened temporal score timeline for O(log N) window lookahead
+    val waterfallTimeline = remember(score) {
+        if (score == null || score.measures.isEmpty()) {
+            null
+        } else {
+            val cumBeats = FloatArray(score.measures.size + 1)
+            var currentBeatTotal = 0f
+            score.measures.forEachIndexed { idx, measure ->
+                cumBeats[idx] = currentBeatTotal
+                val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
+                currentBeatTotal += beatsInMeasure
+            }
+            cumBeats[score.measures.size] = currentBeatTotal
+
+            val flatNotes = ArrayList<FlatWaterfallNote>()
+            score.measures.forEachIndexed { mIdx, measure ->
+                val measureStartBeat = cumBeats[mIdx]
+                for (note in measure.notes) {
+                    if (!note.isRest && note.midiNote in 21..108) {
+                        flatNotes.add(
+                            FlatWaterfallNote(
+                                midiNote = note.midiNote,
+                                absoluteBeatStart = measureStartBeat + note.position,
+                                durationBeats = note.duration.coerceAtLeast(0.2f),
+                                isRightHand = note.midiNote >= 60
+                            )
+                        )
+                    }
+                }
+            }
+            flatNotes.sortBy { it.absoluteBeatStart }
+            WaterfallTimeline(flatNotes, cumBeats)
+        }
+    }
+
+    val reusableRibbonPath = remember { Path() }
+    val reusableBloomPath = remember { Path() }
+    val reusableSheenPath = remember { Path() }
+    val reusableTextPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            isAntiAlias = true
+        }
+    }
 
     var fsFrameTicker by remember { mutableLongStateOf(0L) }
 
@@ -2982,16 +3381,15 @@ fun SynthesiaWaterfallOverlay(
             val whiteKeyW = currentCanvasW / whiteKeyCount.toFloat()
 
             for (midi in activeMidiNotes) {
-                val wIdx = getWhiteKeyIndexForMidi(midi)
-                val isBlack = isMidiNoteBlack(midi)
-                val baseBlockW = if (isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
+                val geom = WaterfallKeyGeometryLookup.keyGeometries[midi]
+                val baseBlockW = if (geom.isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
                 val xOff = (whiteKeyW - baseBlockW) / 2f
-                val strikeX = (wIdx * whiteKeyW) + xOff + baseBlockW / 2f
+                val strikeX = (geom.whiteKeyIndex * whiteKeyW) + xOff + baseBlockW / 2f
                 val strikeY = contactY
                 val baseColor = if (midi >= 60) rightHandColor else leftHandColor
 
                 if (glowEffect && flashes.none { it.midiNote == midi && it.alpha > 0.4f }) {
-                    val baseRad = if (isBlack) 28f else 38f
+                    val baseRad = if (geom.isBlack) 28f else 38f
                     if (flashes.size < 24) {
                         flashes.add(
                             PianoKeyFlash(
@@ -3008,7 +3406,7 @@ fun SynthesiaWaterfallOverlay(
                 }
 
                 if (particlesEnabled && particles.size < 64) {
-                    val sparkBase = if (isBlack) (particleCount * 0.5f).toInt() else (particleCount * 0.75f).toInt()
+                    val sparkBase = if (geom.isBlack) (particleCount * 0.5f).toInt() else (particleCount * 0.75f).toInt()
                     val count = sparkBase.coerceIn(2, 24)
                     val pColor = if (lockParticleColor) baseColor else particleCustomColor
                     for (i in 0 until count) {
@@ -3083,16 +3481,15 @@ fun SynthesiaWaterfallOverlay(
 
                     // Contact Line Hit Detection when ribbon reaches bottom contact line right on top of keyboard
                     if (block.currentY in (contactY - 14f)..(contactY + 10f)) {
-                        val wIdx = getWhiteKeyIndexForMidi(block.midiNote)
-                        val isBlack = isMidiNoteBlack(block.midiNote)
-                        val baseBlockW = if (isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
+                        val geom = WaterfallKeyGeometryLookup.keyGeometries[block.midiNote]
+                        val baseBlockW = if (geom.isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
                         val xOff = (whiteKeyW - baseBlockW) / 2f
-                        val strikeX = (wIdx * whiteKeyW) + xOff + baseBlockW / 2f
+                        val strikeX = (geom.whiteKeyIndex * whiteKeyW) + xOff + baseBlockW / 2f
                         val strikeY = contactY
 
                         // 1. Trigger Contact-Line Light Flash & Radial Bloom with flashSize scaling
                         if (glowEffect && flashes.none { it.midiNote == block.midiNote && it.alpha > 0.4f }) {
-                            val baseRad = if (isBlack) 28f else 38f
+                            val baseRad = if (geom.isBlack) 28f else 38f
                             if (flashes.size < 24) {
                                 flashes.add(
                                     PianoKeyFlash(
@@ -3110,7 +3507,7 @@ fun SynthesiaWaterfallOverlay(
 
                         // 2. Trigger Physics-based Sparks with Directional Velocity Arc erupting from piano keys
                         if (particlesEnabled && particles.size < 64) {
-                            val sparkBase = if (isBlack) (particleCount * 0.5f).toInt() else (particleCount * 0.75f).toInt()
+                            val sparkBase = if (geom.isBlack) (particleCount * 0.5f).toInt() else (particleCount * 0.75f).toInt()
                             val count = sparkBase.coerceIn(2, 24)
                             val pColor = if (lockParticleColor) block.color else particleCustomColor
                             for (i in 0 until count) {
@@ -3202,11 +3599,10 @@ fun SynthesiaWaterfallOverlay(
 
         // 1. Draw Waterdrop Note Pills
         for (block in fallingBlocks) {
-            val isBlack = isMidiNoteBlack(block.midiNote)
-            val wIdx = getWhiteKeyIndexForMidi(block.midiNote)
-            val baseBlockWidth = if (isBlack) 0.58f * whiteKeyWidthPx else 0.82f * whiteKeyWidthPx
+            val geom = WaterfallKeyGeometryLookup.keyGeometries[block.midiNote]
+            val baseBlockWidth = geom.baseWidthFraction * whiteKeyWidthPx
             val xOffset = (whiteKeyWidthPx - baseBlockWidth) / 2f
-            val finalX = (wIdx * whiteKeyWidthPx) + xOffset
+            val finalX = (geom.whiteKeyIndex * whiteKeyWidthPx) + xOffset
             val blockAlpha = block.alpha.coerceIn(0f, 1f)
             val bottomY = if (block.isAscending) (block.currentY + 28f).coerceAtMost(canvasH) else block.currentY.coerceAtMost(canvasH)
             val topY = if (block.isAscending) block.currentY.coerceAtLeast(0f) else block.startY.coerceAtMost(canvasH)
@@ -3230,24 +3626,22 @@ fun SynthesiaWaterfallOverlay(
 
             if (is3DPerspective) {
                 // 3D Perspective Trapezoid Ribbon / Pill
-                val ribbonPath = Path().apply {
-                    moveTo(projectedCenterTopX - halfWidthTop, topY)
-                    lineTo(projectedCenterTopX + halfWidthTop, topY)
-                    lineTo(projectedCenterBottomX + halfWidthBottom, bottomY)
-                    lineTo(projectedCenterBottomX - halfWidthBottom, bottomY)
-                    close()
-                }
+                reusableRibbonPath.reset()
+                reusableRibbonPath.moveTo(projectedCenterTopX - halfWidthTop, topY)
+                reusableRibbonPath.lineTo(projectedCenterTopX + halfWidthTop, topY)
+                reusableRibbonPath.lineTo(projectedCenterBottomX + halfWidthBottom, bottomY)
+                reusableRibbonPath.lineTo(projectedCenterBottomX - halfWidthBottom, bottomY)
+                reusableRibbonPath.close()
 
                 if (glowEffect) {
-                    val bloomPath = Path().apply {
-                        moveTo(projectedCenterTopX - halfWidthTop - 5f, topY - 2f)
-                        lineTo(projectedCenterTopX + halfWidthTop + 5f, topY - 2f)
-                        lineTo(projectedCenterBottomX + halfWidthBottom + 5f, bottomY + 3f)
-                        lineTo(projectedCenterBottomX - halfWidthBottom - 5f, bottomY + 3f)
-                        close()
-                    }
+                    reusableBloomPath.reset()
+                    reusableBloomPath.moveTo(projectedCenterTopX - halfWidthTop - 5f, topY - 2f)
+                    reusableBloomPath.lineTo(projectedCenterTopX + halfWidthTop + 5f, topY - 2f)
+                    reusableBloomPath.lineTo(projectedCenterBottomX + halfWidthBottom + 5f, bottomY + 3f)
+                    reusableBloomPath.lineTo(projectedCenterBottomX - halfWidthBottom - 5f, bottomY + 3f)
+                    reusableBloomPath.close()
                     drawPath(
-                        path = bloomPath,
+                        path = reusableBloomPath,
                         brush = Brush.verticalGradient(
                             colors = listOf(
                                 block.color.copy(alpha = 0.08f * blockAlpha),
@@ -3262,7 +3656,7 @@ fun SynthesiaWaterfallOverlay(
 
                 // Core Waterdrop Fill with Rich Amber / Copper Gradient
                 drawPath(
-                    path = ribbonPath,
+                    path = reusableRibbonPath,
                     brush = Brush.verticalGradient(
                         colors = listOf(
                             block.color.copy(alpha = 0.82f * blockAlpha),
@@ -3275,16 +3669,15 @@ fun SynthesiaWaterfallOverlay(
                 )
 
                 // Subtle Top & Side 3D Sheen Highlight
-                val topSheenPath = Path().apply {
-                    val sheenW = halfWidthBottom * 0.70f
-                    moveTo(projectedCenterBottomX - sheenW, bottomY - blockHeight * 0.35f)
-                    lineTo(projectedCenterBottomX + sheenW, bottomY - blockHeight * 0.35f)
-                    lineTo(projectedCenterBottomX + sheenW * 0.85f, bottomY - 3f)
-                    lineTo(projectedCenterBottomX - sheenW * 0.85f, bottomY - 3f)
-                    close()
-                }
+                reusableSheenPath.reset()
+                val sheenW = halfWidthBottom * 0.70f
+                reusableSheenPath.moveTo(projectedCenterBottomX - sheenW, bottomY - blockHeight * 0.35f)
+                reusableSheenPath.lineTo(projectedCenterBottomX + sheenW, bottomY - blockHeight * 0.35f)
+                reusableSheenPath.lineTo(projectedCenterBottomX + sheenW * 0.85f, bottomY - 3f)
+                reusableSheenPath.lineTo(projectedCenterBottomX - sheenW * 0.85f, bottomY - 3f)
+                reusableSheenPath.close()
                 drawPath(
-                    path = topSheenPath,
+                    path = reusableSheenPath,
                     brush = Brush.verticalGradient(
                         colors = listOf(
                             Color.White.copy(alpha = 0.28f * blockAlpha),
@@ -3295,7 +3688,7 @@ fun SynthesiaWaterfallOverlay(
 
                 // Delicate Border Stroke for Definition
                 drawPath(
-                    path = ribbonPath,
+                    path = reusableRibbonPath,
                     color = Color.White.copy(alpha = 0.25f * blockAlpha),
                     style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
                 )
@@ -3366,30 +3759,38 @@ fun SynthesiaWaterfallOverlay(
                 )
             }
 
-            // Clean Centered Pitch Letter (e.g. C, C#, D, E, F#, G, A, B)
-            val notePitch = getPitchOnlyFromMidi(block.midiNote)
-            val labelX = if (is3DPerspective) projectedCenterBottomX else finalX + baseBlockWidth / 2f
+            // Clean Centered Pitch Letter strictly following container geometry
+            val notePitch = geom.pitchName
+            val labelX = if (is3DPerspective) (projectedCenterTopX + projectedCenterBottomX) / 2f else finalX + baseBlockWidth / 2f
             val centerY = (topY + bottomY) / 2f
-            val labelY = centerY + 3.8.dp.toPx()
-            val textPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.WHITE
+            reusableTextPaint.apply {
                 alpha = (255 * blockAlpha).toInt().coerceIn(0, 255)
-                textSize = (if (is3DPerspective) 9.5.dp.toPx() * scaleBottom else 10.dp.toPx()).coerceAtLeast(8.dp.toPx())
-                textAlign = android.graphics.Paint.Align.CENTER
-                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
-                isAntiAlias = true
+                val targetTextSize = if (is3DPerspective) {
+                    (9.0.dp.toPx() * ((scaleBottom + scaleTop) / 2f)).coerceIn(7.dp.toPx(), 13.dp.toPx())
+                } else {
+                    10.dp.toPx()
+                }
+                textSize = targetTextSize
                 setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb((180 * blockAlpha).toInt(), 0, 0, 0))
             }
-            drawContext.canvas.nativeCanvas.drawText(
-                notePitch,
-                labelX,
-                labelY,
-                textPaint
-            )
+            // Vertical centering using precise fontMetrics (ascent + descent) / 2
+            val fontMetrics = reusableTextPaint.fontMetrics
+            val verticalBaselineOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
+            val labelY = centerY - verticalBaselineOffset
+
+            // Only draw text if the block has sufficient height to contain the letter
+            if (blockHeight >= 12f) {
+                drawContext.canvas.nativeCanvas.drawText(
+                    notePitch,
+                    labelX,
+                    labelY,
+                    reusableTextPaint
+                )
+            }
         }
 
         // 1b. MIDI Score Lookahead Falling Notes: streams down from top and reaches contactY right when active
-        if (isPlaying && score != null) {
+        if (isPlaying && waterfallTimeline != null) {
             val speedMul = when (fallingSpeedSetting) {
                 "Slow" -> 0.75f
                 "Fast" -> 1.5f
@@ -3399,177 +3800,198 @@ fun SynthesiaWaterfallOverlay(
             val pixelsPerBeat = (canvasH / 3.0f) * speedMul
             val contactY = canvasH
 
-            for (mIdx in playheadMeasure..(playheadMeasure + 2)) {
-                val measure = score.measures.getOrNull(mIdx) ?: continue
-                val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
-                val measureBeatStart = (mIdx - playheadMeasure) * beatsInMeasure - (playheadOffset * beatsInMeasure)
+            // Current absolute playback beat
+            val cumBeats = waterfallTimeline.measureCumulativeBeats
+            val mStartBeat = if (playheadMeasure < cumBeats.size) cumBeats[playheadMeasure] else 0f
+            val mNextBeat = if (playheadMeasure + 1 < cumBeats.size) cumBeats[playheadMeasure + 1] else (mStartBeat + 4f)
+            val measureBeats = (mNextBeat - mStartBeat).coerceAtLeast(1f)
+            val currentPlaybackBeat = mStartBeat + (playheadOffset * measureBeats)
 
-                for (note in measure.notes) {
-                    if (note.isRest || note.midiNote !in 21..108) continue
-                    val noteDistBeats = measureBeatStart + note.position
-                    val noteDurBeats = note.duration.coerceAtLeast(0.2f)
+            // Calculate temporal beat window visible on canvas
+            // Bottom arrives at contactY when noteBeat == currentPlaybackBeat
+            // Top of canvas is canvasH beats above contactY
+            val maxVisibleLookaheadBeats = (canvasH / pixelsPerBeat) + 0.5f
+            val minVisiblePastBeats = 1.0f // Keep notes visible slightly after contact line
 
-                    // Note arrives at contact line (contactY) right when noteDistBeats == 0
-                    val bottomY = contactY - (noteDistBeats * pixelsPerBeat)
-                    val topY = bottomY - (noteDurBeats * pixelsPerBeat)
+            val minBeat = currentPlaybackBeat - minVisiblePastBeats
+            val maxBeat = currentPlaybackBeat + maxVisibleLookaheadBeats
 
-                    // Visible range check
-                    if (bottomY < 0f || topY > canvasH) continue
+            // O(log N) Temporal Window Lookup
+            val startIndex = waterfallTimeline.findStartWindowIndex(minBeat)
+            val allNotes = waterfallTimeline.notes
 
-                    val isBlack = isMidiNoteBlack(note.midiNote)
-                    val wIdx = getWhiteKeyIndexForMidi(note.midiNote)
-                    val baseBlockWidth = if (isBlack) 0.58f * whiteKeyWidthPx else 0.82f * whiteKeyWidthPx
-                    val xOffset = (whiteKeyWidthPx - baseBlockWidth) / 2f
-                    val finalX = (wIdx * whiteKeyWidthPx) + xOffset
-                    val clampedBottomY = bottomY.coerceAtMost(canvasH)
-                    val clampedTopY = topY.coerceAtLeast(0f)
-                    val blockHeight = (clampedBottomY - clampedTopY).coerceAtLeast(18f)
+            for (idx in startIndex until allNotes.size) {
+                val note = allNotes[idx]
+                if (note.absoluteBeatStart > maxBeat) break
 
-                    val yRatioBottom = (clampedBottomY / canvasH).coerceIn(0f, 1f)
-                    val yRatioTop = (clampedTopY / canvasH).coerceIn(0f, 1f)
-                    val scaleBottom = if (is3DPerspective) horizonScale + (1.0f - horizonScale) * yRatioBottom else 1.0f
-                    val scaleTop = if (is3DPerspective) horizonScale + (1.0f - horizonScale) * yRatioTop else 1.0f
+                val noteDistBeats = note.absoluteBeatStart - currentPlaybackBeat
+                val noteDurBeats = note.durationBeats
 
-                    val centerX = finalX + baseBlockWidth / 2f
-                    val screenCenterX = size.width / 2f
-                    val projectedCenterBottomX = if (is3DPerspective) screenCenterX + (centerX - screenCenterX) * scaleBottom else centerX
-                    val projectedCenterTopX = if (is3DPerspective) screenCenterX + (centerX - screenCenterX) * scaleTop else centerX
-                    val halfWidthBottom = (baseBlockWidth * scaleBottom) / 2f
-                    val halfWidthTop = (baseBlockWidth * scaleTop) / 2f
-                    val pillCorner = 14f * (if (is3DPerspective) scaleBottom else 1.0f)
-                    val noteColor = if (note.midiNote >= 60) rightHandColor else leftHandColor
+                // Note arrives at contact line (contactY) right when noteDistBeats == 0
+                val bottomY = contactY - (noteDistBeats * pixelsPerBeat)
+                val topY = bottomY - (noteDurBeats * pixelsPerBeat)
 
-                    if (is3DPerspective) {
-                        val ribbonPath = Path().apply {
-                            moveTo(projectedCenterTopX - halfWidthTop, clampedTopY)
-                            lineTo(projectedCenterTopX + halfWidthTop, clampedTopY)
-                            lineTo(projectedCenterBottomX + halfWidthBottom, clampedBottomY)
-                            lineTo(projectedCenterBottomX - halfWidthBottom, clampedBottomY)
-                            close()
-                        }
+                // Visible range check
+                if (bottomY < 0f || topY > canvasH) continue
 
-                        if (glowEffect) {
-                            val bloomPath = Path().apply {
-                                moveTo(projectedCenterTopX - halfWidthTop - 5f, clampedTopY - 2f)
-                                lineTo(projectedCenterTopX + halfWidthTop + 5f, clampedTopY - 2f)
-                                lineTo(projectedCenterBottomX + halfWidthBottom + 5f, clampedBottomY + 3f)
-                                lineTo(projectedCenterBottomX - halfWidthBottom - 5f, clampedBottomY + 3f)
-                                close()
-                            }
-                            drawPath(
-                                path = bloomPath,
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        noteColor.copy(alpha = 0.08f),
-                                        noteColor.copy(alpha = 0.30f),
-                                        noteColor.copy(alpha = 0.55f)
-                                    ),
-                                    startY = clampedTopY,
-                                    endY = clampedBottomY
-                                )
-                            )
-                        }
+                val geom = WaterfallKeyGeometryLookup.keyGeometries[note.midiNote]
+                val baseBlockWidth = geom.baseWidthFraction * whiteKeyWidthPx
+                val xOffset = (whiteKeyWidthPx - baseBlockWidth) / 2f
+                val finalX = (geom.whiteKeyIndex * whiteKeyWidthPx) + xOffset
+                val clampedBottomY = bottomY.coerceAtMost(canvasH)
+                val clampedTopY = topY.coerceAtLeast(0f)
+                val blockHeight = (clampedBottomY - clampedTopY).coerceAtLeast(18f)
 
-                        // Core Waterdrop Fill
+                val yRatioBottom = (clampedBottomY / canvasH).coerceIn(0f, 1f)
+                val yRatioTop = (clampedTopY / canvasH).coerceIn(0f, 1f)
+                val scaleBottom = if (is3DPerspective) horizonScale + (1.0f - horizonScale) * yRatioBottom else 1.0f
+                val scaleTop = if (is3DPerspective) horizonScale + (1.0f - horizonScale) * yRatioTop else 1.0f
+
+                val centerX = finalX + baseBlockWidth / 2f
+                val screenCenterX = size.width / 2f
+                val projectedCenterBottomX = if (is3DPerspective) screenCenterX + (centerX - screenCenterX) * scaleBottom else centerX
+                val projectedCenterTopX = if (is3DPerspective) screenCenterX + (centerX - screenCenterX) * scaleTop else centerX
+                val halfWidthBottom = (baseBlockWidth * scaleBottom) / 2f
+                val halfWidthTop = (baseBlockWidth * scaleTop) / 2f
+                val pillCorner = 14f * (if (is3DPerspective) scaleBottom else 1.0f)
+                val noteColor = if (note.isRightHand) rightHandColor else leftHandColor
+
+                if (is3DPerspective) {
+                    reusableRibbonPath.reset()
+                    reusableRibbonPath.moveTo(projectedCenterTopX - halfWidthTop, clampedTopY)
+                    reusableRibbonPath.lineTo(projectedCenterTopX + halfWidthTop, clampedTopY)
+                    reusableRibbonPath.lineTo(projectedCenterBottomX + halfWidthBottom, clampedBottomY)
+                    reusableRibbonPath.lineTo(projectedCenterBottomX - halfWidthBottom, clampedBottomY)
+                    reusableRibbonPath.close()
+
+                    if (glowEffect) {
+                        reusableBloomPath.reset()
+                        reusableBloomPath.moveTo(projectedCenterTopX - halfWidthTop - 5f, clampedTopY - 2f)
+                        reusableBloomPath.lineTo(projectedCenterTopX + halfWidthTop + 5f, clampedTopY - 2f)
+                        reusableBloomPath.lineTo(projectedCenterBottomX + halfWidthBottom + 5f, clampedBottomY + 3f)
+                        reusableBloomPath.lineTo(projectedCenterBottomX - halfWidthBottom - 5f, clampedBottomY + 3f)
+                        reusableBloomPath.close()
                         drawPath(
-                            path = ribbonPath,
+                            path = reusableBloomPath,
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    noteColor.copy(alpha = 0.82f),
-                                    noteColor.copy(alpha = 0.95f),
-                                    noteColor.copy(alpha = 1.0f)
+                                    noteColor.copy(alpha = 0.08f),
+                                    noteColor.copy(alpha = 0.30f),
+                                    noteColor.copy(alpha = 0.55f)
                                 ),
                                 startY = clampedTopY,
                                 endY = clampedBottomY
                             )
                         )
+                    }
 
-                        // Subtle Top Sheen Highlight
-                        val topSheenPath = Path().apply {
-                            val sheenW = halfWidthBottom * 0.70f
-                            moveTo(projectedCenterBottomX - sheenW, clampedBottomY - blockHeight * 0.35f)
-                            lineTo(projectedCenterBottomX + sheenW, clampedBottomY - blockHeight * 0.35f)
-                            lineTo(projectedCenterBottomX + sheenW * 0.85f, clampedBottomY - 3f)
-                            lineTo(projectedCenterBottomX - sheenW * 0.85f, clampedBottomY - 3f)
-                            close()
-                        }
-                        drawPath(
-                            path = topSheenPath,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.28f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-
-                        // Delicate Border Stroke
-                        drawPath(
-                            path = ribbonPath,
-                            color = Color.White.copy(alpha = 0.25f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
-                        )
-                    } else {
-                        // 2D Waterdrop Rounded Pill
-                        if (glowEffect) {
-                            drawRoundRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        noteColor.copy(alpha = 0.45f),
-                                        noteColor.copy(alpha = 0.15f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(finalX + baseBlockWidth / 2f, clampedTopY + blockHeight / 2f),
-                                    radius = baseBlockWidth * 1.3f
-                                ),
-                                topLeft = Offset(finalX - 4f, clampedTopY - 4f),
-                                size = Size(baseBlockWidth + 8f, blockHeight + 8f),
-                                cornerRadius = CornerRadius(pillCorner + 4f, pillCorner + 4f)
-                            )
-                        }
-
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    noteColor.copy(alpha = 0.90f),
-                                    noteColor.copy(alpha = 1.0f),
-                                    noteColor.copy(alpha = 0.92f)
-                                ),
-                                startY = clampedTopY,
-                                endY = clampedBottomY
+                    // Core Waterdrop Fill
+                    drawPath(
+                        path = reusableRibbonPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                noteColor.copy(alpha = 0.82f),
+                                noteColor.copy(alpha = 0.95f),
+                                noteColor.copy(alpha = 1.0f)
                             ),
-                            topLeft = Offset(finalX, clampedTopY),
-                            size = Size(baseBlockWidth, blockHeight),
-                            cornerRadius = CornerRadius(pillCorner, pillCorner)
+                            startY = clampedTopY,
+                            endY = clampedBottomY
                         )
+                    )
 
+                    // Subtle Top Sheen Highlight
+                    reusableSheenPath.reset()
+                    val sheenW = halfWidthBottom * 0.70f
+                    reusableSheenPath.moveTo(projectedCenterBottomX - sheenW, clampedBottomY - blockHeight * 0.35f)
+                    reusableSheenPath.lineTo(projectedCenterBottomX + sheenW, clampedBottomY - blockHeight * 0.35f)
+                    reusableSheenPath.lineTo(projectedCenterBottomX + sheenW * 0.85f, clampedBottomY - 3f)
+                    reusableSheenPath.lineTo(projectedCenterBottomX - sheenW * 0.85f, clampedBottomY - 3f)
+                    reusableSheenPath.close()
+                    drawPath(
+                        path = reusableSheenPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.28f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+
+                    // Delicate Border Stroke
+                    drawPath(
+                        path = reusableRibbonPath,
+                        color = Color.White.copy(alpha = 0.25f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
+                    )
+                } else {
+                    // 2D Waterdrop Rounded Pill
+                    if (glowEffect) {
                         drawRoundRect(
-                            color = Color.White.copy(alpha = 0.28f),
-                            topLeft = Offset(finalX, clampedTopY),
-                            size = Size(baseBlockWidth, blockHeight),
-                            cornerRadius = CornerRadius(pillCorner, pillCorner),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    noteColor.copy(alpha = 0.45f),
+                                    noteColor.copy(alpha = 0.15f),
+                                    Color.Transparent
+                                ),
+                                center = Offset(finalX + baseBlockWidth / 2f, clampedTopY + blockHeight / 2f),
+                                radius = baseBlockWidth * 1.3f
+                            ),
+                            topLeft = Offset(finalX - 4f, clampedTopY - 4f),
+                            size = Size(baseBlockWidth + 8f, blockHeight + 8f),
+                            cornerRadius = CornerRadius(pillCorner + 4f, pillCorner + 4f)
                         )
                     }
 
-                    // Pitch Letter
-                    val notePitch = getPitchOnlyFromMidi(note.midiNote)
-                    val labelX = if (is3DPerspective) projectedCenterBottomX else finalX + baseBlockWidth / 2f
-                    val centerY = (clampedTopY + clampedBottomY) / 2f
-                    val labelY = centerY + 3.8.dp.toPx()
-                    val textPaint = android.graphics.Paint().apply {
-                        color = android.graphics.Color.WHITE
-                        textSize = (if (is3DPerspective) 9.5.dp.toPx() * scaleBottom else 10.dp.toPx()).coerceAtLeast(8.dp.toPx())
-                        textAlign = android.graphics.Paint.Align.CENTER
-                        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
-                        isAntiAlias = true
-                        setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                noteColor.copy(alpha = 0.90f),
+                                noteColor.copy(alpha = 1.0f),
+                                noteColor.copy(alpha = 0.92f)
+                            ),
+                            startY = clampedTopY,
+                            endY = clampedBottomY
+                        ),
+                        topLeft = Offset(finalX, clampedTopY),
+                        size = Size(baseBlockWidth, blockHeight),
+                        cornerRadius = CornerRadius(pillCorner, pillCorner)
+                    )
+
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.28f),
+                        topLeft = Offset(finalX, clampedTopY),
+                        size = Size(baseBlockWidth, blockHeight),
+                        cornerRadius = CornerRadius(pillCorner, pillCorner),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
+                    )
+                }
+
+                // Pitch Letter strictly following container geometry and centered
+                val notePitch = geom.pitchName
+                val labelX = if (is3DPerspective) (projectedCenterTopX + projectedCenterBottomX) / 2f else finalX + baseBlockWidth / 2f
+                val centerY = (clampedTopY + clampedBottomY) / 2f
+                reusableTextPaint.apply {
+                    alpha = 255
+                    val targetTextSize = if (is3DPerspective) {
+                        (9.0.dp.toPx() * ((scaleBottom + scaleTop) / 2f)).coerceIn(7.dp.toPx(), 13.dp.toPx())
+                    } else {
+                        10.dp.toPx()
                     }
+                    textSize = targetTextSize
+                    setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
+                }
+                // Vertical centering using precise fontMetrics (ascent + descent) / 2
+                val fontMetrics = reusableTextPaint.fontMetrics
+                val verticalBaselineOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
+                val labelY = centerY - verticalBaselineOffset
+
+                // Only draw text if the block has sufficient height to contain the letter
+                if (blockHeight >= 12f) {
                     drawContext.canvas.nativeCanvas.drawText(
                         notePitch,
                         labelX,
                         labelY,
-                        textPaint
+                        reusableTextPaint
                     )
                 }
             }

@@ -19,6 +19,7 @@ import android.content.res.AssetFileDescriptor
 import android.media.MediaExtractor
 import android.os.Environment
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
+import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -57,9 +58,23 @@ object AndroidVideoExporter {
             val targetFps = if (fps <= 0) 60 else fps
             val totalMeasures = score.measures.size.coerceAtLeast(1)
             val bpm = score.tempo.coerceAtLeast(40f)
-            val secondsPerMeasure = (4f * 60f) / bpm
-            val totalDurationSec = (totalMeasures * secondsPerMeasure).coerceAtLeast(3.0f)
-            val totalFrames = (totalDurationSec * targetFps).toInt().coerceIn(60, 3600)
+
+            // Pre-calculate precise measure time boundaries using per-measure meter
+            val measureStartTimes = mutableListOf<Float>()
+            var accTime = 0f
+            for (m in score.measures) {
+                measureStartTimes.add(accTime)
+                val mBeats = m.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
+                val mSec = (mBeats * 60f) / bpm
+                accTime += mSec
+            }
+            if (measureStartTimes.isEmpty()) measureStartTimes.add(0f)
+
+            // Tail duration for acoustic grand piano ring-out and decay
+            val tailSec = 2.0f
+            val totalDurationSec = (accTime + tailSec).coerceAtLeast(3.0f)
+            // Allow full score export up to 10 minutes (36,000 frames @ 60fps), minimum 60 frames
+            val totalFrames = (totalDurationSec * targetFps).toInt().coerceIn(60, 36000)
 
             val exportDir = File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
@@ -173,12 +188,10 @@ object AndroidVideoExporter {
                 encoder = null
             }
 
-            // Pre-calculate measure time boundaries
-            val measureStartTimes = mutableListOf<Float>()
-            var accTime = 0f
-            for (m in score.measures) {
-                measureStartTimes.add(accTime)
-                accTime += secondsPerMeasure
+            // Pre-calculate per-measure durations in seconds
+            val measureDurations = score.measures.map { m ->
+                val mBeats = m.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
+                (mBeats * 60f) / bpm
             }
 
             // Audio Synthesis (Deterministic Frame-by-Frame Piano Waveform for Export)
@@ -190,12 +203,16 @@ object AndroidVideoExporter {
             // Synthesize note waveforms using acoustic grand harmonics (fundamental + overtones + strike transient)
             for (mIdx in 0 until totalMeasures) {
                 val mStart = measureStartTimes[mIdx]
+                val mSec = measureDurations.getOrElse(mIdx) { (4f * 60f) / bpm }
                 val measure = score.measures[mIdx]
+                val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
+                val secondsPerBeat = 60f / bpm
+
                 for (note in measure.notes) {
                     if (note.isRest) continue
                     val pitch = note.pitch.coerceIn(21, 108)
-                    val noteStartSec = mStart + (note.position / 4f) * secondsPerMeasure
-                    val noteDurationSec = (note.durationFraction * secondsPerMeasure).coerceAtLeast(0.12f)
+                    val noteStartSec = mStart + note.position * secondsPerBeat
+                    val noteDurationSec = ((note.durationFraction * beatsInMeasure) * secondsPerBeat).coerceAtLeast(0.12f)
                     val startSample = (noteStartSec * sampleRate).toInt().coerceIn(0, totalAudioSamples - 1)
                     val noteLengthSamples = (noteDurationSec * sampleRate * 1.5f).toInt() // ring decay
                     val freq = 440.0 * Math.pow(2.0, (pitch - 69) / 12.0)
@@ -241,19 +258,20 @@ object AndroidVideoExporter {
                 val currentTimeSec = (frameIndex.toFloat() / targetFps)
                 val progress = (frameIndex.toFloat() / totalFrames)
 
-                // 1. Clear background
+                // 1. Clear background with premium studio dark background
                 frameCanvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
 
-                // 2. Render Upper Notation Score Sheet
+                // 2. Render Upper Notation Score Sheet (Professional Clean Staves matching screen)
                 if (renderNotation && notationHeight > 0f) {
-                    val staffMarginTop = notationHeight * 0.22f
+                    val staffMarginTop = notationHeight * 0.18f
                     val trebleStaffTop = staffMarginTop
-                    val lineSpacing = notationHeight * 0.045f
-                    val bassStaffTop = trebleStaffTop + lineSpacing * 6f
+                    val lineSpacing = notationHeight * 0.048f
+                    val halfLineSpacing = lineSpacing / 2f
+                    val bassStaffTop = trebleStaffTop + lineSpacing * 6.5f
 
-                    // Draw Title & Info
-                    frameCanvas.drawText(score.title.ifEmpty { "pEQ Learn Composition" }, width * 0.04f, notationHeight * 0.12f, textPaint)
-                    frameCanvas.drawText("BPM: ${bpm.toInt()} | ${score.timeSignature}", width - width * 0.18f, notationHeight * 0.12f, subtextPaint)
+                    // Header Title & Score Metadata
+                    frameCanvas.drawText(score.title.ifEmpty { "pEQ Learn Composition" }, width * 0.05f, notationHeight * 0.10f, textPaint)
+                    frameCanvas.drawText("BPM: ${bpm.toInt()} | Time: ${score.timeSignature}", width - width * 0.22f, notationHeight * 0.10f, subtextPaint)
 
                     // Draw Treble & Bass 5-Line Staves
                     for (i in 0..4) {
@@ -264,12 +282,19 @@ object AndroidVideoExporter {
                     }
 
                     // Clef Labels
-                    frameCanvas.drawText("𝄞", width * 0.05f, trebleStaffTop + lineSpacing * 3.5f, textPaint)
-                    frameCanvas.drawText("𝄢", width * 0.05f, bassStaffTop + lineSpacing * 3.5f, textPaint)
+                    frameCanvas.drawText("𝄞", width * 0.05f, trebleStaffTop + lineSpacing * 3.4f, textPaint)
+                    frameCanvas.drawText("𝄢", width * 0.05f, bassStaffTop + lineSpacing * 3.4f, textPaint)
 
                     // Render Measures & Notes
                     val visibleMeasureCount = 4
-                    val currentMeasureIdx = (currentTimeSec / secondsPerMeasure).toInt().coerceIn(0, totalMeasures - 1)
+                    var currentMeasureIdx = 0
+                    for (i in 0 until totalMeasures) {
+                        val mStart = measureStartTimes[i]
+                        val mDur = measureDurations.getOrElse(i) { (4f * 60f) / bpm }
+                        if (currentTimeSec >= mStart) {
+                            currentMeasureIdx = i
+                        }
+                    }
                     val measureStartIdx = (currentMeasureIdx / visibleMeasureCount) * visibleMeasureCount
                     val measureWidth = (width * 0.88f) / visibleMeasureCount
 
@@ -283,28 +308,73 @@ object AndroidVideoExporter {
                         frameCanvas.drawLine(mRight, trebleStaffTop, mRight, bassStaffTop + lineSpacing * 4f, barlinePaint)
 
                         val measure = score.measures[mIdx]
+                        val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
                         for (note in measure.notes) {
                             if (note.isRest) continue
-                            val noteX = mLeft + (note.position / 4f) * measureWidth
+                            val noteX = mLeft + 20f + ((measureWidth - 40f) * (note.position / beatsInMeasure).coerceIn(0f, 1f))
                             val isTreble = note.midiNote >= 60
-                            val staffBaseY = if (isTreble) trebleStaffTop else bassStaffTop
-                            // Map pitch to vertical staff step
-                            val pitchOffset = if (isTreble) (71 - note.midiNote) else (50 - note.midiNote)
-                            val noteY = staffBaseY + (pitchOffset * 0.5f) * lineSpacing
+                            val diatonicStep = ChordVoicingEngine.getDiatonicStep(note.midiNote)
+                            val noteY = if (isTreble) {
+                                trebleStaffTop + (38.0f - diatonicStep) * halfLineSpacing
+                            } else {
+                                bassStaffTop + (26.0f - diatonicStep) * halfLineSpacing
+                            }
 
-                            // Draw Notehead
+                            // Ledger lines if outside staff bounds
+                            if (isTreble) {
+                                val topStaff = trebleStaffTop
+                                val bottomStaff = trebleStaffTop + lineSpacing * 4f
+                                if (noteY < topStaff - halfLineSpacing * 0.5f) {
+                                    var ly = topStaff - lineSpacing
+                                    while (ly >= noteY - halfLineSpacing * 0.5f) {
+                                        frameCanvas.drawLine(noteX - lineSpacing * 0.8f, ly, noteX + lineSpacing * 0.8f, ly, staffLinePaint)
+                                        ly -= lineSpacing
+                                    }
+                                } else if (noteY > bottomStaff + halfLineSpacing * 0.5f) {
+                                    var ly = bottomStaff + lineSpacing
+                                    while (ly <= noteY + halfLineSpacing * 0.5f) {
+                                        frameCanvas.drawLine(noteX - lineSpacing * 0.8f, ly, noteX + lineSpacing * 0.8f, ly, staffLinePaint)
+                                        ly += lineSpacing
+                                    }
+                                }
+                            } else {
+                                val topStaff = bassStaffTop
+                                val bottomStaff = bassStaffTop + lineSpacing * 4f
+                                if (noteY < topStaff - halfLineSpacing * 0.5f) {
+                                    var ly = topStaff - lineSpacing
+                                    while (ly >= noteY - halfLineSpacing * 0.5f) {
+                                        frameCanvas.drawLine(noteX - lineSpacing * 0.8f, ly, noteX + lineSpacing * 0.8f, ly, staffLinePaint)
+                                        ly -= lineSpacing
+                                    }
+                                } else if (noteY > bottomStaff + halfLineSpacing * 0.5f) {
+                                    var ly = bottomStaff + lineSpacing
+                                    while (ly <= noteY + halfLineSpacing * 0.5f) {
+                                        frameCanvas.drawLine(noteX - lineSpacing * 0.8f, ly, noteX + lineSpacing * 0.8f, ly, staffLinePaint)
+                                        ly += lineSpacing
+                                    }
+                                }
+                            }
+
+                            // Draw Notehead with hand color
+                            val notePaint = if (note.midiNote >= 60) rightHandNotePaint else leftHandNotePaint
                             frameCanvas.drawOval(
-                                RectF(noteX - lineSpacing * 0.7f, noteY - lineSpacing * 0.5f, noteX + lineSpacing * 0.7f, noteY + lineSpacing * 0.5f),
-                                noteHeadPaint
+                                RectF(noteX - lineSpacing * 0.65f, noteY - lineSpacing * 0.45f, noteX + lineSpacing * 0.65f, noteY + lineSpacing * 0.45f),
+                                notePaint
                             )
                             // Stem
-                            frameCanvas.drawLine(noteX + lineSpacing * 0.6f, noteY, noteX + lineSpacing * 0.6f, noteY - lineSpacing * 3f, noteHeadPaint)
+                            val stemUp = note.midiNote < 71
+                            val stemEndY = if (stemUp) noteY - lineSpacing * 3.2f else noteY + lineSpacing * 3.2f
+                            val stemX = if (stemUp) noteX + lineSpacing * 0.55f else noteX - lineSpacing * 0.55f
+                            frameCanvas.drawLine(stemX, noteY, stemX, stemEndY, notePaint)
                         }
                     }
 
                     // Score Playhead Indicator Line
-                    val currentPlayheadOffset = (currentTimeSec % (visibleMeasureCount * secondsPerMeasure)) / (visibleMeasureCount * secondsPerMeasure)
-                    val playheadX = width * 0.08f + currentPlayheadOffset * (width * 0.88f)
+                    val curMStart = measureStartTimes[currentMeasureIdx]
+                    val curMDur = measureDurations.getOrElse(currentMeasureIdx) { (4f * 60f) / bpm }
+                    val relInCurrentMeasure = ((currentTimeSec - curMStart) / curMDur).coerceIn(0f, 1f)
+                    val mPosInWindow = (currentMeasureIdx - measureStartIdx)
+                    val playheadX = width * 0.08f + (mPosInWindow * measureWidth) + (relInCurrentMeasure * measureWidth)
                     val playheadPaint = Paint().apply {
                         color = Color.parseColor("#FFD700")
                         strokeWidth = 3f
@@ -319,7 +389,22 @@ object AndroidVideoExporter {
 
                 // 3. Render Lower 3D Perspective Waterfall & Piano Visualizer
                 if (renderVisualizer && visualizerHeight > 0f) {
-                    val horizonY = visualizerTop + waterfallHeight * 0.05f
+                    val horizonY = visualizerTop + waterfallHeight * 0.04f
+                    val whiteKeyWidth = width / 52f
+
+                    // Helper to get exact horizontal center on piano bed for any MIDI pitch (21..108)
+                    fun getMidiXCenter(midiNote: Int): Float {
+                        val whiteNotes = (21..108).filter { n -> (n % 12) !in listOf(1, 3, 6, 8, 10) }
+                        val isBlack = (midiNote % 12) in listOf(1, 3, 6, 8, 10)
+                        return if (!isBlack) {
+                            val idx = whiteNotes.indexOf(midiNote).coerceAtLeast(0)
+                            idx * whiteKeyWidth + whiteKeyWidth / 2f
+                        } else {
+                            val prevWhite = whiteNotes.indexOf(midiNote - 1).coerceAtLeast(0)
+                            val nextWhite = whiteNotes.indexOf(midiNote + 1).coerceAtLeast(0)
+                            ((prevWhite + nextWhite) / 2f) * whiteKeyWidth + whiteKeyWidth / 2f
+                        }
+                    }
 
                     // Horizon Glow Guideline
                     if (glowEnabled) {
@@ -329,20 +414,23 @@ object AndroidVideoExporter {
                     // Track active keys on this frame
                     val activeKeys = BooleanArray(88)
 
-                    // Falling Waterfall Ribbons
+                    // Falling Waterfall Ribbons (Lookahead window 2.5s)
                     val windowStart = currentTimeSec
                     val windowEnd = currentTimeSec + 2.5f
 
                     for (mIdx in 0 until totalMeasures) {
                         val mStart = measureStartTimes[mIdx]
-                        val mEnd = mStart + secondsPerMeasure
+                        val mDur = measureDurations.getOrElse(mIdx) { (4f * 60f) / bpm }
+                        val mEnd = mStart + mDur
                         if (mEnd >= windowStart && mStart <= windowEnd) {
                             val measure = score.measures[mIdx]
+                            val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
+                            val secondsPerBeat = 60f / bpm
                             for (note in measure.notes) {
                                 if (note.isRest) continue
-                                val pitch = note.pitch.coerceIn(21, 108)
-                                val noteStart = mStart + (note.position / 4f) * secondsPerMeasure
-                                val noteDuration = ((note.durationFraction * secondsPerMeasure)).coerceAtLeast(0.1f)
+                                val pitch = note.midiNote.coerceIn(21, 108)
+                                val noteStart = mStart + note.position * secondsPerBeat
+                                val noteDuration = ((note.durationFraction * beatsInMeasure) * secondsPerBeat).coerceAtLeast(0.12f)
                                 val noteEnd = noteStart + noteDuration
 
                                 // Check if note is currently striking the keybed
@@ -356,34 +444,42 @@ object AndroidVideoExporter {
                                 val noteYTop = noteYBottom - noteLen
 
                                 if (noteYBottom >= horizonY && noteYTop <= keyboardTop) {
-                                    // 3D Perspective trapezoid compression calculation
+                                    val isBlack = (pitch % 12) in listOf(1, 3, 6, 8, 10)
+                                    val xCenterBottom = getMidiXCenter(pitch)
+                                    val horizonScale = 0.72f
+                                    val screenCenterX = width * 0.5f
+
                                     val tTop = ((noteYTop - horizonY) / (keyboardTop - horizonY)).coerceIn(0f, 1f)
                                     val tBottom = ((noteYBottom - horizonY) / (keyboardTop - horizonY)).coerceIn(0f, 1f)
 
-                                    val horizonScale = 0.72f
-                                    val keyFraction = (pitch - 21) / 88f
+                                    val scaleTop = horizonScale + (1.0f - horizonScale) * tTop
+                                    val scaleBottom = horizonScale + (1.0f - horizonScale) * tBottom
 
-                                    val xCenterTop = width * 0.5f + (keyFraction - 0.5f) * width * horizonScale
-                                    val xCenterBottom = keyFraction * width
-                                    val noteWBottom = (width / 88f) * 0.95f
-                                    val noteWTop = noteWBottom * horizonScale
+                                    val xCenterTop = screenCenterX + (xCenterBottom - screenCenterX) * scaleTop
+                                    val xCenterProjectedBottom = screenCenterX + (xCenterBottom - screenCenterX) * scaleBottom
+
+                                    val baseWidth = if (isBlack) whiteKeyWidth * 0.58f else whiteKeyWidth * 0.82f
+                                    val halfWTop = (baseWidth * scaleTop) / 2f
+                                    val halfWBottom = (baseWidth * scaleBottom) / 2f
 
                                     val notePath = Path().apply {
-                                        moveTo(xCenterTop - noteWTop * 0.5f, noteYTop.coerceAtLeast(horizonY))
-                                        lineTo(xCenterTop + noteWTop * 0.5f, noteYTop.coerceAtLeast(horizonY))
-                                        lineTo(xCenterBottom + noteWBottom * 0.5f, noteYBottom.coerceAtMost(keyboardTop))
-                                        lineTo(xCenterBottom - noteWBottom * 0.5f, noteYBottom.coerceAtMost(keyboardTop))
+                                        moveTo(xCenterTop - halfWTop, noteYTop.coerceAtLeast(horizonY))
+                                        lineTo(xCenterTop + halfWTop, noteYTop.coerceAtLeast(horizonY))
+                                        lineTo(xCenterProjectedBottom + halfWBottom, noteYBottom.coerceAtMost(keyboardTop))
+                                        lineTo(xCenterProjectedBottom - halfWBottom, noteYBottom.coerceAtMost(keyboardTop))
                                         close()
                                     }
 
-                                    // Warm Amber Pill / Waterdrop Gradient
-                                    val noteBaseColor = if (pitch < 60) Color.parseColor("#E67E22") else Color.parseColor("#F39C12")
+                                    // Hand specific gradient colors matching screen
+                                    val handStartColor = if (pitch >= 60) Color.parseColor("#4A90E2") else Color.parseColor("#6C63FF")
+                                    val handEndColor = if (pitch >= 60) Color.parseColor("#00E5FF") else Color.parseColor("#FF4081")
+
                                     val pillGradient = LinearGradient(
-                                        xCenterBottom,
+                                        xCenterProjectedBottom,
                                         noteYTop.coerceAtLeast(horizonY),
-                                        xCenterBottom,
+                                        xCenterProjectedBottom,
                                         noteYBottom.coerceAtMost(keyboardTop),
-                                        intArrayOf(Color.parseColor("#FFD54F"), noteBaseColor, Color.parseColor("#D35400")),
+                                        intArrayOf(handEndColor, handStartColor, Color.parseColor("#1A1A2E")),
                                         null,
                                         Shader.TileMode.CLAMP
                                     )
@@ -395,72 +491,75 @@ object AndroidVideoExporter {
 
                                     // Crisp border for waterdrop pill definition
                                     val borderPaint = Paint().apply {
-                                        color = Color.parseColor("#55FFFFFF")
+                                        color = Color.parseColor("#66FFFFFF")
                                         style = Paint.Style.STROKE
-                                        strokeWidth = 1.2f
+                                        strokeWidth = 1.4f
                                         isAntiAlias = true
                                     }
                                     frameCanvas.drawPath(notePath, borderPaint)
 
                                     // Pitch Letter (e.g. C, C#, D, F#)
-                                    if ((noteYBottom - noteYTop) >= 22f) {
+                                    if ((noteYBottom - noteYTop) >= 20f) {
                                         val pitchNames = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
                                         val pitchLabel = pitchNames[pitch % 12]
                                         val labelPaint = Paint().apply {
                                             color = Color.WHITE
-                                            textSize = ((width / 1920f) * 13f).coerceAtLeast(9f)
+                                            textSize = ((width / 1920f) * 14f).coerceAtLeast(10f)
                                             textAlign = Paint.Align.CENTER
                                             typeface = Typeface.DEFAULT_BOLD
                                             isAntiAlias = true
-                                            setShadowLayer(3f, 0f, 1f, Color.argb(180, 0, 0, 0))
+                                            setShadowLayer(4f, 0f, 1f, Color.argb(200, 0, 0, 0))
                                         }
                                         val labelY = (noteYTop + noteYBottom) * 0.5f + labelPaint.textSize * 0.35f
-                                        frameCanvas.drawText(pitchLabel, (xCenterTop + xCenterBottom) * 0.5f, labelY, labelPaint)
+                                        frameCanvas.drawText(pitchLabel, (xCenterTop + xCenterProjectedBottom) * 0.5f, labelY, labelPaint)
                                     }
 
                                     // Keybed Contact Flash & Bloom Glow
-                                    if (noteOffsetFromNow <= 0.05f && noteOffsetFromNow >= -0.05f && glowEnabled) {
+                                    if (noteOffsetFromNow in -0.06f..0.06f && glowEnabled) {
                                         val flarePaint = Paint().apply {
-                                            color = Color.parseColor("#99FFD54F")
+                                            color = if (pitch >= 60) Color.parseColor("#8000E5FF") else Color.parseColor("#80FF4081")
                                             isAntiAlias = true
                                         }
-                                        frameCanvas.drawCircle(xCenterBottom, keyboardTop, 24f, flarePaint)
+                                        frameCanvas.drawCircle(xCenterProjectedBottom, keyboardTop, 28f, flarePaint)
                                     }
                                 }
                             }
                         }
                     }
 
-                    // 4. Draw 88-Key Piano Bed
-                    val whiteKeyWidth = width / 52f
-                    val whiteKeyIndices = listOf(0, 2, 4, 5, 7, 9, 11) // C D E F G A B
-                    var whiteKeyCounter = 0
-                    val keyXCoords = FloatArray(88)
-
-                    // First pass: white keys
-                    for (k in 0 until 52) {
+                    // 4. Draw Full-fit 88-Key Piano Bed
+                    val whiteNotes = (21..108).filter { n -> (n % 12) !in listOf(1, 3, 6, 8, 10) }
+                    // Pass 1: Ivory White Keys
+                    whiteNotes.forEachIndexed { k, midi ->
                         val kLeft = k * whiteKeyWidth
                         val kRight = kLeft + whiteKeyWidth
-                        val isAnyWhiteActive = activeKeys.indices.any { idx ->
-                            val midi = idx + 21
-                            val isWhite = whiteKeyIndices.contains(midi % 12)
-                            isWhite && (idx * 52 / 88 == k) && activeKeys[idx]
-                        }
-                        val paint = if (isAnyWhiteActive) activeWhiteKeyPaint else whiteKeyPaint
-                        frameCanvas.drawRect(kLeft, keyboardTop, kRight, height.toFloat(), paint)
-                        frameCanvas.drawRect(kLeft, keyboardTop, kRight, height.toFloat(), whiteKeyBorderPaint)
+                        val isWhiteActive = activeKeys.getOrNull(midi - 21) == true
+                        val paint = if (isWhiteActive) {
+                            if (midi >= 60) activeWhiteKeyPaint else activeBlackKeyPaint
+                        } else whiteKeyPaint
+                        frameCanvas.drawRect(kLeft + 1f, keyboardTop, kRight - 1f, height.toFloat(), paint)
+                        frameCanvas.drawRect(kLeft + 1f, keyboardTop, kRight - 1f, height.toFloat(), whiteKeyBorderPaint)
                     }
 
-                    // Second pass: black keys
-                    val blackKeyPattern = listOf(0, 1, 3, 4, 5) // C#, D#, F#, G#, A#
-                    for (oct in 0 until 7) {
-                        for (b in blackKeyPattern) {
-                            val bkLeft = (oct * 7 + b + 0.65f) * whiteKeyWidth
-                            val bkRight = bkLeft + whiteKeyWidth * 0.7f
-                            val bkIndex = oct * 12 + b + 1
-                            val isBlackActive = bkIndex in 0 until 88 && activeKeys[bkIndex]
-                            val paint = if (isBlackActive) activeBlackKeyPaint else blackKeyPaint
-                            frameCanvas.drawRect(bkLeft, keyboardTop, bkRight, keyboardTop + keyboardHeight * 0.65f, paint)
+                    // Pass 2: Ebony Black Keys
+                    val blackKeyWidth = whiteKeyWidth * 0.58f
+                    val blackKeyHeight = keyboardHeight * 0.62f
+                    whiteNotes.forEachIndexed { k, midi ->
+                        val semitone = midi % 12
+                        if (semitone in listOf(0, 2, 5, 7, 9)) {
+                            val blackMidi = midi + 1
+                            if (blackMidi <= 108) {
+                                val bkLeft = (k * whiteKeyWidth) + (whiteKeyWidth - blackKeyWidth / 2f)
+                                val bkRight = bkLeft + blackKeyWidth
+                                val isBlackActive = activeKeys.getOrNull(blackMidi - 21) == true
+                                val paint = if (isBlackActive) {
+                                    if (blackMidi >= 60) activeWhiteKeyPaint else activeBlackKeyPaint
+                                } else blackKeyPaint
+                                // Shadow behind black key
+                                val shadowPaint = Paint().apply { color = Color.parseColor("#66000000") }
+                                frameCanvas.drawRect(bkLeft - 1f, keyboardTop, bkRight + 1f, keyboardTop + blackKeyHeight + 2f, shadowPaint)
+                                frameCanvas.drawRect(bkLeft, keyboardTop, bkRight, keyboardTop + blackKeyHeight, paint)
+                            }
                         }
                     }
 
@@ -468,7 +567,7 @@ object AndroidVideoExporter {
                     val numBars = 48
                     val barWidth = width.toFloat() / numBars
                     for (b in 0 until numBars) {
-                        val barHeight = ((Math.sin(currentTimeSec * 8.0 + b * 0.4).toFloat().coerceAtLeast(0f)) * 0.8f + (Math.random() * 0.2f).toFloat()) * (visualizerHeight * 0.25f)
+                        val barHeight = ((Math.sin(currentTimeSec * 8.0 + b * 0.4).toFloat().coerceAtLeast(0f)) * 0.8f + (Math.random() * 0.2f).toFloat()) * (visualizerHeight * 0.22f)
                         frameCanvas.drawRect(
                             b * barWidth + 2f,
                             keyboardTop - barHeight,
@@ -477,6 +576,16 @@ object AndroidVideoExporter {
                             eqBarPaint
                         )
                     }
+
+                    // 6. Red Velvet Cloth Strip on Top of Piano Bed
+                    val velvetPaint = Paint().apply {
+                        shader = LinearGradient(
+                            0f, keyboardTop, 0f, keyboardTop + 5f,
+                            intArrayOf(Color.parseColor("#990000"), Color.parseColor("#660000"), Color.parseColor("#330000")),
+                            null, Shader.TileMode.CLAMP
+                        )
+                    }
+                    frameCanvas.drawRect(0f, keyboardTop, width.toFloat(), keyboardTop + 5f, velvetPaint)
 
                     // 7. Render 3-Pedal Grand Piano Unit (Soft, Sostenuto, Sustain)
                     if (renderPedals) {
@@ -575,6 +684,26 @@ object AndroidVideoExporter {
                     } catch (_: Exception) { }
                 }
 
+                // Drain AAC Audio encoder in lockstep during video encoding to prevent buffer stalls
+                try {
+                    if (audioEncoder != null && muxer != null && audioTrackIndex >= 0 && muxerStarted) {
+                        val audioBufferInfo = MediaCodec.BufferInfo()
+                        while (true) {
+                            val aOutIdx = audioEncoder.dequeueOutputBuffer(audioBufferInfo, 1000)
+                            if (aOutIdx >= 0) {
+                                val encData = audioEncoder.getOutputBuffer(aOutIdx)
+                                if (encData != null && audioBufferInfo.size > 0) {
+                                    muxer.writeSampleData(audioTrackIndex, encData, audioBufferInfo)
+                                }
+                                audioEncoder.releaseOutputBuffer(aOutIdx, false)
+                                if ((audioBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) break
+                            } else {
+                                break
+                            }
+                        }
+                    }
+                } catch (_: Exception) { }
+
                 // Progress update callback
                 if (frameIndex % (targetFps / 4).coerceAtLeast(1) == 0 || frameIndex == totalFrames - 1) {
                     onProgress(progress)
@@ -603,7 +732,7 @@ object AndroidVideoExporter {
                 }
             } catch (_: Exception) { }
 
-            // Encode Synthesized Piano Audio Samples into AAC Track
+            // Encode Synthesized Piano Audio Samples into AAC Track in chunks ensuring full delivery
             try {
                 if (audioEncoder != null && muxer != null && audioTrackIndex >= 0 && muxerStarted) {
                     val pcmBytes = ByteBuffer.allocate(audioPcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
@@ -613,18 +742,35 @@ object AndroidVideoExporter {
                     }
                     pcmBytes.flip()
 
-                    val audioInIdx = audioEncoder.dequeueInputBuffer(10_000)
-                    if (audioInIdx >= 0) {
-                        val inBuf = audioEncoder.getInputBuffer(audioInIdx)
-                        if (inBuf != null) {
-                            val toCopy = Math.min(inBuf.remaining(), pcmBytes.remaining())
-                            val tempByteArray = ByteArray(toCopy)
-                            pcmBytes.get(tempByteArray)
-                            inBuf.put(tempByteArray)
-                            audioEncoder.queueInputBuffer(audioInIdx, 0, toCopy, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    var pcmOffsetUs = 0L
+                    while (pcmBytes.hasRemaining()) {
+                        val audioInIdx = audioEncoder.dequeueInputBuffer(10_000)
+                        if (audioInIdx >= 0) {
+                            val inBuf = audioEncoder.getInputBuffer(audioInIdx)
+                            if (inBuf != null) {
+                                val toCopy = Math.min(inBuf.remaining(), pcmBytes.remaining())
+                                val tempByteArray = ByteArray(toCopy)
+                                pcmBytes.get(tempByteArray)
+                                inBuf.put(tempByteArray)
+                                val isEos = !pcmBytes.hasRemaining()
+                                val flags = if (isEos) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0
+                                audioEncoder.queueInputBuffer(audioInIdx, 0, toCopy, pcmOffsetUs, flags)
+                                pcmOffsetUs += (toCopy.toLong() * 1_000_000L) / (sampleRate * 2L)
+                            }
+                        }
+
+                        val audioBufferInfo = MediaCodec.BufferInfo()
+                        val outIdx = audioEncoder.dequeueOutputBuffer(audioBufferInfo, 2500)
+                        if (outIdx >= 0) {
+                            val encData = audioEncoder.getOutputBuffer(outIdx)
+                            if (encData != null && audioBufferInfo.size > 0) {
+                                muxer.writeSampleData(audioTrackIndex, encData, audioBufferInfo)
+                            }
+                            audioEncoder.releaseOutputBuffer(outIdx, false)
                         }
                     }
 
+                    // Drain remaining AAC encoder buffers until EOS
                     val audioBufferInfo = MediaCodec.BufferInfo()
                     while (true) {
                         val outIdx = audioEncoder.dequeueOutputBuffer(audioBufferInfo, 10_000)

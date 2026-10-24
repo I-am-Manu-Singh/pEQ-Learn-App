@@ -56,6 +56,7 @@ fun UnifiedGuitarFretboard(
     stringLabels: List<String> = listOf("e", "B", "G", "D", "A", "E"),
     openStringsSemis: List<Int> = listOf(4, 11, 7, 2, 9, 4),
     activeCoordinate: Pair<Int, Int>? = null,
+    activeMidiNote: Int? = null,
     onFretTapped: ((stringIndex: Int, fret: Int, midiNote: Int) -> Unit)? = null,
     fretboardBrush: Brush? = null,
     showInlayDots: Boolean = true,
@@ -260,6 +261,11 @@ fun UnifiedGuitarFretboard(
                     val f = chordFrets.getOrNull(s) ?: -1
                     val y = getYForStringAtX(s, leftPad)
                     val nutIndicatorX = leftPad - 12f
+                    val isOpenPlaying = (f == 0 && (
+                        (activeCoordinate != null && activeCoordinate.first == s && (activeCoordinate.second == 0)) ||
+                        (activeMidiNote != null && ((defaultOpenStringsMidi.getOrNull(s) ?: (openStringsSemis.getOrElse(s) { 0 } + 40)) % 12 == (activeMidiNote % 12)))
+                    ))
+
                     if (f == -1) {
                         // Muted string (Red 'X')
                         drawContext.canvas.nativeCanvas.drawText(
@@ -275,13 +281,33 @@ fun UnifiedGuitarFretboard(
                             }
                         )
                     } else if (f == 0) {
-                        // Open ringing string (White 'o')
-                        drawCircle(
-                            color = Color.White,
-                            radius = 4.5.dp.toPx(),
-                            center = Offset(nutIndicatorX, y),
-                            style = Stroke(width = 1.8.dp.toPx())
-                        )
+                        // Open ringing string
+                        if (isOpenPlaying) {
+                            // Flash glowing ring & filled yellow core like Piano active note
+                            drawCircle(
+                                color = Color(0xFFFFEB3B).copy(alpha = 0.5f),
+                                radius = 9.dp.toPx(),
+                                center = Offset(nutIndicatorX, y)
+                            )
+                            drawCircle(
+                                color = Color(0xFFFFEB3B),
+                                radius = 6.dp.toPx(),
+                                center = Offset(nutIndicatorX, y)
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 6.dp.toPx(),
+                                center = Offset(nutIndicatorX, y),
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        } else {
+                            drawCircle(
+                                color = Color.White,
+                                radius = 4.5.dp.toPx(),
+                                center = Offset(nutIndicatorX, y),
+                                style = Stroke(width = 1.8.dp.toPx())
+                            )
+                        }
                     }
                 }
             } else if (normalizedActiveNotes.isNotEmpty()) {
@@ -292,18 +318,41 @@ fun UnifiedGuitarFretboard(
                         val y = getYForStringAtX(s, leftPad)
                         val nutIndicatorX = leftPad - 14f
                         val isRoot = openSemi == normalizedRootNote
-                        
-                        drawCircle(
-                            color = if (isRoot) Color(0xFFFF5252) else accentColor,
-                            radius = 5.dp.toPx(),
-                            center = Offset(nutIndicatorX, y)
+                        val isOpenPlaying = (
+                            (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == 0) ||
+                            (activeMidiNote != null && (openSemi == (activeMidiNote % 12)))
                         )
-                        drawCircle(
-                            color = Color.White,
-                            radius = 5.dp.toPx(),
-                            center = Offset(nutIndicatorX, y),
-                            style = Stroke(width = 1.2.dp.toPx())
-                        )
+
+                        if (isOpenPlaying) {
+                            drawCircle(
+                                color = Color(0xFFFFEB3B).copy(alpha = 0.6f),
+                                radius = 10.dp.toPx(),
+                                center = Offset(nutIndicatorX, y)
+                            )
+                            drawCircle(
+                                color = Color(0xFFFFEB3B),
+                                radius = 6.5.dp.toPx(),
+                                center = Offset(nutIndicatorX, y)
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 6.5.dp.toPx(),
+                                center = Offset(nutIndicatorX, y),
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        } else {
+                            drawCircle(
+                                color = if (isRoot) Color(0xFFFF5252) else accentColor,
+                                radius = 5.dp.toPx(),
+                                center = Offset(nutIndicatorX, y)
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 5.dp.toPx(),
+                                center = Offset(nutIndicatorX, y),
+                                style = Stroke(width = 1.2.dp.toPx())
+                            )
+                        }
                     }
                 }
             }
@@ -312,40 +361,60 @@ fun UnifiedGuitarFretboard(
             for (s in 0 until numStrings) {
                 val openSemi = openStringsSemis.getOrNull(s) ?: 0
                 val stringChordFret = chordFrets?.getOrNull(s) ?: -1
+                val baseStringMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
 
                 for (f in 1..numFrets) {
                     val absoluteFret = baseFret + f - 1
                     val fretSemi = (openSemi + absoluteFret) % 12
+                    val fullMidiNote = baseStringMidi + absoluteFret
                     // Support both absolute frets (e.g. fret 3 when baseFret is 3) and relative frets (e.g. fret 1 when baseFret is 3)
                     val isChordFret = chordFrets != null && stringChordFret > 0 && (
                         stringChordFret == absoluteFret || (baseFret > 1 && stringChordFret == f)
                     )
-                    val isCurrentlyPlaying = (activeCoordinate != null && activeCoordinate.first == s && (activeCoordinate.second == absoluteFret || activeCoordinate.second == f))
+                    val matchesCoord = activeCoordinate != null && activeCoordinate.first == s && (
+                        activeCoordinate.second == absoluteFret || activeCoordinate.second == f
+                    )
+                    val matchesMidi = activeMidiNote != null && (
+                        (chordFrets != null && isChordFret && (fullMidiNote % 12 == activeMidiNote % 12)) ||
+                        (chordFrets == null && (fullMidiNote == activeMidiNote || (activeMidiNote < 12 && fretSemi == activeMidiNote) || (fretSemi == activeMidiNote % 12)))
+                    )
+                    val isCurrentlyPlaying = matchesCoord || matchesMidi
                     val isScaleNote = chordFrets == null && normalizedActiveNotes.contains(fretSemi)
                     val isRoot = fretSemi == normalizedRootNote
 
                     if (isChordFret || isCurrentlyPlaying || isScaleNote) {
                         val cx = leftPad + (f - 0.5f) * fretW
                         val cy = getYForStringAtX(s, cx)
-                        val dotRadius = if (isScaleNote) 10.dp.toPx() else 11.5.dp.toPx()
+                        val dotRadius = when {
+                            isCurrentlyPlaying -> 13.dp.toPx()
+                            isScaleNote -> 10.dp.toPx()
+                            else -> 11.5.dp.toPx()
+                        }
 
-                        // Color differentiation: Root notes in red/gold, scale notes in accentColor/warm amber
-                        val primaryDotColor = if (isRoot && isScaleNote) Color(0xFFFF5252) else pillColor
+                        // Color differentiation:
+                        // When actively playing/flashing -> electric gold/yellow like Piano
+                        // Root notes -> red/coral
+                        // Chord / Scale notes -> accent / warm pill amber
+                        val primaryDotColor = when {
+                            isCurrentlyPlaying -> Color(0xFFFFEB3B)
+                            isRoot && isScaleNote -> Color(0xFFFF5252)
+                            else -> pillColor
+                        }
 
-                        // Glow effect
+                        // Glow effect around the active note pill
                         drawCircle(
-                            color = primaryDotColor.copy(alpha = 0.35f),
-                            radius = dotRadius + 3.dp.toPx(),
+                            color = if (isCurrentlyPlaying) Color(0xFFFFEB3B).copy(alpha = 0.65f) else primaryDotColor.copy(alpha = 0.35f),
+                            radius = dotRadius + (if (isCurrentlyPlaying) 5.dp.toPx() else 3.dp.toPx()),
                             center = Offset(cx, cy)
                         )
 
-                        // Filled pill
+                        // Filled pill body with gradient
                         drawCircle(
                             brush = Brush.radialGradient(
-                                colors = if (isRoot && isScaleNote) {
-                                    listOf(Color(0xFFFF8A80), Color(0xFFD50000))
-                                } else {
-                                    listOf(Color(0xFFFFB74D), primaryDotColor)
+                                colors = when {
+                                    isCurrentlyPlaying -> listOf(Color(0xFFFFF9C4), Color(0xFFFFD600), Color(0xFFFFAB00))
+                                    isRoot && isScaleNote -> listOf(Color(0xFFFF8A80), Color(0xFFD50000))
+                                    else -> listOf(Color(0xFFFFB74D), primaryDotColor)
                                 },
                                 center = Offset(cx, cy),
                                 radius = dotRadius
@@ -354,8 +423,15 @@ fun UnifiedGuitarFretboard(
                             center = Offset(cx, cy)
                         )
 
-                        // If Root note in scale mode, draw a white ring border to emphasize tonic
-                        if (isRoot && isScaleNote) {
+                        // Ring border
+                        if (isCurrentlyPlaying) {
+                            drawCircle(
+                                color = Color.White,
+                                radius = dotRadius,
+                                center = Offset(cx, cy),
+                                style = Stroke(width = 2.2.dp.toPx())
+                            )
+                        } else if (isRoot && isScaleNote) {
                             drawCircle(
                                 color = Color.White,
                                 radius = dotRadius,
@@ -366,8 +442,6 @@ fun UnifiedGuitarFretboard(
 
                         // Text inside pill (Finger number or Note name with Octave)
                         val fingerNum = if (isChordFret) chordFingers?.getOrNull(s) else null
-                        val baseStringMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
-                        val fullMidiNote = baseStringMidi + absoluteFret
                         val octaveNumber = (fullMidiNote / 12) - 1 // Standard scientific pitch octave (C4 = 60)
                         val isNoteC = fretSemi == 0
 
@@ -386,7 +460,7 @@ fun UnifiedGuitarFretboard(
                             cx,
                             cy + 4.dp.toPx(),
                             android.graphics.Paint().apply {
-                                color = android.graphics.Color.WHITE
+                                color = if (isCurrentlyPlaying) android.graphics.Color.rgb(180, 40, 0) else android.graphics.Color.WHITE
                                 textSize = (if (displayText.length > 2) 9.dp else if (isScaleNote) 10.dp else 11.dp).toPx()
                                 textAlign = android.graphics.Paint.Align.CENTER
                                 typeface = android.graphics.Typeface.DEFAULT_BOLD

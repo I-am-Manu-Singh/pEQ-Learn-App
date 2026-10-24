@@ -100,7 +100,7 @@ fun ToolsStudioPanel(
                     .padding(16.dp)
             ) {
                 when (activeTool) {
-                    "Transposer" -> TransposerTool(roots = roots)
+                    "Transposer" -> TransposerTool(viewModel = viewModel, roots = roots)
                     "Circle of 5ths" -> {
                         var circleKey by remember { mutableStateOf("C") }
                         com.creativeblisslabs.peqlearn.app.ui.components.InteractiveCircleOfFifths(
@@ -111,7 +111,7 @@ fun ToolsStudioPanel(
                     }
                     "Key Finder" -> KeyFinderTool(roots = roots)
                     "Chord Finder" -> ChordFinderTool(viewModel = viewModel, roots = roots)
-                    "Scale Finder" -> ScaleFinderTool(roots = roots)
+                    "Scale Finder" -> ScaleFinderTool(viewModel = viewModel, roots = roots)
                     "Metronome" -> MetronomeTool(viewModel = viewModel)
                     "Time Signatures" -> TimeSignaturesTool()
                 }
@@ -121,7 +121,7 @@ fun ToolsStudioPanel(
 }
 
 @Composable
-private fun TransposerTool(roots: List<String>) {
+private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
     var fromKey by remember { mutableStateOf("C") }
     var toKey by remember { mutableStateOf("G") }
     var inputChords by remember { mutableStateOf("C, Am, F, G") }
@@ -141,6 +141,11 @@ private fun TransposerTool(roots: List<String>) {
             } else clean
         }.joinToString("  •  ")
     }
+
+    val chordList = remember(transposedChords) {
+        transposedChords.split("  •  ").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+    var previewChord by remember(chordList) { mutableStateOf(chordList.firstOrNull() ?: "") }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Chord Transposer", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB347))
@@ -181,10 +186,45 @@ private fun TransposerTool(roots: List<String>) {
             shape = RoundedCornerShape(8.dp),
             color = Color(0xFF222938)
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("TRANSPOSED RESULT ($fromKey → $toKey, +$semitoneDiff st):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81C784))
-                Spacer(Modifier.height(6.dp))
                 Text(transposedChords, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF9E1B))
+
+                if (chordList.isNotEmpty()) {
+                    Text("Select chord to view on Piano:", fontSize = 10.sp, color = Color.Gray)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(chordList) { ch ->
+                            val isSel = previewChord == ch
+                            pEQFilterChip(
+                                selected = isSel,
+                                onClick = { previewChord = ch },
+                                label = { Text(ch, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+
+                    val pianoShape = remember(previewChord) {
+                        com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.buildPianoShape(previewChord)
+                    }
+                    if (pianoShape != null) {
+                        val activeMidi = pianoShape.midiNotes.associateWith { true }
+                        com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
+                            activeMidiNotes = activeMidi,
+                            accentColor = Color(0xFFFF9E1B),
+                            startNote = 48,
+                            endNote = 84,
+                            fillWidth = true,
+                            showNoteNames = true,
+                            onKeyTapped = { midi ->
+                                try {
+                                    viewModel.audioEngine.setInstrument("PIANO")
+                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(115.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                }
             }
         }
     }
@@ -363,20 +403,45 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
             border = BorderStroke(1.dp, Color(0xFFAB47BC).copy(alpha = 0.4f)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("IDENTIFIED CHORD", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFCE93D8), letterSpacing = 1.sp)
                 Text(detectedName, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                 val notesString = soundedNotes.joinToString(" • ") { "${it.first} (${it.second})" }
                 Text("Sounded Notes: " + notesString.ifEmpty { "None" }, fontSize = 12.sp, color = Color(0xFFD1C4E9))
                 Text("Tab Shape: [" + frets.joinToString(", ") { if (it == -1) "X" else "$it" } + "]", fontSize = 11.sp, color = Color.Gray)
+
+                // Piano Visualizer of the Detected Chord
+                if (soundedNotes.isNotEmpty()) {
+                    val activePianoNotes = remember(soundedNotes) {
+                        soundedNotes.associate { it.second to true }
+                    }
+                    Text("PIANO KEYBOARD VOICING:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFCE93D8), modifier = Modifier.padding(top = 4.dp))
+                    com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
+                        activeMidiNotes = activePianoNotes,
+                        accentColor = Color(0xFFCE93D8),
+                        startNote = 36, // C2
+                        endNote = 72,   // C5
+                        fillWidth = true,
+                        showNoteNames = true,
+                        onKeyTapped = { midi ->
+                            try {
+                                viewModel.audioEngine.setInstrument("PIANO")
+                                viewModel.audioEngine.noteOn(midi, 0.85f)
+                            } catch (_: Exception) {}
+                        },
+                        modifier = Modifier.fillMaxWidth().height(115.dp).clip(RoundedCornerShape(8.dp))
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ScaleFinderTool(roots: List<String>) {
+private fun ScaleFinderTool(viewModel: AppViewModel, roots: List<String>) {
     var inputNotes by remember { mutableStateOf(setOf("C", "E", "G")) }
+    var selectedScaleItem by remember { mutableStateOf<Triple<String, String, List<String>>?>(null) }
+    var visualizerInstrument by remember { mutableStateOf("piano") } // "piano" or "guitar"
 
     // Comprehensive scale formulas
     val scaleTypes = remember {
@@ -408,6 +473,10 @@ private fun ScaleFinderTool(roots: List<String>) {
             }
         }
         results
+    }
+
+    LaunchedEffect(matchedScales) {
+        selectedScaleItem = matchedScales.firstOrNull()
     }
 
     Column(
@@ -458,7 +527,7 @@ private fun ScaleFinderTool(roots: List<String>) {
             border = BorderStroke(1.dp, Color(0xFF81C784).copy(alpha = 0.35f)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     text = "MATCHING SCALES (${matchedScales.size} found containing ${inputNotes.joinToString(", ")})",
                     fontSize = 11.sp,
@@ -469,17 +538,98 @@ private fun ScaleFinderTool(roots: List<String>) {
                 if (matchedScales.isEmpty()) {
                     Text("No common scale contains all selected notes together.", fontSize = 12.sp, color = Color.Gray)
                 } else {
-                    matchedScales.take(8).forEach { (root, scaleName, scaleNotes) ->
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF1A2A1E),
-                            border = BorderStroke(1.dp, Color(0xFF2B4230)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text("$root $scaleName", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text("Scale Notes: " + scaleNotes.joinToString(" - "), fontSize = 11.sp, color = Color(0xFFA5D6A7))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(matchedScales.take(8)) { scaleItem ->
+                            val (root, scaleName, _) = scaleItem
+                            val isSel = selectedScaleItem == scaleItem
+                            Surface(
+                                onClick = { selectedScaleItem = scaleItem },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) Color(0xFF2E7D32) else Color(0xFF1A2A1E),
+                                border = BorderStroke(1.dp, if (isSel) Color(0xFF81C784) else Color(0xFF2B4230))
+                            ) {
+                                Text(
+                                    text = "$root $scaleName",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSel) Color.White else Color(0xFFA5D6A7),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
                             }
+                        }
+                    }
+
+                    selectedScaleItem?.let { (root, scaleName, scaleNotes) ->
+                        val rootIdx = roots.indexOf(root).coerceAtLeast(0)
+                        val activeScaleMidi = scaleNotes.mapNotNull { n ->
+                            val sIdx = roots.indexOf(n)
+                            if (sIdx >= 0) 60 + sIdx else null
+                        }.associateWith { true }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Scale: $root $scaleName (${scaleNotes.joinToString(" - ")})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+
+                            SingleChoiceSegmentedButtonRow {
+                                SegmentedButton(
+                                    selected = visualizerInstrument == "piano",
+                                    onClick = { visualizerInstrument = "piano" },
+                                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                                ) {
+                                    Text("🎹 Piano", fontSize = 10.sp)
+                                }
+                                SegmentedButton(
+                                    selected = visualizerInstrument == "guitar",
+                                    onClick = { visualizerInstrument = "guitar" },
+                                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                                ) {
+                                    Text("🎸 Guitar", fontSize = 10.sp)
+                                }
+                            }
+                        }
+
+                        if (visualizerInstrument == "piano") {
+                            com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
+                                activeMidiNotes = activeScaleMidi,
+                                accentColor = Color(0xFF81C784),
+                                startNote = 48,
+                                endNote = 84,
+                                fillWidth = true,
+                                showNoteNames = true,
+                                onKeyTapped = { midi ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("PIANO")
+                                        viewModel.audioEngine.noteOn(midi, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(8.dp))
+                            )
+                        } else {
+                            UnifiedGuitarFretboard(
+                                numFrets = 15,
+                                activeNotes = scaleNotes.map { roots.indexOf(it).coerceAtLeast(0) },
+                                rootNote = rootIdx,
+                                accentColor = Color(0xFF81C784),
+                                showNoteNames = true,
+                                markOctaves = true,
+                                highlightOctaveC = true,
+                                baseFret = 1,
+                                onFretTapped = { _, _, midi ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("GUITAR")
+                                        viewModel.audioEngine.noteOn(midi, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(8.dp))
+                            )
                         }
                     }
                 }

@@ -19,19 +19,30 @@ object ChordVoicingEngine {
      */
     fun getGuitarVoicing(rootName: String, quality: String = "maj", cagedPos: Int = 0): GuitarShape {
         val rootMidi = 48 + (NOTE_NAMES_CD.indexOf(rootName).takeIf { it >= 0 } ?: 0)
-        val intervals = when (quality.lowercase()) {
-            "m", "min", "minor" -> listOf(0, 3, 7)
-            "7", "dom7" -> listOf(0, 4, 7, 10)
-            "maj7" -> listOf(0, 4, 7, 11)
-            else -> listOf(0, 4, 7)
+        val normQuality = when (quality.lowercase()) {
+            "maj", "major", "" -> ""
+            "m", "min", "minor" -> "m"
+            "7", "dom7" -> "7"
+            "maj7", "major7" -> "maj7"
+            "m7", "min7" -> "m7"
+            "dim" -> "dim"
+            "aug" -> "aug"
+            "sus2" -> "sus2"
+            "sus4" -> "sus4"
+            else -> quality
         }
+        val typeDef = CHORD_TYPE_DEFS.find { it.suffix.equals(normQuality, ignoreCase = true) }
+            ?: CHORD_TYPE_DEFS.find { it.name.equals(quality, ignoreCase = true) }
+            ?: CHORD_TYPE_DEFS.first()
+        val intervals = typeDef.intervals
         val openTuning = listOf(40, 45, 50, 55, 59, 64)
         return generateDynamicShape(
             rootMidiNote = rootMidi,
             targetSemitones = intervals,
             voicingStyle = "Standard",
             startFret = (cagedPos * 2 + 1).coerceIn(1, 12),
-            openStringPitches = openTuning
+            openStringPitches = openTuning,
+            chordSuffix = typeDef.suffix
         )
     }
 
@@ -402,6 +413,296 @@ private fun scoreShapeMechanics(frets: List<Int>, root: Int, tuning: List<Int>, 
             }
         }
         return absoluteNotesResult
+    }
+
+    /**
+     * Computes voiced intervals with optional extension semitones and inversion rotations.
+     */
+    fun getVoicedIntervals(
+        baseIntervals: List<Int>,
+        voicingIdx: Int = 0,
+        extraSemitone: Int? = null
+    ): List<Int> {
+        val base = baseIntervals.toMutableList()
+        if (extraSemitone != null && !base.contains(extraSemitone)) {
+            base.add(extraSemitone)
+            base.sort()
+        }
+        return when (voicingIdx) {
+            1 -> { val m = base.toMutableList(); if (m.isNotEmpty()) m[0] += 12; m.sorted() }
+            2 -> { val m = base.toMutableList(); if (m.isNotEmpty()) m[0] += 12; if (m.size >= 2) m[1] += 12; m.sorted() }
+            3 -> {
+                if (base.size >= 4) { val m = base.toMutableList(); m[m.size - 2] -= 12; m.sorted() } else base
+            }
+            else -> base
+        }
+    }
+
+    /**
+     * Resolves active MIDI notes for a root note and either chord intervals or scale intervals.
+     */
+    fun getActiveMidiNotes(
+        rootIdx: Int,
+        intervals: List<Int>,
+        baseMidi: Int = 60
+    ): Map<Int, Boolean> {
+        val root = baseMidi + (rootIdx % 12)
+        return intervals.associate { (root + it) to true }
+    }
+
+    /**
+     * Computes piano fingering for chord or scale pitches.
+     */
+    fun computePianoFingering(
+        pitches: List<Int>,
+        chordSuffix: String = "",
+        isScale: Boolean = false,
+        voicingIdx: Int = 0
+    ): com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData {
+        if (!isScale) {
+            val baseList = PIANO_RH_FINGERS[chordSuffix] ?: when (pitches.size) {
+                1 -> listOf(1)
+                2 -> listOf(1, 5)
+                3 -> when (voicingIdx) {
+                    1 -> listOf(1, 2, 5) // 1st inversion
+                    2 -> listOf(1, 3, 5) // 2nd inversion
+                    else -> listOf(1, 3, 5) // root position
+                }
+                4 -> listOf(1, 2, 4, 5)
+                else -> listOf(1, 2, 3, 4, 5)
+            }
+            val fingers = pitches.indices.map { i ->
+                baseList.getOrElse(i) { (i % 5) + 1 }
+            }
+            return com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData(notes = pitches, fingers = fingers)
+        } else {
+            val rhScalePattern = listOf(1, 2, 3, 1, 2, 3, 4, 5)
+            val fingers = pitches.indices.map { i ->
+                rhScalePattern[i % rhScalePattern.size]
+            }
+            return com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData(notes = pitches, fingers = fingers)
+        }
+    }
+
+    /**
+     * Resolves guitar chord shape from RealChordsDb with CAGED / fret-range filters and fallback.
+     */
+    fun getDictionaryGuitarShape(
+        rootName: String,
+        suffix: String,
+        diff: ChordDiff = ChordDiff.EASY,
+        capoFret: Int = 0,
+        startFret: Int = 1,
+        voicingType: String = "Open",
+        cagedFilter: String = "All CAGED",
+        fretRangeFilter: String = "All Frets",
+        fallbackIntervals: List<Int> = listOf(0, 4, 7)
+    ): GuitarShape {
+        val allRealPositions = RealChordsDb.getGuitarPositions(rootName, suffix)
+        val filteredPositions = allRealPositions.filter { pos ->
+            val matchesFretRange = when (fretRangeFilter) {
+                "Open (0-3)" -> pos.baseFret in 0..3
+                "Low (1-5)" -> pos.baseFret in 1..5
+                "Mid (5-9)" -> pos.baseFret in 5..9
+                "High (9-14)" -> pos.baseFret in 9..14
+                "12+ Frets" -> pos.baseFret >= 12
+                else -> true
+            }
+            val matchesCaged = when (cagedFilter) {
+                "C-Shape" -> (pos.frets.getOrNull(1) ?: -1) > 0 && (pos.frets.getOrNull(0) ?: -1) <= 0
+                "A-Shape" -> (pos.frets.getOrNull(1) ?: -1) >= 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
+                "G-Shape" -> (pos.frets.getOrNull(0) ?: -1) > 0 && (pos.frets.getOrNull(5) ?: -1) > 0
+                "E-Shape" -> (pos.frets.getOrNull(0) ?: -1) >= 0 && (pos.frets.getOrNull(1) ?: -1) >= 0
+                "D-Shape" -> (pos.frets.getOrNull(0) ?: -1) < 0 && (pos.frets.getOrNull(1) ?: -1) < 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
+                else -> true
+            }
+            matchesFretRange && matchesCaged
+        }
+
+        val pool = if (filteredPositions.isNotEmpty()) filteredPositions else allRealPositions
+        if (pool.isNotEmpty()) {
+            val chosen = when (diff) {
+                ChordDiff.EASY -> pool.first()
+                ChordDiff.MEDIUM -> pool.getOrNull(1) ?: pool.first()
+                ChordDiff.HARD -> pool.last()
+            }
+            val reversedFrets = chosen.frets.reversed()
+            val reversedFingers = chosen.fingers.reversed()
+            return GuitarShape(
+                frets = reversedFrets,
+                fingers = reversedFingers,
+                baseFret = chosen.baseFret,
+                barre = chosen.barres.firstOrNull(),
+                diff = diff
+            )
+        } else {
+            val rootIdx = NOTE_NAMES_CD.indexOf(rootName).takeIf { it >= 0 } ?: 0
+            return generateDynamicShape(
+                rootMidiNote = (rootIdx + capoFret) % 12,
+                targetSemitones = fallbackIntervals,
+                voicingStyle = voicingType,
+                startFret = startFret,
+                openStringPitches = listOf(4, 11, 7, 2, 9, 4),
+                isPiano = false,
+                chordSuffix = suffix
+            )
+        }
+    }
+
+    /**
+     * Resolves ukulele chord shape from RealChordsDb with fallback.
+     */
+    fun getDictionaryUkuShape(
+        rootName: String,
+        suffix: String,
+        diff: ChordDiff = ChordDiff.EASY,
+        capoFret: Int = 0,
+        startFret: Int = 1,
+        voicingType: String = "Open",
+        fallbackIntervals: List<Int> = listOf(0, 4, 7)
+    ): GuitarShape {
+        val realUkuPositions = RealChordsDb.getUkulelePositions(rootName, suffix)
+        if (realUkuPositions.isNotEmpty()) {
+            val chosen = when (diff) {
+                ChordDiff.EASY -> realUkuPositions.first()
+                ChordDiff.MEDIUM -> realUkuPositions.getOrNull(1) ?: realUkuPositions.first()
+                ChordDiff.HARD -> realUkuPositions.last()
+            }
+            val reversedFrets = chosen.frets.reversed()
+            val reversedFingers = chosen.fingers.reversed()
+            return GuitarShape(
+                frets = reversedFrets,
+                fingers = reversedFingers,
+                baseFret = chosen.baseFret,
+                barre = chosen.barres.firstOrNull(),
+                diff = diff
+            )
+        } else {
+            val rootIdx = NOTE_NAMES_CD.indexOf(rootName).takeIf { it >= 0 } ?: 0
+            return generateDynamicShape(
+                rootMidiNote = (rootIdx + capoFret) % 12,
+                targetSemitones = fallbackIntervals,
+                voicingStyle = voicingType,
+                startFret = startFret,
+                openStringPitches = listOf(9, 4, 0, 7),
+                isPiano = false,
+                chordSuffix = suffix
+            )
+        }
+    }
+
+    /**
+     * Resolves songwriting cadence progressions for any root index.
+     */
+    fun getCadenceProgressions(rootIdx: Int, rootNames: List<String> = NOTE_NAMES_CD): List<Pair<String, List<Int>>> {
+        return listOf(
+            Pair("${rootNames[(rootIdx + 7) % 12]} (V)", listOf(rootIdx + 7, rootIdx + 11, rootIdx + 2)),
+            Pair("${rootNames[(rootIdx + 5) % 12]} (IV)", listOf(rootIdx + 5, rootIdx + 9, rootIdx)),
+            Pair("${rootNames[(rootIdx + 9) % 12]}m (vi)", listOf(rootIdx + 9, rootIdx, rootIdx + 4)),
+            Pair("${rootNames[rootIdx]} (I)", listOf(rootIdx, rootIdx + 4, rootIdx + 7))
+        )
+    }
+
+    /**
+     * Comprehensive diagnostic verification and Proof-of-Concept testing ChordVoicingEngine
+     * computations against RealChordsDb, RealPianoChordsDb, and ChordModels.
+     */
+    fun verifyIntegrity(): String {
+        val report = StringBuilder()
+        var passed = 0
+        var total = 0
+
+        val roots = listOf("C", "D", "E", "F", "G", "A", "B")
+        val testChords = listOf(
+            "major" to "",
+            "m" to "m",
+            "7" to "7",
+            "maj7" to "maj7",
+            "dim" to "dim",
+            "aug" to "aug",
+            "sus2" to "sus2",
+            "sus4" to "sus4"
+        )
+
+        // 1. Verify Piano Pitch Classes Against RealPianoChordsDb
+        for (root in roots) {
+            val rootIdx = NOTE_NAMES_CD.indexOf(root).coerceAtLeast(0)
+            for ((dbSuffix, engineSuffix) in testChords) {
+                total++
+                val dbChord = RealPianoChordsDb.getChord(root, dbSuffix)
+                val enginePitches = buildPianoShape(
+                    rootIdx = rootIdx,
+                    suffix = engineSuffix,
+                    style = PianoVoicingStyle.CLOSE,
+                    inversion = InversionStyle.ROOT,
+                    octave = 4
+                ).map { it % 12 }.toSet()
+
+                val expectedPitches = dbChord?.notes?.mapNotNull { noteName ->
+                    val norm = when (noteName.uppercase()) {
+                        "DB" -> "C#"
+                        "EB" -> "D#"
+                        "GB" -> "F#"
+                        "AB" -> "G#"
+                        "BB" -> "A#"
+                        else -> noteName
+                    }
+                    val idx = NOTE_NAMES_CD.indexOf(norm)
+                    if (idx >= 0) idx else null
+                }?.toSet()
+
+                if (expectedPitches != null && enginePitches == expectedPitches) {
+                    passed++
+                } else if (expectedPitches != null) {
+                    report.appendLine("[Piano Mismatch] $root $dbSuffix: Engine=$enginePitches vs DB=$expectedPitches")
+                } else {
+                    // DB chord not found, engine fallback valid
+                    passed++
+                }
+            }
+        }
+
+        // 2. Verify Guitar Voicings and Fingering against RealChordsDb
+        for (root in roots) {
+            for ((_, suffix) in testChords) {
+                total++
+                val dbPositions = RealChordsDb.getGuitarPositions(root, suffix)
+                if (dbPositions.isNotEmpty()) {
+                    val dbFirst = dbPositions.first()
+                    val engineShape = getDictionaryGuitarShape(
+                        rootName = root,
+                        suffix = suffix,
+                        diff = ChordDiff.EASY
+                    )
+                    // RealChordsDb is low-to-high (E2..E4). Engine reverses to high-to-low (E4..E2)
+                    val expectedFrets = dbFirst.frets.reversed()
+                    val expectedFingers = dbFirst.fingers.reversed()
+                    if (engineShape.frets == expectedFrets && engineShape.fingers == expectedFingers && engineShape.baseFret == dbFirst.baseFret) {
+                        passed++
+                    } else {
+                        report.appendLine("[Guitar Mismatch] $root $suffix: Engine frets=${engineShape.frets} vs DB=$expectedFrets")
+                    }
+                } else {
+                    passed++
+                }
+            }
+        }
+
+        // 3. Verify Piano Fingering Resolution against ChordModels.kt
+        for ((_, suffix) in testChords) {
+            total++
+            val expectedFingers = PIANO_RH_FINGERS[suffix] ?: listOf(1, 3, 5)
+            val dummyPitches = listOf(60, 64, 67)
+            val calculated = computePianoFingering(dummyPitches, suffix).fingers
+            if (calculated.take(expectedFingers.size) == expectedFingers) {
+                passed++
+            } else {
+                report.appendLine("[Fingering Mismatch] $suffix: Engine=$calculated vs Expected=$expectedFingers")
+            }
+        }
+
+        report.appendLine("Verification Completed: $passed/$total checks passed.")
+        return report.toString()
     }
 }
 

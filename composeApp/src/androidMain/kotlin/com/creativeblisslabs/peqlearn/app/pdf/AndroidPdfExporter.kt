@@ -196,34 +196,90 @@ object AndroidPdfExporter {
                                 canvas.drawText("M.${actualMeasureIdx + 1}", mLeft + 2f, currentY + 10f, mNumPaint)
                             }
 
-                            // Draw notes in measure
+                            // Draw notes in measure with accurate pitch and tab rendering
                             if (measure != null) {
                                 val beatsPerMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
-                                measure.notes.filter { !it.isRest }.forEach { note ->
-                                    val noteX = mLeft + 15f + ((measureWidth - 25f) * (note.position / beatsPerMeasure).coerceIn(0f, 0.95f))
+                                val usableMWidth = measureWidth - 25f
+                                val notesStartX = mLeft + 15f
+                                val guitarOpenStringsMidi = intArrayOf(64, 59, 55, 50, 45, 40)
+
+                                val sortedNotes = measure.notes.filter { !it.isRest }.sortedBy { it.position }
+                                sortedNotes.forEach { note ->
+                                    val noteX = notesStartX + (usableMWidth * (note.position / beatsPerMeasure).coerceIn(0f, 0.95f))
                                     val isTreble = note.midiNote >= 60
-                                    val noteY = if (isTreble) {
-                                        currentY + 15f + ((77 - note.midiNote) * 2f).coerceIn(0f, 40f)
-                                    } else {
-                                        currentY + 15f + (6 * lineSpacing) + ((57 - note.midiNote) * 2f).coerceIn(0f, 40f)
+
+                                    if (drawStaff) {
+                                        val trebleBaseline = currentY + 15f
+                                        val bassBaseline = trebleBaseline + (6 * lineSpacing)
+                                        val diatonicStep = com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.getDiatonicStep(note.midiNote)
+                                        val noteY = if (isTreble) {
+                                            trebleBaseline + (38.0f - diatonicStep) * (lineSpacing / 2f)
+                                        } else {
+                                            bassBaseline + (26.0f - diatonicStep) * (lineSpacing / 2f)
+                                        }
+
+                                        val stemDir = if (isTreble) (if (note.midiNote >= 71) 1f else -1f) else (if (note.midiNote >= 50) 1f else -1f)
+                                        val stemEndY = noteY + (stemDir * 16f)
+
+                                        // Notehead & Stem
+                                        canvas.drawCircle(noteX, noteY, 3.2f, noteHeadPaint)
+                                        val stemX = if (stemDir > 0) noteX - 3.2f else noteX + 3.2f
+                                        canvas.drawLine(stemX, noteY, stemX, stemEndY, staffLinePaint)
+
+                                        if (options.includeChordLabels) {
+                                            val labelText = when (note.midiNote % 12) {
+                                                0 -> "C"; 1 -> "C#"; 2 -> "D"; 3 -> "D#"; 4 -> "E"; 5 -> "F"
+                                                6 -> "F#"; 7 -> "G"; 8 -> "G#"; 9 -> "A"; 10 -> "A#"; else -> "B"
+                                            }
+                                            val chordPaint = Paint().apply {
+                                                color = Color.BLACK
+                                                textSize = 5.5f
+                                                textAlign = Paint.Align.CENTER
+                                                isAntiAlias = true
+                                            }
+                                            canvas.drawText(labelText, noteX, noteY - 5f, chordPaint)
+                                        }
                                     }
 
-                                    canvas.drawCircle(noteX, noteY, 3f, noteHeadPaint)
-                                    // Stem
-                                    canvas.drawLine(noteX + 3f, noteY, noteX + 3f, noteY - 14f, staffLinePaint)
+                                    // Render Tab frets accurately on guitar strings 0..5
+                                    if (drawTab) {
+                                        val tabBaseline = if (drawStaff) currentY + 15f + (11 * lineSpacing) + 10f else currentY + 15f
+                                        val tabLineSpacing = 8.5f
+                                        val stringIdx = note.string?.coerceIn(0, 5) ?: guitarOpenStringsMidi.indices.minByOrNull { s ->
+                                            val diff = note.midiNote - guitarOpenStringsMidi[s]
+                                            if (diff in 0..22) diff else 1000 + kotlin.math.abs(diff)
+                                        } ?: 0
 
-                                    if (options.includeChordLabels) {
-                                        val labelText = when (note.midiNote % 12) {
-                                            0 -> "C"; 1 -> "C#"; 2 -> "D"; 3 -> "D#"; 4 -> "E"; 5 -> "F"
-                                            6 -> "F#"; 7 -> "G"; 8 -> "G#"; 9 -> "A"; 10 -> "A#"; else -> "B"
+                                        val fret = note.fret ?: (note.midiNote - guitarOpenStringsMidi[stringIdx]).coerceIn(0, 24)
+                                        val tabY = tabBaseline + (stringIdx * tabLineSpacing)
+
+                                        val bgPillPaint = Paint().apply {
+                                            color = Color.WHITE
+                                            style = Paint.Style.FILL
+                                            isAntiAlias = true
                                         }
-                                        val chordPaint = Paint().apply {
+                                        val fretPaint = Paint().apply {
                                             color = Color.BLACK
-                                            textSize = 5.5f
+                                            textSize = 6.5f
+                                            textAlign = Paint.Align.CENTER
+                                            isFakeBoldText = true
+                                            isAntiAlias = true
+                                        }
+                                        // Draw white background pill so staff line behind fret text is masked
+                                        canvas.drawRect(noteX - 4.5f, tabY - 4.5f, noteX + 4.5f, tabY + 4.5f, bgPillPaint)
+                                        canvas.drawText(fret.toString(), noteX, tabY + 2.5f, fretPaint)
+                                    }
+
+                                    // Render Lyrics if present and enabled
+                                    if (options.includeLyrics && note.lyric.isNotBlank()) {
+                                        val lyricPaint = Paint().apply {
+                                            color = Color.DKGRAY
+                                            textSize = 6.5f
                                             textAlign = Paint.Align.CENTER
                                             isAntiAlias = true
                                         }
-                                        canvas.drawText(labelText, noteX, noteY - 16f, chordPaint)
+                                        val lyricY = currentY + systemHeight - 2f
+                                        canvas.drawText(note.lyric, noteX, lyricY, lyricPaint)
                                     }
                                 }
                             }

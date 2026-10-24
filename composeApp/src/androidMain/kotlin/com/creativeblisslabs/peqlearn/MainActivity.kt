@@ -9,6 +9,9 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -22,7 +25,6 @@ import androidx.annotation.RequiresApi
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.snapshotFlow
 import androidx.core.content.ContextCompat
-import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
@@ -58,14 +60,24 @@ class MainActivity : ComponentActivity() {
 
     @RequiresApi(Build.VERSION_CODES.P)
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // 1. Get the window insets controller
+        // val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
 
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // // 2. Hide the status bar
+        // windowInsetsController.hide(WindowInsetsCompat.Type.statusBars())
+
+        // // 3. Optional: Configure the behavior when a user swipes from the edge
+        // windowInsetsController.systemBarsBehavior =
+        //     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+
+        // WindowCompat.setDecorFitsSystemWindows(window, false)
+       
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
         window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        enableEdgeToEdge()
-
+        
         initPermissionManager(this)
         initPersistenceManager(applicationContext)
 

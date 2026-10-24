@@ -46,7 +46,7 @@ fun ReferenceStudioPanel(
     val roots = remember { listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B") }
     var selectedRoot by remember { mutableStateOf("C") }
     var selectedSuffix by remember { mutableStateOf("major") }
-    var selectedInstrument by remember { mutableStateOf("guitar") }
+    var selectedInstrument by remember { mutableStateOf("guitar") } // "guitar", "piano", "ukulele"
 
     val scope = rememberCoroutineScope()
     var searchQuery by remember { mutableStateOf("") }
@@ -57,7 +57,11 @@ fun ReferenceStudioPanel(
     }
 
     val allSuffixes = remember(selectedInstrument) {
-        RealChordsDb.getAvailableSuffixes(selectedInstrument)
+        if (selectedInstrument == "piano") {
+            RealPianoChordsDb.suffixes
+        } else {
+            RealChordsDb.getAvailableSuffixes(selectedInstrument)
+        }
     }
 
     val displaySuffixes = remember(activeSubTab, allSuffixes, searchQuery, selectedQualityCategory) {
@@ -171,6 +175,37 @@ fun ReferenceStudioPanel(
                 Icon(Icons.Default.Apps, contentDescription = null, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("All Shapes Gallery", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Instrument Switcher Row: Guitar, Ukulele, Piano
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "INSTRUMENT",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF7E8B9B),
+                letterSpacing = 1.sp
+            )
+            SingleChoiceSegmentedButtonRow {
+                listOf("guitar" to "🎸 Guitar", "ukulele" to "🪕 Ukulele", "piano" to "🎹 Piano").forEachIndexed { idx, (key, label) ->
+                    SegmentedButton(
+                        selected = selectedInstrument == key,
+                        onClick = {
+                            selectedInstrument = key
+                            try {
+                                viewModel.audioEngine.setInstrument(if (key == "piano") "PIANO" else "GUITAR")
+                            } catch (_: Exception) {}
+                        },
+                        shape = SegmentedButtonDefaults.itemShape(index = idx, count = 3)
+                    ) {
+                        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
 
@@ -342,31 +377,106 @@ fun ReferenceStudioPanel(
                     color = Color(0xFF64B5F6)
                 )
 
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth().height(185.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp)
-                ) {
-                    items(positions.indices.toList()) { idx ->
-                        val pos = positions[idx]
-                        SvgChordBox(
-                            chord = pos,
-                            chordName = "$selectedRoot$selectedSuffix #${idx + 1}",
-                            instrument = selectedInstrument,
-                            accentColor = Color(0xFF64B5F6),
-                            cardBackground = Color(0xFF161A22),
-                            width = 135.dp,
-                            height = 175.dp,
-                            onClick = {
-                                scope.launch {
-                                    viewModel.audioEngine.setInstrument("GUITAR")
-                                    pos.midi.forEach { midi ->
-                                        viewModel.audioEngine.noteOn(midi, 0.85f)
-                                        delay(35L)
+                if (selectedInstrument == "piano") {
+                    val pianoChordData = remember(selectedRoot, selectedSuffix) {
+                        RealPianoChordsDb.getChord(selectedRoot, selectedSuffix)
+                    }
+                    val pianoMidiNotes = remember(pianoChordData, selectedRoot, selectedSuffix) {
+                        if (pianoChordData != null && pianoChordData.midi.isNotEmpty()) {
+                            pianoChordData.midi
+                        } else {
+                            val rIdx = roots.indexOf(selectedRoot).coerceAtLeast(0)
+                            ChordVoicingEngine.buildPianoShape(
+                                rootIdx = rIdx,
+                                suffix = selectedSuffix,
+                                style = PianoVoicingStyle.CLOSE,
+                                inversion = InversionStyle.ROOT,
+                                octave = 4
+                            )
+                        }
+                    }
+                    val activeMap = remember(pianoMidiNotes) {
+                        pianoMidiNotes.associateWith { true }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val notesText = pianoChordData?.notes?.joinToString(" - ") ?: pianoMidiNotes.joinToString(" - ") { roots[it % 12] }
+                            val intText = pianoChordData?.intervals?.joinToString(", ") ?: ""
+                            Text(
+                                text = "Notes: $notesText" + (if (intText.isNotBlank()) " • Intervals: $intText" else ""),
+                                fontSize = 12.sp,
+                                color = Color(0xFF9EABB8)
+                            )
+
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.audioEngine.setInstrument("PIANO")
+                                        pianoMidiNotes.forEach { midi ->
+                                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                                            delay(35L)
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9E1B)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.Black)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Play Piano", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            }
+                        }
+
+                        com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
+                            activeMidiNotes = activeMap,
+                            accentColor = Color(0xFFFF9E1B),
+                            startNote = 48,
+                            endNote = 84,
+                            fillWidth = true,
+                            showNoteNames = true,
+                            onKeyTapped = { midi ->
+                                try {
+                                    viewModel.audioEngine.setInstrument("PIANO")
+                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(10.dp))
+                        )
+                    }
+                } else {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().height(185.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        items(positions.indices.toList()) { idx ->
+                            val pos = positions[idx]
+                            SvgChordBox(
+                                chord = pos,
+                                chordName = "$selectedRoot$selectedSuffix #${idx + 1}",
+                                instrument = selectedInstrument,
+                                accentColor = Color(0xFF64B5F6),
+                                cardBackground = Color(0xFF161A22),
+                                width = 135.dp,
+                                height = 175.dp,
+                                onClick = {
+                                    scope.launch {
+                                        val instr = if (selectedInstrument == "ukulele") "GUITAR" else "GUITAR"
+                                        viewModel.audioEngine.setInstrument(instr)
+                                        pos.midi.forEach { midi ->
+                                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                                            delay(35L)
+                                        }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -447,29 +557,53 @@ fun ReferenceStudioPanel(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "$selectedRoot $activeSubTab on Fretboard",
+                        text = "$selectedRoot $activeSubTab on " + (if (selectedInstrument == "piano") "Piano Keyboard" else "Fretboard"),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF81C784)
                     )
 
-                    UnifiedGuitarFretboard(
-                        numFrets = 15,
-                        activeNotes = scaleIntervals.map { (rootIdx + it) % 12 },
-                        rootNote = rootIdx,
-                        accentColor = Color(0xFF81C784),
-                        showNoteNames = true,
-                        markOctaves = true,
-                        highlightOctaveC = true,
-                        baseFret = 1,
-                        onFretTapped = { _, _, midi ->
-                            try {
-                                viewModel.audioEngine.setInstrument("GUITAR")
-                                viewModel.audioEngine.noteOn(midi, 0.85f)
-                            } catch (_: Exception) {}
-                        },
-                        modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(10.dp))
-                    )
+                    if (selectedInstrument == "piano") {
+                        val activeScalePitches = remember(rootIdx, scaleIntervals) {
+                            val baseMidi = 60 + rootIdx
+                            scaleIntervals.map { baseMidi + it }.associateWith { true }
+                        }
+                        com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
+                            activeMidiNotes = activeScalePitches,
+                            accentColor = Color(0xFF81C784),
+                            startNote = 48,
+                            endNote = 84,
+                            fillWidth = true,
+                            showNoteNames = true,
+                            onKeyTapped = { midi ->
+                                try {
+                                    viewModel.audioEngine.setInstrument("PIANO")
+                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(10.dp))
+                        )
+                    } else {
+                        UnifiedGuitarFretboard(
+                            numFrets = 15,
+                            activeNotes = scaleIntervals.map { (rootIdx + it) % 12 },
+                            rootNote = rootIdx,
+                            accentColor = Color(0xFF81C784),
+                            showNoteNames = true,
+                            markOctaves = true,
+                            highlightOctaveC = true,
+                            stringLabels = if (selectedInstrument == "ukulele") listOf("A", "E", "C", "G") else listOf("e", "B", "G", "D", "A", "E"),
+                            openStringsSemis = if (selectedInstrument == "ukulele") listOf(9, 4, 0, 7) else listOf(4, 11, 7, 2, 9, 4),
+                            baseFret = 1,
+                            onFretTapped = { _, _, midi ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(if (selectedInstrument == "ukulele") "GUITAR" else "GUITAR")
+                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(10.dp))
+                        )
+                    }
 
                     Text(
                         text = "Notes: " + scaleIntervals.joinToString(", ") { roots[(rootIdx + it) % 12] },

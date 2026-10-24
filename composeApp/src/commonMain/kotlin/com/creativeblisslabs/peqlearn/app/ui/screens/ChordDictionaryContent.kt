@@ -92,6 +92,11 @@ fun ChordDictionaryPanel(
     val scope = rememberCoroutineScope()
     var playbackJob by remember { mutableStateOf<Job?>(null) }
 
+    LaunchedEffect(Unit) {
+        val verificationLog = ChordVoicingEngine.verifyIntegrity()
+        println("[CHORD_VOICING_ENGINE_VERIFY]\n$verificationLog")
+    }
+
     val scaleFormulas = remember {
         listOf(
             "Major (Bilawal)" to SCALE_MAJOR_PATTERN,
@@ -123,156 +128,68 @@ fun ChordDictionaryPanel(
     var activeSoundStyle by remember { mutableStateOf(InstrumentSoundStyle.SEQUENTIAL) }
 
     val voicedIntervals = remember(chordTypeIdx, selectedVoicingIdx, selectedIntervalIdx) {
-        val base = typeDef.intervals.toMutableList()
-        if (selectedIntervalIdx > 0 && selectedIntervalIdx in INTERVALS_DATA.indices) {
-            val semitones = INTERVALS_DATA[selectedIntervalIdx][4].toIntOrNull() ?: 0
-            if (!base.contains(semitones)) { base.add(semitones); base.sort() }
-        }
-        when (selectedVoicingIdx) {
-            1 -> { val m = base.toMutableList(); m[0] += 12; m.sorted() }
-            2 -> { val m = base.toMutableList(); if (m.isNotEmpty()) m[0] += 12; if (m.size >= 2) m[1] += 12; m.sorted() }
-            3 -> {
-                if (base.size >= 4) { val m = base.toMutableList(); m[m.size - 2] -= 12; m.sorted() } else base
-            }
-            else -> base
-        }
+        val extraSemitone = if (selectedIntervalIdx > 0 && selectedIntervalIdx in INTERVALS_DATA.indices) {
+            INTERVALS_DATA[selectedIntervalIdx][4].toIntOrNull()
+        } else null
+        ChordVoicingEngine.getVoicedIntervals(
+            baseIntervals = typeDef.intervals,
+            voicingIdx = selectedVoicingIdx,
+            extraSemitone = extraSemitone
+        )
     }
 
     val activeMidiMap = remember(rootIdx, chordTypeIdx, selectedDiff, voicedIntervals, mode, selectedScaleIdx, capoFret) {
-        val targetMap = mutableMapOf<Int, Boolean>()
-        val baseMidi = 60 + rootIdx
-
-        if (mode == 0) {
-            voicedIntervals.forEach { targetMap[baseMidi + it] = true }
-        } else {
-            scalePair.second.forEach { targetMap[baseMidi + it] = true }
-        }
-        targetMap
+        val intervals = if (mode == 0) voicedIntervals else scalePair.second
+        ChordVoicingEngine.getActiveMidiNotes(
+            rootIdx = rootIdx,
+            intervals = intervals,
+            baseMidi = 60
+        )
     }
 
     val pianoPitches = remember(activeMidiMap) { activeMidiMap.keys.toList().sorted() }
     val noteNames = remember(pianoPitches, mode) { pianoPitches.map { roots[it % 12] } }
 
     val pianoFingering = remember(pianoPitches, typeDef.suffix, mode, selectedVoicingIdx) {
-        if (mode == 0) {
-            val baseList = PIANO_RH_FINGERS[typeDef.suffix] ?: when (pianoPitches.size) {
-                1 -> listOf(1)
-                2 -> listOf(1, 5)
-                3 -> when (selectedVoicingIdx) {
-                    1 -> listOf(1, 2, 5) // 1st inversion
-                    2 -> listOf(1, 3, 5) // 2nd inversion
-                    else -> listOf(1, 3, 5) // root position
-                }
-                4 -> listOf(1, 2, 4, 5)
-                else -> listOf(1, 2, 3, 4, 5)
-            }
-            val fingers = pianoPitches.indices.map { i ->
-                baseList.getOrElse(i) { (i % 5) + 1 }
-            }
-            FingeringData(notes = pianoPitches, fingers = fingers)
-        } else {
-            // Scale fingering for right hand
-            val rhScalePattern = listOf(1, 2, 3, 1, 2, 3, 4, 5)
-            val fingers = pianoPitches.indices.map { i ->
-                rhScalePattern[i % rhScalePattern.size]
-            }
-            FingeringData(notes = pianoPitches, fingers = fingers)
-        }
+        ChordVoicingEngine.computePianoFingering(
+            pitches = pianoPitches,
+            chordSuffix = typeDef.suffix,
+            isScale = (mode != 0),
+            voicingIdx = selectedVoicingIdx
+        )
     }
 
     val currentRootName = roots[rootIdx]
     val currentSuffix = typeDef.suffix
 
     val guitarShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode, selectedCagedFilter, selectedFretRange) {
-        val allRealPositions = RealChordsDb.getGuitarPositions(currentRootName, currentSuffix)
-        val filteredPositions = allRealPositions.filter { pos ->
-            val matchesFretRange = when (selectedFretRange) {
-                "Open (0-3)" -> pos.baseFret in 0..3
-                "Low (1-5)" -> pos.baseFret in 1..5
-                "Mid (5-9)" -> pos.baseFret in 5..9
-                "High (9-14)" -> pos.baseFret in 9..14
-                "12+ Frets" -> pos.baseFret >= 12
-                else -> true
-            }
-            val matchesCaged = when (selectedCagedFilter) {
-                "C-Shape" -> (pos.frets.getOrNull(1) ?: -1) > 0 && (pos.frets.getOrNull(0) ?: -1) <= 0
-                "A-Shape" -> (pos.frets.getOrNull(1) ?: -1) >= 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
-                "G-Shape" -> (pos.frets.getOrNull(0) ?: -1) > 0 && (pos.frets.getOrNull(5) ?: -1) > 0
-                "E-Shape" -> (pos.frets.getOrNull(0) ?: -1) >= 0 && (pos.frets.getOrNull(1) ?: -1) >= 0
-                "D-Shape" -> (pos.frets.getOrNull(0) ?: -1) < 0 && (pos.frets.getOrNull(1) ?: -1) < 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
-                else -> true
-            }
-            matchesFretRange && matchesCaged
-        }
-
-        val pool = if (filteredPositions.isNotEmpty()) filteredPositions else allRealPositions
-        if (pool.isNotEmpty()) {
-            val chosen = when (selectedDiff) {
-                ChordDiff.EASY -> pool.first()
-                ChordDiff.MEDIUM -> pool.getOrNull(1) ?: pool.first()
-                ChordDiff.HARD -> pool.last()
-            }
-            // RealChordsDb store strings from Low to High (E2, A2, D3, G3, B3, E4).
-            // UnifiedGuitarFretboard expects top-to-bottom (High e down to Low E), which is index 5 down to 0.
-            val reversedFrets = chosen.frets.reversed()
-            val reversedFingers = chosen.fingers.reversed()
-            GuitarShape(
-                frets = reversedFrets,
-                fingers = reversedFingers,
-                baseFret = chosen.baseFret,
-                barre = chosen.barres.firstOrNull(),
-                diff = selectedDiff
-            )
-        } else {
-            ChordVoicingEngine.generateDynamicShape(
-                rootMidiNote = (rootIdx + capoFret) % 12,
-                targetSemitones = typeDef.intervals,
-                voicingStyle = selectedVoicingType,
-                startFret = selectedStartFret,
-                openStringPitches = listOf(4, 11, 7, 2, 9, 4),
-                isPiano = false
-            )
-        }
+        ChordVoicingEngine.getDictionaryGuitarShape(
+            rootName = currentRootName,
+            suffix = currentSuffix,
+            diff = selectedDiff,
+            capoFret = capoFret,
+            startFret = selectedStartFret,
+            voicingType = selectedVoicingType,
+            cagedFilter = selectedCagedFilter,
+            fretRangeFilter = selectedFretRange,
+            fallbackIntervals = typeDef.intervals
+        )
     }
 
     val ukuShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode) {
-        val realUkuPositions = RealChordsDb.getUkulelePositions(currentRootName, currentSuffix)
-        if (realUkuPositions.isNotEmpty()) {
-            val chosen = when (selectedDiff) {
-                ChordDiff.EASY -> realUkuPositions.first()
-                ChordDiff.MEDIUM -> realUkuPositions.getOrNull(1) ?: realUkuPositions.first()
-                ChordDiff.HARD -> realUkuPositions.last()
-            }
-            // Ukulele in react-chords: standard tuning G4, C4, E4, A4 (indices 0..3)
-            // On our fretboard top-to-bottom is A4, E4, C4, G4, which is reversed indices 3 down to 0!
-            val reversedFrets = chosen.frets.reversed()
-            val reversedFingers = chosen.fingers.reversed()
-            GuitarShape(
-                frets = reversedFrets,
-                fingers = reversedFingers,
-                baseFret = chosen.baseFret,
-                barre = chosen.barres.firstOrNull(),
-                diff = selectedDiff
-            )
-        } else {
-            ChordVoicingEngine.generateDynamicShape(
-                rootMidiNote = (rootIdx + capoFret) % 12,
-                targetSemitones = typeDef.intervals,
-                voicingStyle = selectedVoicingType,
-                startFret = selectedStartFret,
-                openStringPitches = listOf(9, 4, 0, 7),
-                isPiano = false
-            )
-        }
+        ChordVoicingEngine.getDictionaryUkuShape(
+            rootName = currentRootName,
+            suffix = currentSuffix,
+            diff = selectedDiff,
+            capoFret = capoFret,
+            startFret = selectedStartFret,
+            voicingType = selectedVoicingType,
+            fallbackIntervals = typeDef.intervals
+        )
     }
 
     val cadenceList = remember(rootIdx) {
-        listOf(
-            Pair("${roots[(rootIdx + 7) % 12]} (V)", listOf(rootIdx + 7, rootIdx + 11, rootIdx + 2)),
-            Pair("${roots[(rootIdx + 5) % 12]} (IV)", listOf(rootIdx + 5, rootIdx + 9, rootIdx)),
-            Pair("${roots[(rootIdx + 9) % 12]}m (vi)", listOf(rootIdx + 9, rootIdx, rootIdx + 4)),
-            Pair("${roots[rootIdx]} (I)", listOf(rootIdx, rootIdx + 4, rootIdx + 7))
-        )
+        ChordVoicingEngine.getCadenceProgressions(rootIdx = rootIdx, rootNames = roots)
     }
 
     LaunchedEffect(activeMidiMap, isArpeggioRunning) {
@@ -764,6 +681,7 @@ Row(
                                 stringLabels = listOf("e", "B", "G", "D", "A", "E"),
                                 openStringsSemis = listOf(4, 11, 7, 2, 9, 4),
                                 activeCoordinate = highlightedGuitarCoordinate,
+                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
                                 activeNotes = pianoPitches,
                                 onFretTapped = { _, _, midiNote ->
                                     try {
@@ -853,6 +771,7 @@ Row(
                                 stringLabels = listOf("A", "E", "C", "G"),
                                 openStringsSemis = listOf(9, 4, 0, 7),
                                 activeCoordinate = highlightedUkuCoordinate,
+                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
                                 onFretTapped = { _, _, midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument("GUITAR")
@@ -1410,24 +1329,20 @@ fun ImmersiveKeyboardFretboardLabDialog(
     val inversions = listOf("Root Position", "1st Inversion", "2nd Inversion")
 
     val activeChordPitches = remember(labRootIdx, labSuffixIdx, labInversion) {
-        val rootMidi = 60 + labRootIdx
-        val intervals = when (labSuffixIdx) {
-            1 -> listOf(0, 3, 7)
-            2 -> listOf(0, 4, 7, 10)
-            3 -> listOf(0, 4, 7, 11)
-            4 -> listOf(0, 3, 7, 10)
-            5 -> listOf(0, 3, 6)
-            6 -> listOf(0, 4, 8)
-            7 -> listOf(0, 5, 7)
-            8 -> listOf(0, 4, 7, 14)
-            else -> listOf(0, 4, 7) // Major
+        val labSuffixMap = listOf("", "m", "7", "maj7", "m7", "dim", "aug", "sus4", "add9")
+        val chosenSuffix = labSuffixMap.getOrElse(labSuffixIdx) { "" }
+        val inv = when (labInversion) {
+            "1st Inversion" -> InversionStyle.FIRST
+            "2nd Inversion" -> InversionStyle.SECOND
+            else -> InversionStyle.ROOT
         }
-        val baseNotes = intervals.map { rootMidi + it }
-        when (labInversion) {
-            "1st Inversion" -> if (baseNotes.size > 1) baseNotes.drop(1) + (baseNotes.first() + 12) else baseNotes
-            "2nd Inversion" -> if (baseNotes.size > 2) baseNotes.drop(2) + baseNotes.take(2).map { it + 12 } else baseNotes
-            else -> baseNotes
-        }
+        ChordVoicingEngine.buildPianoShape(
+            rootIdx = labRootIdx,
+            suffix = chosenSuffix,
+            style = PianoVoicingStyle.CLOSE,
+            inversion = inv,
+            octave = 4
+        )
     }
 
     val activeMidiMap = remember(activeChordPitches) {
@@ -1919,9 +1834,11 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     "15f" -> 15
                                     else -> 12
                                 }
+                                val activeLabPlayingPitch = if (isPlaying) currentAuditionIdx?.let { activeChordPitches.getOrNull(it) } else null
                                 UnifiedGuitarFretboard(
                                     numFrets = numF,
                                     activeNotes = activeChordPitches,
+                                    activeMidiNote = activeLabPlayingPitch,
                                     rootNote = labRootIdx,
                                     accentColor = orangeColor,
                                     showNoteNames = true,
@@ -1938,9 +1855,11 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                 )
                             }
                             "Uke" -> {
+                                val activeLabPlayingPitch = if (isPlaying) currentAuditionIdx?.let { activeChordPitches.getOrNull(it) } else null
                                 UnifiedGuitarFretboard(
                                     numFrets = 7,
                                     activeNotes = activeChordPitches,
+                                    activeMidiNote = activeLabPlayingPitch,
                                     rootNote = labRootIdx,
                                     accentColor = orangeColor,
                                     showNoteNames = true,
@@ -1963,9 +1882,11 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     modifier = Modifier.fillMaxSize(),
                                     verticalArrangement = Arrangement.SpaceEvenly
                                 ) {
+                                    val activeLabPlayingPitch = if (isPlaying) currentAuditionIdx?.let { activeChordPitches.getOrNull(it) } else null
                                     UnifiedPianoKeyboard(
                                         activeMidiNotes = activeMidiMap,
                                         accentColor = orangeColor,
+                                        activeCoordinate = activeLabPlayingPitch,
                                         startNote = 48,
                                         endNote = 84,
                                         showNoteNames = true,
@@ -1982,6 +1903,7 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     UnifiedGuitarFretboard(
                                         numFrets = 12,
                                         activeNotes = activeChordPitches,
+                                        activeMidiNote = activeLabPlayingPitch,
                                         rootNote = labRootIdx,
                                         accentColor = orangeColor,
                                         showNoteNames = true,

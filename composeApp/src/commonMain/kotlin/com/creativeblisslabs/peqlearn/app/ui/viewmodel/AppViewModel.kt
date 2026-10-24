@@ -194,6 +194,7 @@ val client = createHttpClient()
     val showPianoKeyLabels = mutableStateOf(true)
     val showNotationNoteNames = mutableStateOf(true)
     val showWaterfall = mutableStateOf(true)
+    val visualizerLayoutMode = mutableStateOf("Split") // "Split", "KeyboardWaterfall", "Waterfall", "Notation", "Keyboard"
     val showWaterfallParticles = mutableStateOf(true)
     val is3DPerspectiveMode = mutableStateOf(true)
     val horizonScale = mutableFloatStateOf(0.68f)
@@ -1376,6 +1377,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
     private var scorePlaybackJob: Job? = null
 
     private val firedNotesMap = mutableMapOf<Int, Boolean>()
+    private val firedPedalsMap = mutableMapOf<Int, Boolean>()
     private var lastTrackedMeasure = -1
     private var grooveRepository: GrooveRepository? = null
     val groovePatterns = MutableStateFlow<List<GroovePattern>>(emptyList())
@@ -1490,7 +1492,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 initialElapsedMs += (startOffset * mDurationMs).toLong()
             }
 
-            val firedPedalsMap = mutableMapOf<Int, Boolean>()
+            firedPedalsMap.clear()
 
             while (isActive && isScorePlaying.value) {
                 val now = Clock.System.now().toEpochMilliseconds()
@@ -1540,54 +1542,42 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 }
 
                 val measure = score.measures[currentMeasureIdx]
-                
-                // PRECISE MAPPING: Map temporal progress to actual note positions
-                // This ensures the playhead snaps to noteheads even with non-linear rhythmic spacing
-                val beatsInMeasure = measure.timeSignatureNumerator.toFloat()
-                val notes = measure.notes.filter { !it.isRest }.sortedBy { it.position }
-                
-                var visualOffset = currentOffset
-                if (notes.isNotEmpty()) {
-                    val lastNote = notes.last()
-                    val lastNoteEnd = lastNote.position + lastNote.duration
-                    
-                    // Find the current note segment
-                    val currentNoteIndex = notes.indexOfLast { it.position <= currentOffset * beatsInMeasure }
-                    if (currentNoteIndex != -1) {
-                        val currentNote = notes[currentNoteIndex]
-                        val nextNote = notes.getOrNull(currentNoteIndex + 1)
-                        
-                        val segmentStart = currentNote.position
-                        val segmentEnd = nextNote?.position ?: beatsInMeasure
-                        
-                        val segmentProgress = (currentOffset * beatsInMeasure - segmentStart) / (segmentEnd - segmentStart).coerceAtLeast(0.01f)
-                        
-                        // We map this to the visual range between these two notes
-                        // For now, linear mapping within segment is much better than global linear
-                        visualOffset = (segmentStart + segmentProgress * (segmentEnd - segmentStart)) / beatsInMeasure
-                    }
-                }
+                val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
+                val currentBeatInMeasure = currentOffset * beatsInMeasure
 
-                if (currentMeasureIdx != scorePlayheadMeasure.value || visualOffset > scorePlayheadOffset.value) {
+                // Broadcast consistent playhead location to UI
+                if (currentMeasureIdx != scorePlayheadMeasure.value || currentOffset > scorePlayheadOffset.value || currentOffset < scorePlayheadOffset.value - 0.2f) {
                     withContext(Dispatchers.Main) {
                         scorePlayheadMeasure.value = currentMeasureIdx
-                        scorePlayheadOffset.value = visualOffset
+                        scorePlayheadOffset.value = currentOffset
                     }
                 }
 
                 // Process pedal events in current measure
-                measure.pedalEvents.forEachIndexed { pIdx, pedalEvent ->
-                    val alreadyFired = firedPedalsMap[pIdx] == true
-                    if (currentOffset >= pedalEvent.position / measure.timeSignatureNumerator && !alreadyFired) {
-                        firedPedalsMap[pIdx] = true
-                        onMidiPedalEventReceived(pedalEvent.pedalType, pedalEvent.isPressed)
+                if (measure.pedalEvents.isNotEmpty()) {
+                    measure.pedalEvents.forEachIndexed { pIdx, pedalEvent ->
+                        val alreadyFired = firedPedalsMap[pIdx] == true
+                        if (currentBeatInMeasure >= pedalEvent.position && !alreadyFired) {
+                            firedPedalsMap[pIdx] = true
+                            onMidiPedalEventReceived(pedalEvent.pedalType, pedalEvent.isPressed)
+                        }
+                    }
+                } else if (measure.notes.any { !it.isRest }) {
+                    // Auto-pedal heuristic for standard scores lacking explicit MIDI CC64 events:
+                    // Pedal down during harmonic note sustains, pedal up briefly right at beat 0 of new measure
+                    val shouldPedal = currentBeatInMeasure > 0.25f && currentBeatInMeasure < beatsInMeasure - 0.2f
+                    if (sustainPedalActive.value != shouldPedal) {
+                        withContext(Dispatchers.Main) {
+                            sustainPedalActive.value = shouldPedal
+                            sustainActive.value = shouldPedal
+                        }
                     }
                 }
 
                 measure.notes.forEachIndexed { index: Int, note: ScoreNote ->
                     val alreadyFired = firedNotesMap[index] == true
 
-                    if (currentOffset >= note.position / measure.timeSignatureNumerator && !alreadyFired) {
+                    if (currentBeatInMeasure >= note.position && !alreadyFired) {
                         firedNotesMap[index] = true
                         
                         // Direct low-latency native audio trigger without main thread hop
@@ -1632,6 +1622,11 @@ fun scrubSongPlayhead(targetProgress: Float) {
         midiActiveNotes.clear()
         midiPlayingNote.value = null
         firedNotesMap.clear()
+        firedPedalsMap.clear()
+        sustainPedalActive.value = false
+        sustainActive.value = false
+        sostenutoPedalActive.value = false
+        softPedalActive.value = false
     }
 
     fun resetScorePlayhead() {
