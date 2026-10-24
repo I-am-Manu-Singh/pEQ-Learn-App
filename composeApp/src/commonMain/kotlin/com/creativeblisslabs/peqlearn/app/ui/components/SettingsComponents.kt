@@ -262,7 +262,30 @@ private fun SystemTabContent(viewModel: AppViewModel) {
 
 @Composable
 private fun InstrumentsTabContent(viewModel: AppViewModel) {
-    SectionHeader("SOUNDFONT & INSTRUMENT CUSTOMIZATION")
+    // Piano Sound Engine Mode (Direct Salamander Samples vs Android MIDI vs SoundFont)
+    SettingsSection("Piano Sound Generation Engine", icon = Icons.Default.VolumeUp) {
+        Text("Switch sound generator for 88-Key Piano & Notation Sheet to eliminate glitching and audio latency.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                "SalamanderSamples" to "Salamander Samples (Fast & Clean)",
+                "AndroidMidi" to "Android Native MIDI",
+                "SoundFont" to "FluidSynth SF2 SoundFont"
+            ).forEach { (modeKey, label) ->
+                pEQFilterChip(
+                    selected = viewModel.pianoAudioEngineMode.value == modeKey,
+                    onClick = {
+                        viewModel.pianoAudioEngineMode.value = modeKey
+                        viewModel.audioEngine.setInstrument(modeKey)
+                    },
+                    label = { Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                )
+            }
+        }
+    }
+
     Spacer(Modifier.height(8.dp))
 
     // 1. Acoustic Piano Customization
@@ -629,6 +652,62 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
+    // Audio Track Source for Video (MIDI Score Synth vs Custom Audio File via picker)
+    SettingsSection("Video Audio Track Source", icon = Icons.Default.Audiotrack) {
+        Text("Choose the soundtrack source for the rendered video.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("MidiScore" to "MIDI Score Synth", "AudioFile" to "Audio File (Picker)").forEach { (key, label) ->
+                pEQFilterChip(
+                    selected = viewModel.videoExportAudioSource.value == key,
+                    onClick = {
+                        viewModel.videoExportAudioSource.value = key
+                        if (key == "AudioFile") {
+                            viewModel.onPickTrackRequested?.invoke { item ->
+                                viewModel.videoExportExternalAudioUri.value = item.path
+                                viewModel.videoExportExternalAudioName.value = item.title
+                            }
+                        }
+                    },
+                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+        if (viewModel.videoExportAudioSource.value == "AudioFile") {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = viewModel.videoExportExternalAudioName.value ?: "Tap to choose audio file (.mp3 / .wav / .m4a)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
+                )
+                Button(
+                    onClick = {
+                        viewModel.onPickTrackRequested?.invoke { item ->
+                            viewModel.videoExportExternalAudioUri.value = item.path
+                            viewModel.videoExportExternalAudioName.value = item.title
+                        }
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Text("Browse", fontSize = 11.sp)
+                }
+            }
+        }
+    }
+
     // Audio Codec
     SettingsSection("Audio Codec", icon = Icons.Default.Audiotrack) {
         Text("Compression format for the audio stream.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
@@ -654,6 +733,24 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
                     label = { Text(sr, style = MaterialTheme.typography.labelSmall) }
                 )
             }
+        }
+    }
+
+    // Render Piano Pedals in Video Option
+    SettingsSection("Piano Pedals in Video", icon = Icons.Default.LinearScale) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Show 3-Pedal Grand Unit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("Render animated brass Soft, Sostenuto & Sustain pedals in the exported video.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            }
+            Switch(
+                checked = viewModel.videoExportRenderPedals.value,
+                onCheckedChange = { viewModel.videoExportRenderPedals.value = it }
+            )
         }
     }
 
@@ -778,6 +875,86 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
             Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
             Spacer(Modifier.width(8.dp))
             Text("RENDER & EXPORT CREATIVE VIDEO", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
+        }
+    }
+
+    // Export History and Queue with Item Cards
+    if (viewModel.videoExportHistory.isNotEmpty()) {
+        Spacer(Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("EXPORT HISTORY & QUEUE", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            TextButton(
+                onClick = { viewModel.videoExportHistory.clear() },
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+            ) {
+                Text("Clear All", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            viewModel.videoExportHistory.forEach { item ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(item.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text("${item.resolution} • ${item.fps} • ${item.audioSource}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = when (item.status) {
+                                    "Completed" -> Color(0xFF10B981).copy(alpha = 0.2f)
+                                    "Rendering" -> Color(0xFF3B82F6).copy(alpha = 0.2f)
+                                    else -> MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
+                                }
+                            ) {
+                                Text(
+                                    text = item.status,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (item.status) {
+                                        "Completed" -> Color(0xFF10B981)
+                                        "Rendering" -> Color(0xFF3B82F6)
+                                        else -> MaterialTheme.colorScheme.error
+                                    },
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        if (item.status == "Rendering") {
+                            LinearProgressIndicator(
+                                progress = { item.progress },
+                                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        if (!item.filePath.isNullOrBlank()) {
+                            Text(
+                                "Saved: ${item.filePath}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

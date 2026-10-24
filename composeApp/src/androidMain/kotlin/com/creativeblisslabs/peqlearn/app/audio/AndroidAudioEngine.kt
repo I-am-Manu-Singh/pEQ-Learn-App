@@ -276,11 +276,18 @@ class AndroidAudioEngine(
 
     private val drumKitLoader = DrumKitLoader(context, soundPool)
 
+    // Dedicated SoundPool for ultra-low latency, zero-lag Salamander Grand Piano Samples
+    private val salamanderSoundPool = SoundPool.Builder().setMaxStreams(24).build()
+    private val salamanderSampleMap = ConcurrentHashMap<Int, Int>() // midiNote -> soundPoolId
+    private val salamanderActiveStreamMap = ConcurrentHashMap<Int, Int>() // midiNote -> streamId
+    private val salamanderLoaded = AtomicBoolean(false)
+
     // --- STEP 2: CLASS LEVEL STATE, CACHES, AND MEDIA3/DSP FIELDS ---
     private var bassHandle = 0
     private val stemHandles = ConcurrentHashMap<String, Int>()
     private var currentTrackUrl: String? = null
     private var currentInstrument = "PIANO"
+    private var pianoAudioMode = "SalamanderSamples" // "SalamanderSamples", "AndroidMidi", "SoundFont"
 
     private val pianoNoteCache = ConcurrentHashMap<Int, ShortArray>()
     private val guitarNoteCache = ConcurrentHashMap<Int, ShortArray>()
@@ -516,6 +523,24 @@ class AndroidAudioEngine(
 
     override fun setInstrument(instrument: String) {
         val upper = instrument.uppercase().trim()
+        when {
+            upper.contains("SALAMANDER") -> {
+                pianoAudioMode = "SalamanderSamples"
+                currentInstrument = "PIANO"
+                return
+            }
+            upper.contains("ANDROIDMIDI") || upper.contains("ANDROID_MIDI") || upper.contains("NATIVE") -> {
+                pianoAudioMode = "AndroidMidi"
+                currentInstrument = "PIANO"
+                return
+            }
+            upper.contains("SOUNDFONT") -> {
+                pianoAudioMode = "SoundFont"
+                currentInstrument = "PIANO"
+                return
+            }
+        }
+
         val targetKey = when {
             upper.contains("HARMONIUM") -> "HARMONIUM"
             upper.contains("GUITAR") -> "GUITAR"
@@ -553,6 +578,7 @@ class AndroidAudioEngine(
 
         initSystemSounds()
         initAllAssets()
+        loadSalamanderSamples()
         loadSf2Piano()
         loadSf2Guitar()
         loadSf2Harmonium()
@@ -1747,8 +1773,68 @@ class AndroidAudioEngine(
         }
     }
 
+    private fun loadSalamanderSamples() {
+        engineScope.launch(Dispatchers.IO) {
+            try {
+                // Pitch mappings for Salamander samples (minor thirds from A0 to C8)
+                val samplePitches = mapOf(
+                    "A0" to 21, "C1" to 24, "Ds1" to 27, "Fs1" to 30,
+                    "A1" to 33, "C2" to 36, "Ds2" to 39, "Fs2" to 42,
+                    "A2" to 45, "C3" to 48, "Ds3" to 51, "Fs3" to 54,
+                    "A3" to 57, "C4" to 60, "Ds4" to 63, "Fs4" to 66,
+                    "A4" to 69, "C5" to 72, "Ds5" to 75, "Fs5" to 78,
+                    "A5" to 81, "C6" to 84, "Ds6" to 87, "Fs6" to 90,
+                    "A6" to 93, "C7" to 96, "Ds7" to 99, "Fs7" to 102,
+                    "A7" to 105, "C8" to 108
+                )
+
+                samplePitches.forEach { (name, midi) ->
+                    try {
+                        val afd: AssetFileDescriptor = context.assets.openFd("piano/salamander/salamander_ogg/$name.ogg")
+                        val soundId = salamanderSoundPool.load(afd, 1)
+                        salamanderSampleMap[midi] = soundId
+                    } catch (e: Exception) {
+                        try {
+                            val afdMp3: AssetFileDescriptor = context.assets.openFd("piano/salamander/salamander_mp3/$name.mp3")
+                            val soundId = salamanderSoundPool.load(afdMp3, 1)
+                            salamanderSampleMap[midi] = soundId
+                        } catch (_: Exception) {}
+                    }
+                }
+                salamanderLoaded.set(true)
+                Log.i("AudioEngine", "Salamander Grand Piano samples loaded successfully into zero-lag SoundPool.")
+            } catch (e: Exception) {
+                Log.e("AudioEngine", "Failed loading Salamander samples: ${e.message}")
+            }
+        }
+    }
+
     override fun noteOn(midiNote: Int, velocity: Float) {
-        Log.d("AudioEngine", "Direct noteOn Received -> Note: $midiNote, Velocity: $velocity, Instrument: $currentInstrument")
+        val clampedVel = velocity.coerceIn(0f, 1f)
+        if (currentInstrument == "PIANO" && pianoAudioMode == "SalamanderSamples" && salamanderLoaded.get()) {
+            // Find closest sampled anchor note
+            var closestMidi = 60
+            var minDiff = Int.MAX_VALUE
+            salamanderSampleMap.keys.forEach { sampledMidi ->
+                val diff = kotlin.math.abs(sampledMidi - midiNote)
+                if (diff < minDiff) {
+                    minDiff = diff
+                    closestMidi = sampledMidi
+                }
+            }
+
+            val soundId = salamanderSampleMap[closestMidi]
+            if (soundId != null) {
+                // Pitch shift playback rate based on semitone difference: 2^(semitones / 12)
+                val semitoneDiff = midiNote - closestMidi
+                val rate = kotlin.math.pow(2.0, semitoneDiff.toDouble() / 12.0).toFloat().coerceIn(0.5f, 2.0f)
+                val streamId = salamanderSoundPool.play(soundId, clampedVel, clampedVel, 1, 0, rate)
+                salamanderActiveStreamMap[midiNote] = streamId
+                return
+            }
+        }
+
+        Log.d("AudioEngine", "Direct noteOn Received -> Note: $midiNote, Velocity: $velocity, Instrument: $currentInstrument, Mode: $pianoAudioMode")
         engineScope.launch(Dispatchers.Default) {
             synchronized(sf2Lock) {
                 if (sf2Loaded.get()) {
@@ -1759,7 +1845,7 @@ class AndroidAudioEngine(
                     }
 
                     activeSf?.let { sf: FluidSynthPlayer ->
-                        val vel = (velocity.coerceIn(0f, 1f) * 127).toInt()
+                        val vel = (clampedVel * 127).toInt()
                         try {
                             sf.noteOn(0, midiNote, vel)
                             // Render 0.5s of stereo audio for note ring/sustain (44100 * 0.5 * 2)
@@ -1802,6 +1888,14 @@ class AndroidAudioEngine(
         if (currentlyPlayingNoteEngine == note) {
             currentlyPlayingNoteEngine = activeMidiNotesEngine.keys.firstOrNull()
         }
+
+        if (currentInstrument == "PIANO" && pianoAudioMode == "SalamanderSamples") {
+            salamanderActiveStreamMap.remove(note)?.let { streamId ->
+                salamanderSoundPool.stop(streamId)
+            }
+            return
+        }
+
         engineScope.launch(Dispatchers.Default) {
             synchronized(sf2Lock) {
                 val activeSf = when {

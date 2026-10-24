@@ -36,6 +36,18 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 import com.creativeblisslabs.peqlearn.app.data.normalizePath
 
+data class VideoExportHistoryItem(
+    val id: String = "${Clock.System.now().toEpochMilliseconds()}",
+    val title: String,
+    val resolution: String,
+    val fps: String,
+    val audioSource: String,
+    val timestampMs: Long = Clock.System.now().toEpochMilliseconds(),
+    val status: String = "In Progress", // "In Progress", "Completed", "Failed"
+    val progress: Float = 0f,
+    val filePath: String? = null
+)
+
 open class AppViewModel(
 
     val audioEngine: AudioEngine,
@@ -234,6 +246,17 @@ val client = createHttpClient()
     val videoExportEqBars = mutableIntStateOf(64)
     val videoExportPeakSensitivity = mutableFloatStateOf(80f)
     val videoExportLayoutMode = mutableStateOf("Combined (Score + Waterfall)")
+    val videoExportRenderPedals = mutableStateOf(true)
+    // Audio source for video export: "MidiScore" (Synthesized from .midi), "AudioFile" (Selected via file picker), "None"
+    val videoExportAudioSource = mutableStateOf("MidiScore")
+    val videoExportExternalAudioUri = mutableStateOf<String?>(null)
+    val videoExportExternalAudioName = mutableStateOf<String?>(null)
+    
+    // Piano & Notation sound engine mode: "SalamanderSamples", "AndroidMidi", or "SoundFont"
+    val pianoAudioEngineMode = mutableStateOf("SalamanderSamples")
+
+    // Video Export Queue & History item model
+    val videoExportHistory = mutableStateListOf<VideoExportHistoryItem>()
     val isVideoExporting = mutableStateOf(false)
     val videoExportProgress = mutableFloatStateOf(0f)
   
@@ -892,8 +915,20 @@ val client = createHttpClient()
             "Particles" to showWaterfallParticles.value,
             "Notation" to (videoExportLayoutMode.value.contains("Score") || videoExportLayoutMode.value.contains("Notation")),
             "Visualizer" to (videoExportLayoutMode.value.contains("Waterfall") || videoExportLayoutMode.value.contains("Visualizer")),
-            "Theme" to (videoExportTheme.value == "Cyberpunk")
+            "Theme" to (videoExportTheme.value == "Cyberpunk"),
+            "RenderPedals" to videoExportRenderPedals.value,
+            "AudioSource" to (videoExportAudioSource.value == "MidiScore")
         )
+
+        val queueItem = VideoExportHistoryItem(
+            title = score.title.ifBlank { "pEQ Composition" },
+            resolution = res,
+            fps = videoExportFps.value,
+            audioSource = if (videoExportAudioSource.value == "AudioFile") videoExportExternalAudioName.value ?: "Custom Audio File" else "MIDI Score Synth",
+            status = "Rendering",
+            progress = 0.01f
+        )
+        videoExportHistory.add(0, queueItem)
 
         isVideoExporting.value = true
         videoExportProgress.value = 0.01f
@@ -902,19 +937,41 @@ val client = createHttpClient()
         if (exporter != null) {
             exporter(score, res, fpsInt, effects, { progress ->
                 videoExportProgress.value = progress
+                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
+                if (idx != -1) {
+                    videoExportHistory[idx] = videoExportHistory[idx].copy(progress = progress)
+                }
             }, { filePath ->
                 isVideoExporting.value = false
                 videoExportProgress.value = 1.0f
+                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
+                if (idx != -1) {
+                    videoExportHistory[idx] = videoExportHistory[idx].copy(
+                        status = "Completed",
+                        progress = 1.0f,
+                        filePath = filePath
+                    )
+                }
                 onComplete(filePath ?: "/sdcard/Movies/pEQ_Visualizer_${Clock.System.now().toEpochMilliseconds()}.mp4")
             })
         } else {
             scope.launch {
                 for (p in 1..10) {
                     delay(150)
-                    videoExportProgress.value = p / 10f
+                    val prog = p / 10f
+                    videoExportProgress.value = prog
+                    val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
+                    if (idx != -1) {
+                        videoExportHistory[idx] = videoExportHistory[idx].copy(progress = prog)
+                    }
                 }
                 isVideoExporting.value = false
-                onComplete("/sdcard/Movies/pEQ_Visualizer_${Clock.System.now().toEpochMilliseconds()}.mp4")
+                val path = "/sdcard/Movies/pEQ_Visualizer_${Clock.System.now().toEpochMilliseconds()}.mp4"
+                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
+                if (idx != -1) {
+                    videoExportHistory[idx] = videoExportHistory[idx].copy(status = "Completed", progress = 1.0f, filePath = path)
+                }
+                onComplete(path)
             }
         }
     }

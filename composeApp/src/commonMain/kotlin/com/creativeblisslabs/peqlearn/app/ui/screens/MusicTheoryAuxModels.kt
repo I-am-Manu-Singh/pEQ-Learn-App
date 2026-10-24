@@ -12,7 +12,10 @@ enum class TheoryPart(
     val color: Color
 ) {
     CHORDS("Chord Dict.", Icons.Default.MusicNote, Color(0xFFFFD700)),
-    CONCEPTS("Theory Concepts", Icons.Default.MenuBook, Color(0xFF64B5F6)),
+    REFERENCE("Reference", Icons.Default.MenuBook, Color(0xFF64B5F6)),
+    TOOLS("Tools", Icons.Default.Build, Color(0xFF4CAF50)),
+    PROGRESSIONS("Progressions", Icons.Default.AltRoute, Color(0xFFAB47BC)),
+    CONCEPTS("Theory Concepts", Icons.Default.AutoStories, Color(0xFF29B6F6)),
     GROOVE("Drums", Icons.Default.PlayArrow, Color(0xFF00E676)),
     STRUCTURE("Song Str.", Icons.AutoMirrored.Filled.List, Color(0xFFFF7043)),
     INDIAN_CLASSICAL("Ind. Class.", Icons.Default.Home, Color(0xFFFF9800)),

@@ -47,6 +47,8 @@ fun UnifiedGuitarFretboard(
     rootNote: Int = 0,
     accentColor: Color,
     showNoteNames: Boolean = false,
+    markOctaves: Boolean = true,
+    highlightOctaveC: Boolean = true,
     chordFrets: List<Int>? = null,
     chordFingers: List<Int>? = null,
     baseFret: Int = 1,
@@ -65,6 +67,22 @@ fun UnifiedGuitarFretboard(
     val normalizedActiveNotes = remember(activeNotes) { activeNotes.map { it % 12 } }
     val normalizedRootNote = remember(rootNote) { rootNote % 12 }
 
+    val isUkulele = numStrings == 4
+    // High-to-low visual layout (top string = highest pitched string)
+    // Guitar: str 0 = e4 (64), str 1 = B3 (59), str 2 = G3 (55), str 3 = D3 (50), str 4 = A2 (45), str 5 = E2 (40)
+    // Ukulele standard re-entrant: str 0 = A4 (69), str 1 = E4 (64), str 2 = C4 (60), str 3 = G4 (67)
+    // Important: Keep tuning fixed, don't tune dynamically, keep the openStringsSemis fixed
+    val defaultOpenStringsMidi = remember(numStrings) {
+        if (numStrings == 4) listOf(69, 64, 60, 67) else listOf(64, 59, 55, 50, 45, 40)
+    }
+
+    LaunchedEffect(normalizedActiveNotes, normalizedRootNote, chordFrets, baseFret) {
+        val activeNames = normalizedActiveNotes.map { NOTE_NAMES[it] }
+        val rootName = NOTE_NAMES[normalizedRootNote]
+        val modeStr = if (chordFrets != null) "CHORD" else "SCALE"
+        println("[FRETBOARD_VERIFY] Mode=$modeStr, Root=$rootName, ActiveNotes=$activeNames, ChordFrets=$chordFrets, BaseFret=$baseFret, NumFrets=$numFrets")
+    }
+
     BoxWithConstraints(modifier = modifier) {
         val totalWidth = constraints.maxWidth.toFloat()
         val totalHeight = constraints.maxHeight.toFloat()
@@ -74,7 +92,6 @@ fun UnifiedGuitarFretboard(
         val bottomPad = 26f
         val fretW    = (totalWidth - leftPad - rightPad) / numFrets.coerceAtLeast(1)
         val playableH = totalHeight - topPad - bottomPad
-        val guitarOpenStringsMidi = listOf(64, 59, 55, 50, 45, 40)
 
         // Realistic Fretboard Taper: nut end (left) is narrower, bridge/body end (right) is wider
         val nutH = playableH * 0.88f
@@ -119,7 +136,7 @@ fun UnifiedGuitarFretboard(
                             }
                         }
 
-                        val baseMidi = guitarOpenStringsMidi.getOrNull(closestString) ?: (openStringsSemis.getOrElse(closestString) { 0 } + 40)
+                        val baseMidi = defaultOpenStringsMidi.getOrNull(closestString) ?: (openStringsSemis.getOrElse(closestString) { 0 } + 40)
                         val noteMidi = baseMidi + tappedFret
                         onFretTapped(closestString, tappedFret, noteMidi)
                     }
@@ -192,11 +209,12 @@ fun UnifiedGuitarFretboard(
                 )
             }
 
-            // Guitar Strings (E to e) following the taper from nut to bridge
+            // Strings following the taper from nut to bridge
             for (s in 0 until numStrings) {
                 val startY = getYForStringAtX(s, leftPad)
                 val endY = getYForStringAtX(s, w - rightPad)
-                val gauge = 1.0f + (numStrings - 1 - s) * 0.45f
+                // Gauge: string 0 (high string at top) is thinnest, bottom string (s = numStrings-1) is thickest
+                val gauge = 1.0f + s * 0.45f
                 drawLine(
                     color = Color(0xFFC0C4CC),
                     start = Offset(leftPad, startY),
@@ -204,9 +222,9 @@ fun UnifiedGuitarFretboard(
                     strokeWidth = gauge.dp.toPx()
                 )
 
-                // String Label on left (e, B, G, D, A, E)
+                // String Label on left
                 drawContext.canvas.nativeCanvas.drawText(
-                    stringLabels[s],
+                    stringLabels.getOrElse(s) { "" },
                     leftPad - 24f,
                     startY + 4.5f.dp.toPx(),
                     android.graphics.Paint().apply {
@@ -221,7 +239,7 @@ fun UnifiedGuitarFretboard(
 
             // Barre
             if (barreFret != null && barreFret > 0) {
-                val relFret = barreFret - baseFret + 1
+                val relFret = if (barreFret >= baseFret) barreFret - baseFret + 1 else barreFret
                 if (relFret in 1..numFrets) {
                     val barreX = leftPad + (relFret - 0.5f) * fretW
                     val t = ((barreX - leftPad) / (w - leftPad - rightPad)).coerceIn(0f, 1f)
@@ -266,6 +284,28 @@ fun UnifiedGuitarFretboard(
                         )
                     }
                 }
+            } else if (normalizedActiveNotes.isNotEmpty()) {
+                // Scale mode: show open strings that belong to the scale at the Nut
+                for (s in 0 until numStrings) {
+                    val openSemi = (openStringsSemis.getOrNull(s) ?: 0) % 12
+                    if (normalizedActiveNotes.contains(openSemi)) {
+                        val y = getYForStringAtX(s, leftPad)
+                        val nutIndicatorX = leftPad - 14f
+                        val isRoot = openSemi == normalizedRootNote
+                        
+                        drawCircle(
+                            color = if (isRoot) Color(0xFFFF5252) else accentColor,
+                            radius = 5.dp.toPx(),
+                            center = Offset(nutIndicatorX, y)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 5.dp.toPx(),
+                            center = Offset(nutIndicatorX, y),
+                            style = Stroke(width = 1.2.dp.toPx())
+                        )
+                    }
+                }
             }
 
             // Active Chord Notes / Fretted positions
@@ -278,23 +318,31 @@ fun UnifiedGuitarFretboard(
                     val isChordFret = chordFrets != null && chordFrets.getOrNull(s) == absoluteFret
                     val isCurrentlyPlaying = (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == absoluteFret)
                     val isScaleNote = chordFrets == null && normalizedActiveNotes.contains(fretSemi)
+                    val isRoot = fretSemi == normalizedRootNote
 
                     if (isChordFret || isCurrentlyPlaying || isScaleNote) {
                         val cx = leftPad + (f - 0.5f) * fretW
                         val cy = getYForStringAtX(s, cx)
-                        val dotRadius = 11.5.dp.toPx()
+                        val dotRadius = if (isScaleNote) 10.dp.toPx() else 11.5.dp.toPx()
+
+                        // Color differentiation: Root notes in red/gold, scale notes in accentColor/warm amber
+                        val primaryDotColor = if (isRoot && isScaleNote) Color(0xFFFF5252) else pillColor
 
                         // Glow effect
                         drawCircle(
-                            color = pillColor.copy(alpha = 0.35f),
+                            color = primaryDotColor.copy(alpha = 0.35f),
                             radius = dotRadius + 3.dp.toPx(),
                             center = Offset(cx, cy)
                         )
 
-                        // Filled warm orange pill
+                        // Filled pill
                         drawCircle(
                             brush = Brush.radialGradient(
-                                colors = listOf(Color(0xFFFFB74D), pillColor),
+                                colors = if (isRoot && isScaleNote) {
+                                    listOf(Color(0xFFFF8A80), Color(0xFFD50000))
+                                } else {
+                                    listOf(Color(0xFFFFB74D), primaryDotColor)
+                                },
                                 center = Offset(cx, cy),
                                 radius = dotRadius
                             ),
@@ -302,9 +350,32 @@ fun UnifiedGuitarFretboard(
                             center = Offset(cx, cy)
                         )
 
-                        // Text inside pill (Finger number or Note name)
+                        // If Root note in scale mode, draw a white ring border to emphasize tonic
+                        if (isRoot && isScaleNote) {
+                            drawCircle(
+                                color = Color.White,
+                                radius = dotRadius,
+                                center = Offset(cx, cy),
+                                style = Stroke(width = 1.6.dp.toPx())
+                            )
+                        }
+
+                        // Text inside pill (Finger number or Note name with Octave)
                         val fingerNum = if (isChordFret) chordFingers?.getOrNull(s) else null
-                        val displayText = if (fingerNum != null && fingerNum > 0) "$fingerNum" else NOTE_NAMES[fretSemi]
+                        val baseStringMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
+                        val fullMidiNote = baseStringMidi + absoluteFret
+                        val octaveNumber = (fullMidiNote / 12) - 1 // Standard scientific pitch octave (C4 = 60)
+                        val isNoteC = fretSemi == 0
+
+                        val displayText = if (fingerNum != null && fingerNum > 0) {
+                            "$fingerNum"
+                        } else if (isNoteC && markOctaves) {
+                            "C$octaveNumber"
+                        } else if (markOctaves && (isRoot || showNoteNames)) {
+                            "${NOTE_NAMES[fretSemi]}$octaveNumber"
+                        } else {
+                            NOTE_NAMES[fretSemi]
+                        }
 
                         drawContext.canvas.nativeCanvas.drawText(
                             displayText,
@@ -312,7 +383,7 @@ fun UnifiedGuitarFretboard(
                             cy + 4.dp.toPx(),
                             android.graphics.Paint().apply {
                                 color = android.graphics.Color.WHITE
-                                textSize = 11.dp.toPx()
+                                textSize = (if (displayText.length > 2) 9.dp else if (isScaleNote) 10.dp else 11.dp).toPx()
                                 textAlign = android.graphics.Paint.Align.CENTER
                                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                                 isAntiAlias = true
@@ -376,6 +447,15 @@ fun UnifiedPianoKeyboard(
     }
 
     val maxWhiteKeyWidthPx = with(density) { 42.dp.toPx() }
+
+    LaunchedEffect(activeMidiNotes, activeCoordinate) {
+        val activeKeys = activeMidiNotes.filter { it.value }.keys.sorted()
+        if (activeKeys.isNotEmpty() || activeCoordinate != null) {
+            val noteLabels = activeKeys.map { "${NOTE_NAMES[it % 12]}${it / 12 - 1}($it)" }
+            val coordStr = activeCoordinate?.let { "${NOTE_NAMES[it % 12]}${it / 12 - 1}($it)" } ?: "none"
+            println("[PIANO_VERIFY] ActiveKeys=$noteLabels, CoordinatePlaying=$coordStr")
+        }
+    }
 
     BoxWithConstraints(modifier = modifier) {
         val availableWidth = constraints.maxWidth.toFloat()
@@ -656,13 +736,19 @@ fun UnifiedPianoKeyboard(
     }
 }
 
+enum class InstrumentSoundStyle(val displayName: String, val iconDesc: String) {
+    SEQUENTIAL("Sequential Strum", "Plays notes in sequence low to high"),
+    ALL_AT_ONCE("All Notes at Once", "Sounds full chord block simultaneously"),
+    ARPEGGIATE_ROUNDTRIP("Arpeggiate Up & Down", "Plays left to right then back to start")
+}
+
 @Composable
 fun InstrumentPlayButton(
     notes: List<Int>,
     accentColor: Color,
     label: String = "",
-    arpeggiate: Boolean = true,
-    arpDelayMs: Long = 120,
+    soundStyle: InstrumentSoundStyle = InstrumentSoundStyle.SEQUENTIAL,
+    arpDelayMs: Long = 85,
     onPlay: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -688,15 +774,31 @@ fun InstrumentPlayButton(
                 if (!isPlaying && notes.isNotEmpty()) {
                     isPlaying = true
                     coroutineScope.launch {
-                        if (arpeggiate) {
-                            notes.forEach { note ->
-                                onPlay(note)
-                                delay(arpDelayMs)
+                        when (soundStyle) {
+                            InstrumentSoundStyle.SEQUENTIAL -> {
+                                notes.forEach { note ->
+                                    onPlay(note)
+                                    delay(arpDelayMs)
+                                }
                             }
-                        } else {
-                            notes.forEach { note -> onPlay(note) }
+                            InstrumentSoundStyle.ALL_AT_ONCE -> {
+                                notes.forEach { note -> onPlay(note) }
+                            }
+                            InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> {
+                                val roundTripNotes = if (notes.size > 2) {
+                                    notes + notes.subList(0, notes.size - 1).reversed()
+                                } else if (notes.size == 2) {
+                                    listOf(notes[0], notes[1], notes[0])
+                                } else {
+                                    notes
+                                }
+                                roundTripNotes.forEach { note ->
+                                    onPlay(note)
+                                    delay(arpDelayMs)
+                                }
+                            }
                         }
-                        delay(400)
+                        delay(350)
                         isPlaying = false
                     }
                 }
@@ -709,7 +811,7 @@ fun InstrumentPlayButton(
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.VolumeUp else Icons.Default.PlayCircle,
-                    contentDescription = "Play notes",
+                    contentDescription = soundStyle.iconDesc,
                     tint = if (isPlaying) Color.White else accentColor,
                     modifier = Modifier.size(20.dp).graphicsLayer(alpha = alpha)
                 )
@@ -726,13 +828,15 @@ fun InstrumentPlayButton(
     accentColor: Color,
     label: String = "",
     isPlaying: Boolean = false,
+    soundStyle: InstrumentSoundStyle? = null,
+    onSoundStyleToggle: (() -> Unit)? = null,
     onPlayClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Surface(
             onClick = onPlayClick,
@@ -755,6 +859,29 @@ fun InstrumentPlayButton(
         } else ""
         if (displayLabel.isNotBlank()) {
             Text(displayLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor.copy(alpha = 0.85f))
+        }
+
+        if (soundStyle != null && onSoundStyleToggle != null) {
+            Surface(
+                onClick = onSoundStyleToggle,
+                shape = RoundedCornerShape(12.dp),
+                color = accentColor.copy(alpha = 0.14f),
+                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f)),
+                modifier = Modifier.height(28.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                    Text(
+                        text = when (soundStyle) {
+                            InstrumentSoundStyle.SEQUENTIAL -> "Strum (Seq)"
+                            InstrumentSoundStyle.ALL_AT_ONCE -> "Block (All)"
+                            InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> "Arp (L⇄R)"
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
+                    )
+                }
+            }
         }
     }
 }

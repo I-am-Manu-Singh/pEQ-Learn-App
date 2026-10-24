@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
        viewModel.onVideoExportRequested = { score, res, fps, effects, progressCallback, completeCallback ->
             lifecycleScope.launch {
                 com.creativeblisslabs.peqlearn.app.video.AndroidVideoExporter.exportMidiVideo(
+                    context = applicationContext,
                     score = score,
                     resolution = res,
                     fps = fps,
@@ -129,6 +130,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             CompositionLocalProvider(LocalAppViewModel provides viewModel) {
                 App()
+            }
+        }
+
+        // Restore and persist pianoAudioEngineMode
+        val enginePrefs = getSharedPreferences("peq_learn_prefs", MODE_PRIVATE)
+        val savedMode = enginePrefs.getString("piano_audio_mode", "SalamanderSamples") ?: "SalamanderSamples"
+        viewModel.pianoAudioEngineMode.value = savedMode
+        viewModel.audioEngine.setInstrument(savedMode)
+
+        lifecycleScope.launch {
+            snapshotFlow { viewModel.pianoAudioEngineMode.value }.collect { mode ->
+                enginePrefs.edit().putString("piano_audio_mode", mode).apply()
+                viewModel.audioEngine.setInstrument(mode)
             }
         }
 

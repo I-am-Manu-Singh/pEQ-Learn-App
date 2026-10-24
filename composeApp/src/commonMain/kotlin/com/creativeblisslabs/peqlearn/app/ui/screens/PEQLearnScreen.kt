@@ -58,9 +58,11 @@ private fun LearnMainContent(
 
         val tabs = listOf(
             Triple("CHORDS", "Chords", Icons.Default.LibraryMusic),
-            Triple("PIANO", "Piano", Icons.Default.Piano),
+            Triple("REFERENCE", "Reference", Icons.Default.MenuBook),
+            Triple("PROGRESSIONS", "Progressions", Icons.Default.AltRoute),
+            Triple("TOOLS", "Tools", Icons.Default.Build),
+            Triple("PIANO", "Piano & Notation", Icons.Default.Piano),
             Triple("DRUMS", "Drums", Icons.Default.Radio),
-            Triple("NOTATION", "Notation", Icons.Default.AudioFile),
             Triple("RIYAAZ", "Riyaaz", Icons.Default.SelfImprovement),
         )
 
@@ -193,21 +195,26 @@ private fun LearnMainContent(
                                     "CHORDS" -> {
                                         ChordDictionaryPanel(viewModel = viewModel)
                                     }
+                                    "REFERENCE" -> {
+                                        ReferenceStudioPanel(
+                                            viewModel = viewModel,
+                                            onOpenChordGallery = {
+                                                // opens gallery modal or view
+                                            }
+                                        )
+                                    }
+                                    "PROGRESSIONS" -> {
+                                        ProgressionsStudioPanel(viewModel = viewModel)
+                                    }
+                                    "TOOLS" -> {
+                                        ToolsStudioPanel(viewModel = viewModel)
+                                    }
                                     "PIANO" -> {
                                         PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
                                         StrobeTunerSection(viewModel)
                                     }
                                     "DRUMS" -> {
                                         DrumAcademySection(viewModel, primaryColor, modifier = Modifier)
-                                    }
-                                    "NOTATION" -> {
-                                        Box(modifier = Modifier.fillMaxWidth().height(650.dp)) {
-                                            NotationWorkspaceItem(
-                                                viewModel = viewModel,
-                                                accentColor = primaryColor,
-                                                launchFilePicker = { viewModel.onPickScoreFileRequested?.invoke() }
-                                            )
-                                        }
                                     }
                                     "RIYAAZ" -> {
                                         RiyaazScreen(
@@ -325,21 +332,26 @@ private fun LearnMainContent(
                             "CHORDS" -> {
                                 ChordDictionaryPanel(viewModel = viewModel)
                             }
+                            "REFERENCE" -> {
+                                ReferenceStudioPanel(
+                                    viewModel = viewModel,
+                                    onOpenChordGallery = {
+                                        // opens gallery modal or view
+                                    }
+                                )
+                            }
+                            "PROGRESSIONS" -> {
+                                ProgressionsStudioPanel(viewModel = viewModel)
+                            }
+                            "TOOLS" -> {
+                                ToolsStudioPanel(viewModel = viewModel)
+                            }
                             "PIANO" -> {
                                 PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
                                 StrobeTunerSection(viewModel)
                             }
                             "DRUMS" -> {
                                 DrumAcademySection(viewModel, primaryColor)
-                            }
-                            "NOTATION" -> {
-                                Box(modifier = Modifier.fillMaxWidth().height(650.dp)) {
-                                    NotationWorkspaceItem(
-                                        viewModel = viewModel,
-                                        accentColor = primaryColor,
-                                        launchFilePicker = { viewModel.onPickScoreFileRequested?.invoke() }
-                                    )
-                                }
                             }
                             "RIYAAZ" -> {
                                 RiyaazScreen(

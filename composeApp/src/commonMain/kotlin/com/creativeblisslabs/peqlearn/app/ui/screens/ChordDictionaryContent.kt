@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.creativeblisslabs.peqlearn.app.audio.getAudioEngine
 import com.creativeblisslabs.peqlearn.app.ui.components.*
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
@@ -54,12 +55,7 @@ fun ChordDictionaryPanel(
     val scrollState = rememberScrollState()
 
     val roots = remember { listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B") }
-    val chordTypes = remember {
-        listOf(
-            "Major", "Minor", "7", "maj7", "m7", "dim", "aug",
-            "sus2", "sus4", "7sus4", "add9", "9", "m9", "11", "13"
-        )
-    }
+    val chordTypes = remember { CHORD_TYPE_DEFS.map { it.label } }
 
     var mode by remember { mutableStateOf(0) }
     var rootIdx by remember { mutableStateOf(0) }
@@ -78,6 +74,11 @@ fun ChordDictionaryPanel(
     var selectedStartFret by remember { mutableStateOf(1) }
     var selectedPianoOctave by remember { mutableStateOf(4) }
     var selectedVoicingType by remember { mutableStateOf("Open") }
+    var selectedCagedFilter by remember { mutableStateOf("All CAGED") }
+    var selectedFretRange by remember { mutableStateOf("All Frets") }
+
+    val cagedOptions = remember { listOf("All CAGED", "C-Shape", "A-Shape", "G-Shape", "E-Shape", "D-Shape") }
+    val fretRangeOptions = remember { listOf("All Frets", "Open (0-3)", "Low (1-5)", "Mid (5-9)", "High (9-14)", "12+ Frets") }
 
     val guitarVoicings = listOf("Open", "Barre", "Power", "Shell")
     val pianoVoicings = listOf("Closed", "Open", "Shell", "Drop 2")
@@ -119,6 +120,7 @@ fun ChordDictionaryPanel(
 
     var currentPlayingIdx by remember { mutableStateOf(-1) }
     var isArpeggioRunning by remember { mutableStateOf(false) }
+    var activeSoundStyle by remember { mutableStateOf(InstrumentSoundStyle.SEQUENTIAL) }
 
     val voicedIntervals = remember(chordTypeIdx, selectedVoicingIdx, selectedIntervalIdx) {
         val base = typeDef.intervals.toMutableList()
@@ -178,26 +180,90 @@ fun ChordDictionaryPanel(
         }
     }
 
-    val guitarShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode) {
-        ChordVoicingEngine.generateDynamicShape(
-            rootMidiNote = (rootIdx + capoFret) % 12,
-            targetSemitones = typeDef.intervals,
-            voicingStyle = selectedVoicingType,
-            startFret = selectedStartFret,
-            openStringPitches = listOf(4, 9, 2, 7, 11, 4),
-            isPiano = false
-        )
+    val currentRootName = roots[rootIdx]
+    val currentSuffix = typeDef.suffix
+
+    val guitarShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode, selectedCagedFilter, selectedFretRange) {
+        val allRealPositions = RealChordsDb.getGuitarPositions(currentRootName, currentSuffix)
+        val filteredPositions = allRealPositions.filter { pos ->
+            val matchesFretRange = when (selectedFretRange) {
+                "Open (0-3)" -> pos.baseFret in 0..3
+                "Low (1-5)" -> pos.baseFret in 1..5
+                "Mid (5-9)" -> pos.baseFret in 5..9
+                "High (9-14)" -> pos.baseFret in 9..14
+                "12+ Frets" -> pos.baseFret >= 12
+                else -> true
+            }
+            val matchesCaged = when (selectedCagedFilter) {
+                "C-Shape" -> (pos.frets.getOrNull(1) ?: -1) > 0 && (pos.frets.getOrNull(0) ?: -1) <= 0
+                "A-Shape" -> (pos.frets.getOrNull(1) ?: -1) >= 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
+                "G-Shape" -> (pos.frets.getOrNull(0) ?: -1) > 0 && (pos.frets.getOrNull(5) ?: -1) > 0
+                "E-Shape" -> (pos.frets.getOrNull(0) ?: -1) >= 0 && (pos.frets.getOrNull(1) ?: -1) >= 0
+                "D-Shape" -> (pos.frets.getOrNull(0) ?: -1) < 0 && (pos.frets.getOrNull(1) ?: -1) < 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
+                else -> true
+            }
+            matchesFretRange && matchesCaged
+        }
+
+        val pool = if (filteredPositions.isNotEmpty()) filteredPositions else allRealPositions
+        if (pool.isNotEmpty()) {
+            val chosen = when (selectedDiff) {
+                ChordDiff.EASY -> pool.first()
+                ChordDiff.MEDIUM -> pool.getOrNull(1) ?: pool.first()
+                ChordDiff.HARD -> pool.last()
+            }
+            // RealChordsDb store strings from Low to High (E2, A2, D3, G3, B3, E4).
+            // UnifiedGuitarFretboard expects top-to-bottom (High e down to Low E), which is index 5 down to 0.
+            val reversedFrets = chosen.frets.reversed()
+            val reversedFingers = chosen.fingers.reversed()
+            GuitarShape(
+                frets = reversedFrets,
+                fingers = reversedFingers,
+                baseFret = chosen.baseFret,
+                barre = chosen.barres.firstOrNull(),
+                diff = selectedDiff
+            )
+        } else {
+            ChordVoicingEngine.generateDynamicShape(
+                rootMidiNote = (rootIdx + capoFret) % 12,
+                targetSemitones = typeDef.intervals,
+                voicingStyle = selectedVoicingType,
+                startFret = selectedStartFret,
+                openStringPitches = listOf(4, 11, 7, 2, 9, 4),
+                isPiano = false
+            )
+        }
     }
 
     val ukuShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode) {
-        ChordVoicingEngine.generateDynamicShape(
-            rootMidiNote = (rootIdx + capoFret) % 12,
-            targetSemitones = typeDef.intervals,
-            voicingStyle = selectedVoicingType,
-            startFret = selectedStartFret,
-            openStringPitches = listOf(7, 0, 4, 9),
-            isPiano = false
-        )
+        val realUkuPositions = RealChordsDb.getUkulelePositions(currentRootName, currentSuffix)
+        if (realUkuPositions.isNotEmpty()) {
+            val chosen = when (selectedDiff) {
+                ChordDiff.EASY -> realUkuPositions.first()
+                ChordDiff.MEDIUM -> realUkuPositions.getOrNull(1) ?: realUkuPositions.first()
+                ChordDiff.HARD -> realUkuPositions.last()
+            }
+            // Ukulele in react-chords: standard tuning G4, C4, E4, A4 (indices 0..3)
+            // On our fretboard top-to-bottom is A4, E4, C4, G4, which is reversed indices 3 down to 0!
+            val reversedFrets = chosen.frets.reversed()
+            val reversedFingers = chosen.fingers.reversed()
+            GuitarShape(
+                frets = reversedFrets,
+                fingers = reversedFingers,
+                baseFret = chosen.baseFret,
+                barre = chosen.barres.firstOrNull(),
+                diff = selectedDiff
+            )
+        } else {
+            ChordVoicingEngine.generateDynamicShape(
+                rootMidiNote = (rootIdx + capoFret) % 12,
+                targetSemitones = typeDef.intervals,
+                voicingStyle = selectedVoicingType,
+                startFret = selectedStartFret,
+                openStringPitches = listOf(9, 4, 0, 7),
+                isPiano = false
+            )
+        }
     }
 
     val cadenceList = remember(rootIdx) {
@@ -249,12 +315,29 @@ fun ChordDictionaryPanel(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
      
+    var isChordGalleryOpen by remember { mutableStateOf(false) }
+
+    if (isChordGalleryOpen) {
+        Dialog(
+            onDismissRequest = { isChordGalleryOpen = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            ChordDisplayGalleryScreen(
+                viewModel = viewModel,
+                initialRoot = roots[rootIdx],
+                initialSuffix = typeDef.suffix,
+                initialInstrument = if (selectedInstrument == ChordInstrumentType.UKULELE) "ukulele" else "guitar",
+                onBack = { isChordGalleryOpen = false }
+            )
+        }
+    }
+
 Row(
     modifier = Modifier.fillMaxWidth(), // Ensures the top row fills available bounds
     horizontalArrangement = Arrangement.spacedBy(8.dp), 
     verticalAlignment = Alignment.CenterVertically
 ) {
-    // 1. Added Modifier.weight(1f) here so it leaves room for the buttons
+    // 1. Instrument row
     Box(modifier = Modifier.weight(1f)) {
         InstrumentSelectionRow(
             selectedInstrument = selectedInstrument,
@@ -262,22 +345,34 @@ Row(
         )
     }
 
-    // 2. Lab Toggle Button (Will now display perfectly)
+    // 2. Chord Gallery button (react-chords / guitar-practice)
+    FilledTonalButton(
+        onClick = { isChordGalleryOpen = true },
+        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF64B5F6).copy(alpha = 0.2f)),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+        modifier = Modifier.height(40.dp)
+    ) {
+        Icon(Icons.Default.GridOn, contentDescription = null, tint = Color(0xFF64B5F6), modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(4.dp))
+        Text("Shapes", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64B5F6))
+    }
+
+    // 3. Lab Toggle Button
     FilledTonalButton(
         onClick = { isLabModeOpen = true },
         colors = ButtonDefaults.filledTonalButtonColors(containerColor = partColor.copy(alpha = 0.2f)),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), // Cleans up inner spacing bounds
-        modifier = Modifier.height(40.dp) // Matches the height profile of the instrument selector row
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+        modifier = Modifier.height(40.dp)
     ) {
         Icon(Icons.Default.Science, contentDescription = null, tint = partColor, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(4.dp))
         Text("Lab", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = partColor)
     }
 
-    // 3. Circle of Fifths Button
+    // 4. Circle of Fifths Button
     IconButton(
         onClick = { showCircleOfFifths = !showCircleOfFifths },
-        modifier = Modifier.size(40.dp) // Keeps a consistent touch target profile matching 40.dp height
+        modifier = Modifier.size(40.dp)
     ) {
         Icon(
             imageVector = Icons.Default.Adjust,
@@ -400,6 +495,27 @@ Row(
                     )
                 }
             }
+
+            if (selectedInstrument == ChordInstrumentType.GUITAR) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        M3DropdownMenu(
+                            label = "CAGED Filter",
+                            selectedText = selectedCagedFilter,
+                            items = cagedOptions,
+                            onItemSelect = { selectedCagedFilter = cagedOptions[it] }
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        M3DropdownMenu(
+                            label = "Fret Position",
+                            selectedText = selectedFretRange,
+                            items = fretRangeOptions,
+                            onItemSelect = { selectedFretRange = fretRangeOptions[it] }
+                        )
+                    }
+                }
+            }
         }
 
         ElevatedCard(
@@ -450,6 +566,14 @@ Row(
                     accentColor = partColor,
                     label = "Play",
                     isPlaying = isArpeggioRunning,
+                    soundStyle = activeSoundStyle,
+                    onSoundStyleToggle = {
+                        activeSoundStyle = when (activeSoundStyle) {
+                            InstrumentSoundStyle.SEQUENTIAL -> InstrumentSoundStyle.ALL_AT_ONCE
+                            InstrumentSoundStyle.ALL_AT_ONCE -> InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP
+                            InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> InstrumentSoundStyle.SEQUENTIAL
+                        }
+                    },
                     onPlayClick = {
                         if (isArpeggioRunning) {
                             playbackJob?.cancel()
@@ -463,10 +587,24 @@ Row(
                             playbackJob?.cancel()
                             isArpeggioRunning = true
 
-                            val mockNotesList = pianoPitches.mapIndexed { idx: Int, midiPitch: Int ->
+                            val soundSequencePitches: List<Int> = when (activeSoundStyle) {
+                                InstrumentSoundStyle.SEQUENTIAL -> pianoPitches
+                                InstrumentSoundStyle.ALL_AT_ONCE -> pianoPitches
+                                InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> {
+                                    if (pianoPitches.size > 2) {
+                                        pianoPitches + pianoPitches.subList(0, pianoPitches.size - 1).reversed()
+                                    } else if (pianoPitches.size == 2) {
+                                        listOf(pianoPitches[0], pianoPitches[1], pianoPitches[0])
+                                    } else {
+                                        pianoPitches
+                                    }
+                                }
+                            }
+
+                            val mockNotesList = soundSequencePitches.mapIndexed { idx: Int, midiPitch: Int ->
                                 val targetString = when (selectedInstrument) {
-                                    ChordInstrumentType.GUITAR -> guitarShape.frets.indices.filter { guitarShape.frets[it] != -1 }.getOrNull(idx)
-                                    ChordInstrumentType.UKULELE -> ukuShape.frets.indices.filter { ukuShape.frets[it] != -1 }.getOrNull(idx)
+                                    ChordInstrumentType.GUITAR -> guitarShape.frets.indices.filter { guitarShape.frets[it] != -1 }.getOrNull(idx % pianoPitches.size.coerceAtLeast(1))
+                                    ChordInstrumentType.UKULELE -> ukuShape.frets.indices.filter { ukuShape.frets[it] != -1 }.getOrNull(idx % pianoPitches.size.coerceAtLeast(1))
                                     else -> null
                                 }
                                 val targetFret = when (selectedInstrument) {
@@ -477,7 +615,7 @@ Row(
 
                                 ScoreNote(
                                     midiNote = midiPitch,
-                                    position = idx.toFloat() / pianoPitches.size.toFloat(),
+                                    position = idx.toFloat() / soundSequencePitches.size.coerceAtLeast(1).toFloat(),
                                     duration = 0.25f,
                                     string = targetString,
                                     fret = targetFret
@@ -496,19 +634,35 @@ Row(
                                     viewModel.audioEngine.setInstrument(instr)
                                 } catch (_: Exception) {}
 
-                                pianoPitches.forEachIndexed { idx: Int, midiPitch: Int ->
-                                    currentPlayingIdx = idx
+                                if (activeSoundStyle == InstrumentSoundStyle.ALL_AT_ONCE) {
+                                    // Sound all notes at once
                                     viewModel.scorePlayheadMeasure.value = 0
-                                    viewModel.scorePlayheadOffset.value = idx.toFloat() / pianoPitches.size.toFloat()
-
-                                    viewModel.midiPlayingNote.value = midiPitch
+                                    viewModel.scorePlayheadOffset.value = 0f
                                     viewModel.midiActiveNotes.clear()
-                                    viewModel.midiActiveNotes[midiPitch] = true
+                                    pianoPitches.forEach { midiPitch ->
+                                        viewModel.midiActiveNotes[midiPitch] = true
+                                        try {
+                                            viewModel.audioEngine.noteOn(midiPitch, 0.85f)
+                                        } catch (_: Exception) {}
+                                    }
+                                    delay(750)
+                                } else {
+                                    // Sequential strum or Roundtrip arpeggio
+                                    val stepDelay = if (activeSoundStyle == InstrumentSoundStyle.SEQUENTIAL) 180L else 140L
+                                    soundSequencePitches.forEachIndexed { idx: Int, midiPitch: Int ->
+                                        currentPlayingIdx = idx % pianoPitches.size.coerceAtLeast(1)
+                                        viewModel.scorePlayheadMeasure.value = 0
+                                        viewModel.scorePlayheadOffset.value = idx.toFloat() / soundSequencePitches.size.coerceAtLeast(1).toFloat()
 
-                                    try {
-                                        viewModel.audioEngine.noteOn(midiPitch, 0.85f)
-                                    } catch (_: Exception) {}
-                                    delay(500)
+                                        viewModel.midiPlayingNote.value = midiPitch
+                                        viewModel.midiActiveNotes.clear()
+                                        viewModel.midiActiveNotes[midiPitch] = true
+
+                                        try {
+                                            viewModel.audioEngine.noteOn(midiPitch, 0.85f)
+                                        } catch (_: Exception) {}
+                                        delay(stepDelay)
+                                    }
                                 }
 
                                 currentPlayingIdx = -1
@@ -533,7 +687,8 @@ Row(
                 when (inst) {
                     ChordInstrumentType.GUITAR -> {
                         val activeMidiToken = viewModel.midiPlayingNote.value
-                        val openGuitarStrings = listOf(40, 45, 50, 55, 59, 64)
+                        // Strings top to bottom: e4 (64), B3 (59), G3 (55), D3 (50), A2 (45), E2 (40)
+                        val openGuitarStrings = listOf(64, 59, 55, 50, 45, 40)
                         val highlightedGuitarCoordinate = remember(activeMidiToken, guitarShape.frets, isArpeggioRunning) {
                             if (isArpeggioRunning && activeMidiToken != null) {
                                 var targetMatch: Pair<Int, Int>? = null
@@ -548,15 +703,26 @@ Row(
                             } else null
                         }
 
+                        val fretboardBaseFret = if (mode == 0) guitarShape.baseFret else 1
+                        val fretboardChordFrets = if (mode == 0) guitarShape.frets else null
+                        val fretboardChordFingers = if (mode == 0) guitarShape.fingers else null
+
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             UnifiedGuitarFretboard(
-                                numFrets = 13,
+                                numFrets = 15,
                                 accentColor = partColor,
                                 rootNote = rootIdx,
-                                chordFrets = if (!isArpeggioRunning && mode == 0) guitarShape.frets else null,
-                                chordFingers = if (!isArpeggioRunning && mode == 0) guitarShape.fingers else null,
+                                showNoteNames = (mode == 1),
+                                markOctaves = true,
+                                highlightOctaveC = true,
+                                chordFrets = fretboardChordFrets,
+                                chordFingers = fretboardChordFingers,
+                                baseFret = fretboardBaseFret,
+                                barreFret = if (mode == 0) (guitarShape.barre ?: -1) else -1,
+                                stringLabels = listOf("e", "B", "G", "D", "A", "E"),
+                                openStringsSemis = listOf(4, 11, 7, 2, 9, 4),
                                 activeCoordinate = highlightedGuitarCoordinate,
-                                activeNotes = if (isArpeggioRunning) emptyList() else pianoPitches,
+                                activeNotes = pianoPitches,
                                 onFretTapped = { _, _, midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument("GUITAR")
@@ -605,7 +771,8 @@ Row(
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         val highlightedUkuCoordinate = remember(activeMidiToken, ukuShape.frets, isArpeggioRunning) {
                             if (isArpeggioRunning && activeMidiToken != null) {
-                                val openUkuStrings = listOf(67, 60, 64, 69)
+                                // Strings top to bottom: A4 (69), E4 (64), C4 (60), G4 (67)
+                                val openUkuStrings = listOf(69, 64, 60, 67)
                                 var targetMatch: Pair<Int, Int>? = null
                                 for (s in ukuShape.frets.indices) {
                                     val fret = ukuShape.frets[s]
@@ -623,13 +790,16 @@ Row(
                                 numFrets = 5,
                                 accentColor = partColor,
                                 rootNote = rootIdx,
+                                showNoteNames = (mode == 1),
+                                markOctaves = true,
+                                highlightOctaveC = true,
                                 chordFrets = if (mode == 0) ukuShape.frets else null,
                                 chordFingers = if (mode == 0) ukuShape.fingers else null,
                                 activeNotes = pianoPitches,
                                 baseFret = if (mode == 0) ukuShape.baseFret else 1,
-                                barreFret = -1,
-                                stringLabels = listOf("G", "C", "E", "A"),
-                                openStringsSemis = listOf(7, 0, 4, 9),
+                                barreFret = ukuShape.barre ?: -1,
+                                stringLabels = listOf("A", "E", "C", "G"),
+                                openStringsSemis = listOf(9, 4, 0, 7),
                                 activeCoordinate = highlightedUkuCoordinate,
                                 onFretTapped = { _, _, midiNote ->
                                     try {
@@ -1161,7 +1331,7 @@ fun ImmersiveKeyboardFretboardLabDialog(
     }
     var activeLabTab by remember { mutableStateOf(if (instrumentType == ChordInstrumentType.PIANO) "Piano" else if (instrumentType == ChordInstrumentType.UKULELE) "Uke" else "Guitar") }
     var selectedSpeed by remember { mutableStateOf("1.0x") }
-    var playbackMode by remember { mutableStateOf("Arpeggio") }
+    var playbackMode by remember { mutableStateOf("Sequential") }
     var isPlaying by remember { mutableStateOf(false) }
 
     var selectedMode by remember { mutableStateOf(0) } // 0 = Chords, 1 = Scales
@@ -1217,7 +1387,7 @@ fun ImmersiveKeyboardFretboardLabDialog(
     val sidebarBg = Color(0xFF0F1015)
     val rosewoodBrush = Brush.verticalGradient(listOf(Color(0xFF4A342E), Color(0xFF382723), Color(0xFF291C19)))
 
-    // Arpeggio / Strum playback loop
+    // 3 Sounding types: "Sequential" (one-by-one), "Block Chord" (all at once), "Roundtrip Arp" (low to high then back down)
     var currentAuditionIdx by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(isPlaying, selectedSpeed, playbackMode, activeChordPitches) {
         if (!isPlaying || activeChordPitches.isEmpty()) {
@@ -1230,31 +1400,54 @@ fun ImmersiveKeyboardFretboardLabDialog(
             "2.0x" -> 2.0f
             else -> 1.0f
         }
-        val stepDelay = ((if (playbackMode == "Arpeggio") 400L else 700L) / speedMult).toLong()
 
         while (isPlaying) {
-            if (playbackMode == "Arpeggio") {
-                for (idx in activeChordPitches.indices) {
-                    if (!isPlaying) break
-                    currentAuditionIdx = idx
-                    val midi = activeChordPitches[idx]
-                    try {
-                        val inst = if (activeLabTab == "Guitar" || activeLabTab == "Uke") "GUITAR" else "PIANO"
-                        viewModel.audioEngine.setInstrument(inst)
-                        viewModel.audioEngine.noteOn(midi, 0.85f)
-                    } catch (_: Exception) {}
-                    delay(stepDelay)
+            when (playbackMode) {
+                "Block Chord" -> {
+                    currentAuditionIdx = null
+                    activeChordPitches.forEach { midi ->
+                        try {
+                            val inst = if (activeLabTab == "Guitar" || activeLabTab == "Uke") "GUITAR" else "PIANO"
+                            viewModel.audioEngine.setInstrument(inst)
+                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                        } catch (_: Exception) {}
+                    }
+                    delay((650L / speedMult).toLong())
                 }
-            } else {
-                currentAuditionIdx = null
-                activeChordPitches.forEach { midi ->
-                    try {
-                        val inst = if (activeLabTab == "Guitar" || activeLabTab == "Uke") "GUITAR" else "PIANO"
-                        viewModel.audioEngine.setInstrument(inst)
-                        viewModel.audioEngine.noteOn(midi, 0.85f)
-                    } catch (_: Exception) {}
+                "Roundtrip Arp" -> {
+                    val roundtripPitches = if (activeChordPitches.size > 2) {
+                        activeChordPitches + activeChordPitches.subList(0, activeChordPitches.size - 1).reversed()
+                    } else if (activeChordPitches.size == 2) {
+                        listOf(activeChordPitches[0], activeChordPitches[1], activeChordPitches[0])
+                    } else {
+                        activeChordPitches
+                    }
+                    val stepDelay = ((320L) / speedMult).toLong()
+                    for (pitch in roundtripPitches) {
+                        if (!isPlaying) break
+                        currentAuditionIdx = activeChordPitches.indexOf(pitch)
+                        try {
+                            val inst = if (activeLabTab == "Guitar" || activeLabTab == "Uke") "GUITAR" else "PIANO"
+                            viewModel.audioEngine.setInstrument(inst)
+                            viewModel.audioEngine.noteOn(pitch, 0.85f)
+                        } catch (_: Exception) {}
+                        delay(stepDelay)
+                    }
                 }
-                delay(stepDelay)
+                else -> { // "Sequential" / "Arpeggio"
+                    val stepDelay = ((380L) / speedMult).toLong()
+                    for (idx in activeChordPitches.indices) {
+                        if (!isPlaying) break
+                        currentAuditionIdx = idx
+                        val midi = activeChordPitches[idx]
+                        try {
+                            val inst = if (activeLabTab == "Guitar" || activeLabTab == "Uke") "GUITAR" else "PIANO"
+                            viewModel.audioEngine.setInstrument(inst)
+                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                        } catch (_: Exception) {}
+                        delay(stepDelay)
+                    }
+                }
             }
         }
     }
@@ -1587,7 +1780,7 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                 }
                             }
 
-                            // Playback Mode Chip: Arpeggio / Strum
+                            // Playback Mode Chip: Sequential / Block Chord / Roundtrip Arp
                             Box(
                                 modifier = Modifier
                                     .height(28.dp)
@@ -1595,11 +1788,25 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(Color(0xFF1E2129))
                                     .clickable {
-                                        playbackMode = if (playbackMode == "Arpeggio") "Strum" else "Arpeggio"
+                                        playbackMode = when (playbackMode) {
+                                            "Sequential" -> "Block Chord"
+                                            "Block Chord" -> "Roundtrip Arp"
+                                            else -> "Sequential"
+                                        }
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(playbackMode, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text(
+                                    text = when (playbackMode) {
+                                        "Sequential" -> "Seq Strum"
+                                        "Block Chord" -> "Block (All)"
+                                        "Roundtrip Arp" -> "Arp (L⇄R)"
+                                        else -> "Seq Strum"
+                                    },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
                             }
 
                             // Play Button (Orange circle with Play icon)

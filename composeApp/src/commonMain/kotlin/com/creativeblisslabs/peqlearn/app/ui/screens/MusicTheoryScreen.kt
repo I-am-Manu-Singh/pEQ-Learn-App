@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQGlassCard
 import com.creativeblisslabs.peqlearn.app.ui.components.MetadataBadge
+import androidx.compose.ui.window.Dialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +55,19 @@ fun MusicTheoryScreen(
         }
     }
 var isSearchActive by remember { mutableStateOf(false) }
+    var isChordGalleryOpen by remember { mutableStateOf(false) }
+
+    if (isChordGalleryOpen) {
+        Dialog(
+            onDismissRequest = { isChordGalleryOpen = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            ChordDisplayGalleryScreen(
+                viewModel = viewModel,
+                onBack = { isChordGalleryOpen = false }
+            )
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -116,6 +130,14 @@ var isSearchActive by remember { mutableStateOf(false) }
                         selectedPart = part
                         searchQuery = ""
                     },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = part.icon,
+                            contentDescription = part.label,
+                            tint = if (isSelected) MaterialTheme.colorScheme.primary else part.color.copy(alpha = 0.85f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
                     label = {
                         Text(
                             text = part.label,
@@ -126,10 +148,22 @@ var isSearchActive by remember { mutableStateOf(false) }
             }
         }
 
+        // All Chords Gallery Button
+        IconButton(
+            onClick = { isChordGalleryOpen = true },
+            modifier = Modifier.padding(start = 4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.LibraryMusic,
+                contentDescription = "Open Chord Gallery",
+                tint = Color(0xFFFF9E1B)
+            )
+        }
+
         // The single search icon that triggers full width search
         IconButton(
             onClick = { isSearchActive = true },
-            modifier = Modifier.padding(start = 8.dp)
+            modifier = Modifier.padding(start = 4.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Search,
@@ -150,6 +184,18 @@ var isSearchActive by remember { mutableStateOf(false) }
             when (activeSection) {
                 TheoryPart.CHORDS -> {
                     ChordDictionaryPanel(viewModel = viewModel)
+                }
+                TheoryPart.REFERENCE -> {
+                    ReferenceStudioPanel(
+                        viewModel = viewModel,
+                        onOpenChordGallery = { isChordGalleryOpen = true }
+                    )
+                }
+                TheoryPart.TOOLS -> {
+                    ToolsStudioPanel(viewModel = viewModel)
+                }
+                TheoryPart.PROGRESSIONS -> {
+                    ProgressionsStudioPanel(viewModel = viewModel)
                 }
                 TheoryPart.CONCEPTS -> {
                     ConceptsBrowser(

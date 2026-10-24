@@ -985,11 +985,20 @@ private fun drawTabMeasureContent(
 
 
         if (playheadOffset != null) {
-            val playheadX = systemContentStartX + (usableMeasureWidth * playheadOffset)
+            val matchingTabNote = if (playingNote != null) {
+                measure.notes.firstOrNull { !it.isRest && it.midiNote == playingNote }
+            } else null
+
+            val targetPlayheadX = if (matchingTabNote != null) {
+                snap(systemContentStartX + (usableMeasureWidth * matchingTabNote.position / beatsPerMeasure))
+            } else {
+                systemContentStartX + (usableMeasureWidth * playheadOffset)
+            }
+
             drawLine(
                 color = config.primaryColor,
-                start = Offset(playheadX, tBase - 10f),
-                end = Offset(playheadX, tBase + (5 * config.lineSpacing) + 10f),
+                start = Offset(targetPlayheadX, tBase - 10f),
+                end = Offset(targetPlayheadX, tBase + (5 * config.lineSpacing) + 10f),
                 strokeWidth = 2.dp.toPx()
             )
         }
@@ -1540,11 +1549,35 @@ private fun drawStaffMeasureContent(
 
 
         if (playheadOffset != null) {
-            val playheadX = notesStartX + (usableMeasureWidth * playheadOffset)
+            val matchingActiveNote = if (playingNote != null) {
+                visibleNotes.firstOrNull { it.midiNote == playingNote }
+            } else null
+
+            val targetPlayheadX = if (matchingActiveNote != null) {
+                matchingActiveNote.nx
+            } else if (computedXByPosition.isNotEmpty()) {
+                val targetPos = playheadOffset * beatsPerMeasure
+                val keys = computedXByPosition.keys.sorted()
+                val exactOrLower = keys.lastOrNull { it <= targetPos }
+                val higher = keys.firstOrNull { it > targetPos }
+                if (exactOrLower != null && higher != null) {
+                    val x1 = computedXByPosition[exactOrLower] ?: (notesStartX + 12f)
+                    val x2 = computedXByPosition[higher] ?: (notesStartX + usableMeasureWidth)
+                    val fraction = if (higher > exactOrLower) (targetPos - exactOrLower) / (higher - exactOrLower) else 0f
+                    x1 + (x2 - x1) * fraction
+                } else if (exactOrLower != null) {
+                    computedXByPosition[exactOrLower] ?: (notesStartX + (usableMeasureWidth * playheadOffset))
+                } else {
+                    computedXByPosition[keys.first()] ?: (notesStartX + (usableMeasureWidth * playheadOffset))
+                }
+            } else {
+                notesStartX + (usableMeasureWidth * playheadOffset)
+            }
+
             drawLine(
                 color = config.primaryColor,
-                start = Offset(playheadX, config.trebleBaseline - 15f),
-                end = Offset(playheadX, config.bassBaseline + (4 * config.lineSpacing) + 15f),
+                start = Offset(targetPlayheadX, config.trebleBaseline - 15f),
+                end = Offset(targetPlayheadX, config.bassBaseline + (4 * config.lineSpacing) + 15f),
                 strokeWidth = 2.5.dp.toPx()
             )
         }

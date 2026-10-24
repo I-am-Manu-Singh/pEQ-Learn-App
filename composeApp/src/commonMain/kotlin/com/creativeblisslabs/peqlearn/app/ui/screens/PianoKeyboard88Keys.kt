@@ -35,6 +35,19 @@ import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Piano
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.*
@@ -333,6 +346,20 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                         }
 
                                         Button(
+                                            onClick = { viewModel.onPickScoreFileRequested?.invoke() },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.onSurface.copy(0.1f)
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.height(26.dp)
+                                        ) {
+                                            Icon(Icons.Default.UploadFile, contentDescription = "Open Score", modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurface)
+                                            Spacer(Modifier.width(3.dp))
+                                            Text("Score", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
+                                        }
+
+                                        Button(
                                             onClick = {
                                                 viewModel.showWaterfall.value = !viewModel.showWaterfall.value
                                             },
@@ -466,66 +493,80 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                         }
                                     }
 
-                                    // Outer Neon Glow Block
+                                    val pillCorner = 12f
+                                    val pillHeight = (bottomY - topY)
+
+                                    // Outer Soft Glow
                                     drawRoundRect(
-                                        brush = Brush.verticalGradient(
+                                        brush = Brush.radialGradient(
                                             colors = listOf(
-                                                block.color.copy(alpha = 0.08f),
-                                                block.color.copy(alpha = 0.35f),
-                                                block.color.copy(alpha = 0.55f)
+                                                block.color.copy(alpha = 0.40f),
+                                                block.color.copy(alpha = 0.12f),
+                                                Color.Transparent
                                             ),
-                                            startY = topY,
-                                            endY = bottomY
+                                            center = Offset(centerX, topY + pillHeight / 2f),
+                                            radius = baseBlockWidth * 1.3f
                                         ),
-                                        topLeft = Offset(finalX - 3f, topY - 2f),
-                                        size = Size(baseBlockWidth + 6f, (bottomY - topY) + 4f),
-                                        cornerRadius = CornerRadius(6f, 6f)
+                                        topLeft = Offset(finalX - 3f, topY - 3f),
+                                        size = Size(baseBlockWidth + 6f, pillHeight + 6f),
+                                        cornerRadius = CornerRadius(pillCorner + 3f, pillCorner + 3f)
                                     )
 
-                                    // Core Ribbon Block
+                                    // Core Waterdrop Pill Body
                                     drawRoundRect(
                                         brush = Brush.verticalGradient(
                                             colors = listOf(
-                                                block.color.copy(alpha = 0.80f),
-                                                block.color.copy(alpha = 0.95f),
-                                                Color.White.copy(alpha = 0.92f)
+                                                block.color.copy(alpha = 0.90f),
+                                                block.color.copy(alpha = 1.0f),
+                                                block.color.copy(alpha = 0.92f)
                                             ),
                                             startY = topY,
                                             endY = bottomY
                                         ),
                                         topLeft = Offset(finalX, topY),
-                                        size = Size(baseBlockWidth, (bottomY - topY)),
-                                        cornerRadius = CornerRadius(4f, 4f)
+                                        size = Size(baseBlockWidth, pillHeight),
+                                        cornerRadius = CornerRadius(pillCorner, pillCorner)
                                     )
 
-                                    // MIDIVisualizer Glass Edge Highlight
-                                    drawLine(
-                                        color = Color.White.copy(alpha = 0.65f),
-                                        start = Offset(finalX + 1f, topY),
-                                        end = Offset(finalX + 1f, bottomY),
-                                        strokeWidth = 1.2f
-                                    )
-                                    drawLine(
-                                        color = Color.White.copy(alpha = 0.65f),
-                                        start = Offset(finalX + baseBlockWidth - 1f, topY),
-                                        end = Offset(finalX + baseBlockWidth - 1f, bottomY),
-                                        strokeWidth = 1.2f
+                                    // Top Gloss Reflection (Waterdrop glassy shine)
+                                    drawRoundRect(
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.White.copy(alpha = 0.35f),
+                                                Color.White.copy(alpha = 0.05f),
+                                                Color.Transparent
+                                            ),
+                                            startY = topY,
+                                            endY = topY + (pillHeight * 0.55f)
+                                        ),
+                                        topLeft = Offset(finalX + 1.2f, topY + 1.2f),
+                                        size = Size(baseBlockWidth - 2.4f, pillHeight * 0.55f),
+                                        cornerRadius = CornerRadius(pillCorner - 1f, pillCorner - 1f)
                                     )
 
-                                    // Dynamic Note Pitch Name Highlighted inside Block
-                                    val noteLabel = getNoteNameFromMidi(block.midiNote)
-                                    val textY = topY + ((bottomY - topY) / 2f) + 4.dp.toPx()
+                                    // Crisp Border
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.28f),
+                                        topLeft = Offset(finalX, topY),
+                                        size = Size(baseBlockWidth, pillHeight),
+                                        cornerRadius = CornerRadius(pillCorner, pillCorner),
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
+                                    )
+
+                                    // Pitch Letter (e.g., A, B, C#, F#)
+                                    val noteLabel = getPitchOnlyFromMidi(block.midiNote)
+                                    val textY = topY + (pillHeight / 2f) + 3.8.dp.toPx()
                                     drawContext.canvas.nativeCanvas.drawText(
                                         noteLabel,
                                         centerX,
                                         textY,
                                         android.graphics.Paint().apply {
                                             color = android.graphics.Color.WHITE
-                                            textSize = 9.dp.toPx()
+                                            textSize = 10.dp.toPx()
                                             textAlign = android.graphics.Paint.Align.CENTER
                                             typeface = android.graphics.Typeface.DEFAULT_BOLD
                                             isAntiAlias = true
-                                            setShadowLayer(4f, 0f, 1f, android.graphics.Color.BLACK)
+                                            setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
                                         }
                                     )
                                 }
@@ -648,6 +689,10 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                 var fsShowLetters by rememberSaveable { mutableStateOf(showNoteLabels) }
                 var fsShowLyrics by rememberSaveable { mutableStateOf(true) }
                 var fsShowWaterfall by rememberSaveable { mutableStateOf(viewModel.showWaterfall.value) }
+                // Layout Mode: "Split" (Notation on Top + Waterfall + Keyboard on Bottom), "Waterfall", or "Notation"
+                var fsLayoutMode by rememberSaveable { mutableStateOf("Split") }
+                var fsLayoutMenuExpanded by remember { mutableStateOf(false) }
+                var fsInstrumentMenuExpanded by remember { mutableStateOf(false) }
 
                 val isPlaying = viewModel.isScorePlaying.value
                 val currentScore = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
@@ -716,211 +761,311 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                             .fillMaxSize()
                             .graphicsLayer(scaleX = fsZoomFactor, scaleY = fsZoomFactor, translationX = panOffset.x, translationY = panOffset.y)
                     ) {
-                      AnimatedVisibility(
-    visible = areControlsVisible,
-    enter = fadeIn(tween(250)),
-    exit = fadeOut(tween(300)),
-    modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 12.dp, vertical = 6.dp)
-) {
-    @OptIn(ExperimentalLayoutApi::class)
-    FlowRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // Item 1: Fullscreen Corner MIDI Device Status Badge
-        // PianoMidiStatusBadge(
-        //     deviceName = viewModel.connectedMidiDeviceName.value,
-        //     lastVelocity = viewModel.lastMidiVelocity.intValue,
-        //     lastChannel = viewModel.lastMidiChannel.intValue,
-        //     onDeviceClick = {
-        //         viewModel.onScanMidiDevicesRequested?.invoke()
-        //     },
-        //     modifier = Modifier
-        // )
+                        // --- TOP BAR: Styled exactly like reference image 2 ---
+                        AnimatedVisibility(
+                            visible = areControlsVisible,
+                            enter = fadeIn(tween(250)),
+                            exit = fadeOut(tween(300)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                color = Color(0xFF0F0B18).copy(alpha = 0.92f),
+                                shape = RoundedCornerShape(22.dp),
+                                border = BorderStroke(1.dp, Color(0xFF281E38))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    // Left: Song Info with Blue Pulsing Dot & Song Title
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    ) {
+                                        // Blue glowing indicator dot
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF5C6BC0))
+                                        )
+                                        Column {
+                                            Text(
+                                                "NOW PLAYING",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF7986CB),
+                                                letterSpacing = 1.sp
+                                            )
+                                            val songTitle = currentScore?.title ?: "Mozart - Rondo Alla Turca (Turkish March)"
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    songTitle,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color.White,
+                                                    maxLines = 1
+                                                )
+                                                // Animated equalizer icon
+                                                Icon(
+                                                    Icons.Default.GraphicEq,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF5C6BC0),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                            }
+                                        }
+                                    }
 
-        // Item 2: Playback Controls & Timeline Slider
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = primaryColor,
-                modifier = Modifier.size(32.dp)
-            ) {
-                IconButton(onClick = { viewModel.toggleScorePlayback() }) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-            IconButton(
-                onClick = { viewModel.resetScorePlayhead() },
-                modifier = Modifier.size(30.dp)
-            ) {
-                Icon(
-                    Icons.Default.Stop,
-                    null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Text(
-                text = currentTimeStr,
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                fontWeight = FontWeight.Bold
-            )
-            Slider(
-                value = timelineProgress,
-                onValueChange = { targetProgress ->
-                    if (currentScore != null && totalSeconds > 0) {
-                        val targetTotalSec = targetProgress * totalSeconds.toFloat()
-                        var accumulated = 0f
-                        var targetM = 0
-                        var targetO = 0f
-                        for (i in currentScore.measures.indices) {
-                            val m = currentScore.measures[i]
-                            val mDur = (60f / currentScore.tempo) * m.timeSignatureNumerator
-                            if (targetTotalSec < accumulated + mDur) {
-                                targetM = i
-                                targetO = (targetTotalSec - accumulated) / mDur
-                                break
-                            }
-                            accumulated += mDur
-                            if (i == currentScore.measures.lastIndex) {
-                                targetM = i
-                                targetO = 1.0f
+                                    // Right: Clean Non-redundant Action Icons
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        // Share / Quick Upload
+                                        IconButton(
+                                            onClick = { /* Share score */ },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Share,
+                                                contentDescription = "Share",
+                                                tint = Color.White.copy(0.75f),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+
+                                        // Theme / Palette Button (Toggles Letters / Style)
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color(0xFF231838),
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            IconButton(
+                                                onClick = { fsShowLetters = !fsShowLetters },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Palette,
+                                                    contentDescription = "Color Theme / Labels",
+                                                    tint = Color(0xFF9FA8DA),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+
+                                        // Settings Menu
+                                        IconButton(
+                                            onClick = { viewModel.showSettings.value = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Menu,
+                                                contentDescription = "Menu / Settings",
+                                                tint = Color.White.copy(0.75f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        // Display Mode Selector (Split: Notation on Top + Waterfall, Waterfall Only, Notation Only)
+                                        Box {
+                                            Surface(
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = Color(0xFF1E162E),
+                                                border = BorderStroke(1.dp, Color(0xFF372754)),
+                                                modifier = Modifier.clickable { fsLayoutMenuExpanded = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Dashboard,
+                                                        contentDescription = "Layout Mode",
+                                                        tint = Color(0xFF81D4FA),
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                    Text(
+                                                        fsLayoutMode,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = Color.White
+                                                    )
+                                                    Icon(
+                                                        Icons.Default.ArrowDropDown,
+                                                        contentDescription = null,
+                                                        tint = Color.White.copy(0.7f),
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
+                                            }
+                                            DropdownMenu(
+                                                expanded = fsLayoutMenuExpanded,
+                                                onDismissRequest = { fsLayoutMenuExpanded = false }
+                                            ) {
+                                                listOf(
+                                                    "Split (Notation + Waterfall)" to "Split",
+                                                    "Waterfall Only" to "Waterfall",
+                                                    "Notation Only" to "Notation"
+                                                ).forEach { (label, modeKey) ->
+                                                    DropdownMenuItem(
+                                                        text = {
+                                                            Text(
+                                                                label,
+                                                                fontSize = 12.sp,
+                                                                fontWeight = if (fsLayoutMode == modeKey) FontWeight.Bold else FontWeight.Normal,
+                                                                color = if (fsLayoutMode == modeKey) Color(0xFF5C6BC0) else Color.Unspecified
+                                                            )
+                                                        },
+                                                        onClick = {
+                                                            fsLayoutMode = modeKey
+                                                            fsShowWaterfall = (modeKey == "Waterfall" || modeKey == "Split")
+                                                            fsLayoutMenuExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Learn / Theory
+                                        IconButton(
+                                            onClick = { fsShowLyrics = !fsShowLyrics },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.School,
+                                                contentDescription = "Learn / Lyrics",
+                                                tint = if (fsShowLyrics) Color(0xFF5C6BC0) else Color.White.copy(0.75f),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+
+                                        // Instrument Dropdown Selector
+                                        Box {
+                                            Surface(
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = Color(0xFF1E162E),
+                                                border = BorderStroke(1.dp, Color(0xFF2E2445)),
+                                                modifier = Modifier.clickable { fsInstrumentMenuExpanded = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Tune,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF9FA8DA),
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Text(
+                                                        viewModel.selectedInstrument.value,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = Color.White
+                                                    )
+                                                    Icon(
+                                                        Icons.Default.ArrowDropDown,
+                                                        contentDescription = null,
+                                                        tint = Color.White.copy(0.7f),
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
+                                            }
+                                            DropdownMenu(
+                                                expanded = fsInstrumentMenuExpanded,
+                                                onDismissRequest = { fsInstrumentMenuExpanded = false }
+                                            ) {
+                                                listOf("Piano", "Violin", "Guitar", "Bass", "Flute", "Saxophone").forEach { inst ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(inst, fontSize = 12.sp) },
+                                                        onClick = {
+                                                            viewModel.selectedInstrument.value = inst
+                                                            fsInstrumentMenuExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // MIDI Device Button
+                                        Surface(
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (viewModel.connectedMidiDeviceName.value.isNotBlank()) Color(0xFF1C2B24) else Color(0xFF1E162E),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (viewModel.connectedMidiDeviceName.value.isNotBlank()) Color(0xFF10B981).copy(0.5f) else Color(0xFF2E2445)
+                                            ),
+                                            modifier = Modifier.clickable {
+                                                viewModel.onScanMidiDevicesRequested?.invoke()
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Piano,
+                                                    contentDescription = "MIDI Device",
+                                                    tint = if (viewModel.connectedMidiDeviceName.value.isNotBlank()) Color(0xFF10B981) else Color.White.copy(0.8f),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                            }
+                                        }
+
+                                        // Export Button
+                                        Button(
+                                            onClick = { showExportDialog = true },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2045)),
+                                            shape = RoundedCornerShape(16.dp),
+                                            border = BorderStroke(1.dp, Color(0xFF4C3D75)),
+                                            contentPadding = PaddingValues(horizontal = 11.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Upload,
+                                                contentDescription = "Export",
+                                                tint = Color(0xFFC5CAE9),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                "Export",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFFC5CAE9)
+                                            )
+                                        }
+
+                                        // Exit Fullscreen
+                                        IconButton(
+                                            onClick = { viewModel.isFullscreenKeyboard.value = false },
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Close Fullscreen",
+                                                tint = Color.White.copy(0.6f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
-                        viewModel.seekToPosition(targetM, targetO)
-                    }
-                },
-                modifier = Modifier.width(180.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = primaryColor,
-                    activeTrackColor = primaryColor,
-                    inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
-                )
-            )
-            Text(
-                text = totalTimeStr,
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        // Item 3: Toggle Buttons, Settings, Export & Exit Fullscreen
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Button(
-                onClick = { fsShowLetters = !fsShowLetters },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (fsShowLetters) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.height(26.dp)
-            ) {
-                Text(
-                    "Letters",
-                    fontSize = 10.sp,
-                    color = if (fsShowLetters) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Button(
-                onClick = { fsShowLyrics = !fsShowLyrics },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (fsShowLyrics) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.height(26.dp)
-            ) {
-                Text(
-                    "Lyrics",
-                    fontSize = 10.sp,
-                    color = if (fsShowLyrics) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            Button(
-                onClick = {
-                    fsShowWaterfall = !fsShowWaterfall
-                    viewModel.showWaterfall.value = fsShowWaterfall
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (fsShowWaterfall) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface.copy(0.1f)
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.height(26.dp)
-            ) {
-                Text(
-                    "Waterfall",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (fsShowWaterfall) Color.Black else MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            IconButton(
-                onClick = { viewModel.showSettings.value = true },
-                modifier = Modifier.size(26.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Tune,
-                    contentDescription = "Settings",
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-            Button(
-                onClick = { showExportDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                modifier = Modifier.height(26.dp)
-            ) {
-                Icon(
-                    Icons.Default.Movie,
-                    contentDescription = "Export Video",
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "Video",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-            }
-            IconButton(
-                onClick = { viewModel.isFullscreenKeyboard.value = false },
-                modifier = Modifier.size(26.dp)
-            ) {
-                Icon(
-                    Icons.Default.FullscreenExit,
-                    null,
-                    tint = Color(0xFFFF6B35),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-    }
-}
                     
                         // Fullscreen Interactive Piano Area with Synchronized Waterfall & Keyboard
                         BoxWithConstraints(
@@ -943,55 +1088,135 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                         .width(finalWidth)
                                         .fillMaxHeight()
                                 ) {
-                                    // Waterfall or Notation Canvas matching exact piano keyboard width
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f)
-                                            .background(Color.Black)
-                                    ) {
-                                        if (fsShowWaterfall) {
-                                            SynthesiaWaterfallOverlay(
-                                                activeMidiNotes = viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet(),
-                                                modifier = Modifier.fillMaxSize(),
-                                                primaryColor = primaryColor,
-                                                glowEffect = true,
-                                                particlesEnabled = viewModel.showWaterfallParticles.value,
-                                                is3DPerspective = viewModel.is3DPerspectiveMode.value,
-                                                horizonScale = viewModel.horizonScale.floatValue,
-                                                particleCount = viewModel.particleCount.intValue,
-                                                particleSpeed = viewModel.particleSpeed.floatValue,
-                                                particleScale = viewModel.particleScale.floatValue,
-                                                particleExpansion = viewModel.particleExpansion.floatValue,
-                                                lockParticleColor = viewModel.lockParticleColor.value,
-                                                particleCustomColor = viewModel.particleCustomColor.value,
-                                                flashSize = viewModel.flashSize.floatValue,
-                                                flashHaloIntensity = viewModel.flashHaloIntensity.floatValue,
-                                                noteCornerRadius = viewModel.noteCornerRadius.floatValue,
-                                                noteEdgeThickness = viewModel.noteEdgeThickness.floatValue,
-                                                noteStyleOval = viewModel.noteStyleOval.value
-                                            )
-                                        } else {
-                                            StaffAndTabNotationViewer(
-                                                score = currentScore,
-                                                playheadMeasure = viewModel.scorePlayheadMeasure.value,
-                                                playheadOffset = viewModel.scorePlayheadOffset.value,
-                                                activeMidiNotes = viewModel.midiActiveNotes,
-                                                playingNote = viewModel.midiPlayingNote.value,
-                                                primaryColor = primaryColor,
-                                                currentFormat = notationFormat,
-                                                onFormatChange = { newFormat -> notationFormat = newFormat },
-                                                showLetters = viewModel.showNotationNoteNames.value,
-                                                showLyrics = fsShowLyrics,
-                                                isSplitStaff = viewModel.isSplitStaff.value,
-                                                isVerticalScroll = viewModel.isVerticalScroll.value,
-                                                leftHandColor = viewModel.leftHandColor.value,
-                                                rightHandColor = viewModel.rightHandColor.value,
-                                                isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                                isRightHandHidden = viewModel.isRightHandHidden.value,
-                                                showScoreHeader = false,
-                                                modifier = Modifier.fillMaxSize()
-                                            )
+                                    // Visual Area: Accommodates Split (Notation on Top + Waterfall), Waterfall only, or Notation only
+                                    when (fsLayoutMode) {
+                                        "Split" -> {
+                                            // 1. Notation Rendering on Top (40% height)
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .weight(0.42f)
+                                                    .background(Color(0xFF0D0B14))
+                                            ) {
+                                                StaffAndTabNotationViewer(
+                                                    score = currentScore,
+                                                    playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                                    playheadOffset = viewModel.scorePlayheadOffset.value,
+                                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                                    playingNote = viewModel.midiPlayingNote.value,
+                                                    primaryColor = primaryColor,
+                                                    currentFormat = notationFormat,
+                                                    onFormatChange = { newFormat -> notationFormat = newFormat },
+                                                    showLetters = viewModel.showNotationNoteNames.value,
+                                                    showLyrics = fsShowLyrics,
+                                                    isSplitStaff = viewModel.isSplitStaff.value,
+                                                    isVerticalScroll = viewModel.isVerticalScroll.value,
+                                                    leftHandColor = viewModel.leftHandColor.value,
+                                                    rightHandColor = viewModel.rightHandColor.value,
+                                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                    showScoreHeader = false,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+
+                                                // Clean separator divider between notation and waterfall
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(1.dp)
+                                                        .align(Alignment.BottomCenter)
+                                                        .background(Color(0x33FFFFFF))
+                                                )
+                                            }
+
+                                            // 2. Waterfall Falling Notes in Middle (58% height)
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .weight(0.58f)
+                                                    .background(Color.Black)
+                                            ) {
+                                                SynthesiaWaterfallOverlay(
+                                                    activeMidiNotes = viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet(),
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    primaryColor = primaryColor,
+                                                    glowEffect = true,
+                                                    particlesEnabled = viewModel.showWaterfallParticles.value,
+                                                    is3DPerspective = viewModel.is3DPerspectiveMode.value,
+                                                    horizonScale = viewModel.horizonScale.floatValue,
+                                                    particleCount = viewModel.particleCount.intValue,
+                                                    particleSpeed = viewModel.particleSpeed.floatValue,
+                                                    particleScale = viewModel.particleScale.floatValue,
+                                                    particleExpansion = viewModel.particleExpansion.floatValue,
+                                                    lockParticleColor = viewModel.lockParticleColor.value,
+                                                    particleCustomColor = viewModel.particleCustomColor.value,
+                                                    flashSize = viewModel.flashSize.floatValue,
+                                                    flashHaloIntensity = viewModel.flashHaloIntensity.floatValue,
+                                                    noteCornerRadius = viewModel.noteCornerRadius.floatValue,
+                                                    noteEdgeThickness = viewModel.noteEdgeThickness.floatValue,
+                                                    noteStyleOval = viewModel.noteStyleOval.value
+                                                )
+                                            }
+                                        }
+                                        "Notation" -> {
+                                            // Full height notation viewer
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .weight(1f)
+                                                    .background(Color(0xFF0D0B14))
+                                            ) {
+                                                StaffAndTabNotationViewer(
+                                                    score = currentScore,
+                                                    playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                                    playheadOffset = viewModel.scorePlayheadOffset.value,
+                                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                                    playingNote = viewModel.midiPlayingNote.value,
+                                                    primaryColor = primaryColor,
+                                                    currentFormat = notationFormat,
+                                                    onFormatChange = { newFormat -> notationFormat = newFormat },
+                                                    showLetters = viewModel.showNotationNoteNames.value,
+                                                    showLyrics = fsShowLyrics,
+                                                    isSplitStaff = viewModel.isSplitStaff.value,
+                                                    isVerticalScroll = viewModel.isVerticalScroll.value,
+                                                    leftHandColor = viewModel.leftHandColor.value,
+                                                    rightHandColor = viewModel.rightHandColor.value,
+                                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                    showScoreHeader = false,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                        }
+                                        else -> {
+                                            // Waterfall Only full height
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .weight(1f)
+                                                    .background(Color.Black)
+                                            ) {
+                                                SynthesiaWaterfallOverlay(
+                                                    activeMidiNotes = viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet(),
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    primaryColor = primaryColor,
+                                                    glowEffect = true,
+                                                    particlesEnabled = viewModel.showWaterfallParticles.value,
+                                                    is3DPerspective = viewModel.is3DPerspectiveMode.value,
+                                                    horizonScale = viewModel.horizonScale.floatValue,
+                                                    particleCount = viewModel.particleCount.intValue,
+                                                    particleSpeed = viewModel.particleSpeed.floatValue,
+                                                    particleScale = viewModel.particleScale.floatValue,
+                                                    particleExpansion = viewModel.particleExpansion.floatValue,
+                                                    lockParticleColor = viewModel.lockParticleColor.value,
+                                                    particleCustomColor = viewModel.particleCustomColor.value,
+                                                    flashSize = viewModel.flashSize.floatValue,
+                                                    flashHaloIntensity = viewModel.flashHaloIntensity.floatValue,
+                                                    noteCornerRadius = viewModel.noteCornerRadius.floatValue,
+                                                    noteEdgeThickness = viewModel.noteEdgeThickness.floatValue,
+                                                    noteStyleOval = viewModel.noteStyleOval.value
+                                                )
+                                            }
                                         }
                                     }
 
@@ -1064,6 +1289,272 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                             }
                         }
                     }
+
+                    // --- FLOATING BOTTOM PLAYBACK BAR: Styled exactly like reference image 1 ---
+                    AnimatedVisibility(
+                        visible = areControlsVisible,
+                        enter = fadeIn(tween(250)),
+                        exit = fadeOut(tween(300)),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 155.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(32.dp),
+                            color = Color(0xFF0F0B18).copy(alpha = 0.94f),
+                            border = BorderStroke(1.dp, Color(0xFF281E38)),
+                            shadowElevation = 10.dp,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // 1. Drag / Grip Handle
+                                Icon(
+                                    Icons.Default.Tune,
+                                    contentDescription = "Grip",
+                                    tint = Color.White.copy(0.35f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+
+                                // 2. Metronome / Notification Bell
+                                IconButton(
+                                    onClick = {
+                                        viewModel.metronomeEnabled.value = !viewModel.metronomeEnabled.value
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.GraphicEq,
+                                        contentDescription = "Metronome",
+                                        tint = if (viewModel.metronomeEnabled.value) Color(0xFF7986CB) else Color.White.copy(0.45f),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+
+                                // 3. Previous Track / Reset
+                                IconButton(
+                                    onClick = { viewModel.resetScorePlayhead() },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.SkipPrevious,
+                                        contentDescription = "Previous",
+                                        tint = Color.White.copy(0.85f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // 4. Circular Glowing Play / Pause Button
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFF5C6BC0),
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { viewModel.toggleScorePlayback() },
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                            contentDescription = "Play/Pause",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+
+                                // 5. Next Track
+                                IconButton(
+                                    onClick = { /* Next marker */ },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.SkipNext,
+                                        contentDescription = "Next",
+                                        tint = Color.White.copy(0.85f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // 6. Current Time Elapsed
+                                Text(
+                                    currentTimeStr,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White.copy(0.65f)
+                                )
+
+                                // 7. Blue Scrubbing Progress Slider
+                                Slider(
+                                    value = timelineProgress,
+                                    onValueChange = { targetProgress ->
+                                        if (currentScore != null && totalSeconds > 0) {
+                                            val targetTotalSec = targetProgress * totalSeconds.toFloat()
+                                            var accumulated = 0f
+                                            var targetM = 0
+                                            var targetO = 0f
+                                            for (i in currentScore.measures.indices) {
+                                                val m = currentScore.measures[i]
+                                                val mDur = (60f / currentScore.tempo) * m.timeSignatureNumerator
+                                                if (targetTotalSec < accumulated + mDur) {
+                                                    targetM = i
+                                                    targetO = (targetTotalSec - accumulated) / mDur
+                                                    break
+                                                }
+                                                accumulated += mDur
+                                                if (i == currentScore.measures.lastIndex) {
+                                                    targetM = i
+                                                    targetO = 1.0f
+                                                }
+                                            }
+                                            viewModel.seekToPosition(targetM, targetO)
+                                        }
+                                    },
+                                    modifier = Modifier.width(130.dp),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color.White,
+                                        activeTrackColor = Color(0xFF5C6BC0),
+                                        inactiveTrackColor = Color(0xFF231838)
+                                    )
+                                )
+
+                                // 8. Total Song Duration
+                                Text(
+                                    totalTimeStr,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White.copy(0.65f)
+                                )
+
+                                Spacer(Modifier.width(2.dp))
+
+                                // 9. Volume Control Slider
+                                Icon(
+                                    Icons.Default.VolumeUp,
+                                    contentDescription = "Volume",
+                                    tint = Color.White.copy(0.7f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Slider(
+                                    value = viewModel.masterVolume.value,
+                                    onValueChange = { viewModel.masterVolume.value = it },
+                                    modifier = Modifier.width(75.dp),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color.White,
+                                        activeTrackColor = Color(0xFF5C6BC0),
+                                        inactiveTrackColor = Color(0xFF231838)
+                                    )
+                                )
+
+                                // 10. Speed Pill (e.g., 1x, 0.75x, 1.25x)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF1E162E),
+                                    border = BorderStroke(1.dp, Color(0xFF2E2445)),
+                                    modifier = Modifier.clickable {
+                                        viewModel.playbackSpeed.value = when (viewModel.playbackSpeed.value) {
+                                            0.5f -> 0.75f
+                                            0.75f -> 1.0f
+                                            1.0f -> 1.25f
+                                            1.25f -> 1.5f
+                                            else -> 0.5f
+                                        }
+                                    }
+                                ) {
+                                    Text(
+                                        "${viewModel.playbackSpeed.value}x",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White.copy(0.9f),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                // 11. Transpose Pill with Minus / Number / Plus
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF1E162E))
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { viewModel.transposition.intValue = (viewModel.transposition.intValue - 1).coerceAtLeast(-12) },
+                                        modifier = Modifier.size(20.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Remove,
+                                            contentDescription = "Transpose Down",
+                                            tint = Color.White.copy(0.8f),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                    Text(
+                                        "${viewModel.transposition.intValue}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier
+                                            .clickable { viewModel.transposition.intValue = 0 }
+                                            .padding(horizontal = 3.dp)
+                                    )
+                                    IconButton(
+                                        onClick = { viewModel.transposition.intValue = (viewModel.transposition.intValue + 1).coerceAtMost(12) },
+                                        modifier = Modifier.size(20.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = "Transpose Up",
+                                            tint = Color.White.copy(0.8f),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+
+                                // 12. Vertical Scroll / Zoom / Perspective Slider
+                                Icon(
+                                    Icons.Default.SwapVert,
+                                    contentDescription = "Perspective / Horizon",
+                                    tint = Color.White.copy(0.7f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Slider(
+                                    value = viewModel.horizonScale.floatValue,
+                                    onValueChange = { viewModel.horizonScale.floatValue = it },
+                                    valueRange = 0.3f..1.0f,
+                                    modifier = Modifier.width(65.dp),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color.White,
+                                        activeTrackColor = Color(0xFF5C6BC0),
+                                        inactiveTrackColor = Color(0xFF231838)
+                                    )
+                                )
+
+                                // 13. Close / Dismiss Pill Button
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFF1E162E),
+                                    modifier = Modifier.size(26.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { areControlsVisible = false },
+                                        modifier = Modifier.size(26.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Hide Controls",
+                                            tint = Color.White.copy(0.7f),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1129,28 +1620,12 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                 on3DPerspectiveChange = { viewModel.is3DPerspectiveMode.value = it },
                 horizonScale = viewModel.horizonScale.floatValue,
                 onHorizonScaleChange = { viewModel.horizonScale.floatValue = it },
+                showLyrics = viewModel.showLyrics.value,
+                onShowLyricsChange = { viewModel.showLyrics.value = it },
                 initialTab = 0,
                 onDismiss = { viewModel.showSettings.value = false }
             )
         }
-
-    if (viewModel.showSettings.value) {
-        PlaybackSettingsSheet(
-            viewModel = viewModel,
-            notationFormat = viewModel.notationFormat.value,
-            onFormatChange = { viewModel.notationFormat.value = it },
-            showLetters = viewModel.showPianoKeyLabels.value,
-            onShowLettersChange = { viewModel.showPianoKeyLabels.value = it },
-            is3DPerspective = viewModel.is3DPerspectiveMode.value,
-            on3DPerspectiveChange = { viewModel.is3DPerspectiveMode.value = it },
-            horizonScale = viewModel.horizonScale.floatValue,
-            onHorizonScaleChange = { viewModel.horizonScale.floatValue = it },
-            showLyrics = true,
-            onShowLyricsChange = {},
-            initialTab = 1,
-            onDismiss = { viewModel.showSettings.value = false }
-        )
-}
 }
 
 // @Composable
@@ -2070,6 +2545,11 @@ fun getNoteNameFromMidi(midiNote: Int): String {
     return "$noteName$octave"
 }
 
+fun getPitchOnlyFromMidi(midiNote: Int): String {
+    val names = listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
+    return names[midiNote % 12]
+}
+
 @Composable
 fun SynthesiaWaterfallOverlay(
     activeMidiNotes: Set<Int>,
@@ -2223,15 +2703,38 @@ fun SynthesiaWaterfallOverlay(
         canvasWidthPx.value = size.width
         canvasHeightPx.value = size.height
 
-        // 1. Draw Falling Note Ribbons with 3D Perspective or 2D Glow
+        // Background Subtle Key Lane Grid Lines matching reference image
+        val gridLineColor = Color(0xFF221510)
+        for (i in 0..whiteKeyCount) {
+            val gx = i * whiteKeyWidthPx
+            drawLine(
+                color = gridLineColor,
+                start = Offset(gx, 0f),
+                end = Offset(gx, canvasH),
+                strokeWidth = 1f
+            )
+        }
+        val gridHorizColor = Color(0xFF1C1310)
+        val hStep = canvasH / 4f
+        for (j in 1..3) {
+            val gy = j * hStep
+            drawLine(
+                color = gridHorizColor,
+                start = Offset(0f, gy),
+                end = Offset(size.width, gy),
+                strokeWidth = 1f
+            )
+        }
+
+        // 1. Draw Waterdrop Note Pills
         for (block in fallingBlocks) {
             val isBlack = isMidiNoteBlack(block.midiNote)
             val wIdx = getWhiteKeyIndexForMidi(block.midiNote)
-            val baseBlockWidth = if (isBlack) 0.62f * whiteKeyWidthPx else 0.88f * whiteKeyWidthPx
+            val baseBlockWidth = if (isBlack) 0.58f * whiteKeyWidthPx else 0.82f * whiteKeyWidthPx
             val xOffset = (whiteKeyWidthPx - baseBlockWidth) / 2f
             val finalX = (wIdx * whiteKeyWidthPx) + xOffset
             val bottomY = block.currentY.coerceAtMost(canvasH)
-            val blockHeight = (bottomY - block.startY).coerceAtLeast(24f)
+            val blockHeight = (bottomY - block.startY).coerceAtLeast(26f)
             val topY = block.startY.coerceAtMost(canvasH)
             val yRatioBottom = (bottomY / canvasH).coerceIn(0f, 1f)
             val yRatioTop = (topY / canvasH).coerceIn(0f, 1f)
@@ -2248,8 +2751,10 @@ fun SynthesiaWaterfallOverlay(
             val halfWidthBottom = (baseBlockWidth * scaleBottom) / 2f
             val halfWidthTop = (baseBlockWidth * scaleTop) / 2f
 
+            val pillCorner = 14f * (if (is3DPerspective) scaleBottom else 1.0f)
+
             if (is3DPerspective) {
-                // 3D Perspective Trapezoid Ribbon
+                // 3D Perspective Trapezoid Ribbon / Pill
                 val ribbonPath = Path().apply {
                     moveTo(projectedCenterTopX - halfWidthTop, topY)
                     lineTo(projectedCenterTopX + halfWidthTop, topY)
@@ -2260,19 +2765,19 @@ fun SynthesiaWaterfallOverlay(
 
                 if (glowEffect) {
                     val bloomPath = Path().apply {
-                        moveTo(projectedCenterTopX - halfWidthTop - 4f, topY)
-                        lineTo(projectedCenterTopX + halfWidthTop + 4f, topY)
-                        lineTo(projectedCenterBottomX + halfWidthBottom + 4f, bottomY + 2f)
-                        lineTo(projectedCenterBottomX - halfWidthBottom - 4f, bottomY + 2f)
+                        moveTo(projectedCenterTopX - halfWidthTop - 5f, topY - 2f)
+                        lineTo(projectedCenterTopX + halfWidthTop + 5f, topY - 2f)
+                        lineTo(projectedCenterBottomX + halfWidthBottom + 5f, bottomY + 3f)
+                        lineTo(projectedCenterBottomX - halfWidthBottom - 5f, bottomY + 3f)
                         close()
                     }
                     drawPath(
                         path = bloomPath,
                         brush = Brush.verticalGradient(
                             colors = listOf(
-                                block.color.copy(alpha = 0.05f),
-                                block.color.copy(alpha = 0.35f),
-                                block.color.copy(alpha = 0.65f)
+                                block.color.copy(alpha = 0.08f),
+                                block.color.copy(alpha = 0.30f),
+                                block.color.copy(alpha = 0.55f)
                             ),
                             startY = topY,
                             endY = bottomY
@@ -2280,139 +2785,151 @@ fun SynthesiaWaterfallOverlay(
                     )
                 }
 
-                // Core Glass Tube fill: High vibrancy inner neon with smooth vertical gradient
+                // Core Waterdrop Fill with Rich Amber / Copper Gradient
                 drawPath(
                     path = ribbonPath,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            block.color.copy(alpha = 0.70f),
+                            block.color.copy(alpha = 0.82f),
                             block.color.copy(alpha = 0.95f),
-                            Color.White.copy(alpha = 0.92f)
+                            block.color.copy(alpha = 1.0f)
                         ),
                         startY = topY,
                         endY = bottomY
                     )
                 )
 
-                // MIDIVisualizer Glass-Tube Cylindrical Highlight (Center highlight column)
-                val centerHighlightPath = Path().apply {
-                    val centerWTop = halfWidthTop * 0.40f
-                    val centerWBottom = halfWidthBottom * 0.40f
-                    moveTo(projectedCenterTopX - centerWTop, topY)
-                    lineTo(projectedCenterTopX + centerWTop, topY)
-                    lineTo(projectedCenterBottomX + centerWBottom, bottomY)
-                    lineTo(projectedCenterBottomX - centerWBottom, bottomY)
+                // Subtle Top & Side 3D Sheen Highlight
+                val topSheenPath = Path().apply {
+                    val sheenW = halfWidthBottom * 0.70f
+                    moveTo(projectedCenterBottomX - sheenW, bottomY - blockHeight * 0.35f)
+                    lineTo(projectedCenterBottomX + sheenW, bottomY - blockHeight * 0.35f)
+                    lineTo(projectedCenterBottomX + sheenW * 0.85f, bottomY - 3f)
+                    lineTo(projectedCenterBottomX - sheenW * 0.85f, bottomY - 3f)
                     close()
                 }
                 drawPath(
-                    path = centerHighlightPath,
+                    path = topSheenPath,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.15f),
-                            Color.White.copy(alpha = 0.45f),
-                            Color.White.copy(alpha = 0.75f)
-                        ),
-                        startY = topY,
-                        endY = bottomY
+                            Color.White.copy(alpha = 0.28f),
+                            Color.Transparent
+                        )
                     )
                 )
 
-                // MIDIVisualizer Edge Highlight Borders
-                drawLine(
-                    color = Color.White.copy(alpha = 0.6f),
-                    start = Offset(projectedCenterTopX - halfWidthTop, topY),
-                    end = Offset(projectedCenterBottomX - halfWidthBottom, bottomY),
-                    strokeWidth = 1.2f
-                )
-                drawLine(
-                    color = Color.White.copy(alpha = 0.6f),
-                    start = Offset(projectedCenterTopX + halfWidthTop, topY),
-                    end = Offset(projectedCenterBottomX + halfWidthBottom, bottomY),
-                    strokeWidth = 1.2f
+                // Delicate Border Stroke for Definition
+                drawPath(
+                    path = ribbonPath,
+                    color = Color.White.copy(alpha = 0.25f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
                 )
             } else {
-                // 2D Orthographic Flat / Glass Mode
+                // 2D Waterdrop Rounded Pill Mode matching reference screenshot
+                val noteRectTop = block.startY
+                val noteRectHeight = blockHeight
+                val noteRectLeft = finalX
+                val noteRectWidth = baseBlockWidth
+
+                // Soft Ambient Glow
                 if (glowEffect) {
                     drawRoundRect(
-                        brush = Brush.verticalGradient(
+                        brush = Brush.radialGradient(
                             colors = listOf(
-                                block.color.copy(alpha = 0.05f),
-                                block.color.copy(alpha = 0.35f),
-                                block.color.copy(alpha = 0.65f)
+                                block.color.copy(alpha = 0.45f),
+                                block.color.copy(alpha = 0.15f),
+                                Color.Transparent
                             ),
-                            startY = block.startY - 6f,
-                            endY = block.currentY + 6f
+                            center = Offset(noteRectLeft + noteRectWidth / 2f, noteRectTop + noteRectHeight / 2f),
+                            radius = noteRectWidth * 1.3f
                         ),
-                        topLeft = Offset(finalX - 6f, block.startY - 6f),
-                        size = Size(baseBlockWidth + 12f, blockHeight + 12f),
-                        cornerRadius = CornerRadius(10f, 10f)
+                        topLeft = Offset(noteRectLeft - 4f, noteRectTop - 4f),
+                        size = Size(noteRectWidth + 8f, noteRectHeight + 8f),
+                        cornerRadius = CornerRadius(pillCorner + 4f, pillCorner + 4f)
                     )
                 }
 
+                // Core Solid Pill Body
                 drawRoundRect(
-                    brush = Brush.horizontalGradient(
+                    brush = Brush.verticalGradient(
                         colors = listOf(
-                            block.color.copy(alpha = 0.85f),
-                            Color.White.copy(alpha = 0.95f),
-                            block.color.copy(alpha = 0.85f)
+                            block.color.copy(alpha = 0.90f),
+                            block.color.copy(alpha = 1.0f),
+                            block.color.copy(alpha = 0.92f)
                         ),
-                        startX = finalX,
-                        endX = finalX + baseBlockWidth
+                        startY = noteRectTop,
+                        endY = noteRectTop + noteRectHeight
                     ),
-                    topLeft = Offset(finalX, block.startY),
-                    size = Size(baseBlockWidth, blockHeight),
-                    cornerRadius = CornerRadius(5f, 5f)
+                    topLeft = Offset(noteRectLeft, noteRectTop),
+                    size = Size(noteRectWidth, noteRectHeight),
+                    cornerRadius = CornerRadius(pillCorner, pillCorner)
                 )
 
-                // Glass-Tube Side Borders
+                // Top Gloss Reflection (Waterdrop glassy shine)
                 drawRoundRect(
-                    color = Color.White.copy(alpha = 0.5f),
-                    topLeft = Offset(finalX, block.startY),
-                    size = Size(baseBlockWidth, blockHeight),
-                    cornerRadius = CornerRadius(5f, 5f),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.35f),
+                            Color.White.copy(alpha = 0.05f),
+                            Color.Transparent
+                        ),
+                        startY = noteRectTop,
+                        endY = noteRectTop + (noteRectHeight * 0.55f)
+                    ),
+                    topLeft = Offset(noteRectLeft + 1.5f, noteRectTop + 1.5f),
+                    size = Size(noteRectWidth - 3f, (noteRectHeight * 0.55f)),
+                    cornerRadius = CornerRadius(pillCorner - 1f, pillCorner - 1f)
+                )
+
+                // Subtle Crisp Border
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.28f),
+                    topLeft = Offset(noteRectLeft, noteRectTop),
+                    size = Size(noteRectWidth, noteRectHeight),
+                    cornerRadius = CornerRadius(pillCorner, pillCorner),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
                 )
             }
 
-            // Dynamic Pitch Label on Leading Edge of Note Block
-            if (blockHeight >= 20f) {
-                val noteLabel = getNoteNameFromMidi(block.midiNote)
-                val labelX = if (is3DPerspective) projectedCenterBottomX else finalX + baseBlockWidth / 2f
-                val labelY = block.currentY - (blockHeight.coerceAtMost(32f) / 2f) + 4.dp.toPx()
-                drawContext.canvas.nativeCanvas.drawText(
-                    noteLabel,
-                    labelX,
-                    labelY,
-                    android.graphics.Paint().apply {
-                        color = android.graphics.Color.WHITE
-                        textSize = 9.dp.toPx()
-                        textAlign = android.graphics.Paint.Align.CENTER
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                        isAntiAlias = true
-                        setShadowLayer(4f, 0f, 1f, android.graphics.Color.BLACK)
-                    }
-                )
+            // Clean Centered Pitch Letter (e.g. C, C#, D, E, F#, G, A, B)
+            val notePitch = getPitchOnlyFromMidi(block.midiNote)
+            val labelX = if (is3DPerspective) projectedCenterBottomX else finalX + baseBlockWidth / 2f
+            val centerY = (topY + bottomY) / 2f
+            val labelY = centerY + 3.8.dp.toPx()
+            val textPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.WHITE
+                textSize = (if (is3DPerspective) 9.5.dp.toPx() * scaleBottom else 10.dp.toPx()).coerceAtLeast(8.dp.toPx())
+                textAlign = android.graphics.Paint.Align.CENTER
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                isAntiAlias = true
+                setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
             }
+            drawContext.canvas.nativeCanvas.drawText(
+                notePitch,
+                labelX,
+                labelY,
+                textPaint
+            )
         }
 
-        // 2. Draw Contact-Line Radial Bloom / Key Flashes right on top of piano keys
+        // 2. Draw Key Landing Warm Glow / Flare at bottom contact line
         if (glowEffect) {
             for (f in flashes) {
                 val flashRadius = f.radius * (size.width / 1200f).coerceIn(0.8f, 1.6f)
-                // Outer radial bloom glow
-                drawCircle(
+                // Warm contact flare at the piano key landing edge
+                drawOval(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = (f.alpha * 0.95f).coerceIn(0f, 1f)),
-                            f.color.copy(alpha = (f.alpha * 0.7f).coerceIn(0f, 1f)),
-                            f.color.copy(alpha = (f.alpha * 0.25f).coerceIn(0f, 1f)),
+                            Color(0xFFFFCC80).copy(alpha = (f.alpha * 0.95f).coerceIn(0f, 1f)),
+                            f.color.copy(alpha = (f.alpha * 0.75f).coerceIn(0f, 1f)),
+                            f.color.copy(alpha = (f.alpha * 0.20f).coerceIn(0f, 1f)),
                             Color.Transparent
                         ),
                         center = Offset(f.centerX, canvasH),
                         radius = flashRadius
                     ),
-                    radius = flashRadius,
-                    center = Offset(f.centerX, canvasH)
+                    topLeft = Offset(f.centerX - flashRadius * 1.4f, canvasH - flashRadius * 0.45f),
+                    size = Size(flashRadius * 2.8f, flashRadius * 0.9f)
                 )
             }
         }
