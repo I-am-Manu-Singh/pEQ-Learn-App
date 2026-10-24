@@ -58,10 +58,7 @@ private fun LearnMainContent(
 
         val tabs = listOf(
             Triple("CHORDS", "Chords", Icons.Default.LibraryMusic),
-            Triple("REFERENCE", "Reference", Icons.Default.MenuBook),
-            Triple("PROGRESSIONS", "Progressions", Icons.Default.AltRoute),
-            Triple("TOOLS", "Tools", Icons.Default.Build),
-            Triple("PIANO", "Piano & Notation", Icons.Default.Piano),
+            Triple("PIANO & NOTATION", "Piano & Notation", Icons.Default.Piano),
             Triple("DRUMS", "Drums", Icons.Default.Radio),
             Triple("RIYAAZ", "Riyaaz", Icons.Default.SelfImprovement),
         )
@@ -195,24 +192,11 @@ private fun LearnMainContent(
                                     "CHORDS" -> {
                                         ChordDictionaryPanel(viewModel = viewModel)
                                     }
-                                    "REFERENCE" -> {
-                                        ReferenceStudioPanel(
-                                            viewModel = viewModel,
-                                            onOpenChordGallery = {
-                                                // opens gallery modal or view
-                                            }
-                                        )
-                                    }
-                                    "PROGRESSIONS" -> {
-                                        ProgressionsStudioPanel(viewModel = viewModel)
-                                    }
-                                    "TOOLS" -> {
-                                        ToolsStudioPanel(viewModel = viewModel)
-                                    }
-                                    "PIANO" -> {
-                                        PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
-                                        StrobeTunerSection(viewModel)
-                                    }
+                                 
+                                 "PIANO & NOTATION" -> {
+                                PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
+                                StrobeTunerSection(viewModel)
+                            }
                                     "DRUMS" -> {
                                         DrumAcademySection(viewModel, primaryColor, modifier = Modifier)
                                     }
@@ -332,21 +316,7 @@ private fun LearnMainContent(
                             "CHORDS" -> {
                                 ChordDictionaryPanel(viewModel = viewModel)
                             }
-                            "REFERENCE" -> {
-                                ReferenceStudioPanel(
-                                    viewModel = viewModel,
-                                    onOpenChordGallery = {
-                                        // opens gallery modal or view
-                                    }
-                                )
-                            }
-                            "PROGRESSIONS" -> {
-                                ProgressionsStudioPanel(viewModel = viewModel)
-                            }
-                            "TOOLS" -> {
-                                ToolsStudioPanel(viewModel = viewModel)
-                            }
-                            "PIANO", "PIANO & NOTATION" -> {
+                            "PIANO & NOTATION" -> {
                                 PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
                                 StrobeTunerSection(viewModel)
                             }

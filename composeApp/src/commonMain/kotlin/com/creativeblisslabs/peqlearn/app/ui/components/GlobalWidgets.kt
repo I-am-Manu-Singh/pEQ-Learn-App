@@ -88,7 +88,19 @@ fun ThinMiniPlayer(
     viewModel: AppViewModel,
     modifier: Modifier = Modifier
 ) {
-    val nowPlaying = viewModel.currentMediaItem.value ?: return
+    val activeScore = viewModel.currentScore.value
+    val nowPlaying = viewModel.currentMediaItem.value ?: activeScore?.let { score ->
+        com.creativeblisslabs.peqlearn.app.data.pEQMediaItem(
+            id = "score_active_${score.title.hashCode()}",
+            title = score.title.ifBlank { "Active Score" },
+            subtitle = "${score.composer.ifBlank { "Score" }} • ${score.timeSignature} • ${score.tempo.toInt()} BPM",
+            artist = score.composer.ifBlank { "Score Composer" },
+            path = "internal://score/${score.title}",
+            type = MediaType.AUDIO,
+            format = "SCORE",
+            durationMs = viewModel.currentDuration.value
+        )
+    } ?: return
     val isPlaying by viewModel.isPlaying
     val isLandscape = false
     var isExpanded by remember { mutableStateOf(true) }
@@ -100,7 +112,7 @@ fun ThinMiniPlayer(
     var isDraggingSlider by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableStateOf(0f) }
 
-    val isFavorite = viewModel.favoriteItems.any { it.id == nowPlaying.id }
+    val isFavorite = viewModel.favoriteItems.any { it.id == nowPlaying.id || it.path == nowPlaying.path }
     val speed = viewModel.playbackSpeed.value
     val abActive = viewModel.abRepeatActive.value
 
@@ -110,7 +122,7 @@ fun ThinMiniPlayer(
             .padding(horizontal = 0.dp, vertical = 2.dp),
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        // border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
         shadowElevation = 10.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -164,9 +176,13 @@ fun ThinMiniPlayer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        viewModel.currentTab.value = Tab.Player
-                        if (nowPlaying.type == MediaType.VIDEO) {
-                            viewModel.isVideoFullScreen.value = true
+                        if (activeScore != null && (nowPlaying.format in listOf("MID", "MIDI", "XML", "MXL", "PDF", "SCORE") || nowPlaying.id.startsWith("score_"))) {
+                            viewModel.currentTab.value = Tab.Learn
+                        } else {
+                            viewModel.currentTab.value = Tab.Player
+                            if (nowPlaying.type == MediaType.VIDEO) {
+                                viewModel.isVideoFullScreen.value = true
+                            }
                         }
                     }
                     .padding(horizontal = 8.dp, vertical = 6.dp),

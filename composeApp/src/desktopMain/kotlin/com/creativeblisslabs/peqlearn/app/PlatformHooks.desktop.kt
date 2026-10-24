@@ -11,3 +11,16 @@ actual fun deleteLocalFile(path: String): Boolean {
         false
     }
 }
+
+actual fun shareTextFile(fileName: String, content: String): Boolean {
+    return try {
+        val userHome = System.getProperty("user.home") ?: "."
+        val downloads = File(userHome, "Downloads")
+        val targetDir = if (downloads.exists()) downloads else File(userHome)
+        val file = File(targetDir, fileName)
+        file.writeText(content)
+        true
+    } catch (e: Exception) {
+        false
+    }
+}

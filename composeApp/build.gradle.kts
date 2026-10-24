@@ -318,9 +318,10 @@ android {
 
         versionName = "1.0.0"
 
-        ndk {
-            abiFilters.addAll(setOf("arm64-v8a", "x86_64"))
-        }
+        // ndk {
+        //     abiFilters.addAll(setOf("arm64-v8a"))
+        //     // abiFilters.addAll(setOf("arm64-v8a", "x86_64"))
+        // }
     }
 
     androidResources {
@@ -343,6 +344,10 @@ android {
     }
 
     val localProps = Properties().apply {
+        val envFile = rootProject.file(".env")
+        if (envFile.exists()) {
+            envFile.inputStream().use { load(it) }
+        }
         val locFile = rootProject.file("local.properties")
         if (locFile.exists()) {
             locFile.inputStream().use { load(it) }
@@ -351,9 +356,10 @@ android {
 
     signingConfigs {
         create("release") {
-            val keyPath = localProps["RELEASE_KEYSTORE_PATH"] as? String ?: ""
-            if (keyPath.isNotEmpty()) {
-                storeFile = file(keyPath)
+            val keyPath = localProps["RELEASE_KEYSTORE_PATH"] as? String ?: "peq-learn-release.jks"
+            val kFile = if (File(keyPath).isAbsolute) File(keyPath) else rootProject.file(keyPath)
+            if (kFile.exists()) {
+                storeFile = kFile
                 storePassword = localProps["RELEASE_STORE_PASSWORD"] as? String ?: ""
                 keyAlias = localProps["RELEASE_KEY_ALIAS"] as? String ?: ""
                 keyPassword = localProps["RELEASE_KEY_PASSWORD"] as? String ?: ""
@@ -365,8 +371,9 @@ android {
         abi {
             isEnable = true
             reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
+            include("arm64-v8a")
+            // include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = false
         }
     }
 
@@ -380,9 +387,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            val keyPath = localProps["RELEASE_KEYSTORE_PATH"] as? String ?: ""
-            if (keyPath.isNotEmpty()) {
-                signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                signingConfig = releaseSigning
             }
         }
     }

@@ -58,7 +58,7 @@ var isSearchActive by remember { mutableStateOf(false) }
     var isChordGalleryOpen by remember { mutableStateOf(false) }
 
     if (isChordGalleryOpen) {
-        Dialog(
+        com.creativeblisslabs.peqlearn.app.ui.components.FullscreenDialog(
             onDismissRequest = { isChordGalleryOpen = false },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {

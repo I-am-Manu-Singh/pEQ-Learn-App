@@ -25,7 +25,9 @@ import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.ProgressionDef
 import com.creativeblisslabs.peqlearn.app.util.RealChordPosition
 import com.creativeblisslabs.peqlearn.app.util.RealChordsDb
+import com.creativeblisslabs.peqlearn.app.util.RealPianoChordsDb
 import com.creativeblisslabs.peqlearn.app.util.RealProgressionsDb
+import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -307,7 +309,7 @@ fun ProgressionsStudioPanel(
                             }
                         }
                         "Key Finder" -> {
-                            val chordNames = progressionChords.map { it.second }.distinct()
+                            val chordNames = progressionChords.map { it.chordName }.distinct()
                             Text("Chords in this progression: ${chordNames.joinToString(", ")}", fontSize = 12.sp, color = Color.LightGray)
                             Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFF1E2838), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                                 Text(

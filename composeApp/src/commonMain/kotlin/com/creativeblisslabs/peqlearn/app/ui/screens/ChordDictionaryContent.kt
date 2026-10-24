@@ -235,7 +235,7 @@ fun ChordDictionaryPanel(
     var isChordGalleryOpen by remember { mutableStateOf(false) }
 
     if (isChordGalleryOpen) {
-        Dialog(
+        com.creativeblisslabs.peqlearn.app.ui.components.FullscreenDialog(
             onDismissRequest = { isChordGalleryOpen = false },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
@@ -1419,7 +1419,7 @@ fun ImmersiveKeyboardFretboardLabDialog(
         }
     }
 
-    androidx.compose.ui.window.Dialog(
+    com.creativeblisslabs.peqlearn.app.ui.components.FullscreenDialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
             usePlatformDefaultWidth = false,

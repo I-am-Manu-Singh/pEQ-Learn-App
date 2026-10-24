@@ -1473,6 +1473,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
         if (isScorePlaying.value) return
 
         isScorePlaying.value = true
+        isPlaying.value = true
 
         scorePlaybackJob = viewModelScope.launch(Dispatchers.Default) {
             val startTime = Clock.System.now().toEpochMilliseconds()
@@ -1546,11 +1547,12 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 val currentBeatInMeasure = currentOffset * beatsInMeasure
 
                 // Broadcast consistent playhead location to UI
-                if (currentMeasureIdx != scorePlayheadMeasure.value || currentOffset > scorePlayheadOffset.value || currentOffset < scorePlayheadOffset.value - 0.2f) {
-                    withContext(Dispatchers.Main) {
+                withContext(Dispatchers.Main) {
+                    if (currentMeasureIdx != scorePlayheadMeasure.value || currentOffset > scorePlayheadOffset.value || currentOffset < scorePlayheadOffset.value - 0.2f) {
                         scorePlayheadMeasure.value = currentMeasureIdx
                         scorePlayheadOffset.value = currentOffset
                     }
+                    currentPosition.value = totalElapsedMs
                 }
 
                 // Process pedal events in current measure
@@ -1614,6 +1616,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
 
     fun stopScorePlayback() {
         isScorePlaying.value = false
+        isPlaying.value = false
         scorePlaybackJob?.cancel()
         scorePlaybackJob = null
 
@@ -1713,8 +1716,51 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 measures = listOf(Measure(notes = emptyList()))
             )
 
+            // Calculate total score duration in milliseconds
+            var totalDurationMs = 0L
+            finalScore.measures.forEach { m ->
+                val mDurSec = (60f / finalScore.tempo) * m.timeSignatureNumerator
+                totalDurationMs += (mDurSec * 1000).toLong()
+            }
+            if (totalDurationMs <= 0L) totalDurationMs = 180000L // 3 min default fallback
+
+            val ext = fileName.substringAfterLast(".", "SCORE").uppercase()
+            val scoreItem = pEQMediaItem(
+                id = "score_${uriString.hashCode()}",
+                title = finalScore.title.ifBlank { fileName.substringBeforeLast(".") },
+                subtitle = "${finalScore.composer.ifBlank { "Score" }} • ${finalScore.timeSignature} • ${finalScore.tempo.toInt()} BPM",
+                artist = finalScore.composer.ifBlank { "Score Composer" },
+                path = uriString,
+                type = MediaType.AUDIO,
+                format = ext,
+                sizeBytes = fileBytes?.size?.toLong() ?: 0L,
+                durationMs = totalDurationMs
+            )
+
             withContext(Dispatchers.Main) {
                 currentScore.value = finalScore
+                currentMediaItem.value = scoreItem
+                currentDuration.value = totalDurationMs
+                currentPosition.value = 0L
+                scorePlayheadMeasure.value = 0
+                scorePlayheadOffset.value = 0f
+
+                // Track in queue, recents, and most played
+                val existingQueueIdx = playbackQueue.indexOfFirst { it.path == scoreItem.path }
+                if (existingQueueIdx == -1) {
+                    playbackQueue.add(0, scoreItem)
+                    setCurrentQueueIndex(0)
+                } else {
+                    setCurrentQueueIndex(existingQueueIdx)
+                }
+
+                if (!recentlyPlayedItems.any { it.path == scoreItem.path }) {
+                    recentlyPlayedItems.add(0, scoreItem)
+                    if (recentlyPlayedItems.size > 20) recentlyPlayedItems.removeAt(recentlyPlayedItems.size - 1)
+                }
+                updateMostPlayed(scoreItem)
+                persistSession()
+
                 isImportingPDF.value = false
             }
 

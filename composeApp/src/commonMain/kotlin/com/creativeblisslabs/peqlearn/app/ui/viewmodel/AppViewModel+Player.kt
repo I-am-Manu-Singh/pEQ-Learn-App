@@ -23,6 +23,19 @@ fun AppViewModel.stop() {
 }
 
 fun AppViewModel.togglePlayback() {
+    // If a score is loaded and current item is a score or no audio track is loaded in engine, toggle score playback
+    val current = currentMediaItem.value
+    val isScoreMedia = currentScore.value != null && (
+        current?.format in listOf("MID", "MIDI", "XML", "MXL", "PDF", "SCORE") ||
+        current?.id?.startsWith("score_") == true ||
+        audioEngine.getCurrentTrackUri() == null
+    )
+    if (isScoreMedia) {
+        toggleScorePlayback()
+        syncNowPlaying()
+        return
+    }
+
     val enginePlaying = audioEngine.isPlaying()
     
     // Safety check: If UI thinks we are playing but engine is not, try to resume engine
@@ -34,7 +47,6 @@ fun AppViewModel.togglePlayback() {
 
     // Restored track or paused idle engine check
     if (!enginePlaying) {
-        val current = currentMediaItem.value
         val currentUri = audioEngine.getCurrentTrackUri()
         
         // If engine does not have the current track loaded yet, load it and restore position

@@ -2,6 +2,7 @@ package com.creativeblisslabs.peqlearn.app.util
 
 import com.creativeblisslabs.peqlearn.app.ui.screens.KeySignature
 import com.creativeblisslabs.peqlearn.app.ui.screens.Measure
+import com.creativeblisslabs.peqlearn.app.ui.screens.PedalEvent
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote
 
@@ -15,7 +16,14 @@ object MidiScoreParser {
         val midiNote: Int,
         val startTick: Long,
         val durationTicks: Long,
-        val channel: Int
+        val channel: Int,
+        val voice: Int
+    )
+
+    private data class RawPedalEvent(
+        val tick: Long,
+        val pedalType: Int,
+        val isPressed: Boolean
     )
 
     fun parse(bytes: ByteArray, defaultTitle: String = "Imported Score"): Score? {
@@ -35,8 +43,80 @@ object MidiScoreParser {
         var timeDenominator = 4
         var keySignature = KeySignature.C_MAJOR
         var detectedTitle = ""
+        var initialTempoParsed = false
 
         val rawNotes = mutableListOf<RawMidiNote>()
+        val rawPedals = mutableListOf<RawPedalEvent>()
+
+        // Pass 1: Quick inspection of track names to intelligently map Tracks to Hands / Voices
+        val trackVoiceMap = mutableMapOf<Int, Int>()
+        run {
+            var scanOffset = 14
+            var noteBearingTrackCount = 0
+            for (t in 0 until numTracks) {
+                if (scanOffset + 8 > bytes.size) break
+                val tLen = read32(bytes, scanOffset + 4)
+                scanOffset += 8
+                val tEnd = (scanOffset + tLen).coerceAtMost(bytes.size)
+                var curT = scanOffset
+                var running = 0
+                var trackName = ""
+                var hasNotes = false
+
+                while (curT < tEnd) {
+                    val vlq = readVlq(bytes, curT)
+                    curT += vlq.second
+                    if (curT >= tEnd) break
+                    var st = bytes[curT].toInt() and 0xFF
+                    if ((st and 0x80) != 0) {
+                        curT++
+                        if (st < 0xF0) running = st
+                    } else {
+                        st = running
+                    }
+                    if (st == 0xFF) {
+                        if (curT >= tEnd) break
+                        val mType = bytes[curT].toInt() and 0xFF
+                        curT++
+                        val mVlq = readVlq(bytes, curT)
+                        curT += mVlq.second
+                        val mLen = mVlq.first.toInt()
+                        if ((mType == 0x01 || mType == 0x03) && mLen > 0 && curT + mLen <= bytes.size) {
+                            val name = bytes.copyOfRange(curT, curT + mLen).decodeToString().trim()
+                            if (name.isNotBlank()) trackName = name
+                        }
+                        curT = (curT + mLen).coerceAtMost(tEnd)
+                    } else if (st in 0xF0..0xF7) {
+                        val sVlq = readVlq(bytes, curT)
+                        curT += sVlq.second + sVlq.first.toInt()
+                    } else {
+                        val mType = st and 0xF0
+                        if (mType == 0x90) {
+                            if (curT + 1 < tEnd && (bytes[curT + 1].toInt() and 0x7F) > 0) hasNotes = true
+                            curT += 2
+                        } else if (mType in listOf(0x80, 0xA0, 0xB0, 0xE0)) {
+                            curT += 2
+                        } else if (mType in listOf(0xC0, 0xD0)) {
+                            curT += 1
+                        }
+                    }
+                }
+
+                if (hasNotes) {
+                    val lower = trackName.lowercase()
+                    val voice = when {
+                        lower.contains("right") || lower.contains("upper") || lower.contains("treble") || lower.contains("rh") -> 0
+                        lower.contains("left") || lower.contains("lower") || lower.contains("bass") || lower.contains("lh") -> 1
+                        noteBearingTrackCount == 0 -> 0
+                        noteBearingTrackCount == 1 -> 1
+                        else -> noteBearingTrackCount
+                    }
+                    trackVoiceMap[t] = voice
+                    noteBearingTrackCount++
+                }
+                scanOffset = tEnd
+            }
+        }
 
         var offset = 14
         for (t in 0 until numTracks) {
@@ -53,6 +133,7 @@ object MidiScoreParser {
             var currentTick = 0L
             var runningStatus = 0
             val activeNotes = mutableMapOf<Pair<Int, Int>, Long>() // (channel, note) -> startTick
+            val trackVoice = trackVoiceMap[t] ?: 0
 
             while (offset < trackEnd) {
                 val vlq = readVlq(bytes, offset)
@@ -85,7 +166,9 @@ object MidiScoreParser {
                         0x01, 0x03 -> { // Text / Track name
                             if (detectedTitle.isBlank() && metaLen > 0 && offset + metaLen <= bytes.size) {
                                 val text = bytes.copyOfRange(offset, offset + metaLen).decodeToString().trim()
-                                if (text.isNotBlank()) detectedTitle = text
+                                if (text.isNotBlank() && !text.lowercase().contains("piano") && !text.lowercase().contains("track")) {
+                                    detectedTitle = text
+                                }
                             }
                         }
                         0x51 -> { // Set Tempo
@@ -93,8 +176,9 @@ object MidiScoreParser {
                                 val micros = ((bytes[offset].toInt() and 0xFF) shl 16) or
                                         ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
                                         (bytes[offset + 2].toInt() and 0xFF)
-                                if (micros > 0) {
+                                if (micros > 0 && (!initialTempoParsed || currentTick == 0L)) {
                                     tempoBpm = 60_000_000f / micros.toFloat()
+                                    initialTempoParsed = true
                                 }
                             }
                         }
@@ -110,7 +194,9 @@ object MidiScoreParser {
                             if (metaLen >= 2 && offset + 2 <= bytes.size) {
                                 val sf = bytes[offset].toInt() // -7 (flats) to +7 (sharps)
                                 val mi = bytes[offset + 1].toInt() // 0 = Major, 1 = Minor
-                                keySignature = matchKeySignature(sf, mi)
+                                if (keySignature == KeySignature.C_MAJOR || currentTick == 0L) {
+                                    keySignature = matchKeySignature(sf, mi)
+                                }
                             }
                         }
                     }
@@ -132,7 +218,7 @@ object MidiScoreParser {
                             val startTick = activeNotes.remove(key)
                             if (startTick != null) {
                                 val dur = (currentTick - startTick).coerceAtLeast(1L)
-                                rawNotes.add(RawMidiNote(note, startTick, dur, channel))
+                                rawNotes.add(RawMidiNote(note, startTick, dur, channel, trackVoice))
                             }
                         }
                         0x90 -> { // Note On
@@ -145,17 +231,26 @@ object MidiScoreParser {
                                 val prevStart = activeNotes.put(key, currentTick)
                                 if (prevStart != null) {
                                     val dur = (currentTick - prevStart).coerceAtLeast(1L)
-                                    rawNotes.add(RawMidiNote(note, prevStart, dur, channel))
+                                    rawNotes.add(RawMidiNote(note, prevStart, dur, channel, trackVoice))
                                 }
                             } else {
                                 val startTick = activeNotes.remove(key)
                                 if (startTick != null) {
                                     val dur = (currentTick - startTick).coerceAtLeast(1L)
-                                    rawNotes.add(RawMidiNote(note, startTick, dur, channel))
+                                    rawNotes.add(RawMidiNote(note, startTick, dur, channel, trackVoice))
                                 }
                             }
                         }
-                        0xA0, 0xB0, 0xE0 -> { // Aftertouch, CC, Pitch Bend: 2 data bytes
+                        0xB0 -> { // Control Change: Sustain (64), Sostenuto (66), Soft (67)
+                            if (offset + 1 >= trackEnd) break
+                            val ctrl = bytes[offset].toInt() and 0x7F
+                            val cVal = bytes[offset + 1].toInt() and 0x7F
+                            offset += 2
+                            if (ctrl in listOf(64, 66, 67)) {
+                                rawPedals.add(RawPedalEvent(currentTick, ctrl, cVal >= 64))
+                            }
+                        }
+                        0xA0, 0xE0 -> { // Aftertouch, Pitch Bend: 2 data bytes
                             offset += 2
                         }
                         0xC0, 0xD0 -> { // Program Change, Channel Pressure: 1 data byte
@@ -178,21 +273,71 @@ object MidiScoreParser {
         val numMeasures = ((totalTicks + ticksPerMeasure - 1) / ticksPerMeasure).toInt().coerceAtLeast(1)
 
         val measureNotes = Array(numMeasures) { mutableListOf<ScoreNote>() }
+        val measurePedals = Array(numMeasures) { mutableListOf<PedalEvent>() }
 
-        rawNotes.forEachIndexed { idx, raw ->
-            val mIdx = (raw.startTick / ticksPerMeasure).toInt().coerceIn(0, numMeasures - 1)
-            val tickInMeasure = raw.startTick % ticksPerMeasure
-            val posBeats = (tickInMeasure.toFloat() / ticksPerBeat).coerceIn(0f, beatsPerMeasure - 0.05f)
-            val durBeats = (raw.durationTicks.toFloat() / ticksPerBeat).coerceIn(0.25f, beatsPerMeasure)
-
-            measureNotes[mIdx].add(
-                ScoreNote(
-                    id = idx,
-                    midiNote = raw.midiNote,
+        // Route pedal events into corresponding measures
+        rawPedals.forEach { p ->
+            val mIdx = (p.tick / ticksPerMeasure).toInt().coerceIn(0, numMeasures - 1)
+            val tickInMeasure = p.tick % ticksPerMeasure
+            val posBeats = (tickInMeasure.toFloat() / ticksPerBeat).coerceIn(0f, beatsPerMeasure)
+            measurePedals[mIdx].add(
+                PedalEvent(
                     position = posBeats,
-                    duration = durBeats
+                    pedalType = p.pedalType,
+                    isPressed = p.isPressed
                 )
             )
+        }
+
+        var noteIdCounter = 0
+        rawNotes.forEach { raw ->
+            val startMeasure = (raw.startTick / ticksPerMeasure).toInt().coerceIn(0, numMeasures - 1)
+            val endTick = raw.startTick + raw.durationTicks
+            val endMeasure = ((endTick - 1) / ticksPerMeasure).toInt().coerceIn(0, numMeasures - 1)
+
+            if (startMeasure == endMeasure) {
+                val tickInMeasure = raw.startTick % ticksPerMeasure
+                val posBeats = (tickInMeasure.toFloat() / ticksPerBeat).coerceIn(0f, beatsPerMeasure - 0.05f)
+                val durBeats = (raw.durationTicks.toFloat() / ticksPerBeat).coerceAtLeast(0.125f)
+                measureNotes[startMeasure].add(
+                    ScoreNote(
+                        id = ++noteIdCounter,
+                        midiNote = raw.midiNote,
+                        position = posBeats,
+                        duration = durBeats,
+                        voice = raw.voice
+                    )
+                )
+            } else {
+                // Note crosses measure boundaries: split note cleanly with tieStart and tieEnd across measures
+                var curNoteTick = raw.startTick
+                for (m in startMeasure..endMeasure) {
+                    val mStartTick = m * ticksPerMeasure
+                    val mEndTick = (m + 1) * ticksPerMeasure
+                    val segmentStart = maxOf(curNoteTick, mStartTick)
+                    val segmentEnd = minOf(endTick, mEndTick)
+                    val segmentDuration = segmentEnd - segmentStart
+                    if (segmentDuration > 0) {
+                        val tickInM = segmentStart - mStartTick
+                        val posBeats = (tickInM.toFloat() / ticksPerBeat).coerceIn(0f, beatsPerMeasure - 0.05f)
+                        val durBeats = (segmentDuration.toFloat() / ticksPerBeat).coerceAtLeast(0.125f)
+                        val isFirstSeg = (m == startMeasure)
+                        val isLastSeg = (m == endMeasure)
+                        measureNotes[m].add(
+                            ScoreNote(
+                                id = ++noteIdCounter,
+                                midiNote = raw.midiNote,
+                                position = posBeats,
+                                duration = durBeats,
+                                voice = raw.voice,
+                                tieStart = !isLastSeg,
+                                tieEnd = !isFirstSeg
+                            )
+                        )
+                    }
+                    curNoteTick = segmentEnd
+                }
+            }
         }
 
         val measures = List(numMeasures) { mIdx ->
@@ -202,6 +347,7 @@ object MidiScoreParser {
                 timeSignatureDenominator = timeDenominator,
                 keySignature = keySignature,
                 notes = measureNotes[mIdx],
+                pedalEvents = measurePedals[mIdx],
                 barline = if (mIdx == numMeasures - 1) "final" else "single"
             )
         }

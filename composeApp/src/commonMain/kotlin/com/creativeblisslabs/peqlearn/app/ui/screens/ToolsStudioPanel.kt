@@ -19,9 +19,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
+import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.RealChordPosition
 import com.creativeblisslabs.peqlearn.app.util.RealChordsDb
+import com.creativeblisslabs.peqlearn.app.util.RealPianoChordsDb
+import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -203,11 +206,24 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
                         }
                     }
 
-                    val pianoShape = remember(previewChord) {
-                        com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.buildPianoShape(previewChord)
+                    val pianoPitches = remember(previewChord) {
+                        val parts = previewChord.trim().split(" ")
+                        val cRoot = parts.firstOrNull() ?: "C"
+                        val cSuffix = if (parts.size > 1) parts.drop(1).joinToString(" ") else "major"
+                        RealPianoChordsDb.getChord(cRoot, cSuffix)?.midi?.takeIf { it.isNotEmpty() }
+                            ?: run {
+                                val rIdx = roots.indexOf(cRoot).coerceAtLeast(0)
+                                ChordVoicingEngine.buildPianoShape(
+                                    rootIdx = rIdx,
+                                    suffix = cSuffix,
+                                    style = com.creativeblisslabs.peqlearn.app.util.PianoVoicingStyle.CLOSE,
+                                    inversion = com.creativeblisslabs.peqlearn.app.util.InversionStyle.ROOT,
+                                    octave = 4
+                                )
+                            }
                     }
-                    if (pianoShape != null) {
-                        val activeMidi = pianoShape.midiNotes.associateWith { true }
+                    if (pianoPitches.isNotEmpty()) {
+                        val activeMidi = pianoPitches.associateWith { true }
                         com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
                             activeMidiNotes = activeMidi,
                             accentColor = Color(0xFFFF9E1B),
@@ -622,7 +638,7 @@ private fun ScaleFinderTool(viewModel: AppViewModel, roots: List<String>) {
                                 markOctaves = true,
                                 highlightOctaveC = true,
                                 baseFret = 1,
-                                onFretTapped = { _, _, midi ->
+                                onFretTapped = { _: Int, _: Int, midi: Int ->
                                     try {
                                         viewModel.audioEngine.setInstrument("GUITAR")
                                         viewModel.audioEngine.noteOn(midi, 0.85f)

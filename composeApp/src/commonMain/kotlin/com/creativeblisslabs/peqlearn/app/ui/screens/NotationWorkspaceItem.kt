@@ -29,6 +29,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.coroutineScope
@@ -58,6 +61,7 @@ fun NotationWorkspaceItem(
     var isHorizontalScroll by rememberSaveable { mutableStateOf(true) }
     var inlineZoomFactor by rememberSaveable { mutableStateOf(1.0f) }
     var showExportDialog by rememberSaveable { mutableStateOf(false) }
+    var showDumpDialog by rememberSaveable { mutableStateOf(false) }
     var showFullscreenPdf by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(showFullscreenPdf) {
         viewModel.isNotationFullscreen.value = showFullscreenPdf
@@ -146,6 +150,18 @@ FlowRow(
         Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF", modifier = Modifier.size(16.dp), tint = Color.White)
         Spacer(Modifier.width(4.dp))
         Text("PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+    }
+
+    // Parser Score .txt Dump button
+    Button(
+        onClick = { showDumpDialog = true },
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+        shape = RoundedCornerShape(10.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Icon(Icons.Default.Description, contentDescription = "Score Dump", modifier = Modifier.size(16.dp), tint = Color.White)
+        Spacer(Modifier.width(4.dp))
+        Text("TXT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
     }
 }
 
@@ -254,7 +270,7 @@ FlowRow(
             val totalSecondsInt = totalSeconds.toInt()
             val totalTimeStr = "${totalSecondsInt / 60}:${(totalSecondsInt % 60).toString().padStart(2, '0')}"
 
-            Dialog(
+            com.creativeblisslabs.peqlearn.app.ui.components.FullscreenDialog(
                 onDismissRequest = { showFullscreenPdf = false },
                 properties = DialogProperties(usePlatformDefaultWidth = false)
             ) {
@@ -529,6 +545,113 @@ FlowRow(
             }
         }
 
+        if (showDumpDialog) {
+            val clipboardManager = LocalClipboardManager.current
+            var copiedMessage by remember { mutableStateOf(false) }
+            val currentScoreObj = viewModel.currentScore.value as? Score
+            val dumpText = remember(currentScoreObj) {
+                currentScoreObj?.dumpAsText() ?: "No active score loaded to inspect."
+            }
+
+            ModalBottomSheet(
+                onDismissRequest = { showDumpDialog = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = Color(0xFF0F1117)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.85f)
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF64B5F6))
+                            Text(
+                                "Score Notation Parser Dump",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Button(
+                                onClick = {
+                                    val titleSlug = currentScoreObj?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "_") ?: "score"
+                                    com.creativeblisslabs.peqlearn.app.shareTextFile("${titleSlug}_parser_dump.txt", dumpText)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = "Share File", modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Share File", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            Button(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(dumpText))
+                                    copiedMessage = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (copiedMessage) Color(0xFF2E7D32) else Color(0xFF1976D2)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(if (copiedMessage) Icons.Default.Check else Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (copiedMessage) "Copied!" else "Copy Text", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            IconButton(onClick = { showDumpDialog = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            }
+                        }
+                    }
+
+                    Text(
+                        "This parser dump displays all measures, note timings, voices, beam groups, rests, and note intervals. You can copy it or save it as a .txt file to compare with your MIDI file.",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF06080C),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    ) {
+                        val verticalScroll = rememberScrollState()
+                        val horizontalScroll = rememberScrollState()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(verticalScroll)
+                                .horizontalScroll(horizontalScroll)
+                                .padding(16.dp)
+                        ) {
+                            Text(
+                                text = dumpText,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = Color(0xFF81C784),
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+        }
+
         if (viewModel.showSettings.value) {
             PlaybackSettingsSheet(
                 viewModel = viewModel,
@@ -536,10 +659,6 @@ FlowRow(
                 onFormatChange = { viewModel.notationFormat.value = it },
                 showLetters = viewModel.showPianoKeyLabels.value,
                 onShowLettersChange = { viewModel.showPianoKeyLabels.value = it },
-                is3DPerspective = viewModel.is3DPerspectiveMode.value,
-                on3DPerspectiveChange = { viewModel.is3DPerspectiveMode.value = it },
-                horizonScale = viewModel.horizonScale.floatValue,
-                onHorizonScaleChange = { viewModel.horizonScale.floatValue = it },
                 initialTab = 0,
                 onDismiss = { viewModel.showSettings.value = false }
             )

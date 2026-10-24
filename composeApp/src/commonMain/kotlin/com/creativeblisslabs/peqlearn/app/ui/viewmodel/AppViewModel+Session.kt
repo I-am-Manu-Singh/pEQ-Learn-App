@@ -150,16 +150,19 @@ fun AppViewModel.restoreSession() {
                     val isLastPlayed = session.lastTrackPath != null && normalizePath(session.lastTrackPath) == normalized
                     
                     if (isCurrentActive || isLastPlayed) {
+                        val isScore = (session.lastTrackTitle ?: path).let { 
+                            path.contains("score", ignoreCase = true) || it.endsWith(".mid", ignoreCase = true) || it.endsWith(".midi", ignoreCase = true) || it.endsWith(".xml", ignoreCase = true) || it.endsWith(".mxl", ignoreCase = true) || it.endsWith(".pdf", ignoreCase = true)
+                        }
                         com.creativeblisslabs.peqlearn.app.data.pEQMediaItem(
-                            id = "engine_${path.hashCode()}",
+                            id = if (isScore) "score_${path.hashCode()}" else "engine_${path.hashCode()}",
                             title = session.lastTrackTitle ?: path.substringAfterLast("/").substringBeforeLast("."),
-                            subtitle = session.lastTrackArtist ?: "Neural Engine",
+                            subtitle = session.lastTrackArtist ?: (if (isScore) "Score Archive" else "Neural Engine"),
                             artist = session.lastTrackArtist,
                             path = path,
                             thumbnail = session.lastTrackThumbnail,
                             type = if (path.lowercase().let { it.contains("video") || it.contains(".mp4") || it.contains(".mkv") }) 
                                 com.creativeblisslabs.peqlearn.app.data.MediaType.VIDEO else com.creativeblisslabs.peqlearn.app.data.MediaType.AUDIO,
-                            format = path.substringAfterLast(".").uppercase(),
+                            format = path.substringAfterLast(".").uppercase().ifBlank { if (isScore) "SCORE" else "AUDIO" },
                             sizeBytes = 0L,
                             durationMs = 0L
                         )
@@ -177,17 +180,24 @@ fun AppViewModel.restoreSession() {
                             isStream = true
                         )
                     } else {
-                        val fileName = path.substringAfterLast("/").substringBeforeLast(".")
+                        val rawFileName = path.substringAfterLast("/").substringBeforeLast(".")
+                        val decodedFileName = try {
+                            android.net.Uri.decode(rawFileName) ?: rawFileName
+                        } catch (_: Throwable) {
+                            rawFileName
+                        }
                         val extension = path.substringAfterLast(".").lowercase()
                         val isVideoExt = listOf("mp4", "mkv", "webm", "mov", "3gp").contains(extension)
+                        val isScoreExt = listOf("mid", "midi", "xml", "mxl", "pdf").contains(extension) || path.contains("score", ignoreCase = true)
                         
                         com.creativeblisslabs.peqlearn.app.data.pEQMediaItem(
-                            id = "resolved_${path.hashCode()}",
-                            title = fileName,
-                            subtitle = "Local archive",
+                            id = if (isScoreExt) "score_${path.hashCode()}" else "resolved_${path.hashCode()}",
+                            title = if (decodedFileName.isNotBlank()) decodedFileName else "Audio Track",
+                            subtitle = if (isScoreExt) "Score Archive" else "Local archive",
+                            artist = if (isScoreExt) "Score" else "Local archive",
                             path = path,
                             type = if (isVideoExt) com.creativeblisslabs.peqlearn.app.data.MediaType.VIDEO else com.creativeblisslabs.peqlearn.app.data.MediaType.AUDIO,
-                            format = extension.uppercase(),
+                            format = if (extension.isNotBlank()) extension.uppercase() else (if (isScoreExt) "SCORE" else "AUDIO"),
                             sizeBytes = 0L,
                             durationMs = 0L
                         )

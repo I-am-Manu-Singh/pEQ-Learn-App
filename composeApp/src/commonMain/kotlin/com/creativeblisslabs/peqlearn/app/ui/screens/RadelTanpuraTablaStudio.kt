@@ -58,7 +58,7 @@ fun RadelTanpuraTablaStudio(
     }
 
     if (isFullscreen) {
-        Dialog(
+        com.creativeblisslabs.peqlearn.app.ui.components.FullscreenDialog(
             onDismissRequest = { isFullscreen = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {

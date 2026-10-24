@@ -757,7 +757,7 @@ fun DashboardHome(viewModel: AppViewModel) {
                             OutlinedTextField(
                                 value = newPlaylistName,
                                 onValueChange = { newPlaylistName = it },
-                                placeholder = { Text("Playlist Name", fontSize = 14.sp) },
+                                placeholder = { Text("eg. Guitar Riffs, Piano Score", fontSize = 14.sp) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
                                 singleLine = true,
@@ -826,9 +826,12 @@ fun DashboardHome(viewModel: AppViewModel) {
 @Composable
 private fun MostPlayedSection(viewModel: AppViewModel) {
     var timeFilter by remember { mutableStateOf("ALL") }
-    val items by viewModel.mediaLibrary.collectAsState()
-    
-    val filteredItems = remember(items, timeFilter) {
+    val libraryItems by viewModel.mediaLibrary.collectAsState()
+    val playCounts = viewModel.playCounts
+    val recentlyPlayed = viewModel.recentlyPlayedItems
+    val favorites = viewModel.favoriteItems
+
+    val filteredItems = remember(libraryItems, playCounts.toMap(), recentlyPlayed.toList(), favorites.toList(), timeFilter) {
         val now = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
         val threshold = when (timeFilter) {
             "WEEK" -> 7 * 24 * 3600 * 1000L
@@ -836,9 +839,32 @@ private fun MostPlayedSection(viewModel: AppViewModel) {
             "YEAR" -> 365 * 24 * 3600 * 1000L
             else -> Long.MAX_VALUE
         }
-        items.filter { it.playCount > 0 && (timeFilter == "ALL" || it.lastPlayed == 0L || (now - it.lastPlayed) < threshold) }
-             .sortedByDescending { it.playCount }
-             .take(10)
+
+        // Pool together library tracks, recents, and favorites
+        val allKnown = (libraryItems + recentlyPlayed + favorites).distinctBy { it.path }.associateBy { it.path }.toMutableMap()
+
+        // Also resolve any path in playCounts not yet in allKnown
+        playCounts.keys.forEach { p ->
+            if (!allKnown.containsKey(p)) {
+                viewModel.resolveItem(p)?.let { allKnown[p] = it }
+            }
+        }
+
+        val enrichedItems = allKnown.values.map { item ->
+            val count = playCounts[item.path] ?: item.playCount
+            if (count != item.playCount) item.copy(playCount = count) else item
+        }
+
+        val played = enrichedItems.filter { it.playCount > 0 && (timeFilter == "ALL" || it.lastPlayed == 0L || (now - it.lastPlayed) < threshold) }
+            .sortedByDescending { it.playCount }
+            .take(10)
+
+        // Fallback: If no play count recorded yet, display the most recent tracks so the dashboard is not blank
+        if (played.isEmpty() && recentlyPlayed.isNotEmpty()) {
+            recentlyPlayed.take(10)
+        } else {
+            played
+        }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

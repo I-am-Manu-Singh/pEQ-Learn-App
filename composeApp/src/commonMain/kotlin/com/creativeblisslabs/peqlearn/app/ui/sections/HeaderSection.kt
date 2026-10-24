@@ -109,7 +109,19 @@ fun NowPlayingBar(
     isLandscape: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val nowPlaying = viewModel.currentMediaItem.value
+    val activeScore = viewModel.currentScore.value
+    val nowPlaying = viewModel.currentMediaItem.value ?: activeScore?.let { score ->
+        com.creativeblisslabs.peqlearn.app.data.pEQMediaItem(
+            id = "score_active_${score.title.hashCode()}",
+            title = score.title.ifBlank { "Active Score" },
+            subtitle = "${score.composer.ifBlank { "Score" }} • ${score.timeSignature} • ${score.tempo.toInt()} BPM",
+            artist = score.composer.ifBlank { "Score Composer" },
+            path = "internal://score/${score.title}",
+            type = MediaType.AUDIO,
+            format = "SCORE",
+            durationMs = viewModel.currentDuration.value
+        )
+    }
     val isPlaying by viewModel.isPlaying
     val speed = viewModel.playbackSpeed.value
     val abActive = viewModel.abRepeatActive.value
@@ -117,9 +129,13 @@ fun NowPlayingBar(
     Surface(
         onClick = {
             if (nowPlaying != null) {
-                viewModel.currentTab.value = Tab.Player
-                if (nowPlaying.type == MediaType.VIDEO) {
-                    viewModel.isVideoFullScreen.value = true
+                if (activeScore != null && (nowPlaying.format in listOf("MID", "MIDI", "XML", "MXL", "PDF", "SCORE") || nowPlaying.id.startsWith("score_"))) {
+                    viewModel.currentTab.value = Tab.Learn
+                } else {
+                    viewModel.currentTab.value = Tab.Player
+                    if (nowPlaying.type == MediaType.VIDEO) {
+                        viewModel.isVideoFullScreen.value = true
+                    }
                 }
             }
         },

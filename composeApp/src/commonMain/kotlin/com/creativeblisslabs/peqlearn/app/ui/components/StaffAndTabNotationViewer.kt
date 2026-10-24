@@ -52,12 +52,23 @@ private fun DrawScope.drawLedgerLines(
     topY: Float,
     bottomY: Float,
     spacing: Float,
-    color: Color
+    color: Color,
+    handAccent: Color? = null
 ) {
     if (spacing <= 0f) return
     val lineBoundExt = 12f
     val halfSpacing = spacing / 2f
-    val lineColor = color.copy(alpha = 0.85f)
+    val lineColor = if (handAccent != null) {
+        // Blend standard staff line color with the note's hand color for crisp contrast across staves
+        Color(
+            red = (color.red * 0.7f + handAccent.red * 0.3f),
+            green = (color.green * 0.7f + handAccent.green * 0.3f),
+            blue = (color.blue * 0.7f + handAccent.blue * 0.3f),
+            alpha = 0.90f
+        )
+    } else {
+        color.copy(alpha = 0.85f)
+    }
 
     if (y < topY - halfSpacing) {
         var curL = topY - spacing
@@ -104,7 +115,8 @@ internal data class PrecomputedBeamGroup(
     val sFirstX: Float = 0f,
     val sLastX: Float = 0f,
     val sStartY: Float = 0f,
-    val sEndY: Float = 0f
+    val sEndY: Float = 0f,
+    val beamlets: List<Pair<Offset, Offset>> = emptyList()
 )
 
 internal data class PrecomputedStaffLayout(
@@ -190,22 +202,30 @@ private fun computeStaffLayout(
     isLeftHandHidden: Boolean,
     isRightHandHidden: Boolean
 ): PrecomputedStaffLayout {
-    val symbolAreaWidth = if (drawHeaders) 85f else 0f
+    val ksCount = measure.keySignature.accidentalsCount
+    val ksWidth = if (drawHeaders && ksCount > 0) minOf(ksCount, 7) * 8f + 8f else 0f
+    val symbolAreaWidth = if (drawHeaders) 85f + ksWidth else 0f
     val notesStartX = startX + symbolAreaWidth
     val usableMeasureWidth = (endX - notesStartX - 10f).coerceAtLeast(100f)
     val beatsPerMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
     val halfLineSpacing = lineSpacing / 2f
 
-    val rawVisibleNotes = measure.notes.filter { !it.isRest }.distinctBy { "${it.position}_${it.midiNote}" }.mapNotNull { note ->
+    // If measure has distinct voices (e.g. RH track voice 0 vs LH track voice 1), use voice to assign staff cleanly
+    val hasDifferentiatedVoices = measure.notes.any { it.voice == 0 } && measure.notes.any { it.voice == 1 }
+    val rawVisibleNotes = measure.notes.filter { !it.isRest }.distinctBy { "${it.position}_${it.midiNote}_${it.voice}" }.mapNotNull { note ->
         val midiNote = note.midiNote
-        val isTrebleClef = midiNote >= 60
+        val isTrebleClef = if (hasDifferentiatedVoices) {
+            note.voice == 0
+        } else {
+            midiNote >= 60
+        }
         if (isTrebleClef && isRightHandHidden) return@mapNotNull null
         if (!isTrebleClef && isLeftHandHidden) return@mapNotNull null
         Triple(note, midiNote, isTrebleClef)
     }.sortedBy { it.first.position }
 
     val distinctPositions = rawVisibleNotes.map { it.first.position }.distinct().sorted()
-    val minNoteGap = 24f
+    val minNoteGap = 26f
     val computedXByPosition = mutableMapOf<Float, Float>()
 
     if (distinctPositions.isNotEmpty()) {
@@ -213,7 +233,8 @@ private fun computeStaffLayout(
         val posDurations = distinctPositions.mapIndexed { idx, pos ->
             val nextPos = if (idx < distinctPositions.lastIndex) distinctPositions[idx + 1] else beatsPerMeasure
             val delta = (nextPos - pos).coerceAtLeast(minDur)
-            (delta / minDur).toDouble().pow(0.58).toFloat()
+            // Classical Engraving Standard: square-root duration scaling (Gould / Ross rule)
+            (delta / minDur).toDouble().pow(0.50).toFloat()
         }
         val sumWeighted = posDurations.sum().coerceAtLeast(1f)
         val noteContentMaxX = endX - 16f
@@ -271,64 +292,103 @@ private fun computeStaffLayout(
 
     val groupedByClef = visibleNotes.groupBy { it.isTrebleClef }
     for ((isTreble, clefNotes) in groupedByClef) {
-        val groupedByBeat = clefNotes.groupBy {
-            kotlin.math.floor(it.note.position).toInt()
-        }
+        // Group by Voice first so accompaniment and melody lines are NEVER merged into the same beam group
+        val groupedByVoice = clefNotes.groupBy { it.note.voice }
 
-        for ((_, beatNotes) in groupedByBeat) {
-            // Only beam notes of duration eighth or shorter (<= 0.5f in beat units, up to 0.75f for dotted 8th)
-            val beamEligible = beatNotes.filter { it.note.duration <= 0.75f }
-            val distinctPos = beamEligible.map { it.note.position }.distinct()
+        for ((_, voiceNotes) in groupedByVoice) {
+            // Group into standard musical rhythmic sub-beats (quarter note beat for 8th notes, half beat for 16th notes)
+            // Using a fine 0.5-beat resolution (eighth-note beat grid) cleanly isolates standard 16th and 8th runs
+            val groupedBySubBeat = voiceNotes.groupBy {
+                (kotlin.math.floor(it.note.position * 2.0f) / 2.0f)
+            }
 
-            // A valid beam group requires at least 2 distinct temporal positions within a reasonable horizontal span
-            if (distinctPos.size >= 2) {
-                val beamedSorted = beamEligible.sortedBy { it.nx }
-                val firstNote = beamedSorted.first()
-                val lastNote = beamedSorted.last()
-                val noteSpan = lastNote.nx - firstNote.nx
+            for ((_, subBeatNotes) in groupedBySubBeat) {
+                // Only beam notes of duration eighth or shorter (<= 0.75f)
+                val beamEligible = subBeatNotes.filter { it.note.duration <= 0.75f }
+                if (beamEligible.size < 2) continue
 
-                // Do not create giant cross-measure or excessively wide beams (max beat span 140px)
-                if (noteSpan in 8f..140f) {
-                    val avgMidi = beamEligible.map { it.midiNote }.average()
-                    // Stem direction:
-                    // In screen coordinates, -1f means UPWARDS (towards top of screen, lower Y), +1f means DOWNWARDS (higher Y).
-                    // For Treble: B4 is MIDI 71 (middle line). Notes >= 71 have stems pointing DOWN (+1f).
-                    // Notes < 71 (below middle line, like E4, F4, G4, A4) MUST have stems pointing UP (-1f)!
-                    // Crucially, for treble notes pointing DOWN (+1f), the stems must never cross into the bass staff.
-                    // For Bass: D3 is MIDI 50 (middle line). Notes >= 50 stems DOWN (+1f), notes < 50 stems UP (-1f).
+                // Check for distinct temporal positions
+                val distinctPositions = beamEligible.map { it.note.position }.distinct().sorted()
+                if (distinctPositions.size < 2) continue
+
+                // Pitch cluster separation: If the pitch span exceeds 14 semitones (more than an octave),
+                // split into separate clusters (e.g. upper melody vs lower counter-melody)
+                val pitchSorted = beamEligible.sortedBy { it.midiNote }
+                val pitchClusters = mutableListOf<MutableList<PrecomputedRenderNote>>()
+                var currentCluster = mutableListOf<PrecomputedRenderNote>()
+
+                for (n in pitchSorted) {
+                    if (currentCluster.isEmpty()) {
+                        currentCluster.add(n)
+                    } else {
+                        val lastMidi = currentCluster.last().midiNote
+                        if (n.midiNote - lastMidi > 14) {
+                            pitchClusters.add(currentCluster)
+                            currentCluster = mutableListOf(n)
+                        } else {
+                            currentCluster.add(n)
+                        }
+                    }
+                }
+                if (currentCluster.isNotEmpty()) {
+                    pitchClusters.add(currentCluster)
+                }
+
+                for (cluster in pitchClusters) {
+                    val clusterDistinctPos = cluster.map { it.note.position }.distinct()
+                    if (clusterDistinctPos.size < 2) continue
+
+                    // For chords on the exact same temporal position, pick the extreme note in stem direction for beam attachment
+                    val beamedSorted = cluster.sortedBy { it.nx }
+                    val firstNote = beamedSorted.first()
+                    val lastNote = beamedSorted.last()
+                    val noteSpan = lastNote.nx - firstNote.nx
+
+                    // Standard musical horizontal bounds
+                    if (noteSpan !in 6f..120f) continue
+
+                    val avgMidi = cluster.map { it.midiNote }.average()
+
+                    // Determine unified stem direction for the cluster
                     val groupStemDir = if (isTreble) {
                         if (avgMidi >= 71) 1f else -1f
                     } else {
                         if (avgMidi >= 50) 1f else -1f
                     }
 
-                    // Stem attachment point: stems up attach to right side (+5f), stems down attach to left side (-5f)
-                    val firstX = if (groupStemDir > 0) firstNote.nx - 5f else firstNote.nx + 5f
-                    val lastX = if (groupStemDir > 0) lastNote.nx - 5f else lastNote.nx + 5f
+                    // For notes sharing the same position, pick the notehead furthest towards the beam
+                    // If stems point DOWN (+1f), we attach to the lowest notehead (highest ny).
+                    // If stems point UP (-1f), we attach to the highest notehead (lowest ny).
+                    val posGroups = cluster.groupBy { it.note.position }
+                    val beamAnchorNotes = posGroups.values.map { notesAtPos ->
+                        if (groupStemDir > 0) notesAtPos.maxByOrNull { it.ny }!!
+                        else notesAtPos.minByOrNull { it.ny }!!
+                    }.sortedBy { it.nx }
 
+                    val firstAnchor = beamAnchorNotes.first()
+                    val lastAnchor = beamAnchorNotes.last()
+
+                    val firstX = if (groupStemDir > 0) firstAnchor.nx - 5f else firstAnchor.nx + 5f
+                    val lastX = if (groupStemDir > 0) lastAnchor.nx - 5f else lastAnchor.nx + 5f
                     val dx = (lastX - firstX).coerceAtLeast(1f)
-                    val rawPitchSlope = (lastNote.ny - firstNote.ny) / dx
-                    // Tightly clamp slope to standard musical notation angles (-0.12 to 0.12) to prevent wild diagonal beams
-                    val clampedSlope = (rawPitchSlope * 0.25f).coerceIn(-0.12f, 0.12f)
+
+                    val rawPitchSlope = (lastAnchor.ny - firstAnchor.ny) / dx
+                    // Tightly clamp slope to standard musical notation angles (-0.10 to 0.10) to prevent cross-staff beams
+                    val clampedSlope = (rawPitchSlope * 0.20f).coerceIn(-0.10f, 0.10f)
 
                     val standardStemLength = 24f
-                    // Calculate natural beam anchor based on extreme notehead
-                    val baseStemY = if (groupStemDir > 0) {
-                        // Stems pointing down (toward bottom/higher Y): beam line is at or below the lowest stem end
-                        beamedSorted.map { it.ny + standardStemLength - (clampedSlope * (it.nx - firstX)) }.maxOrNull() ?: (firstNote.ny + standardStemLength)
+                    // Calculate base stem Y from extreme anchor notehead
+                    var baseStemY = if (groupStemDir > 0) {
+                        beamAnchorNotes.map { it.ny + standardStemLength - (clampedSlope * (it.nx - firstAnchor.nx)) }.maxOrNull()
+                            ?: (firstAnchor.ny + standardStemLength)
                     } else {
-                        // Stems pointing up (toward top/lower Y): beam line is at or above the highest stem end
-                        beamedSorted.map { it.ny - standardStemLength - (clampedSlope * (it.nx - firstX)) }.minOrNull() ?: (firstNote.ny - standardStemLength)
+                        beamAnchorNotes.map { it.ny - standardStemLength - (clampedSlope * (it.nx - firstAnchor.nx)) }.minOrNull()
+                            ?: (firstAnchor.ny - standardStemLength)
                     }
 
-                    // Strict staff clearance boundaries:
-                    // Treble staff lines span trebleBaseline to (trebleBaseline + 4 * lineSpacing).
-                    // Bass staff starts at bassBaseline = trebleBaseline + 5.5 * lineSpacing.
-                    // Ledger line for Middle C is at trebleBaseline + 5 * lineSpacing.
-                    // Treble beams must NEVER enter the bass clef area!
-                    // Bass beams must NEVER enter the treble clef area!
-                    val trebleMaxBeamY = trebleBaseline + (4.5f * lineSpacing) // Ceiling: stay above Middle C / bass staff
-                    val bassMinBeamY = bassBaseline - (0.8f * lineSpacing)     // Floor: stay below treble staff
+                    // Strict staff clearance boundaries: Treble and Bass staves must never be crossed
+                    val trebleMaxBeamY = trebleBaseline + (4.2f * lineSpacing)
+                    val bassMinBeamY = bassBaseline - (0.5f * lineSpacing)
 
                     var constrainedStartY = baseStemY
                     if (isTreble && groupStemDir > 0) {
@@ -343,34 +403,51 @@ private fun computeStaffLayout(
                         }
                     }
 
-                    // Enforce stem length limits (between 18f and 32f) across all notes in the beam group
-                    // If any note's stem would be too short or too long, adjust constrainedStartY
-                    for (n in beamedSorted) {
-                        val beamYAtN = constrainedStartY + (clampedSlope * (n.nx - firstX))
+                    // Enforce reasonable stem length limits without pulling beam between notes
+                    for (n in beamAnchorNotes) {
+                        val beamYAtN = constrainedStartY + (clampedSlope * (n.nx - firstAnchor.nx))
                         val stemLen = if (groupStemDir > 0) (beamYAtN - n.ny) else (n.ny - beamYAtN)
                         if (stemLen < 18f) {
-                            val diff = 18f - stemLen
-                            constrainedStartY += (groupStemDir * diff)
-                        } else if (stemLen > 32f) {
-                            val diff = stemLen - 32f
-                            constrainedStartY -= (groupStemDir * diff)
+                            constrainedStartY += (groupStemDir * (18f - stemLen))
                         }
                     }
 
                     val constrainedEndY = constrainedStartY + (clampedSlope * dx)
 
+                    // Map all notes in the cluster (including all chord notes at any position)
                     val noteStemYMap = mutableMapOf<ScoreNote, Float>()
-                    beamedSorted.forEach { n ->
-                        val beamYAtNote = constrainedStartY + (clampedSlope * (n.nx - firstX))
+                    cluster.forEach { n ->
+                        val beamYAtNote = constrainedStartY + (clampedSlope * (n.nx - firstAnchor.nx))
                         noteStemYMap[n.note] = beamYAtNote
                     }
 
-                    val sixteenthNotes = beamedSorted.filter { it.note.duration <= 0.35f }
-                    val hasSixteenth = sixteenthNotes.size >= 2
-                    val sFirstX = if (hasSixteenth) (if (groupStemDir > 0) sixteenthNotes.first().nx - 5f else sixteenthNotes.first().nx + 5f) else 0f
-                    val sLastX = if (hasSixteenth) (if (groupStemDir > 0) sixteenthNotes.last().nx - 5f else sixteenthNotes.last().nx + 5f) else 0f
-                    val sStartY = if (hasSixteenth) (constrainedStartY + clampedSlope * (sFirstX - firstX)) - (groupStemDir * 4.5f) else 0f
-                    val sEndY = if (hasSixteenth) (constrainedStartY + clampedSlope * (sLastX - firstX)) - (groupStemDir * 4.5f) else 0f
+                    // Check for 16th notes in this specific cluster
+                    val sixteenthNotes = cluster.filter { it.note.duration <= 0.35f }
+                    val sixteenthDistinctPos = sixteenthNotes.map { it.note.position }.distinct()
+                    val hasSixteenth = sixteenthDistinctPos.size >= 2
+
+                    val sFirstAnchor = if (hasSixteenth) sixteenthNotes.minByOrNull { it.nx } else null
+                    val sLastAnchor = if (hasSixteenth) sixteenthNotes.maxByOrNull { it.nx } else null
+
+                    val sFirstX = if (sFirstAnchor != null) (if (groupStemDir > 0) sFirstAnchor.nx - 5f else sFirstAnchor.nx + 5f) else 0f
+                    val sLastX = if (sLastAnchor != null) (if (groupStemDir > 0) sLastAnchor.nx - 5f else sLastAnchor.nx + 5f) else 0f
+                    val sStartY = if (sFirstAnchor != null) (constrainedStartY + clampedSlope * (sFirstX - firstX)) - (groupStemDir * 4.5f) else 0f
+                    val sEndY = if (sLastAnchor != null) (constrainedStartY + clampedSlope * (sLastX - firstX)) - (groupStemDir * 4.5f) else 0f
+
+                    // Beamlets / fractional beam stubs for isolated 16th notes (e.g. dotted 8th + 16th)
+                    val beamlets = mutableListOf<Pair<Offset, Offset>>()
+                    if (!hasSixteenth && sixteenthDistinctPos.size == 1) {
+                        val single16th = sixteenthNotes.first()
+                        val stemX = if (groupStemDir > 0) single16th.nx - 5f else single16th.nx + 5f
+                        val beamletLen = 8f
+                        // If it's near the start of the beam, point inwards (+X); if near the end, point inwards (-X)
+                        val direction = if (stemX <= (firstX + lastX) / 2f) 1f else -1f
+                        val bStartX = stemX
+                        val bEndX = stemX + (direction * beamletLen)
+                        val bStartY = (constrainedStartY + clampedSlope * (bStartX - firstX)) - (groupStemDir * 4.5f)
+                        val bEndY = (constrainedStartY + clampedSlope * (bEndX - firstX)) - (groupStemDir * 4.5f)
+                        beamlets.add(Pair(Offset(bStartX, bStartY), Offset(bEndX, bEndY)))
+                    }
 
                     val beamInfo = PrecomputedBeamGroup(
                         stemDir = groupStemDir,
@@ -383,9 +460,10 @@ private fun computeStaffLayout(
                         sFirstX = sFirstX,
                         sLastX = sLastX,
                         sStartY = sStartY,
-                        sEndY = sEndY
+                        sEndY = sEndY,
+                        beamlets = beamlets
                     )
-                    beamEligible.forEach { info ->
+                    cluster.forEach { info ->
                         noteBeamMap[info.note] = beamInfo
                     }
                     precomputedBeams.add(beamInfo)
@@ -394,10 +472,13 @@ private fun computeStaffLayout(
         }
     }
 
+    val staffAssignmentMap = measure.notes.associateWith { note ->
+        if (hasDifferentiatedVoices) note.voice == 0 else note.midiNote >= 60
+    }
     val explicitTrebleRests = measure.rests.filter { it.voice == 0 }
     val explicitBassRests = measure.rests.filter { it.voice == 1 }
-    val trebleRests = if (!isRightHandHidden) calculateRestsForStaff(measure.notes, isTreble = true, measure.notes.associateWith { it.midiNote >= 60 }, beatsPerMeasure, explicitTrebleRests) else emptyList()
-    val bassRests = if (!isLeftHandHidden) calculateRestsForStaff(measure.notes, isTreble = false, measure.notes.associateWith { it.midiNote >= 60 }, beatsPerMeasure, explicitBassRests) else emptyList()
+    val trebleRests = if (!isRightHandHidden) calculateRestsForStaff(measure.notes, isTreble = true, staffAssignmentMap, beatsPerMeasure, explicitTrebleRests) else emptyList()
+    val bassRests = if (!isLeftHandHidden) calculateRestsForStaff(measure.notes, isTreble = false, staffAssignmentMap, beatsPerMeasure, explicitBassRests) else emptyList()
 
     return PrecomputedStaffLayout(
         visibleNotes = visibleNotes,
@@ -461,20 +542,27 @@ private fun computeTabLayout(
         val sortedDescMidi = notesAtPos.sortedByDescending { it.midiNote }
         val usedStrings = mutableSetOf<Int>()
 
+        // Human playability heuristic: identify an anchor fret window (e.g. frets 0..4, 5..9) for the chord
+        val candidateFrets = sortedDescMidi.mapNotNull { n ->
+            (0..5).map { s -> n.midiNote - guitarOpenStringsMidi[s] }.filter { it in 1..22 }.minOrNull()
+        }
+        val targetFretAnchor = if (candidateFrets.isNotEmpty()) candidateFrets.average().toInt().coerceIn(1, 15) else 0
+
         sortedDescMidi.forEach { note ->
             val stringIdx = if (note.string != null && note.string in 0..5 && note.string !in usedStrings) {
                 note.string!!
             } else {
-                // Find eligible guitar strings where note can be played within frets 0..22 without colliding with already assigned strings
+                // Find eligible guitar strings where note can be played cleanly within a playable human hand span (4-5 frets)
                 var bestStr = (0..5).filter { it !in usedStrings }.minByOrNull { sIdx ->
                     val openPitch = guitarOpenStringsMidi[sIdx]
                     val fret = note.midiNote - openPitch
-                    if (fret in 0..22) {
-                        // Prefer standard comfortable frets (frets 0..9)
-                        if (fret <= 9) fret else fret + 10
-                    } else {
-                        // Out of natural range for this string, penalize heavily
-                        1000 + kotlin.math.abs(fret)
+                    when {
+                        fret == 0 -> 0 // Open string is always top ergonomic priority
+                        fret in 1..22 -> {
+                            val distanceToAnchor = kotlin.math.abs(fret - targetFretAnchor)
+                            if (distanceToAnchor <= 4) distanceToAnchor else distanceToAnchor + 20
+                        }
+                        else -> 1000 + kotlin.math.abs(fret)
                     }
                 }
                 if (bestStr == null) {
@@ -1020,7 +1108,16 @@ fun StaffAndTabNotationViewer(
                     ) {
                         score.measures.forEachIndexed { mIdx, measure ->
                             val isFirstMeasure = (mIdx == 0)
-                            val measureWidth = if (isFirstMeasure) 360.dp else 280.dp
+                            // Density-proportional measure sizing for optimal musical readability
+                            val noteCount = measure.notes.size
+                            val baseMeasureW = when {
+                                noteCount > 24 -> 420.dp
+                                noteCount > 16 -> 360.dp
+                                noteCount > 8 -> 300.dp
+                                noteCount > 2 -> 250.dp
+                                else -> 200.dp
+                            }
+                            val measureWidth = if (isFirstMeasure) baseMeasureW + 70.dp else baseMeasureW
                             Box(modifier = Modifier.width(measureWidth).height(rowHeight)) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val staffLineSpacing = if (compactStaffMode) 9.5f.dp.toPx() else 14.dp.toPx()
@@ -1606,9 +1703,40 @@ private fun drawStaffMeasureContent(
                 )
             }
 
+            // Render standard Key Signature sharps or flats between Clef and Time Signature
+            val ksCount = measure.keySignature.accidentalsCount
+            val ksIsSharp = measure.keySignature.isSharp
+            val ksStepX = 8f
+            val ksStartX = startX + maxOf(clefW, bassW) + 6f
+            if (ksCount > 0) {
+                val accH = config.lineSpacing * 1.35f
+                val accW = if (ksIsSharp) accH * 0.38f else accH * 0.32f
+                val trebleSharpOffsets = floatArrayOf(0.0f, 1.5f, -0.5f, 1.0f, 2.5f, 0.5f, 2.0f) // F, C, G, D, A, E, B relative steps
+                val bassSharpOffsets = floatArrayOf(1.0f, 2.5f, 0.5f, 2.0f, 3.5f, 1.5f, 3.0f)
+                val trebleFlatOffsets = floatArrayOf(2.0f, 0.5f, 2.5f, 1.0f, 3.0f, 1.5f, 3.5f) // B, E, A, D, G, C, F
+                val bassFlatOffsets = floatArrayOf(3.0f, 1.5f, 3.5f, 2.0f, 4.0f, 2.5f, 4.5f)
+
+                with(MusicVectorSymbols) {
+                    for (i in 0 until minOf(ksCount, 7)) {
+                        val kX = ksStartX + (i * ksStepX)
+                        if (ksIsSharp) {
+                            val tY = trebleBaseline + (trebleSharpOffsets[i] * config.lineSpacing)
+                            val bY = bassBaseline + (bassSharpOffsets[i] * config.lineSpacing)
+                            drawSharp(clefTextColor, Size(accW, accH), Offset(kX, tY - accH / 2f))
+                            drawSharp(clefTextColor, Size(accW, accH), Offset(kX, bY - accH / 2f))
+                        } else {
+                            val tY = trebleBaseline + (trebleFlatOffsets[i] * config.lineSpacing)
+                            val bY = bassBaseline + (bassFlatOffsets[i] * config.lineSpacing)
+                            drawFlat(clefTextColor, Size(accW, accH), Offset(kX, tY - (accH * 0.72f)))
+                            drawFlat(clefTextColor, Size(accW, accH), Offset(kX, bY - (accH * 0.72f)))
+                        }
+                    }
+                }
+            }
+
             val tsParts = timeSignature.split("/")
             if (tsParts.size == 2) {
-                val tsX = startX + maxOf(clefW, bassW) + 10f
+                val tsX = if (ksCount > 0) ksStartX + (minOf(ksCount, 7) * ksStepX) + 6f else startX + maxOf(clefW, bassW) + 10f
                 with(MusicVectorSymbols) {
                     drawTimeSignature(
                         numerator = tsParts[0],
@@ -1662,14 +1790,15 @@ private fun drawStaffMeasureContent(
             val isSounding = isMeasureActive && (midiNote == playingNote || activeMidiNotes.contains(midiNote))
             val beadColor = if (isSounding) config.primaryColor else if (isTrebleClef) config.rightHandColor else config.leftHandColor
 
-            // Draw Ledger Lines accurately
+            // Draw Ledger Lines accurately with subtle hand tinting for cross-staff clarity
             drawLedgerLines(
                 x = nx,
                 y = ny,
                 topY = topY,
                 bottomY = bottomY,
                 spacing = config.lineSpacing,
-                color = staffLineColor
+                color = staffLineColor,
+                handAccent = beadColor
             )
 
             val beamInfo = noteBeamMap[note]
@@ -1754,6 +1883,32 @@ private fun drawStaffMeasureContent(
                     MusicalArticulation.NONE -> {}
                 }
 
+                // 3b. Ties (Curved arcs connecting tied notes across beats or barline)
+                if (note.tieStart) {
+                    val tieDir = if (stemDir > 0) -1f else 1f
+                    val tieStartY = ny + (tieDir * (noteHeight * 0.7f))
+                    val tieEndX = nx + 28f
+                    val tieMidX = (nx + tieEndX) / 2f
+                    val tieMidY = tieStartY + (tieDir * 8f)
+                    val tiePath = Path().apply {
+                        moveTo(nx + 6f, tieStartY)
+                        quadraticBezierTo(tieMidX, tieMidY, tieEndX, tieStartY)
+                    }
+                    drawPath(tiePath, color = clefTextColor, style = Stroke(width = 1.6f))
+                }
+                if (note.tieEnd && !note.tieStart) {
+                    val tieDir = if (stemDir > 0) -1f else 1f
+                    val tieStartY = ny + (tieDir * (noteHeight * 0.7f))
+                    val tieStartX = nx - 22f
+                    val tieMidX = (tieStartX + nx) / 2f
+                    val tieMidY = tieStartY + (tieDir * 8f)
+                    val tiePath = Path().apply {
+                        moveTo(tieStartX, tieStartY)
+                        quadraticBezierTo(tieMidX, tieMidY, nx - 6f, tieStartY)
+                    }
+                    drawPath(tiePath, color = clefTextColor, style = Stroke(width = 1.6f))
+                }
+
                 // 4. Dynamics
                 if (note.dynamic.isNotEmpty()) {
                     val dynY = bassBaseline + 5 * config.lineSpacing + 8f
@@ -1800,9 +1955,26 @@ private fun drawStaffMeasureContent(
                 drawText(lyricLayout, topLeft = Offset(nx - lyricLayout.size.width / 2f, bassBaseline + 5 * config.lineSpacing + 22f))
             }
 
-            // 5. Accidentals
+            // 5. Accidentals: Respect KeySignature so notes naturally in the key do not display redundant accidentals
             val label = noteLabels[midiNote % 12]
-            val hasAccidental = label.contains("#") || label.contains("b") || note.accidental != Accidental.NATURAL
+            val keySig = measure.keySignature
+            val isPitchInKeySignature = when (midiNote % 12) {
+                1 -> keySig.accidentalsCount >= 2 && keySig.isSharp  // C#
+                3 -> keySig.accidentalsCount >= 4 && keySig.isSharp  // D#
+                6 -> keySig.accidentalsCount >= 1 && keySig.isSharp  // F#
+                8 -> keySig.accidentalsCount >= 3 && keySig.isSharp  // G#
+                10 -> (keySig.accidentalsCount >= 5 && keySig.isSharp) || (!keySig.isSharp && keySig.accidentalsCount >= 1) // A# or Bb
+                5 -> !keySig.isSharp && keySig.accidentalsCount >= 2 // Eb
+                0 -> !keySig.isSharp && keySig.accidentalsCount >= 3 // Ab
+                7 -> !keySig.isSharp && keySig.accidentalsCount >= 4 // Db
+                2 -> !keySig.isSharp && keySig.accidentalsCount >= 5 // Gb
+                else -> false
+            }
+            val hasAccidental = if (isPitchInKeySignature) {
+                note.accidental == Accidental.NATURAL && note.courtesyAccidental || note.accidental == Accidental.DOUBLE_SHARP
+            } else {
+                label.contains("#") || label.contains("b") || note.accidental != Accidental.NATURAL
+            }
             if (hasAccidental) {
                 val isSharp = label.contains("#") || note.accidental == Accidental.SHARP
                 val isDoubleSharp = note.accidental == Accidental.DOUBLE_SHARP
@@ -1854,6 +2026,15 @@ private fun drawStaffMeasureContent(
                     color = clefTextColor,
                     start = Offset(beam.sFirstX, beam.sStartY),
                     end = Offset(beam.sLastX, beam.sEndY),
+                    strokeWidth = beamThickness
+                )
+            }
+
+            beam.beamlets.forEach { (bStart, bEnd) ->
+                drawLine(
+                    color = clefTextColor,
+                    start = bStart,
+                    end = bEnd,
                     strokeWidth = beamThickness
                 )
             }
