@@ -626,17 +626,21 @@ private fun InstrumentChannelStrip(
     selectedScale: String? = null
 ) {
     ElevatedCard(
-        modifier = modifier.then(
-            if (isRunning) Modifier.border(2.dp, accentColor, MaterialTheme.shapes.large) else Modifier
-        ),
+        modifier = modifier
+            .fillMaxHeight() // <-- Fills the available vertical height of the parent layout
+            .then(
+                if (isRunning) Modifier.border(2.dp, accentColor, MaterialTheme.shapes.large) else Modifier
+            ),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.elevatedCardColors(
             containerColor = if (isRunning) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerLow
         )
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxSize() // <-- Ensures the column expands to fill the card's height
+                .padding(12.dp),
+            verticalArrangement = Arrangement.SpaceBetween, // <-- Distributes elements evenly if there is empty space
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Title & Run Status
@@ -708,51 +712,56 @@ private fun InstrumentChannelStrip(
 
             // Optional: BPM Adjuster Controls & Tap Tempo (for Tabla/Metronome)
             if (bpm != null && onBpmChange != null && onTapTempo != null) {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    FilledTonalIconButton(
-                        onClick = { onBpmChange((bpm - 1).coerceAtLeast(30)) },
-                        modifier = Modifier.size(30.dp),
-                        shape = CircleShape
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        FilledTonalIconButton(
+                            onClick = { onBpmChange((bpm - 1).coerceAtLeast(30)) },
+                            modifier = Modifier.size(30.dp),
+                            shape = CircleShape
+                        ) {
+                            Text("-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        }
+
+                        Text(
+                            text = "$bpm",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontFamily = FontFamily.Monospace
+                        )
+
+                        FilledTonalIconButton(
+                            onClick = { onBpmChange((bpm + 1).coerceAtMost(280)) },
+                            modifier = Modifier.size(30.dp),
+                            shape = CircleShape
+                        ) {
+                            Text("+", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        }
                     }
 
-                    Text(
-                        text = "$bpm",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontFamily = FontFamily.Monospace
-                    )
-
-                    FilledTonalIconButton(
-                        onClick = { onBpmChange((bpm + 1).coerceAtMost(280)) },
-                        modifier = Modifier.size(30.dp),
-                        shape = CircleShape
+                    OutlinedButton(
+                        onClick = onTapTempo,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(32.dp),
+                        shape = MaterialTheme.shapes.small,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = accentColor
+                        ),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+                        contentPadding = PaddingValues(0.dp)
                     ) {
-                        Text("+", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("TAP BPM", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
                     }
-                }
-
-                OutlinedButton(
-                    onClick = onTapTempo,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp),
-                    shape = MaterialTheme.shapes.small,
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = accentColor
-                    ),
-                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("TAP BPM", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
                 }
             }
 

@@ -90,13 +90,19 @@ LaunchedEffect(Unit) {
     }
 }
 
+    val isAnyFullscreen = viewModel.isVideoFullScreen.value ||
+            viewModel.isFullscreenKeyboard.value ||
+            viewModel.isNotationFullscreen.value ||
+            viewModel.isImmersiveLabActive.value ||
+            viewModel.isTanpuraFullscreen.value
+
     pEQTheme(theme = theme, accent = accent) {
 
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
+                    .then(if (isAnyFullscreen) Modifier else Modifier.statusBarsPadding())
                     .background(Color.Black)
         ) {
 

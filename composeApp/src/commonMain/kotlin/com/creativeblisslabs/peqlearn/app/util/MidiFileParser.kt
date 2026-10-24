@@ -2,6 +2,7 @@ package com.creativeblisslabs.peqlearn.app.util
 
 import com.creativeblisslabs.peqlearn.app.ui.screens.KeySignature
 import com.creativeblisslabs.peqlearn.app.ui.screens.Measure
+import com.creativeblisslabs.peqlearn.app.ui.screens.PedalEvent
 import com.creativeblisslabs.peqlearn.app.ui.screens.RestSymbol
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote
@@ -47,6 +48,7 @@ object MidiFileParser {
         var tempo = 120.0f
         var timeSig = "4/4"
         val rawNotes = mutableListOf<ScoreNote>()
+        val rawPedalEvents = mutableListOf<Pair<Float, PedalEvent>>() // absoluteBeat to PedalEvent
 
         var offset = 14
         for (t in 0 until numTracks) {
@@ -108,7 +110,7 @@ object MidiFileParser {
                             ScoreNote(
                                 id = 0,
                                 midiNote = note,
-                                position = posBeats % 4f,
+                                position = posBeats,
                                 duration = durBeats.coerceAtLeast(0.25f)
                             )
                         )
@@ -125,10 +127,26 @@ object MidiFileParser {
                         ScoreNote(
                             id = 0,
                             midiNote = note,
-                            position = posBeats % 4f,
+                            position = posBeats,
                             duration = durBeats.coerceAtLeast(0.25f)
                         )
                     )
+                } else if (status in 0xB0..0xBF) {
+                    // Control Change (Sustain: CC 64, Sostenuto: CC 66, Soft: CC 67)
+                    if (offset + 1 >= trackEnd) break
+                    val ccNum = bytes[offset].toInt() and 0x7F
+                    val ccVal = bytes[offset + 1].toInt() and 0x7F
+                    offset += 2
+                    if (ccNum == 64 || ccNum == 66 || ccNum == 67) {
+                        val posBeats = currentTick / division
+                        rawPedalEvents.add(
+                            posBeats to PedalEvent(
+                                position = 0f, // will be mapped relative to measure
+                                pedalType = ccNum,
+                                isPressed = ccVal >= 64
+                            )
+                        )
+                    }
                 } else if (status in 0xA0..0xEF) {
                     offset += 2
                 } else if (status in 0xC0..0xDF) {
@@ -137,15 +155,41 @@ object MidiFileParser {
             }
         }
 
-        val measures = rawNotes.chunked(4).mapIndexed { idx, notes ->
-            Measure(notes = notes, barline = if (idx == (rawNotes.size / 4)) "final" else "single")
+        // Determine beats per measure from time signature
+        val beatsPerMeasure = timeSig.split("/").firstOrNull()?.toIntOrNull() ?: 4
+        val maxNoteBeat = rawNotes.maxOfOrNull { it.position + it.duration } ?: 0f
+        val maxPedalBeat = rawPedalEvents.maxOfOrNull { it.first } ?: 0f
+        val totalBeats = maxOf(maxNoteBeat, maxPedalBeat, beatsPerMeasure.toFloat())
+        val numMeasures = kotlin.math.ceil(totalBeats / beatsPerMeasure).toInt().coerceAtLeast(1)
+
+        val measures = (0 until numMeasures).map { measureIdx ->
+            val measureStartBeat = measureIdx * beatsPerMeasure.toFloat()
+            val measureEndBeat = (measureIdx + 1) * beatsPerMeasure.toFloat()
+
+            val measureNotes = rawNotes.filter { it.position >= measureStartBeat && it.position < measureEndBeat }
+                .map { note ->
+                    note.copy(position = (note.position - measureStartBeat).coerceIn(0f, beatsPerMeasure.toFloat()))
+                }
+
+            val measurePedals = rawPedalEvents.filter { it.first >= measureStartBeat && it.first < measureEndBeat }
+                .map { (absBeat, pedal) ->
+                    pedal.copy(position = (absBeat - measureStartBeat).coerceIn(0f, beatsPerMeasure.toFloat()))
+                }
+
+            Measure(
+                notes = measureNotes,
+                pedalEvents = measurePedals,
+                barline = if (measureIdx == numMeasures - 1) "final" else "single",
+                measureIndex = measureIdx + 1,
+                timeSignatureNumerator = beatsPerMeasure
+            )
         }
 
         return Score(
             title = "Imported MIDI",
             tempo = tempo,
             timeSignature = timeSig,
-            measures = if (measures.isNotEmpty()) measures else listOf(Measure(notes = rawNotes))
+            measures = measures
         )
     }
 

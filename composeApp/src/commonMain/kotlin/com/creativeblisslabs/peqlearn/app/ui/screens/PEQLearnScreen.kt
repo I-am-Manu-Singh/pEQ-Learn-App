@@ -77,7 +77,7 @@ private fun LearnMainContent(
                 // LEFT SIDEBAR: Music Theory Book + Workspace Navigation Rail/List
                 Column(
                     modifier = Modifier
-                        .width(280.dp)
+                        .width(220.dp)
                         .fillMaxHeight()
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -346,7 +346,7 @@ private fun LearnMainContent(
                             "TOOLS" -> {
                                 ToolsStudioPanel(viewModel = viewModel)
                             }
-                            "PIANO" -> {
+                            "PIANO", "PIANO & NOTATION" -> {
                                 PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
                                 StrobeTunerSection(viewModel)
                             }

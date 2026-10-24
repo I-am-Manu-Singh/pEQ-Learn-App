@@ -277,7 +277,15 @@ class AndroidAudioEngine(
     private val drumKitLoader = DrumKitLoader(context, soundPool)
 
     // Dedicated SoundPool for ultra-low latency, zero-lag Salamander Grand Piano Samples
-    private val salamanderSoundPool = SoundPool.Builder().setMaxStreams(24).build()
+    private val salamanderSoundPool = SoundPool.Builder()
+        .setMaxStreams(48)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+        )
+        .build()
     private val salamanderSampleMap = ConcurrentHashMap<Int, Int>() // midiNote -> soundPoolId
     private val salamanderActiveStreamMap = ConcurrentHashMap<Int, Int>() // midiNote -> streamId
     private val salamanderLoaded = AtomicBoolean(false)
@@ -1827,9 +1835,15 @@ class AndroidAudioEngine(
             if (soundId != null) {
                 // Pitch shift playback rate based on semitone difference: 2^(semitones / 12)
                 val semitoneDiff = midiNote - closestMidi
-                val rate = kotlin.math.pow(2.0, semitoneDiff.toDouble() / 12.0).toFloat().coerceIn(0.5f, 2.0f)
+                val rate = java.lang.Math.pow(2.0, semitoneDiff.toDouble() / 12.0).toFloat().coerceIn(0.5f, 2.0f)
+                // Stop any previous voice on the same key to prevent voice accumulation on rapid repetitive taps
+                salamanderActiveStreamMap.remove(midiNote)?.let { oldStreamId ->
+                    salamanderSoundPool.stop(oldStreamId)
+                }
                 val streamId = salamanderSoundPool.play(soundId, clampedVel, clampedVel, 1, 0, rate)
-                salamanderActiveStreamMap[midiNote] = streamId
+                if (streamId != 0) {
+                    salamanderActiveStreamMap[midiNote] = streamId
+                }
                 return
             }
         }
@@ -1848,8 +1862,8 @@ class AndroidAudioEngine(
                         val vel = (clampedVel * 127).toInt()
                         try {
                             sf.noteOn(0, midiNote, vel)
-                            // Render 0.5s of stereo audio for note ring/sustain (44100 * 0.5 * 2)
-                            val samplesToRender = (44100 * 0.5 * 2).toInt().coerceAtLeast(stereoBufferSize)
+                            // Render 1.2s of stereo audio for authentic note ring/sustain (44100 * 1.2 * 2)
+                            val samplesToRender = (44100 * 1.2 * 2).toInt().coerceAtLeast(stereoBufferSize)
                             val floatBuffer = sf.renderFloat(samplesToRender)
 
                             if (floatBuffer.isNotEmpty()) {
@@ -1890,8 +1904,16 @@ class AndroidAudioEngine(
         }
 
         if (currentInstrument == "PIANO" && pianoAudioMode == "SalamanderSamples") {
-            salamanderActiveStreamMap.remove(note)?.let { streamId ->
-                salamanderSoundPool.stop(streamId)
+            val streamId = salamanderActiveStreamMap.remove(note)
+            if (streamId != null) {
+                // Fade down slightly before stopping after release to avoid clicks
+                engineScope.launch {
+                    try {
+                        salamanderSoundPool.setVolume(streamId, 0.35f, 0.35f)
+                        delay(220L)
+                        salamanderSoundPool.stop(streamId)
+                    } catch (_: Exception) {}
+                }
             }
             return
         }

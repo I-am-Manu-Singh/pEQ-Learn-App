@@ -59,6 +59,13 @@ data class BeamInfo(
 )
 
 @Serializable
+data class PedalEvent(
+    val position: Float = 0.0f,
+    val pedalType: Int = 64, // 64: Sustain / Damper, 66: Sostenuto, 67: Soft
+    val isPressed: Boolean = true
+)
+
+@Serializable
 data class RestSymbol(
     val position: Float = 0.0f,
     val duration: Float = 1.0f,
@@ -135,6 +142,7 @@ data class ScoreNote(
 data class Measure(
     val notes: List<ScoreNote> = emptyList(),
     val rests: List<RestSymbol> = emptyList(),
+    val pedalEvents: List<PedalEvent> = emptyList(),
     val repeatStart: Boolean = false,
     val repeatEnd: Boolean = false,
     val endingNumber: Int? = null,

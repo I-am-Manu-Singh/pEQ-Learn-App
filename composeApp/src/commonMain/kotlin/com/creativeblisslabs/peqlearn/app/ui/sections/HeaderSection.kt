@@ -281,7 +281,7 @@ fun NowPlayingBar(
                             modifier = Modifier.padding(horizontal = 4.dp)
                         ) {
                             Text(
-                                text = "${speed}x Speed",
+                                text = "${speed}x",
                                 fontSize = if (isLandscape) 9.sp else 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,

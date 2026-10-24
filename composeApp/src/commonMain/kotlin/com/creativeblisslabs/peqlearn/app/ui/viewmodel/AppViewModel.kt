@@ -1490,6 +1490,8 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 initialElapsedMs += (startOffset * mDurationMs).toLong()
             }
 
+            val firedPedalsMap = mutableMapOf<Int, Boolean>()
+
             while (isActive && isScorePlaying.value) {
                 val now = Clock.System.now().toEpochMilliseconds()
                 val totalElapsedMs = initialElapsedMs + (now - startTime)
@@ -1525,6 +1527,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
 
                 if (currentMeasureIdx != lastTrackedMeasure) {
                     firedNotesMap.clear()
+                    firedPedalsMap.clear()
                     lastTrackedMeasure = currentMeasureIdx
                 }
 
@@ -1569,6 +1572,15 @@ fun scrubSongPlayhead(targetProgress: Float) {
                     withContext(Dispatchers.Main) {
                         scorePlayheadMeasure.value = currentMeasureIdx
                         scorePlayheadOffset.value = visualOffset
+                    }
+                }
+
+                // Process pedal events in current measure
+                measure.pedalEvents.forEachIndexed { pIdx, pedalEvent ->
+                    val alreadyFired = firedPedalsMap[pIdx] == true
+                    if (currentOffset >= pedalEvent.position / measure.timeSignatureNumerator && !alreadyFired) {
+                        firedPedalsMap[pIdx] = true
+                        onMidiPedalEventReceived(pedalEvent.pedalType, pedalEvent.isPressed)
                     }
                 }
 

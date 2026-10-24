@@ -577,6 +577,9 @@ Row(
                     onPlayClick = {
                         if (isArpeggioRunning) {
                             playbackJob?.cancel()
+                            pianoPitches.forEach { midi ->
+                                try { viewModel.audioEngine.noteOff(midi) } catch (_: Exception) {}
+                            }
                             currentPlayingIdx = -1
                             viewModel.midiPlayingNote.value = null
                             viewModel.currentScore.value = null
@@ -601,16 +604,31 @@ Row(
                                 }
                             }
 
+                            // Open string pitch references: Guitar (e4=64, B3=59, G3=55, D3=50, A2=45, E2=40), Ukulele (A4=69, E4=64, C4=60, G4=67)
+                            val openStrings = if (selectedInstrument == ChordInstrumentType.UKULELE) listOf(69, 64, 60, 67) else listOf(64, 59, 55, 50, 45, 40)
+
                             val mockNotesList = soundSequencePitches.mapIndexed { idx: Int, midiPitch: Int ->
-                                val targetString = when (selectedInstrument) {
-                                    ChordInstrumentType.GUITAR -> guitarShape.frets.indices.filter { guitarShape.frets[it] != -1 }.getOrNull(idx % pianoPitches.size.coerceAtLeast(1))
-                                    ChordInstrumentType.UKULELE -> ukuShape.frets.indices.filter { ukuShape.frets[it] != -1 }.getOrNull(idx % pianoPitches.size.coerceAtLeast(1))
-                                    else -> null
-                                }
-                                val targetFret = when (selectedInstrument) {
-                                    ChordInstrumentType.GUITAR -> targetString?.let { guitarShape.frets[it] }
-                                    ChordInstrumentType.UKULELE -> targetString?.let { ukuShape.frets[it] }
-                                    else -> null
+                                val targetString: Int?
+                                val targetFret: Int?
+                                if (mode == 0) {
+                                    val frets = if (selectedInstrument == ChordInstrumentType.UKULELE) ukuShape.frets else guitarShape.frets
+                                    val activeStrings = frets.indices.filter { frets[it] != -1 }
+                                    targetString = activeStrings.getOrNull(idx % activeStrings.size.coerceAtLeast(1))
+                                    targetFret = targetString?.let { frets[it] }
+                                } else {
+                                    // Scale mode: map pitch to the closest string & fret on the neck
+                                    var bestStr: Int? = null
+                                    var bestFret: Int? = null
+                                    for (s in openStrings.indices) {
+                                        val f = (midiPitch % 12 - openStrings[s] % 12 + 12) % 12
+                                        if (f in 0..15) {
+                                            bestStr = s
+                                            bestFret = f
+                                            break
+                                        }
+                                    }
+                                    targetString = bestStr
+                                    targetFret = bestFret
                                 }
 
                                 ScoreNote(
@@ -634,43 +652,56 @@ Row(
                                     viewModel.audioEngine.setInstrument(instr)
                                 } catch (_: Exception) {}
 
-                                if (activeSoundStyle == InstrumentSoundStyle.ALL_AT_ONCE) {
-                                    // Sound all notes at once
-                                    viewModel.scorePlayheadMeasure.value = 0
-                                    viewModel.scorePlayheadOffset.value = 0f
-                                    viewModel.midiActiveNotes.clear()
-                                    pianoPitches.forEach { midiPitch ->
-                                        viewModel.midiActiveNotes[midiPitch] = true
-                                        try {
-                                            viewModel.audioEngine.noteOn(midiPitch, 0.85f)
-                                        } catch (_: Exception) {}
-                                    }
-                                    delay(750)
-                                } else {
-                                    // Sequential strum or Roundtrip arpeggio
-                                    val stepDelay = if (activeSoundStyle == InstrumentSoundStyle.SEQUENTIAL) 180L else 140L
-                                    soundSequencePitches.forEachIndexed { idx: Int, midiPitch: Int ->
-                                        currentPlayingIdx = idx % pianoPitches.size.coerceAtLeast(1)
+                                try {
+                                    if (activeSoundStyle == InstrumentSoundStyle.ALL_AT_ONCE) {
+                                        // Sound all notes at once with ample sustain
                                         viewModel.scorePlayheadMeasure.value = 0
-                                        viewModel.scorePlayheadOffset.value = idx.toFloat() / soundSequencePitches.size.coerceAtLeast(1).toFloat()
-
-                                        viewModel.midiPlayingNote.value = midiPitch
+                                        viewModel.scorePlayheadOffset.value = 0f
                                         viewModel.midiActiveNotes.clear()
-                                        viewModel.midiActiveNotes[midiPitch] = true
+                                        pianoPitches.forEach { midiPitch ->
+                                            viewModel.midiActiveNotes[midiPitch] = true
+                                            try {
+                                                viewModel.audioEngine.noteOn(midiPitch, 0.85f)
+                                            } catch (_: Exception) {}
+                                        }
+                                        delay(1200L)
+                                        pianoPitches.forEach { midiPitch ->
+                                            try {
+                                                viewModel.audioEngine.noteOff(midiPitch)
+                                            } catch (_: Exception) {}
+                                        }
+                                    } else {
+                                        // Relaxed musical speeds: ~280ms for sequential strum, ~340ms for expressive arpeggio
+                                        val stepDelay = if (activeSoundStyle == InstrumentSoundStyle.SEQUENTIAL) 280L else 340L
+                                        soundSequencePitches.forEachIndexed { idx: Int, midiPitch: Int ->
+                                            currentPlayingIdx = idx % pianoPitches.size.coerceAtLeast(1)
+                                            viewModel.scorePlayheadMeasure.value = 0
+                                            viewModel.scorePlayheadOffset.value = idx.toFloat() / soundSequencePitches.size.coerceAtLeast(1).toFloat()
 
-                                        try {
-                                            viewModel.audioEngine.noteOn(midiPitch, 0.85f)
-                                        } catch (_: Exception) {}
-                                        delay(stepDelay)
+                                            viewModel.midiPlayingNote.value = midiPitch
+                                            viewModel.midiActiveNotes.clear()
+                                            viewModel.midiActiveNotes[midiPitch] = true
+
+                                            try {
+                                                viewModel.audioEngine.noteOn(midiPitch, 0.85f)
+                                            } catch (_: Exception) {}
+                                            delay(stepDelay)
+                                        }
                                     }
+                                } finally {
+                                    // Ensure all sounding notes are cleanly silenced even if cancelled
+                                    soundSequencePitches.forEach { midiPitch ->
+                                        try {
+                                            viewModel.audioEngine.noteOff(midiPitch)
+                                        } catch (_: Exception) {}
+                                    }
+                                    currentPlayingIdx = -1
+                                    viewModel.midiPlayingNote.value = null
+                                    viewModel.currentScore.value = null
+                                    viewModel.midiActiveNotes.clear()
+                                    viewModel.midiActiveNotes.putAll(activeMidiMap)
+                                    isArpeggioRunning = false
                                 }
-
-                                currentPlayingIdx = -1
-                                viewModel.midiPlayingNote.value = null
-                                viewModel.currentScore.value = null
-                                viewModel.midiActiveNotes.clear()
-                                viewModel.midiActiveNotes.putAll(activeMidiMap)
-                                isArpeggioRunning = false
                             }
                         }
                     }
@@ -689,14 +720,25 @@ Row(
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         // Strings top to bottom: e4 (64), B3 (59), G3 (55), D3 (50), A2 (45), E2 (40)
                         val openGuitarStrings = listOf(64, 59, 55, 50, 45, 40)
-                        val highlightedGuitarCoordinate = remember(activeMidiToken, guitarShape.frets, isArpeggioRunning) {
+                        val highlightedGuitarCoordinate = remember(activeMidiToken, guitarShape.frets, isArpeggioRunning, mode) {
                             if (isArpeggioRunning && activeMidiToken != null) {
                                 var targetMatch: Pair<Int, Int>? = null
-                                for (s in guitarShape.frets.indices) {
-                                    val fret = guitarShape.frets[s]
-                                    if (fret != -1 && (openGuitarStrings[s] + fret) % 12 == activeMidiToken % 12) {
-                                        targetMatch = s to fret
-                                        break
+                                if (mode == 0) {
+                                    for (s in guitarShape.frets.indices) {
+                                        val fret = guitarShape.frets[s]
+                                        if (fret != -1 && (openGuitarStrings[s] + fret) % 12 == activeMidiToken % 12) {
+                                            targetMatch = s to fret
+                                            break
+                                        }
+                                    }
+                                } else {
+                                    // Scale mode: find first matching fret on the fretboard
+                                    for (s in openGuitarStrings.indices) {
+                                        val fret = (activeMidiToken % 12 - openGuitarStrings[s] % 12 + 12) % 12
+                                        if (fret in 0..15) {
+                                            targetMatch = s to fret
+                                            break
+                                        }
                                     }
                                 }
                                 targetMatch
@@ -769,16 +811,26 @@ Row(
                     }
                     ChordInstrumentType.UKULELE -> {
                         val activeMidiToken = viewModel.midiPlayingNote.value
-                        val highlightedUkuCoordinate = remember(activeMidiToken, ukuShape.frets, isArpeggioRunning) {
+                        val highlightedUkuCoordinate = remember(activeMidiToken, ukuShape.frets, isArpeggioRunning, mode) {
                             if (isArpeggioRunning && activeMidiToken != null) {
                                 // Strings top to bottom: A4 (69), E4 (64), C4 (60), G4 (67)
                                 val openUkuStrings = listOf(69, 64, 60, 67)
                                 var targetMatch: Pair<Int, Int>? = null
-                                for (s in ukuShape.frets.indices) {
-                                    val fret = ukuShape.frets[s]
-                                    if (fret != -1 && (openUkuStrings[s] + fret) % 12 == activeMidiToken % 12) {
-                                        targetMatch = s to fret
-                                        break
+                                if (mode == 0) {
+                                    for (s in ukuShape.frets.indices) {
+                                        val fret = ukuShape.frets[s]
+                                        if (fret != -1 && (openUkuStrings[s] + fret) % 12 == activeMidiToken % 12) {
+                                            targetMatch = s to fret
+                                            break
+                                        }
+                                    }
+                                } else {
+                                    for (s in openUkuStrings.indices) {
+                                        val fret = (activeMidiToken % 12 - openUkuStrings[s] % 12 + 12) % 12
+                                        if (fret in 0..5) {
+                                            targetMatch = s to fret
+                                            break
+                                        }
                                     }
                                 }
                                 targetMatch

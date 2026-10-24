@@ -209,7 +209,7 @@ fun ChordDisplayGalleryScreen(
                         color = Color.White
                     )
                     Text(
-                        text = "SVG Chord Shapes & Voicings (react-chords)",
+                        text = "Chord Shapes & Voicings",
                         fontSize = 11.sp,
                         color = Color(0xFF9EABB8)
                     )

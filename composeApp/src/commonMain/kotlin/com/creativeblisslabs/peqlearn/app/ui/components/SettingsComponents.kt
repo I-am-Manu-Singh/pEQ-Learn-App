@@ -47,7 +47,7 @@ fun SettingsPanel(viewModel: AppViewModel) {
                 // LEFT NAVIGATION RAIL
                 Column(
                     modifier = Modifier
-                        .width(240.dp)
+                        .width(220.dp)
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {

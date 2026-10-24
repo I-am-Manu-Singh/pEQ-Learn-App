@@ -311,12 +311,16 @@ fun UnifiedGuitarFretboard(
             // Active Chord Notes / Fretted positions
             for (s in 0 until numStrings) {
                 val openSemi = openStringsSemis.getOrNull(s) ?: 0
+                val stringChordFret = chordFrets?.getOrNull(s) ?: -1
 
                 for (f in 1..numFrets) {
                     val absoluteFret = baseFret + f - 1
                     val fretSemi = (openSemi + absoluteFret) % 12
-                    val isChordFret = chordFrets != null && chordFrets.getOrNull(s) == absoluteFret
-                    val isCurrentlyPlaying = (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == absoluteFret)
+                    // Support both absolute frets (e.g. fret 3 when baseFret is 3) and relative frets (e.g. fret 1 when baseFret is 3)
+                    val isChordFret = chordFrets != null && stringChordFret > 0 && (
+                        stringChordFret == absoluteFret || (baseFret > 1 && stringChordFret == f)
+                    )
+                    val isCurrentlyPlaying = (activeCoordinate != null && activeCoordinate.first == s && (activeCoordinate.second == absoluteFret || activeCoordinate.second == f))
                     val isScaleNote = chordFrets == null && normalizedActiveNotes.contains(fretSemi)
                     val isRoot = fretSemi == normalizedRootNote
 
@@ -428,7 +432,10 @@ fun UnifiedPianoKeyboard(
     startNote: Int = 21,
     endNote: Int = 108,
     fillWidth: Boolean = false,
+    leftHandColor: Color = Color(0xFF6C63FF),
+    rightHandColor: Color = Color(0xFF4A90E2),
     onKeyTapped: ((Int) -> Unit)? = null,
+    onKeyReleased: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -472,35 +479,46 @@ fun UnifiedPianoKeyboard(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(startNote, endNote, whiteMidiNotes, finalWhiteKeyWidthPx, startPaddingOffset) {
-                    detectTapGestures { tapOffset ->
-                        if (onKeyTapped == null) return@detectTapGestures
-                        val adjustedX = tapOffset.x - startPaddingOffset
-                        val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
-                        val blackKeyHeightPx = size.height * 0.62f
+                    detectTapGestures(
+                        onPress = { tapOffset ->
+                            if (onKeyTapped == null) return@detectTapGestures
+                            val adjustedX = tapOffset.x - startPaddingOffset
+                            val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
+                            val blackKeyHeightPx = size.height * 0.62f
 
-                        var triggeredMidi: Int? = null
-                        if (tapOffset.y < blackKeyHeightPx) {
-                            for (i in whiteMidiNotes.indices) {
-                                val midiNote = whiteMidiNotes[i]
-                                val semitone = (midiNote % 12).let { if (it < 0) it + 12 else it }
-                                if (semitone in listOf(0, 2, 5, 7, 9)) {
-                                    val blackMidi = midiNote + 1
-                                    if (blackMidi <= endNote) {
-                                        val blackX = i * finalWhiteKeyWidthPx + finalWhiteKeyWidthPx - (blackKeyWidthPx / 2f)
-                                        if (adjustedX >= blackX && adjustedX <= (blackX + blackKeyWidthPx)) {
-                                            triggeredMidi = blackMidi
-                                            break
+                            var triggeredMidi: Int? = null
+                            if (tapOffset.y < blackKeyHeightPx) {
+                                for (i in whiteMidiNotes.indices) {
+                                    val midiNote = whiteMidiNotes[i]
+                                    val semitone = (midiNote % 12).let { if (it < 0) it + 12 else it }
+                                    if (semitone in listOf(0, 2, 5, 7, 9)) {
+                                        val blackMidi = midiNote + 1
+                                        if (blackMidi <= endNote) {
+                                            val blackX = i * finalWhiteKeyWidthPx + finalWhiteKeyWidthPx - (blackKeyWidthPx / 2f)
+                                            if (adjustedX >= blackX && adjustedX <= (blackX + blackKeyWidthPx)) {
+                                                triggeredMidi = blackMidi
+                                                break
+                                            }
                                         }
                                     }
                                 }
                             }
+                            if (triggeredMidi == null) {
+                                val whiteIndex = (adjustedX / finalWhiteKeyWidthPx).toInt().coerceIn(0, whiteMidiNotes.size - 1)
+                                triggeredMidi = whiteMidiNotes[whiteIndex]
+                            }
+
+                            triggeredMidi?.let { midi ->
+                                onKeyTapped(midi)
+                                val released = tryAwaitRelease()
+                                if (released) {
+                                    onKeyReleased?.invoke(midi)
+                                } else {
+                                    onKeyReleased?.invoke(midi)
+                                }
+                            }
                         }
-                        if (triggeredMidi == null) {
-                            val whiteIndex = (adjustedX / finalWhiteKeyWidthPx).toInt().coerceIn(0, whiteMidiNotes.size - 1)
-                            triggeredMidi = whiteMidiNotes[whiteIndex]
-                        }
-                        triggeredMidi?.let { onKeyTapped(it) }
-                    }
+                    )
                 }
         ) {
             val totalHeight = size.height
@@ -525,17 +543,13 @@ fun UnifiedPianoKeyboard(
 
                     val frontFaceH = totalHeight * 0.12f
                     val topSurfaceH = totalHeight - frontFaceH
+                    val handColor = if (midiNote >= 60) rightHandColor else leftHandColor
 
                     // 1. Top Surface of Key
                     drawRoundRect(
                         brush = when {
-                            isCurrentlyPlaying -> Brush.verticalGradient(
-                                listOf(Color(0xFFFF8A65), Color(0xFFFF5722), Color(0xFFD84315)),
-                                startY = 0f,
-                                endY = topSurfaceH
-                            )
-                            isExplicitActive -> Brush.verticalGradient(
-                                listOf(Color(0xFFFFF59D), Color(0xFFFFD54F), Color(0xFFFFB300)),
+                            isCurrentlyPlaying || isExplicitActive -> Brush.verticalGradient(
+                                listOf(handColor.copy(alpha = 0.85f), handColor, handColor.copy(alpha = 0.95f)),
                                 startY = 0f,
                                 endY = topSurfaceH
                             )
@@ -561,13 +575,8 @@ fun UnifiedPianoKeyboard(
                     // 2. Front Face Drop of Key
                     drawRoundRect(
                         brush = when {
-                            isCurrentlyPlaying -> Brush.verticalGradient(
-                                listOf(Color(0xFFBF360C), Color(0xFF870000)),
-                                startY = topSurfaceH,
-                                endY = totalHeight
-                            )
-                            isExplicitActive -> Brush.verticalGradient(
-                                listOf(Color(0xFFFFA000), Color(0xFFFF8F00)),
+                            isCurrentlyPlaying || isExplicitActive -> Brush.verticalGradient(
+                                listOf(handColor.copy(alpha = 0.95f), handColor.copy(alpha = 0.80f)),
                                 startY = topSurfaceH,
                                 endY = totalHeight
                             )
@@ -674,13 +683,11 @@ fun UnifiedPianoKeyboard(
                             )
 
                             // Black Key Body
+                            val blackHandColor = if (blackMidiNote >= 60) rightHandColor else leftHandColor
                             drawRoundRect(
                                 brush = when {
-                                    isCurrentlyPlaying -> Brush.verticalGradient(
-                                        listOf(Color(0xFFFF7043), Color(0xFFFF5722), Color(0xFFE64A19))
-                                    )
-                                    isExplicitActive -> Brush.verticalGradient(
-                                        listOf(Color(0xFFFFB300), Color(0xFFFF8F00), Color(0xFFFF6F00))
+                                    isCurrentlyPlaying || isExplicitActive -> Brush.verticalGradient(
+                                        listOf(blackHandColor.copy(alpha = 0.95f), blackHandColor, blackHandColor.copy(alpha = 0.85f))
                                     )
                                     else -> Brush.verticalGradient(
                                         listOf(baseBlackStart, baseBlackMid, baseBlackEnd)

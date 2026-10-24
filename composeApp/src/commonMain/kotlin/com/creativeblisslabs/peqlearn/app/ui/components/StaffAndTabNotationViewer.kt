@@ -184,6 +184,7 @@ fun StaffAndTabNotationViewer(
     isRightHandHidden: Boolean = false,
     isPedalPressed: Boolean = false,
     showScoreHeader: Boolean = true,
+    compactStaffMode: Boolean = false,
     modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState()
 ) {
@@ -204,7 +205,8 @@ fun StaffAndTabNotationViewer(
                     fontSize = 7.5.sp,
                     lineHeight = 8.sp,
                     fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    background = Color.Transparent
                 )
             )
         }
@@ -214,6 +216,15 @@ fun StaffAndTabNotationViewer(
     }
     val flatCache = remember(textMeasurer) {
         textMeasurer.measure("♭", TextStyle(color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold))
+    }
+    val measureLabelsCache = remember(textMeasurer, score?.measures?.size, primaryColor) {
+        val count = score?.measures?.size ?: 0
+        (0 until count).associateWith { mIdx ->
+            textMeasurer.measure(
+                text = "M.${mIdx + 1}",
+                style = TextStyle(color = primaryColor.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            )
+        }
     }
 
     Box(
@@ -308,18 +319,22 @@ fun StaffAndTabNotationViewer(
                 }
 
                 val showStaff = when {
-                    currentFormat.equals("Tab", ignoreCase = true) || currentFormat.equals("Tab", ignoreCase = true) || currentFormat.equals("TAB", ignoreCase = true) -> false
+                    currentFormat.equals("Tab", ignoreCase = true) || currentFormat.equals("TAB", ignoreCase = true) -> false
                     else -> true
                 }
                 val showTab = when {
-                    currentFormat.equals("Staff", ignoreCase = true) || currentFormat.equals("Staff", ignoreCase = true) || currentFormat.equals("STAFF", ignoreCase = true) -> false
+                    currentFormat.equals("Staff", ignoreCase = true) || currentFormat.equals("STAFF", ignoreCase = true) -> false
                     else -> true
                 }
                 val rowHeight = when {
+                    compactStaffMode -> if (showStaff && showTab) 220.dp else 150.dp
                     showStaff && showTab -> 380.dp
                     showStaff -> 240.dp
                     else -> 190.dp
                 }
+
+                val verticalScrollState = rememberScrollState()
+                val horizontalScrollState = rememberScrollState()
 
                 // Auto-scroll the notation viewer to follow active playhead measure
                 var lastScrolledMeasure by remember { mutableIntStateOf(-1) }
@@ -330,11 +345,11 @@ fun StaffAndTabNotationViewer(
                             val targetRow = playheadMeasure / 2
                             val rowHeightPx = 280f
                             val targetY = (targetRow * rowHeightPx).toInt()
-                            scrollState.animateScrollTo(targetY.coerceAtLeast(0))
+                            verticalScrollState.animateScrollTo(targetY.coerceAtLeast(0))
                         } else {
                             val measureWidthPx = 300f
                             val targetX = (playheadMeasure * measureWidthPx).toInt()
-                            scrollState.animateScrollTo(targetX.coerceAtLeast(0))
+                            horizontalScrollState.animateScrollTo(targetX.coerceAtLeast(0))
                         }
                     }
                 }
@@ -352,17 +367,17 @@ fun StaffAndTabNotationViewer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .verticalScroll(scrollState)
+                            .verticalScroll(verticalScrollState)
                             .padding(vertical = 12.dp)
                     ) {
                         rowMeasureChunks.forEachIndexed { rowIndex, rowMeasures ->
                             Box(modifier = Modifier.fillMaxWidth().height(rowHeight)) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val staffLineSpacing = 14.dp.toPx()
-                                    val tabLineSpacing = 16.dp.toPx()
-                                    val trebleBaseline = 28.dp.toPx()
-                                    val bassBaseline = trebleBaseline + (6 * staffLineSpacing)
-                                    val tabBaseline = if (showStaff) bassBaseline + (6 * staffLineSpacing) + 20f else 28.dp.toPx()
+                                    val staffLineSpacing = if (compactStaffMode) 9.5f.dp.toPx() else 14.dp.toPx()
+                                    val tabLineSpacing = if (compactStaffMode) 11.dp.toPx() else 16.dp.toPx()
+                                    val trebleBaseline = if (compactStaffMode) 16.dp.toPx() else 28.dp.toPx()
+                                    val bassBaseline = trebleBaseline + (5.5f * staffLineSpacing)
+                                    val tabBaseline = if (showStaff) bassBaseline + (5.5f * staffLineSpacing) + 12f else (if (compactStaffMode) 16.dp.toPx() else 28.dp.toPx())
                                     val onSurface = colorScheme.onSurface
                                     val leftPadding = 12f
                                     val rightPadding = 12f
@@ -408,9 +423,8 @@ fun StaffAndTabNotationViewer(
                                              showLyrics = showLyrics
                                          )
 
-                                         val measureLabel = "M.${mIdx + 1}"
-                                         val labelLayout = textMeasurer.measure(
-                                             text = measureLabel,
+                                         val labelLayout = measureLabelsCache[mIdx] ?: textMeasurer.measure(
+                                             text = "M.${mIdx + 1}",
                                              style = TextStyle(color = primaryColor.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                          )
 
@@ -498,7 +512,7 @@ fun StaffAndTabNotationViewer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .horizontalScroll(scrollState)
+                            .horizontalScroll(horizontalScrollState)
                             .padding(vertical = 6.dp)
                     ) {
                         score.measures.forEachIndexed { mIdx, measure ->
@@ -506,11 +520,11 @@ fun StaffAndTabNotationViewer(
                             val measureWidth = if (isFirstMeasure) 360.dp else 280.dp
                             Box(modifier = Modifier.width(measureWidth).height(rowHeight)) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val staffLineSpacing = 14.dp.toPx()
-                                    val tabLineSpacing = 16.dp.toPx()
-                                    val trebleBaseline = 28.dp.toPx()
-                                    val bassBaseline = trebleBaseline + (6 * staffLineSpacing)
-                                    val tabBaseline = if (showStaff) bassBaseline + (6 * staffLineSpacing) + 20f else 28.dp.toPx()
+                                    val staffLineSpacing = if (compactStaffMode) 9.5f.dp.toPx() else 14.dp.toPx()
+                                    val tabLineSpacing = if (compactStaffMode) 11.dp.toPx() else 16.dp.toPx()
+                                    val trebleBaseline = if (compactStaffMode) 16.dp.toPx() else 28.dp.toPx()
+                                    val bassBaseline = trebleBaseline + (5.5f * staffLineSpacing)
+                                    val tabBaseline = if (showStaff) bassBaseline + (5.5f * staffLineSpacing) + 12f else (if (compactStaffMode) 16.dp.toPx() else 28.dp.toPx())
                                     val onSurface = colorScheme.onSurface
                                     val startX = 0f
                                     val endX = size.width
@@ -549,9 +563,8 @@ fun StaffAndTabNotationViewer(
                                         showLyrics = showLyrics
                                     )
 
-                                    val measureLabel = "M.${mIdx + 1}"
-                                    val labelLayout = textMeasurer.measure(
-                                        text = measureLabel,
+                                    val labelLayout = measureLabelsCache[mIdx] ?: textMeasurer.measure(
+                                        text = "M.${mIdx + 1}",
                                         style = TextStyle(color = primaryColor.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     )
 
@@ -1336,12 +1349,13 @@ private fun drawStaffMeasureContent(
                 with(MusicVectorSymbols) {
                     val flagH = 22f
                     val flagW = 10f
-                    val flagY = if (stemDir > 0) ny + (stemDir * 26f) else ny + (stemDir * 26f) - flagH
+                    val stemEndY = ny + (stemDir * 26f)
+                    val flagY = if (stemDir > 0) stemEndY - flagH else stemEndY
                     when {
                         duration <= 0.0625f -> drawSmuflSymbol(if (stemDir > 0) "flag64thDown" else "flag64thUp", clefTextColor, Offset(stemX, flagY), Size(flagW, flagH * 1.5f), 800f)
                         duration <= 0.125f -> drawSmuflSymbol(if (stemDir > 0) "flag32ndDown" else "flag32ndUp", clefTextColor, Offset(stemX, flagY), Size(flagW, flagH * 1.3f), 800f)
                         duration <= 0.25f -> drawSmuflSymbol(if (stemDir > 0) "flag16thDown" else "flag16thUp", clefTextColor, Offset(stemX, flagY), Size(flagW, flagH * 1.15f), 800f)
-                        else -> drawEighthFlag(clefTextColor, stemX, ny + (stemDir * 26f), stemDir < 0)
+                        else -> drawSmuflSymbol(if (stemDir > 0) "flag8thDown" else "flag8thUp", clefTextColor, Offset(stemX, flagY), Size(flagW, flagH), 800f)
                     }
                 }
             }
@@ -1367,14 +1381,14 @@ private fun drawStaffMeasureContent(
                 val isDoubleSharp = note.accidental == Accidental.DOUBLE_SHARP
                 val isDoubleFlat = note.accidental == Accidental.DOUBLE_FLAT
                 val isNatural = note.accidental == Accidental.NATURAL && (label.contains("#") || label.contains("b"))
-                // SMuFL / OpenSheetMusicDisplay canonical accidental proportions
-                val accH = config.lineSpacing * 1.55f
+                // Standard SMuFL / Bravura accidental proportions (avoid vertical stretching)
+                val accH = config.lineSpacing * 1.35f
                 val accW = when {
-                    isDoubleSharp -> accH * 0.42f
-                    isDoubleFlat -> accH * 0.42f
-                    isSharp -> accH * 0.30f
-                    isNatural -> accH * 0.26f
-                    else -> accH * 0.28f
+                    isDoubleSharp -> accH * 0.44f
+                    isDoubleFlat -> accH * 0.44f
+                    isSharp -> accH * 0.38f
+                    isNatural -> accH * 0.28f
+                    else -> accH * 0.32f
                 }
                 
                 // Position accidental directly to the left of the notehead

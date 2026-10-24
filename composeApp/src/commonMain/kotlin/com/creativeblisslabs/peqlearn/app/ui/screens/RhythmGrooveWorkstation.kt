@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -323,80 +324,96 @@ fun RiyaazScreen(
                     }
                 }
 
-                // Multi-Tonal Beat Cycle Highlights
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "BEAT HIGHLIGHTS",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
-                    )
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        val currentActiveBeat = if (stepsPerBeat > 0) (viewModel.currentStep.value / stepsPerBeat) else 0
-                        val totalBeats = beatsPerMeasure.toInt().coerceAtLeast(1)
+               // Multi-Tonal Beat Cycle Highlights
+Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text(
+        text = "BEAT HIGHLIGHTS",
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val currentActiveBeat = if (stepsPerBeat > 0) (viewModel.currentStep.value / stepsPerBeat) else 0
+        val totalBeats = beatsPerMeasure.toInt().coerceAtLeast(1)
 
-                        for (beat in 0 until totalBeats) {
-                            val playing = isPlaying && currentActiveBeat == beat
-                            val isDownbeat = (beat == 0)
+        for (beat in 0 until totalBeats) {
+            val playing = isPlaying && currentActiveBeat == beat
+            val isDownbeat = (beat == 0)
 
-                            val isKhaliBeat = when (workstationTab) {
-                                0 -> selectedSigIdx == 3 && beat >= 3
-                                1 -> beat == (INDIAN_TAALS.getOrNull(selectedTaalIdx)?.khali ?: -1)
-                                else -> false
-                            }
+            val isKhaliBeat = when (workstationTab) {
+                0 -> selectedSigIdx == 3 && beat >= 3
+                1 -> beat == (INDIAN_TAALS.getOrNull(selectedTaalIdx)?.khali ?: -1)
+                else -> false
+            }
 
-                            val cardContainerColor = when {
-                                playing -> primaryColor
-                                isDownbeat -> primaryColor.copy(alpha = 0.40f)
-                                isKhaliBeat -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                else -> Color.Transparent
-                            }
+            // Using animateColorAsState for a smooth transition when the beat changes
+            val cardContainerColor by animateColorAsState(
+                targetValue = when {
+                    playing -> primaryColor
+                    isDownbeat -> primaryColor.copy(alpha = 0.40f)
+                    isKhaliBeat -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    else -> MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.6f)
+                },
+                animationSpec = tween(durationMillis = 120),
+                label = "beatBgColor"
+            )
 
-                            val contentTextColor = when {
-                                playing -> MaterialTheme.colorScheme.onPrimary
-                                isDownbeat -> primaryColor
-                                isKhaliBeat -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                                else -> primaryColor.copy(alpha = 0.85f)
-                            }
+            val contentTextColor by animateColorAsState(
+                targetValue = when {
+                    playing -> MaterialTheme.colorScheme.onPrimary
+                    isDownbeat -> primaryColor
+                    isKhaliBeat -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                },
+                animationSpec = tween(durationMillis = 120),
+                label = "beatTextColor"
+            )
 
-                            pEQGlassCard(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .clickable {
-                                        val labelText = when (workstationTab) {
-                                            1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat)
-                                            2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat)
-                                            else -> null
-                                        }
-                                        if (!labelText.isNullOrBlank()) {
-                                            viewModel.audioEngine.playSample(labelText, beat, "TABLA")
-                                        }
-                                    }
-                            ) {
-                                Box(
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(cardContainerColor),
-                                    Alignment.Center
-                                ) {
-                                    val labelText = when (workstationTab) {
-                                        0 -> ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx)?.bolSequence?.getOrNull(beat) ?: "${beat + 1}"
-                                        1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat) ?: "B"
-                                        2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat) ?: "A"
-                                        else -> "${beat + 1}"
-                                    }
-                                    Text(
-                                        text = labelText,
-                                        fontSize = 10.sp,
-                                        fontWeight = if (isDownbeat || playing) FontWeight.Black else FontWeight.Bold,
-                                        color = contentTextColor
-                                    )
-                                }
-                            }
+            pEQGlassCard(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val labelText = when (workstationTab) {
+                            1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat)
+                            2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat)
+                            else -> null
+                        }
+                        if (!labelText.isNullOrBlank()) {
+                            viewModel.audioEngine.playSample(labelText, beat, "TABLA")
                         }
                     }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(cardContainerColor),
+                    contentAlignment = Alignment.Center // Ensures perfect horizontal and vertical centering
+                ) {
+                    val labelText = when (workstationTab) {
+                        0 -> ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx)?.bolSequence?.getOrNull(beat) ?: "${beat + 1}"
+                        1 -> INDIAN_TAALS.getOrNull(selectedTaalIdx)?.bolSequence?.getOrNull(beat) ?: "B"
+                        2 -> CARNATIC_TALAS.getOrNull(selectedKarnaticIdx)?.bolSequence?.getOrNull(beat) ?: "A"
+                        else -> "${beat + 1}"
+                    }
+                    
+                    Text(
+                        text = labelText,
+                        fontSize = 11.sp,
+                        fontWeight = if (isDownbeat || playing) FontWeight.Black else FontWeight.Bold,
+                        color = contentTextColor,
+                        maxLines = 1
+                    )
                 }
+            }
+        }
+    }
+}
 
                 // Step Sequencer Velocity Grid Row
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
