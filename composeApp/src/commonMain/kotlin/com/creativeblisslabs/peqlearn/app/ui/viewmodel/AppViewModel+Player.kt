@@ -23,12 +23,12 @@ fun AppViewModel.stop() {
 }
 
 fun AppViewModel.togglePlayback() {
-    // If a score is loaded and current item is a score or no audio track is loaded in engine, toggle score playback
     val current = currentMediaItem.value
-    val isScoreMedia = currentScore.value != null && (
-        current?.format in listOf("MID", "MIDI", "XML", "MXL", "PDF", "SCORE") ||
-        current?.id?.startsWith("score_") == true ||
-        audioEngine.getCurrentTrackUri() == null
+
+    // If a score is loaded and current item is explicitly a score file format, toggle score playback
+    val isScoreMedia = currentScore.value != null && current != null && (
+        current.format in listOf("MID", "MIDI", "XML", "MXL", "PDF", "SCORE") ||
+        current.id.startsWith("score_")
     )
     if (isScoreMedia) {
         toggleScorePlayback()
@@ -37,34 +37,45 @@ fun AppViewModel.togglePlayback() {
     }
 
     val enginePlaying = audioEngine.isPlaying()
-    
-    // Safety check: If UI thinks we are playing but engine is not, try to resume engine
-    if (isPlaying.value && !enginePlaying) {
-        audioEngine.resume()
+
+    if (enginePlaying) {
+        audioEngine.pause()
+        isPlaying.value = false
         syncNowPlaying()
         return
     }
 
-    // Restored track or paused idle engine check
-    if (!enginePlaying) {
+    // Engine is paused or not playing
+    if (current != null) {
         val currentUri = audioEngine.getCurrentTrackUri()
-        
-        // If engine does not have the current track loaded yet, load it and restore position
-        if (current != null && (currentUri == null || normalizePath(currentUri) != normalizePath(current.path))) {
+        val isLoadedInEngine = currentUri != null && normalizePath(currentUri) == normalizePath(current.path)
+        val engineDuration = audioEngine.getDuration()
+
+        if (!isLoadedInEngine || engineDuration <= 0L) {
             val savedPos = currentPosition.value
-            audioEngine.loadTrack(current.path, current.title, current.artist, current.thumbnail)
-            if (savedPos > 0L) {
-                audioEngine.seekTo(savedPos)
+            scope.launch {
+                val playPath = if (current.path.startsWith("http") && (current.path.contains("youtube.com") || current.path.contains("youtu.be"))) {
+                    cloudDownloader?.getStreamUrl(current.path) ?: current.path
+                } else current.path
+
+                audioEngine.playTrack(playPath, current.title, current.artist, current.thumbnail)
+                if (savedPos > 0L) {
+                    audioEngine.seekTo(savedPos)
+                }
+                isPlaying.value = true
+                syncNowPlaying()
             }
+            return
+        } else {
             audioEngine.resume()
             isPlaying.value = true
             syncNowPlaying()
             return
-        } else if (current != null && currentUri != null) {
-            // Already loaded in player (e.g. from restoreSession), just resume!
-            audioEngine.resume()
-            isPlaying.value = true
-            syncNowPlaying()
+        }
+    } else if (playbackQueue.isNotEmpty()) {
+        val firstItem = playbackQueue.firstOrNull()
+        if (firstItem != null) {
+            playMediaItem(firstItem)
             return
         }
     }

@@ -57,6 +57,8 @@ fun UnifiedGuitarFretboard(
     openStringsSemis: List<Int> = listOf(4, 11, 7, 2, 9, 4),
     activeCoordinate: Pair<Int, Int>? = null,
     activeMidiNote: Int? = null,
+    isLeftHandHidden: Boolean = false,
+    isRightHandHidden: Boolean = false,
     onFretTapped: ((stringIndex: Int, fret: Int, midiNote: Int) -> Unit)? = null,
     fretboardBrush: Brush? = null,
     showInlayDots: Boolean = true,
@@ -65,7 +67,24 @@ fun UnifiedGuitarFretboard(
     val numStrings = stringLabels.size
     val isDark = isSystemInDarkTheme()
 
-    val normalizedActiveNotes = remember(activeNotes) { activeNotes.map { it % 12 } }
+    val filteredActiveNotes = remember(activeNotes, isLeftHandHidden, isRightHandHidden) {
+        activeNotes.filter { midi ->
+            val isTreble = midi >= 60
+            if (isTreble && isRightHandHidden) false
+            else if (!isTreble && isLeftHandHidden) false
+            else true
+        }
+    }
+    val normalizedActiveNotes = remember(filteredActiveNotes) { filteredActiveNotes.map { it % 12 } }
+    val effectiveActiveMidiNote = remember(activeMidiNote, isLeftHandHidden, isRightHandHidden) {
+        if (activeMidiNote == null) null
+        else {
+            val isTreble = activeMidiNote >= 60
+            if (isTreble && isRightHandHidden) null
+            else if (!isTreble && isLeftHandHidden) null
+            else activeMidiNote
+        }
+    }
     val normalizedRootNote = remember(rootNote) { rootNote % 12 }
 
     val isUkulele = numStrings == 4
@@ -320,8 +339,8 @@ fun UnifiedGuitarFretboard(
                         val isRoot = openSemi == normalizedRootNote
                         val isOpenPlaying = (
                             (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == 0) ||
-                            (activeMidiNote != null && (openSemi == (activeMidiNote % 12)))
-                        )
+                        (effectiveActiveMidiNote != null && (openSemi == (effectiveActiveMidiNote % 12)))
+                    )
 
                         if (isOpenPlaying) {
                             drawCircle(
@@ -374,9 +393,9 @@ fun UnifiedGuitarFretboard(
                     val matchesCoord = activeCoordinate != null && activeCoordinate.first == s && (
                         activeCoordinate.second == absoluteFret || activeCoordinate.second == f
                     )
-                    val matchesMidi = activeMidiNote != null && (
-                        (chordFrets != null && isChordFret && (fullMidiNote % 12 == activeMidiNote % 12)) ||
-                        (chordFrets == null && (fullMidiNote == activeMidiNote || (activeMidiNote < 12 && fretSemi == activeMidiNote) || (fretSemi == activeMidiNote % 12)))
+                    val matchesMidi = effectiveActiveMidiNote != null && (
+                        (chordFrets != null && isChordFret && (fullMidiNote % 12 == effectiveActiveMidiNote % 12)) ||
+                        (chordFrets == null && (fullMidiNote == effectiveActiveMidiNote || (effectiveActiveMidiNote < 12 && fretSemi == effectiveActiveMidiNote) || (fretSemi == effectiveActiveMidiNote % 12)))
                     )
                     val isCurrentlyPlaying = matchesCoord || matchesMidi
                     val isScaleNote = chordFrets == null && normalizedActiveNotes.contains(fretSemi)
@@ -508,6 +527,9 @@ fun UnifiedPianoKeyboard(
     fillWidth: Boolean = false,
     leftHandColor: Color = Color(0xFF6C63FF),
     rightHandColor: Color = Color(0xFF4A90E2),
+    isLeftHandHidden: Boolean = false,
+    isRightHandHidden: Boolean = false,
+    customKeyColors: Map<Int, Color> = emptyMap(),
     onKeyTapped: ((Int) -> Unit)? = null,
     onKeyReleased: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -553,46 +575,54 @@ fun UnifiedPianoKeyboard(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(startNote, endNote, whiteMidiNotes, finalWhiteKeyWidthPx, startPaddingOffset) {
-                    detectTapGestures(
-                        onPress = { tapOffset ->
-                            if (onKeyTapped == null) return@detectTapGestures
-                            val adjustedX = tapOffset.x - startPaddingOffset
-                            val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
-                            val blackKeyHeightPx = size.height * 0.62f
-
-                            var triggeredMidi: Int? = null
-                            if (tapOffset.y < blackKeyHeightPx) {
-                                for (i in whiteMidiNotes.indices) {
-                                    val midiNote = whiteMidiNotes[i]
-                                    val semitone = (midiNote % 12).let { if (it < 0) it + 12 else it }
-                                    if (semitone in listOf(0, 2, 5, 7, 9)) {
-                                        val blackMidi = midiNote + 1
-                                        if (blackMidi <= endNote) {
-                                            val blackX = i * finalWhiteKeyWidthPx + finalWhiteKeyWidthPx - (blackKeyWidthPx / 2f)
-                                            if (adjustedX >= blackX && adjustedX <= (blackX + blackKeyWidthPx)) {
-                                                triggeredMidi = blackMidi
-                                                break
-                                            }
+                    val activePointers = mutableMapOf<Long, Int>()
+                    fun resolveMidiAt(offset: Offset): Int? {
+                        val adjustedX = offset.x - startPaddingOffset
+                        val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
+                        val blackKeyHeightPx = size.height * 0.62f
+                        if (offset.y < blackKeyHeightPx) {
+                            for (i in whiteMidiNotes.indices) {
+                                val midiNote = whiteMidiNotes[i]
+                                val semitone = (midiNote % 12).let { if (it < 0) it + 12 else it }
+                                if (semitone in listOf(0, 2, 5, 7, 9)) {
+                                    val blackMidi = midiNote + 1
+                                    if (blackMidi <= endNote) {
+                                        val blackX = i * finalWhiteKeyWidthPx + finalWhiteKeyWidthPx - (blackKeyWidthPx / 2f)
+                                        if (adjustedX >= blackX && adjustedX <= (blackX + blackKeyWidthPx)) {
+                                            return blackMidi
                                         }
                                     }
                                 }
                             }
-                            if (triggeredMidi == null) {
-                                val whiteIndex = (adjustedX / finalWhiteKeyWidthPx).toInt().coerceIn(0, whiteMidiNotes.size - 1)
-                                triggeredMidi = whiteMidiNotes[whiteIndex]
-                            }
+                        }
+                        val whiteIndex = (adjustedX / finalWhiteKeyWidthPx).toInt()
+                        return if (whiteIndex in whiteMidiNotes.indices) whiteMidiNotes[whiteIndex] else null
+                    }
 
-                            triggeredMidi?.let { midi ->
-                                onKeyTapped(midi)
-                                val released = tryAwaitRelease()
-                                if (released) {
-                                    onKeyReleased?.invoke(midi)
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                val id = change.id.value
+                                if (change.pressed) {
+                                    val midi = resolveMidiAt(change.position)
+                                    val prevMidi = activePointers[id]
+                                    if (prevMidi == null && midi != null) {
+                                        activePointers[id] = midi
+                                        onKeyTapped?.invoke(midi)
+                                    } else if (prevMidi != null && midi != null && prevMidi != midi) {
+                                        onKeyReleased?.invoke(prevMidi)
+                                        activePointers[id] = midi
+                                        onKeyTapped?.invoke(midi)
+                                    }
                                 } else {
-                                    onKeyReleased?.invoke(midi)
+                                    activePointers.remove(id)?.let { releasedMidi ->
+                                        onKeyReleased?.invoke(releasedMidi)
+                                    }
                                 }
                             }
                         }
-                    )
+                    }
                 }
         ) {
             val totalHeight = size.height
@@ -603,11 +633,14 @@ fun UnifiedPianoKeyboard(
             translate(left = startPaddingOffset) {
                 // 1. Draw Ivory White Keys
                 whiteMidiNotes.forEachIndexed { index, midiNote ->
-                    val isCurrentlyPlaying = activeCoordinate != null && (midiNote == activeCoordinate || (activeCoordinate < 12 && (midiNote % 12) == activeCoordinate))
-                    val isExplicitActive = activeMidiNotes[midiNote] == true ||
-                            (activeCoordinate != null && activeCoordinate < 12 && (midiNote % 12) == activeCoordinate) ||
-                            fingering?.notes?.contains(midiNote) == true ||
-                            isCurrentlyPlaying
+                    val isHandHidden = if (midiNote >= 60) isRightHandHidden else isLeftHandHidden
+                    val isCurrentlyPlaying = !isHandHidden && activeCoordinate != null && (midiNote == activeCoordinate || (activeCoordinate < 12 && (midiNote % 12) == activeCoordinate))
+                    val isExplicitActive = !isHandHidden && (
+                        activeMidiNotes[midiNote] == true ||
+                        (activeCoordinate != null && activeCoordinate < 12 && (midiNote % 12) == activeCoordinate) ||
+                        fingering?.notes?.contains(midiNote) == true ||
+                        isCurrentlyPlaying
+                    )
 
                     val x = index * finalWhiteKeyWidthPx
                     val fingerIndex = fingering?.notes?.indexOf(midiNote) ?: -1
@@ -620,8 +653,14 @@ fun UnifiedPianoKeyboard(
                     val handColor = if (midiNote >= 60) rightHandColor else leftHandColor
 
                     // 1. Top Surface of Key
+                    val customColor = customKeyColors[midiNote]
                     drawRoundRect(
                         brush = when {
+                            customColor != null -> Brush.verticalGradient(
+                                listOf(customColor.copy(alpha = 0.85f), customColor, customColor.copy(alpha = 0.95f)),
+                                startY = 0f,
+                                endY = topSurfaceH
+                            )
                             isCurrentlyPlaying || isExplicitActive -> Brush.verticalGradient(
                                 listOf(handColor.copy(alpha = 0.85f), handColor, handColor.copy(alpha = 0.95f)),
                                 startY = 0f,
@@ -738,11 +777,14 @@ fun UnifiedPianoKeyboard(
                     if (semitone in listOf(0, 2, 5, 7, 9)) {
                         val blackMidiNote = midiNote + 1
                         if (blackMidiNote <= endNote) {
-                            val isCurrentlyPlaying = activeCoordinate != null && (blackMidiNote == activeCoordinate || (activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate))
-                            val isExplicitActive = activeMidiNotes[blackMidiNote] == true ||
-                                    (activeCoordinate != null && activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate) ||
-                                    fingering?.notes?.contains(blackMidiNote) == true ||
-                                    isCurrentlyPlaying
+                            val isHandHidden = if (blackMidiNote >= 60) isRightHandHidden else isLeftHandHidden
+                            val isCurrentlyPlaying = !isHandHidden && activeCoordinate != null && (blackMidiNote == activeCoordinate || (activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate))
+                            val isExplicitActive = !isHandHidden && (
+                                activeMidiNotes[blackMidiNote] == true ||
+                                (activeCoordinate != null && activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate) ||
+                                fingering?.notes?.contains(blackMidiNote) == true ||
+                                isCurrentlyPlaying
+                            )
 
                             val blackX = (index * finalWhiteKeyWidthPx) + (finalWhiteKeyWidthPx - blackKeyWidthPx / 2f)
                             val fingerIndex = fingering?.notes?.indexOf(blackMidiNote) ?: -1
@@ -758,8 +800,12 @@ fun UnifiedPianoKeyboard(
 
                             // Black Key Body
                             val blackHandColor = if (blackMidiNote >= 60) rightHandColor else leftHandColor
+                            val customBlackColor = customKeyColors[blackMidiNote]
                             drawRoundRect(
                                 brush = when {
+                                    customBlackColor != null -> Brush.verticalGradient(
+                                        listOf(customBlackColor.copy(alpha = 0.95f), customBlackColor, customBlackColor.copy(alpha = 0.85f))
+                                    )
                                     isCurrentlyPlaying || isExplicitActive -> Brush.verticalGradient(
                                         listOf(blackHandColor.copy(alpha = 0.95f), blackHandColor, blackHandColor.copy(alpha = 0.85f))
                                     )

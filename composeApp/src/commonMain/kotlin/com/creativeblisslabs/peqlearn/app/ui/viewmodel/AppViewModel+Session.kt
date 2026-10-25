@@ -91,6 +91,15 @@ fun AppViewModel.restoreSession() {
                         recentlyPlayedItems.clear()
                         recentlyPlayedItems.addAll(updatedRecents)
                     }
+
+                    // Re-sync playbackQueue
+                    val updatedQueue = playbackQueue.map { qItem ->
+                        libByPath[normalizePath(qItem.path)] ?: qItem
+                    }
+                    if (updatedQueue != playbackQueue.toList()) {
+                        playbackQueue.clear()
+                        playbackQueue.addAll(updatedQueue)
+                    }
                 }
             }
 
@@ -196,6 +205,7 @@ fun AppViewModel.restoreSession() {
                             subtitle = if (isScoreExt) "Score Archive" else "Local archive",
                             artist = if (isScoreExt) "Score" else "Local archive",
                             path = path,
+                            thumbnail = path,
                             type = if (isVideoExt) com.creativeblisslabs.peqlearn.app.data.MediaType.VIDEO else com.creativeblisslabs.peqlearn.app.data.MediaType.AUDIO,
                             format = if (extension.isNotBlank()) extension.uppercase() else (if (isScoreExt) "SCORE" else "AUDIO"),
                             sizeBytes = 0L,

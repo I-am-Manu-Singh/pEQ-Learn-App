@@ -50,6 +50,7 @@ object MidiScoreParser {
 
         // Pass 1: Quick inspection of track names to intelligently map Tracks to Hands / Voices
         val trackVoiceMap = mutableMapOf<Int, Int>()
+        val trackInfoList = mutableListOf<com.creativeblisslabs.peqlearn.app.ui.screens.MidiTrackInfo>()
         run {
             var scanOffset = 14
             var noteBearingTrackCount = 0
@@ -61,7 +62,9 @@ object MidiScoreParser {
                 var curT = scanOffset
                 var running = 0
                 var trackName = ""
-                var hasNotes = false
+                var noteCount = 0
+                var trackChannel = 0
+                var trackProgram = 0
 
                 while (curT < tEnd) {
                     val vlq = readVlq(bytes, curT)
@@ -91,18 +94,25 @@ object MidiScoreParser {
                         curT += sVlq.second + sVlq.first.toInt()
                     } else {
                         val mType = st and 0xF0
+                        val ch = st and 0x0F
+                        trackChannel = ch
                         if (mType == 0x90) {
-                            if (curT + 1 < tEnd && (bytes[curT + 1].toInt() and 0x7F) > 0) hasNotes = true
+                            if (curT + 1 < tEnd && (bytes[curT + 1].toInt() and 0x7F) > 0) {
+                                noteCount++
+                            }
                             curT += 2
                         } else if (mType in listOf(0x80, 0xA0, 0xB0, 0xE0)) {
                             curT += 2
-                        } else if (mType in listOf(0xC0, 0xD0)) {
+                        } else if (mType == 0xC0) {
+                            if (curT < tEnd) trackProgram = bytes[curT].toInt() and 0x7F
+                            curT += 1
+                        } else if (mType == 0xD0) {
                             curT += 1
                         }
                     }
                 }
 
-                if (hasNotes) {
+                if (noteCount > 0) {
                     val lower = trackName.lowercase()
                     val voice = when {
                         lower.contains("right") || lower.contains("upper") || lower.contains("treble") || lower.contains("rh") -> 0
@@ -112,6 +122,17 @@ object MidiScoreParser {
                         else -> noteBearingTrackCount
                     }
                     trackVoiceMap[t] = voice
+                    val cleanTrackName = if (trackName.isNotBlank()) trackName else "Track ${t + 1}"
+                    trackInfoList.add(
+                        com.creativeblisslabs.peqlearn.app.ui.screens.MidiTrackInfo(
+                            trackIndex = t,
+                            trackName = cleanTrackName,
+                            channel = trackChannel,
+                            noteCount = noteCount,
+                            program = trackProgram,
+                            isEnabled = true
+                        )
+                    )
                     noteBearingTrackCount++
                 }
                 scanOffset = tEnd
@@ -166,7 +187,16 @@ object MidiScoreParser {
                         0x01, 0x03 -> { // Text / Track name
                             if (detectedTitle.isBlank() && metaLen > 0 && offset + metaLen <= bytes.size) {
                                 val text = bytes.copyOfRange(offset, offset + metaLen).decodeToString().trim()
-                                if (text.isNotBlank() && !text.lowercase().contains("piano") && !text.lowercase().contains("track")) {
+                                val lower = text.lowercase()
+                                val isMetadata = lower.contains("piano") ||
+                                        lower.contains("track") ||
+                                        lower.contains("creator:") ||
+                                        lower.contains("lilypond") ||
+                                        lower.contains("copyright") ||
+                                        lower.contains("produced") ||
+                                        lower.contains("upper") ||
+                                        lower.contains("lower")
+                                if (text.isNotBlank() && !isMetadata) {
                                     detectedTitle = text
                                 }
                             }
@@ -363,7 +393,8 @@ object MidiScoreParser {
             tempo = tempoBpm,
             timeSignature = "$timeNumerator/$timeDenominator",
             keySignature = keySignature,
-            measures = measures
+            measures = measures,
+            tracks = trackInfoList
         )
     }
 

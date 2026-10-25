@@ -162,6 +162,16 @@ data class Measure(
 )
 
 @Serializable
+data class MidiTrackInfo(
+    val trackIndex: Int = 0,
+    val trackName: String = "",
+    val channel: Int = 0,
+    val noteCount: Int = 0,
+    val program: Int = 0,
+    val isEnabled: Boolean = true
+)
+
+@Serializable
 data class Score(
     val title: String = "Untitled Study",
     val composer: String = "pEQ Learn Studio",
@@ -175,7 +185,8 @@ data class Score(
     val measures: List<Measure> = emptyList(),
     val clef: String = "TREBLE",
     val pdfUri: String? = null,
-    val isPdfScore: Boolean = false
+    val isPdfScore: Boolean = false,
+    val tracks: List<MidiTrackInfo> = emptyList()
 ) {
     val bpm: Int get() = tempo.toInt()
 }
@@ -196,7 +207,9 @@ data class Score(
  */
 fun Score.dumpAsText(): String {
     val sb = StringBuilder()
-    val noteNames = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    val sharpNames = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    val flatNames = listOf("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
+    val noteNames = if (keySignature.accidentalsCount > 0 && !keySignature.isSharp) flatNames else sharpNames
     fun midiToName(midi: Int): String {
         if (midi < 0 || midi > 127) return "N/A"
         val name = noteNames[midi % 12]

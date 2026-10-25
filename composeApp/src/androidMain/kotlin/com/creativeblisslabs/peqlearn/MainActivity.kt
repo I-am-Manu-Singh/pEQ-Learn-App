@@ -286,7 +286,57 @@ class MainActivity : ComponentActivity() {
             )
         }
         viewModel.onRestoreSamplesRequested = { restoreFactorySamples() }
+
+        // ONNX model management callbacks
+        val onnxPrefs = getSharedPreferences("pEQ_onnx_registry", MODE_PRIVATE)
+        val onnxModelsDir = File(filesDir, "models").apply { if (!exists()) mkdirs() }
+
+        viewModel.onGetModelsDir = {
+            onnxModelsDir.absolutePath
+        }
+
+        viewModel.onPersistOnnxState = {
+            com.creativeblisslabs.peqlearn.app.ai.OnnxModelRegistry.persistState { key, value ->
+                onnxPrefs.edit().putString(key, value).apply()
+            }
+        }
+
+        viewModel.onResolveModelPath = { fileName ->
+            // Check filesDir first
+            val filesDirModel = File(onnxModelsDir, fileName)
+            when {
+                filesDirModel.exists() && filesDirModel.length() > 1000L -> filesDirModel.absolutePath
+                else -> {
+                    // Check assets - copy to filesDir if found
+                    try {
+                        val dest = File(onnxModelsDir, fileName)
+                        if (!dest.exists()) {
+                            assets.open(fileName).use { input ->
+                                dest.outputStream().use { output -> input.copyTo(output) }
+                            }
+                        }
+                        if (dest.exists() && dest.length() > 1000L) dest.absolutePath else null
+                    } catch (_: Exception) { null }
+                }
+            }
+        }
+
+        viewModel.onRestoreOnnxState = {
+            com.creativeblisslabs.peqlearn.app.ai.OnnxModelRegistry.restoreState(
+                getString = { key -> onnxPrefs.getString(key, null) },
+                modelsDir = onnxModelsDir,
+                resolveAssetPath = viewModel.onResolveModelPath
+            )
+        }
+
+        // Restore ONNX registry on startup
+        com.creativeblisslabs.peqlearn.app.ai.OnnxModelRegistry.restoreState(
+            getString = { key -> onnxPrefs.getString(key, null) },
+            modelsDir = onnxModelsDir,
+            resolveAssetPath = viewModel.onResolveModelPath
+        )
     }
+
 
     private fun restoreFactorySamples() {
         val samplesDir = File("/storage/emulated/0/pEQ/Samples")

@@ -29,14 +29,34 @@ fun AppViewModel.startStemSplit(customInputPath: String? = null) {
     }
 
     viewModelScope.launch(Dispatchers.Default) {
+        val logBuffer = StringBuilder()
+        fun log(msg: String) {
+            val entry = "[${System.currentTimeMillis()}] $msg\n"
+            logBuffer.append(entry)
+            stemSplitLog.value = logBuffer.toString()
+            println("pEQLearn [StemSplit]: $msg")
+        }
+
         isStemSplitting.value = true
         stemSplitProgress.value = 0.05f
         stemSplitStatusMessage.value = "Starting AI Separation Engine..."
+        log("Initiating Stem Separation for input: $trackToSplit")
+        log("Splitter Engine: ${splitter::class.simpleName ?: "NeuralSplitter"}")
+        log("Model Selected: ${stemSeparationModel.value}")
 
         try {
-            // Determine output directory
+            val fileObj = java.io.File(trackToSplit)
+            log("Input File Exists: ${fileObj.exists()}, Size: ${fileObj.length()} bytes")
+            log("Executing ONNX Neural Separation inference...")
+
             val outputDirectory = "" // Handled internally by platform splitter or cache
             val stemsResult = splitter.splitTrack(trackToSplit, outputDirectory)
+
+            log("Separation finished successfully. Stems generated: ${stemsResult.size}")
+            stemsResult.forEach { (stemName, path) ->
+                val f = java.io.File(path)
+                log(" - Stem [$stemName]: ${f.name} (${f.length()} bytes)")
+            }
 
             withContext(Dispatchers.Main) {
                 activeStemMap.clear()
@@ -50,6 +70,8 @@ fun AppViewModel.startStemSplit(customInputPath: String? = null) {
                 toastMessage.value = "Stems ready: ${stemsResult.keys.joinToString(", ")}"
             }
         } catch (e: Exception) {
+            log("ERROR during stem separation: ${e.message}")
+            e.stackTraceToString().lines().take(10).forEach { log("  at $it") }
             withContext(Dispatchers.Main) {
                 stemSplitStatusMessage.value = "Separation failed: ${e.message}"
                 toastMessage.value = "Stem split error: ${e.message}"

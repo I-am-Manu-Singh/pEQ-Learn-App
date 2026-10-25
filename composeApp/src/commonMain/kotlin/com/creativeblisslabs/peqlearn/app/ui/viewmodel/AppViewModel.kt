@@ -128,6 +128,7 @@ val client = createHttpClient()
     val isRightHandMuted = mutableStateOf(false)
     val isLeftHandHidden = mutableStateOf(false)
     val isRightHandHidden = mutableStateOf(false)
+    val enabledTrackIndices = mutableStateMapOf<Int, Boolean>()
     val leftHandColor = mutableStateOf(Color(0xFF6C63FF))
     val rightHandColor = mutableStateOf(Color(0xFF4A90E2))
     val transposition = mutableIntStateOf(0)
@@ -485,6 +486,7 @@ val client = createHttpClient()
     val isStemSplitting = mutableStateOf(false)
     val stemSplitProgress = mutableStateOf(0f)
     val stemSplitStatusMessage = mutableStateOf("Ready for Separation")
+    val stemSplitLog = mutableStateOf("")
     val isStemsPlaying = mutableStateOf(false)
     val activeStemMap = mutableStateMapOf<String, String>()
     val selectedMixerItem = mutableStateOf<pEQMediaItem?>(null)
@@ -498,6 +500,16 @@ val client = createHttpClient()
     val isStemDeNoiseEnabled = mutableStateOf(false)
     val isStemKaraokeExtraction = mutableStateOf(false)
     var onPickModelRequested: (((String, String) -> Unit) -> Unit)? = null
+
+    // ─── ONNX Model Management Platform Callbacks ───────────────────────────
+    /** Returns the absolute path of the models directory on disk */
+    var onGetModelsDir: (() -> String)? = null
+    /** Persists the ONNX registry state (custom models + active selections) to platform storage */
+    var onPersistOnnxState: (() -> Unit)? = null
+    /** Restores the ONNX registry state from platform storage */
+    var onRestoreOnnxState: (() -> Unit)? = null
+    /** Resolves a model file name to its full path on disk (filesDir or assets), null if missing */
+    var onResolveModelPath: ((fileName: String) -> String?)? = null
 
     // 📂 PLYLIST ENGINE (P-12)
     val customPlaylists = mutableStateMapOf<String, SnapshotStateList<pEQMediaItem>>()
@@ -1400,6 +1412,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
     val virtualMidiConnected = mutableStateOf(false)
     val midiConnectedDevices = androidx.compose.runtime.mutableStateListOf<String>()
     val midiActiveNotes = mutableStateMapOf<Int, Boolean>()
+    val playAlongEngine = com.creativeblisslabs.peqlearn.app.ui.screens.PlayAlongEngine()
 
     val notationStaffMidiPlaying = mutableStateOf(false)
     val notationPlayProgress = mutableStateOf(0f)
@@ -1553,6 +1566,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
                         scorePlayheadOffset.value = currentOffset
                     }
                     currentPosition.value = totalElapsedMs
+                    playAlongEngine.updatePlayheadPosition(totalElapsedMs)
                 }
 
                 // Process pedal events in current measure
@@ -1579,22 +1593,27 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 measure.notes.forEachIndexed { index: Int, note: ScoreNote ->
                     val alreadyFired = firedNotesMap[index] == true
 
+                    // Check if note's voice/track is disabled
+                    val isTrackEnabled = enabledTrackIndices[note.voice] ?: true
+                    if (!isTrackEnabled) return@forEachIndexed
+
                     if (currentBeatInMeasure >= note.position && !alreadyFired) {
                         firedNotesMap[index] = true
                         
+                        val effectivePitch = (note.midiNote + transposition.value + (octaveShift.value * 12)).coerceIn(0, 127)
                         // Direct low-latency native audio trigger without main thread hop
-                        audioEngine.noteOn(note.midiNote, 0.8f)
+                        audioEngine.noteOn(effectivePitch, 0.8f)
                         withContext(Dispatchers.Main) {
-                            midiActiveNotes[note.midiNote] = true
-                            midiPlayingNote.value = note.midiNote
+                            midiActiveNotes[effectivePitch] = true
+                            midiPlayingNote.value = effectivePitch
                         }
 
                         launch {
                             delay((note.duration * (60f / score.tempo) * 1000).toLong())
-                            audioEngine.noteOff(note.midiNote)
+                            audioEngine.noteOff(effectivePitch)
                             withContext(Dispatchers.Main) {
-                                midiActiveNotes.remove(note.midiNote)
-                                if (midiPlayingNote.value == note.midiNote) {
+                                midiActiveNotes.remove(effectivePitch)
+                                if (midiPlayingNote.value == effectivePitch) {
                                     midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
                                 }
                             }
@@ -1647,6 +1666,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 audioEngine.noteOn(note, velocity.toFloat())
                 midiActiveNotes[note] = true
                 midiPlayingNote.value = note
+                playAlongEngine.onUserMidiNoteOn(note, currentPosition.value)
             } else {
                 if (sustainPedalActive.value) {
                     notesToReleaseOnSustainUp.add(note)
@@ -1892,6 +1912,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
 
     fun onMidiNoteOn(note: Int, velocity: Int) {
         midiActiveNotes[note] = true
+        midiPlayingNote.value = note
         audioEngine.noteOn(note, velocity.toFloat() / 127f)
         notesToReleaseOnSustainUp.remove(note)
         
@@ -1918,7 +1939,10 @@ fun scrubSongPlayhead(targetProgress: Float) {
         if (sustainActive.value) {
             notesToReleaseOnSustainUp.add(note)
         } else {
-            midiActiveNotes[note] = false
+            midiActiveNotes.remove(note)
+            if (midiPlayingNote.value == note) {
+                midiPlayingNote.value = midiActiveNotes.filterValues { it }.keys.firstOrNull()
+            }
             audioEngine.noteOff(note)
         }
     }

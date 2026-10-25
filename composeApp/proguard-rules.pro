@@ -78,4 +78,10 @@
 -dontwarn com.google.android.gms.**
 -keep class com.google.android.play.core.integrity.** { *; }
 -dontwarn com.google.android.play.core.integrity.**
+# Apache Commons Compress (Used by yausername youtubedl/ffmpeg)
+-keep class org.apache.commons.compress.** { *; }
+-dontwarn org.apache.commons.compress.**
 
+# yausername (youtube-dl & ffmpeg)
+-keep class com.yausername.** { *; }
+-dontwarn com.yausername.**

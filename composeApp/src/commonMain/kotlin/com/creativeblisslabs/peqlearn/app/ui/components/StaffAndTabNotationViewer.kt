@@ -116,7 +116,8 @@ internal data class PrecomputedBeamGroup(
     val sLastX: Float = 0f,
     val sStartY: Float = 0f,
     val sEndY: Float = 0f,
-    val beamlets: List<Pair<Offset, Offset>> = emptyList()
+    val beamlets: List<Pair<Offset, Offset>> = emptyList(),
+    val notes: List<ScoreNote> = emptyList()
 )
 
 internal data class PrecomputedStaffLayout(
@@ -163,11 +164,13 @@ internal class MeasureLayoutCache {
         bassBaseline: Float,
         lineSpacing: Float,
         isLeftHandHidden: Boolean,
-        isRightHandHidden: Boolean
+        isRightHandHidden: Boolean,
+        enabledTrackIndices: Map<Int, Boolean> = emptyMap()
     ): PrecomputedStaffLayout {
-        val key = "${measure.measureIndex}_${drawHeaders}_${startX.toInt()}_${endX.toInt()}_${trebleBaseline.toInt()}_${bassBaseline.toInt()}_${lineSpacing.toInt()}_${isLeftHandHidden}_${isRightHandHidden}_${measure.notes.size}"
+        val tracksKey = enabledTrackIndices.entries.sortedBy { it.key }.joinToString(",") { "${it.key}:${it.value}" }
+        val key = "${measure.measureIndex}_${drawHeaders}_${startX.toInt()}_${endX.toInt()}_${trebleBaseline.toInt()}_${bassBaseline.toInt()}_${lineSpacing.toInt()}_${isLeftHandHidden}_${isRightHandHidden}_${measure.notes.size}_$tracksKey"
         return staffCache.getOrPut(key) {
-            computeStaffLayout(measure, drawHeaders, startX, endX, trebleBaseline, bassBaseline, lineSpacing, isLeftHandHidden, isRightHandHidden)
+            computeStaffLayout(measure, drawHeaders, startX, endX, trebleBaseline, bassBaseline, lineSpacing, isLeftHandHidden, isRightHandHidden, enabledTrackIndices)
         }
     }
 
@@ -177,11 +180,15 @@ internal class MeasureLayoutCache {
         startX: Float,
         endX: Float,
         tBase: Float,
-        lineSpacing: Float
+        lineSpacing: Float,
+        isLeftHandHidden: Boolean = false,
+        isRightHandHidden: Boolean = false,
+        enabledTrackIndices: Map<Int, Boolean> = emptyMap()
     ): PrecomputedTabLayout {
-        val key = "${measure.measureIndex}_${drawHeaders}_${startX.toInt()}_${endX.toInt()}_${tBase.toInt()}_${lineSpacing.toInt()}_${measure.notes.size}"
+        val tracksKey = enabledTrackIndices.entries.sortedBy { it.key }.joinToString(",") { "${it.key}:${it.value}" }
+        val key = "${measure.measureIndex}_${drawHeaders}_${startX.toInt()}_${endX.toInt()}_${tBase.toInt()}_${lineSpacing.toInt()}_${isLeftHandHidden}_${isRightHandHidden}_${measure.notes.size}_$tracksKey"
         return tabCache.getOrPut(key) {
-            computeTabLayout(measure, drawHeaders, startX, endX, tBase, lineSpacing)
+            computeTabLayout(measure, drawHeaders, startX, endX, tBase, lineSpacing, isLeftHandHidden, isRightHandHidden, enabledTrackIndices)
         }
     }
 
@@ -200,7 +207,8 @@ private fun computeStaffLayout(
     bassBaseline: Float,
     lineSpacing: Float,
     isLeftHandHidden: Boolean,
-    isRightHandHidden: Boolean
+    isRightHandHidden: Boolean,
+    enabledTrackIndices: Map<Int, Boolean> = emptyMap()
 ): PrecomputedStaffLayout {
     val ksCount = measure.keySignature.accidentalsCount
     val ksWidth = if (drawHeaders && ksCount > 0) minOf(ksCount, 7) * 8f + 8f else 0f
@@ -212,7 +220,9 @@ private fun computeStaffLayout(
 
     // If measure has distinct voices (e.g. RH track voice 0 vs LH track voice 1), use voice to assign staff cleanly
     val hasDifferentiatedVoices = measure.notes.any { it.voice == 0 } && measure.notes.any { it.voice == 1 }
-    val rawVisibleNotes = measure.notes.filter { !it.isRest }.distinctBy { "${it.position}_${it.midiNote}_${it.voice}" }.mapNotNull { note ->
+    val rawVisibleNotes = measure.notes.filter { !it.isRest }
+        .filter { note -> enabledTrackIndices[note.voice] ?: true }
+        .distinctBy { "${it.position}_${it.midiNote}_${it.voice}" }.mapNotNull { note ->
         val midiNote = note.midiNote
         val isTrebleClef = if (hasDifferentiatedVoices) {
             note.voice == 0
@@ -296,10 +306,11 @@ private fun computeStaffLayout(
         val groupedByVoice = clefNotes.groupBy { it.note.voice }
 
         for ((_, voiceNotes) in groupedByVoice) {
-            // Group into standard musical rhythmic sub-beats (quarter note beat for 8th notes, half beat for 16th notes)
-            // Using a fine 0.5-beat resolution (eighth-note beat grid) cleanly isolates standard 16th and 8th runs
+            // Group into standard musical rhythmic beats (1.0 full beat for 8th note runs, 0.5 beat for 16th note runs)
+            val hasSixteenths = voiceNotes.any { it.note.duration <= 0.35f }
+            val gridResolution = if (hasSixteenths) 0.5f else 1.0f
             val groupedBySubBeat = voiceNotes.groupBy {
-                (kotlin.math.floor(it.note.position * 2.0f) / 2.0f)
+                (kotlin.math.floor(it.note.position / gridResolution) * gridResolution)
             }
 
             for ((_, subBeatNotes) in groupedBySubBeat) {
@@ -461,7 +472,8 @@ private fun computeStaffLayout(
                         sLastX = sLastX,
                         sStartY = sStartY,
                         sEndY = sEndY,
-                        beamlets = beamlets
+                        beamlets = beamlets,
+                        notes = cluster.map { it.note }
                     )
                     cluster.forEach { info ->
                         noteBeamMap[info.note] = beamInfo
@@ -499,7 +511,10 @@ private fun computeTabLayout(
     startX: Float,
     endX: Float,
     tBase: Float,
-    lineSpacing: Float
+    lineSpacing: Float,
+    isLeftHandHidden: Boolean = false,
+    isRightHandHidden: Boolean = false,
+    enabledTrackIndices: Map<Int, Boolean> = emptyMap()
 ): PrecomputedTabLayout {
     val tabHeaderWidth = if (drawHeaders) 80f else 0f
     val systemContentStartX = startX + tabHeaderWidth
@@ -507,7 +522,15 @@ private fun computeTabLayout(
     val beatsPerMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
     val guitarOpenStringsMidi = intArrayOf(64, 59, 55, 50, 45, 40) // 1st high E (64) to 6th low E (40)
 
+    val hasDifferentiatedVoices = measure.notes.any { it.voice == 0 } && measure.notes.any { it.voice == 1 }
     val validNotes = measure.notes.filter { !it.isRest }
+        .filter { note -> enabledTrackIndices[note.voice] ?: true }
+        .filter { note ->
+        val isTreble = if (hasDifferentiatedVoices) note.voice == 0 else note.midiNote >= 60
+        if (isTreble && isRightHandHidden) false
+        else if (!isTreble && isLeftHandHidden) false
+        else true
+    }
     val distinctPositions = validNotes.map { it.position }.distinct().sorted()
     val minTabGap = 24f
     val computedXByPosition = mutableMapOf<Float, Float>()
@@ -537,7 +560,7 @@ private fun computeTabLayout(
     val chordGroups = validNotes.groupBy { it.position }
     val tabNotes = mutableListOf<PrecomputedTabNote>()
 
-    chordGroups.forEach { (pos, notesAtPos) ->
+        chordGroups.forEach { (pos, notesAtPos) ->
         val nx = computedXByPosition[pos] ?: snap(systemContentStartX + (usableMeasureWidth * pos / beatsPerMeasure))
         val sortedDescMidi = notesAtPos.sortedByDescending { it.midiNote }
         val usedStrings = mutableSetOf<Int>()
@@ -709,6 +732,7 @@ fun StaffAndTabNotationViewer(
     rightHandColor: Color = Color(0xFF4A90E2),
     isLeftHandHidden: Boolean = false,
     isRightHandHidden: Boolean = false,
+    enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
     isPedalPressed: Boolean = false,
     showScoreHeader: Boolean = true,
     compactStaffMode: Boolean = false,
@@ -1043,7 +1067,8 @@ fun StaffAndTabNotationViewer(
                                                  bassBaseline = bassBaseline,
                                                  lineSpacing = staffLineSpacing,
                                                  isLeftHandHidden = isLeftHandHidden,
-                                                 isRightHandHidden = isRightHandHidden
+                                                 isRightHandHidden = isRightHandHidden,
+                                                 enabledTrackIndices = enabledTrackIndices
                                              )
 
                                              drawStaffMeasureContent(
@@ -1080,7 +1105,10 @@ fun StaffAndTabNotationViewer(
                                                  startX = startX,
                                                  endX = endX,
                                                  tBase = tabBaseline,
-                                                 lineSpacing = tabLineSpacing
+                                                 lineSpacing = tabLineSpacing,
+                                                 isLeftHandHidden = isLeftHandHidden,
+                                                 isRightHandHidden = isRightHandHidden,
+                                                 enabledTrackIndices = enabledTrackIndices
                                              )
 
                                              drawTabMeasureContent(
@@ -1219,7 +1247,8 @@ fun StaffAndTabNotationViewer(
                                             bassBaseline = bassBaseline,
                                             lineSpacing = staffLineSpacing,
                                             isLeftHandHidden = isLeftHandHidden,
-                                            isRightHandHidden = isRightHandHidden
+                                            isRightHandHidden = isRightHandHidden,
+                                            enabledTrackIndices = enabledTrackIndices
                                         )
 
                                         drawStaffMeasureContent(
@@ -1256,7 +1285,10 @@ fun StaffAndTabNotationViewer(
                                             startX = startX,
                                             endX = endX,
                                             tBase = tabBaseline,
-                                            lineSpacing = tabLineSpacing
+                                            lineSpacing = tabLineSpacing,
+                                            isLeftHandHidden = isLeftHandHidden,
+                                            isRightHandHidden = isRightHandHidden,
+                                            enabledTrackIndices = enabledTrackIndices
                                         )
 
                                         drawTabMeasureContent(
@@ -1495,7 +1527,7 @@ private fun drawTabMeasureContent(
             val nx = tabNote.nx
             val ny = tabNote.ny
             val midiNote = tabNote.midiNote
-            val isSounding = isMeasureActive && ((playingNote != null && midiNote == playingNote) || activeMidiNotes.contains(midiNote))
+            val isSounding = (playingNote != null && midiNote == playingNote) || activeMidiNotes.contains(midiNote)
 
             val fretLayout = textMeasurer.measure(
                 text = tabNote.fretText,
@@ -1787,9 +1819,9 @@ private fun drawStaffMeasureContent(
             val topY = info.topY
             val bottomY = info.bottomY
 
-            val isSounding = isMeasureActive && (midiNote == playingNote || activeMidiNotes.contains(midiNote))
+            val isSounding = (midiNote == playingNote || activeMidiNotes.contains(midiNote))
             val beadColor = if (isSounding) config.primaryColor else if (isTrebleClef) config.rightHandColor else config.leftHandColor
-
+            
             // Draw Ledger Lines accurately with subtle hand tinting for cross-staff clarity
             drawLedgerLines(
                 x = nx,
@@ -1959,19 +1991,15 @@ private fun drawStaffMeasureContent(
             val label = noteLabels[midiNote % 12]
             val keySig = measure.keySignature
             val isPitchInKeySignature = when (midiNote % 12) {
-                1 -> keySig.accidentalsCount >= 2 && keySig.isSharp  // C#
-                3 -> keySig.accidentalsCount >= 4 && keySig.isSharp  // D#
-                6 -> keySig.accidentalsCount >= 1 && keySig.isSharp  // F#
-                8 -> keySig.accidentalsCount >= 3 && keySig.isSharp  // G#
-                10 -> (keySig.accidentalsCount >= 5 && keySig.isSharp) || (!keySig.isSharp && keySig.accidentalsCount >= 1) // A# or Bb
-                5 -> !keySig.isSharp && keySig.accidentalsCount >= 2 // Eb
-                0 -> !keySig.isSharp && keySig.accidentalsCount >= 3 // Ab
-                7 -> !keySig.isSharp && keySig.accidentalsCount >= 4 // Db
-                2 -> !keySig.isSharp && keySig.accidentalsCount >= 5 // Gb
+                1 -> (keySig.isSharp && keySig.accidentalsCount >= 2) || (!keySig.isSharp && keySig.accidentalsCount >= 5)  // C# (sharps >= 2) or Db (flats >= 5)
+                3 -> (keySig.isSharp && keySig.accidentalsCount >= 4) || (!keySig.isSharp && keySig.accidentalsCount >= 2)  // D# (sharps >= 4) or Eb (flats >= 2)
+                6 -> (keySig.isSharp && keySig.accidentalsCount >= 1) || (!keySig.isSharp && keySig.accidentalsCount >= 6)  // F# (sharps >= 1) or Gb (flats >= 6)
+                8 -> (keySig.isSharp && keySig.accidentalsCount >= 3) || (!keySig.isSharp && keySig.accidentalsCount >= 4)  // G# (sharps >= 3) or Ab (flats >= 4)
+                10 -> (keySig.isSharp && keySig.accidentalsCount >= 5) || (!keySig.isSharp && keySig.accidentalsCount >= 1) // A# (sharps >= 5) or Bb (flats >= 1)
                 else -> false
             }
             val hasAccidental = if (isPitchInKeySignature) {
-                note.accidental == Accidental.NATURAL && note.courtesyAccidental || note.accidental == Accidental.DOUBLE_SHARP
+                (note.accidental == Accidental.NATURAL && note.courtesyAccidental) || note.accidental == Accidental.DOUBLE_SHARP
             } else {
                 label.contains("#") || label.contains("b") || note.accidental != Accidental.NATURAL
             }
@@ -2011,11 +2039,26 @@ private fun drawStaffMeasureContent(
             }
         }
 
-        // Draw Connected Sloped Beams using precomputed positions
+        // Draw Connected Sloped Beams using precomputed positions with active group glow
         val beamThickness = 3.8f
         beamGroups.forEach { beam ->
+            val isBeamActive = isMeasureActive && beam.notes.any { bn ->
+                (playingNote != null && bn.midiNote == playingNote) || activeMidiNotes.contains(bn.midiNote)
+            }
+            val activeBeamColor = if (isBeamActive) config.primaryColor else clefTextColor
+
+            if (isBeamActive) {
+                // Outer soft luminous glow for active beam group context
+                drawLine(
+                    color = config.primaryColor.copy(alpha = 0.28f),
+                    start = Offset(beam.firstX - 2f, beam.startY),
+                    end = Offset(beam.lastX + 2f, beam.endY),
+                    strokeWidth = beamThickness + 4.5f
+                )
+            }
+
             drawLine(
-                color = clefTextColor,
+                color = activeBeamColor,
                 start = Offset(beam.firstX, beam.startY),
                 end = Offset(beam.lastX, beam.endY),
                 strokeWidth = beamThickness
@@ -2023,7 +2066,7 @@ private fun drawStaffMeasureContent(
 
             if (beam.isSixteenth) {
                 drawLine(
-                    color = clefTextColor,
+                    color = activeBeamColor,
                     start = Offset(beam.sFirstX, beam.sStartY),
                     end = Offset(beam.sLastX, beam.sEndY),
                     strokeWidth = beamThickness
@@ -2032,7 +2075,7 @@ private fun drawStaffMeasureContent(
 
             beam.beamlets.forEach { (bStart, bEnd) ->
                 drawLine(
-                    color = clefTextColor,
+                    color = activeBeamColor,
                     start = bStart,
                     end = bEnd,
                     strokeWidth = beamThickness

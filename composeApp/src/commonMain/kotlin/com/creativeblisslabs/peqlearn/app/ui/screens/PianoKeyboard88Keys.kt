@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.foundation.Canvas
+import androidx.compose.material.icons.filled.AutoAwesome
 import com.creativeblisslabs.peqlearn.app.ui.components.VideoExportStudioSection
 import com.creativeblisslabs.peqlearn.app.ui.components.PdfExportStudioSection
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -15,6 +16,8 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.ViewQuilt
 import androidx.compose.foundation.clickable
@@ -155,7 +158,9 @@ data class PianoKeyFlash(
     val color: Color,
     val velocity: Int = 90,
     var alpha: Float = 1.0f,
-    var radius: Float = 36f
+    var radius: Float = 36f,
+    val isChordStrike: Boolean = false,
+    val chordName: String = ""
 )
 
 
@@ -229,6 +234,9 @@ fun PianoKeyboard88Keys(
 
     var frameTicker by remember { mutableLongStateOf(0L) }
     var showDumpDialog by rememberSaveable { mutableStateOf(false) }
+    var showPlayAlongStatsDialog by rememberSaveable { mutableStateOf(false) }
+    var showLearnModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showAudioToMidiScreen by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(pressedKeys.toList(), viewModel.rightHandColor.value, viewModel.leftHandColor.value) {
         val rhColor = viewModel.rightHandColor.value
@@ -410,6 +418,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                     rightHandColor = viewModel.rightHandColor.value,
                     isLeftHandHidden = viewModel.isLeftHandHidden.value,
                     isRightHandHidden = viewModel.isRightHandHidden.value,
+                    enabledTrackIndices = viewModel.enabledTrackIndices,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -471,18 +480,27 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                     }
                                     if (contactHit && viewModel.showWaterfallParticles.value) {
                                         if (inlineFlashes.none { it.midiNote == block.midiNote && it.alpha > 0.35f }) {
+                                            // Detect if falling note is part of a concurrent chord strike
+                                            val hittingNotes = fallingBlocks.filter { b ->
+                                                b.isAscending == block.isAscending && kotlin.math.abs(b.currentY - block.currentY) < 18f
+                                            }.map { it.midiNote }.distinct()
+                                            val isChordStrike = hittingNotes.size >= 2
+                                            val chordName = if (isChordStrike) LiveChordDetector.detect(hittingNotes)?.fullName ?: "" else ""
+
                                             inlineFlashes.add(
                                                 PianoKeyFlash(
                                                     midiNote = block.midiNote,
                                                     centerX = centerX,
                                                     centerY = canvasH,
-                                                    color = block.color,
-                                                    alpha = 0.95f,
-                                                    radius = if (isBlack) 24f else 32f
+                                                    color = if (isChordStrike) Color(0xFFFFD700) else block.color,
+                                                    alpha = if (isChordStrike) 1.0f else 0.95f,
+                                                    radius = if (isChordStrike) (if (isBlack) 36f else 46f) else (if (isBlack) 24f else 32f),
+                                                    isChordStrike = isChordStrike,
+                                                    chordName = chordName
                                                 )
                                             )
-                                            // Trigger Physics Sparks
-                                            val sparkCount = if (isBlack) 10 else 14
+                                            // Trigger Physics Sparks with richer burst for chords
+                                            val sparkCount = if (isChordStrike) (if (isBlack) 16 else 22) else (if (isBlack) 10 else 14)
                                             for (i in 0 until sparkCount) {
                                                 val angleRad = (-(35f + Random.nextFloat() * 110f) * (Math.PI / 180f)).toFloat()
                                                 val speed = Random.nextFloat() * 6.5f + 2.5f
@@ -592,10 +610,12 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                         "Fast" -> 1.5f
                                         "Extreme" -> 2.2f
                                         else -> 1.1f
-                                    }
+                                    } * viewModel.playbackSpeed.value.coerceIn(0.5f, 2.0f)
                                     val pixelsPerBeat = (canvasH / 3.0f) * speedMul
                                     val rhColor = viewModel.rightHandColor.value
                                     val lhColor = viewModel.leftHandColor.value
+                                    val isRhHidden = viewModel.isRightHandHidden.value
+                                    val isLhHidden = viewModel.isLeftHandHidden.value
 
                                     for (mIdx in currentM..(currentM + 2)) {
                                         val measure = currentScoreObj.measures.getOrNull(mIdx) ?: continue
@@ -604,6 +624,10 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
 
                                         for (note in measure.notes) {
                                             if (note.isRest || note.midiNote !in startMidi..(startMidi + totalKeys - 1)) continue
+                                            val isTreble = note.midiNote >= 60
+                                            if (isTreble && isRhHidden) continue
+                                            if (!isTreble && isLhHidden) continue
+                                            val noteColor = if (isTreble) rhColor else lhColor
                                             val noteDistBeats = measureBeatStart + note.position
                                             val noteDurBeats = note.duration.coerceAtLeast(0.2f)
 
@@ -635,28 +659,38 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                             val pillHeight = (clampedBottomY - clampedTopY).coerceAtLeast(10f)
                                             val pillCorner = 12f
                                             val centerX = finalX + baseBlockWidth / 2f
-                                            val noteColor = if (note.midiNote >= 60) rhColor else lhColor
+                                            // Check if note is part of a concurrent harmonic chord in the score
+                                            val isChordNote = measure.notes.count { !it.isRest && kotlin.math.abs(it.position - note.position) < 0.05f } >= 2
+                                            val chordColor = if (isChordNote) Color(0xFFFFD700) else noteColor
 
-                                            // Ambient Glow
+                                            // Ambient Glow with enhanced luminous aura for chords
                                             drawRoundRect(
                                                 brush = Brush.radialGradient(
-                                                    colors = listOf(
+                                                    colors = if (isChordNote) listOf(
+                                                        Color(0xFFFFD700).copy(alpha = 0.55f),
+                                                        Color(0xFFFF9100).copy(alpha = 0.22f),
+                                                        Color.Transparent
+                                                    ) else listOf(
                                                         noteColor.copy(alpha = 0.40f),
                                                         noteColor.copy(alpha = 0.12f),
                                                         Color.Transparent
                                                     ),
                                                     center = Offset(centerX, clampedTopY + pillHeight / 2f),
-                                                    radius = baseBlockWidth * 1.3f
+                                                    radius = baseBlockWidth * (if (isChordNote) 1.6f else 1.3f)
                                                 ),
                                                 topLeft = Offset(finalX - 3f, clampedTopY - 3f),
                                                 size = Size(baseBlockWidth + 6f, pillHeight + 6f),
                                                 cornerRadius = CornerRadius(pillCorner + 3f, pillCorner + 3f)
                                             )
 
-                                            // Core Solid Body
+                                            // Core Solid Body with golden metallic sheen if part of a chord
                                             drawRoundRect(
                                                 brush = Brush.verticalGradient(
-                                                    colors = listOf(
+                                                    colors = if (isChordNote) listOf(
+                                                        Color(0xFFFFF9C4),
+                                                        Color(0xFFFFD700),
+                                                        Color(0xFFFF8F00)
+                                                    ) else listOf(
                                                         noteColor.copy(alpha = 0.90f),
                                                         noteColor.copy(alpha = 1.0f),
                                                         noteColor.copy(alpha = 0.92f)
@@ -671,14 +705,14 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
 
                                             // Crisp Border
                                             drawRoundRect(
-                                                color = Color.White.copy(alpha = 0.28f),
+                                                color = if (isChordNote) Color(0xFFFFE082) else Color.White.copy(alpha = 0.28f),
                                                 topLeft = Offset(finalX, clampedTopY),
                                                 size = Size(baseBlockWidth, pillHeight),
                                                 cornerRadius = CornerRadius(pillCorner, pillCorner),
-                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (isChordNote) 1.8f else 1.0f)
                                             )
 
-                                            // Pitch Letter
+                                            // Pitch Letter & Chord Emblem
                                             val noteLabel = getPitchOnlyFromMidi(note.midiNote)
                                             val textY = clampedTopY + (pillHeight / 2f) + 3.8.dp.toPx()
                                             drawContext.canvas.nativeCanvas.drawText(
@@ -686,12 +720,12 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                                 centerX,
                                                 textY,
                                                 android.graphics.Paint().apply {
-                                                    color = android.graphics.Color.WHITE
+                                                    color = if (isChordNote) android.graphics.Color.BLACK else android.graphics.Color.WHITE
                                                     textSize = 10.dp.toPx()
                                                     textAlign = android.graphics.Paint.Align.CENTER
                                                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                                                     isAntiAlias = true
-                                                    setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
+                                                    if (!isChordNote) setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
                                                 }
                                             )
                                         }
@@ -701,9 +735,23 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                 // 2. Key Strike Contact Bloom / Flashes
                                 inlineFlashes.forEach { f ->
                                     val flashRadius = f.radius
+                                    if (f.isChordStrike) {
+                                        // Chord burst: golden halo ring connecting harmonic strikes
+                                        drawCircle(
+                                            color = Color(0xFFFFD700).copy(alpha = (f.alpha * 0.4f).coerceIn(0f, 1f)),
+                                            radius = flashRadius * 1.35f,
+                                            center = Offset(f.centerX, canvasH),
+                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
+                                        )
+                                    }
                                     drawCircle(
                                         brush = Brush.radialGradient(
-                                            colors = listOf(
+                                            colors = if (f.isChordStrike) listOf(
+                                                Color(0xFFFFF9C4).copy(alpha = (f.alpha * 0.98f).coerceIn(0f, 1f)),
+                                                Color(0xFFFFD700).copy(alpha = (f.alpha * 0.85f).coerceIn(0f, 1f)),
+                                                Color(0xFFFF8F00).copy(alpha = (f.alpha * 0.4f).coerceIn(0f, 1f)),
+                                                Color.Transparent
+                                            ) else listOf(
                                                 Color.White.copy(alpha = (f.alpha * 0.95f).coerceIn(0f, 1f)),
                                                 f.color.copy(alpha = (f.alpha * 0.7f).coerceIn(0f, 1f)),
                                                 f.color.copy(alpha = (f.alpha * 0.25f).coerceIn(0f, 1f)),
@@ -751,6 +799,7 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                 endNote = startMidi + totalKeys - 1,
                                 leftHandColor = viewModel.leftHandColor.value,
                                 rightHandColor = viewModel.rightHandColor.value,
+                                customKeyColors = viewModel.playAlongEngine.liveKeyColors,
                                 onKeyTapped = { midiNote ->
                                     pressedKeys.add(midiNote)
                                     onNotePressed(midiNote)
@@ -1005,6 +1054,219 @@ Row(
                 }
             }
         }
+
+    // Play-Along Evaluation & Live Accuracy Scorecard Dialog
+    if (showPlayAlongStatsDialog) {
+        val scorecard = viewModel.playAlongEngine.scorecard.value
+        val isEvaluating = viewModel.playAlongEngine.isEvaluating.value
+
+        ModalBottomSheet(
+            onDismissRequest = { showPlayAlongStatsDialog = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF0F0B1E)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Live Play-Along Performance", color = Color(0xFFFFD700), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(if (isEvaluating) "Listening to USB MIDI Keyboard Input..." else "Evaluation Stopped", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                    }
+                    IconButton(onClick = { showPlayAlongStatsDialog = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                }
+
+                // Grade & Accuracy Banner
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF1E1638),
+                    border = BorderStroke(1.dp, Color(0xFF382966)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("ACCURACY", color = Color.White.copy(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("${scorecard.accuracyPercentage}%", color = Color(0xFF00E676), fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("Avg timing error: ${scorecard.averageTimingErrorMs} ms", color = Color.White.copy(0.7f), fontSize = 11.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(32.dp))
+                                .background(Brush.linearGradient(listOf(Color(0xFFFFD700), Color(0xFFFF9100)))),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(scorecard.grade, color = Color.Black, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                }
+
+                // Detailed Statistics Grid
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("HIT NOTES", fontSize = 10.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                            Text("${scorecard.hitNotesCount}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E676))
+                        }
+                    }
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("MISSED", fontSize = 10.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                            Text("${scorecard.missedNotesCount}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF5252))
+                        }
+                    }
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("STREAK", fontSize = 10.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                            Text("${scorecard.currentStreak}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                        }
+                    }
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("BEST", fontSize = 10.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                            Text("${scorecard.bestStreak}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF80D8FF))
+                        }
+                    }
+                }
+
+                // Control Actions
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = {
+                            if (isEvaluating) {
+                                viewModel.playAlongEngine.stopEvaluation()
+                            } else {
+                                val s = viewModel.currentScore.value as? Score
+                                if (s != null) viewModel.playAlongEngine.startEvaluation(s, s.tempo)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isEvaluating) Color(0xFFD32F2F) else Color(0xFF00E676),
+                            contentColor = if (isEvaluating) Color.White else Color.Black
+                        )
+                    ) {
+                        Text(if (isEvaluating) "Stop Evaluating" else "Start Evaluating", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    // Learn Mode (Scales & Chords Practice Library) Dialog
+    if (showLearnModeDialog) {
+        ModalBottomSheet(
+            onDismissRequest = { showLearnModeDialog = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF0E0B1A)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.85f)
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Interactive Practice Studio", color = Color(0xFFFFD700), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("Scales, Arpeggios & Chords with Hand Fingering", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                    }
+                    IconButton(onClick = { showLearnModeDialog = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(PracticeLibrary.items) { item ->
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF19132E),
+                            border = BorderStroke(1.dp, Color(0xFF2C2250)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val practiceScore = PracticeLibrary.createScoreForPracticeItem(item)
+                                    viewModel.currentScore.value = practiceScore
+                                    viewModel.resetScorePlayhead()
+                                    showLearnModeDialog = false
+                                }
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(item.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    AssistChip(
+                                        onClick = {},
+                                        label = { Text(item.category, fontSize = 10.sp) }
+                                    )
+                                }
+                                Text(item.description, color = Color.White.copy(0.7f), fontSize = 12.sp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("RH: ${item.fingeringRightHand.joinToString(" ")}", fontSize = 11.sp, color = Color(0xFF81D4FA))
+                                    Text("LH: ${item.fingeringLeftHand.joinToString(" ")}", fontSize = 11.sp, color = Color(0xFFCE93D8))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // AI Audio-to-Score Screen
+    if (showAudioToMidiScreen) {
+        Dialog(
+            onDismissRequest = { showAudioToMidiScreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 24.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .border(1.dp, Color(0xFF6C63FF).copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+            ) {
+                com.creativeblisslabs.peqlearn.app.ai.AudioToMidiScreen(
+                    viewModel = viewModel,
+                    onScoreGenerated = { score ->
+                        viewModel.currentScore.value = score
+                        viewModel.scorePlayheadMeasure.value = 0
+                        viewModel.scorePlayheadOffset.value = 0f
+                        showAudioToMidiScreen = false
+                        viewModel.toastMessage.value = "Loaded ${score.title} with ${score.measures.size} measures!"
+                    },
+                    onBack = { showAudioToMidiScreen = false }
+                )
+            }
+        }
+    }
     if (viewModel.isFullscreenKeyboard.value) {
         FullscreenDialog(
             onDismissRequest = { viewModel.isFullscreenKeyboard.value = false },
@@ -1195,199 +1457,200 @@ Row(
                                         }
 
                     
+// Helper to cleanly update visualizer layout and notation format
+val updateLayout: (String, String, AppViewModel, () -> Unit) -> Unit = { mode, format, vm, closeMenu ->
+    fsLayoutMode = mode
+    if (format.isNotBlank()) {
+        vm.notationFormat.value = format
+    }
+    closeMenu()
+}
 
-                                        // Theme / Palette Button (Toggles Letters / Style)
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = Color(0xFF231838),
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            IconButton(
-                                                onClick = {
-                                                    val nextState = !viewModel.showNotationNoteNames.value
-                                                    viewModel.showNotationNoteNames.value = nextState
-                                                    viewModel.showPianoKeyLabels.value = nextState
-                                                    fsShowLetters = nextState
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Palette,
-                                                    contentDescription = "Color Theme / Labels",
-                                                    tint = Color(0xFF9FA8DA),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        }
+// A single state controls the visibility of the combined menu
+var menuExpanded by remember { mutableStateOf(false) }
 
-                                        // Settings Menu
+Box {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF1E162E),
+        border = BorderStroke(1.dp, Color(0xFF372754)),
+        modifier = Modifier.clickable { menuExpanded = true }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                Icons.Default.ViewQuilt,
+                contentDescription = "Layout Mode",
+                tint = Color(0xFF81D4FA),
+                modifier = Modifier.size(13.dp)
+            )
+            
+            // Format the current active state label cleanly
+            val currentFormatLabel = when (viewModel.notationFormat.value.trim().lowercase()) {
+                "tab", "tab only" -> "Tab"
+                "staff", "staff only" -> "Staff"
+                else -> "Both"
+            }
+            val displayLabel = when (fsLayoutMode) {
+                "Split" -> "Split ($currentFormatLabel)"
+                "Notation" -> "Notation ($currentFormatLabel)"
+                "KeyboardWaterfall" -> "Keyboard + Waterfall"
+                "Waterfall" -> "Waterfall Only"
+                else -> "Keyboard Only"
+            }
+
+            Text(
+                displayLabel,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White
+            )
+            Icon(
+                Icons.Default.ArrowDropDown,
+                contentDescription = null,
+                tint = Color.White.copy(0.7f),
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+
+    DropdownMenu(
+        expanded = menuExpanded,
+        onDismissRequest = { menuExpanded = false }
+    ) {
+        // 1. SPLIT MODE WITH SUB-OPTIONS
+        DropdownMenuItem(
+            text = { Text("Split (Staff + Waterfall)", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("Split", "staff", viewModel) { menuExpanded = false }
+            }
+        )
+        DropdownMenuItem(
+            text = { Text("Split (Tab + Waterfall)", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("Split", "tab", viewModel) { menuExpanded = false }
+            }
+        )
+        DropdownMenuItem(
+            text = { Text("Split (Both + Waterfall)", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("Split", "both", viewModel) { menuExpanded = false }
+            }
+        )
+
+        Divider(color = Color(0xFF372754).copy(alpha = 0.5f))
+
+        // 2. NOTATION ONLY WITH SUB-OPTIONS
+        DropdownMenuItem(
+            text = { Text("Notation Only (Staff)", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("Notation", "staff", viewModel) { menuExpanded = false }
+            }
+        )
+        DropdownMenuItem(
+            text = { Text("Notation Only (Tab)", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("Notation", "tab", viewModel) { menuExpanded = false }
+            }
+        )
+        DropdownMenuItem(
+            text = { Text("Notation Only (Both)", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("Notation", "both", viewModel) { menuExpanded = false }
+            }
+        )
+
+        Divider(color = Color(0xFF372754).copy(alpha = 0.5f))
+
+        // 3. STANDARD MODES
+        DropdownMenuItem(
+            text = { Text("Keyboard + Waterfall", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("KeyboardWaterfall", "", viewModel) { menuExpanded = false }
+            }
+        )
+        DropdownMenuItem(
+            text = { Text("Waterfall Only", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("Waterfall", "", viewModel) { menuExpanded = false }
+            }
+        )
+        DropdownMenuItem(
+            text = { Text("Keyboard Only", fontSize = 12.sp) },
+            onClick = {
+                updateLayout("Keyboard", "", viewModel) { menuExpanded = false }
+            }
+        )
+    }
+}
+                                        
+                                        // Learn Mode (Scales, Arpeggios & Chords Trainer)
                                         IconButton(
-                                            onClick = { viewModel.showSettings.value = true },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Settings,
-                                                contentDescription = "Menu / Settings",
-                                                tint = Color.White.copy(0.75f),
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-
-                                        // Display Mode Selector (Split: Notation on Top + Waterfall, Waterfall Only, Notation Only)
-                                        Box {
-                                            Surface(
-                                                shape = RoundedCornerShape(16.dp),
-                                                color = Color(0xFF1E162E),
-                                                border = BorderStroke(1.dp, Color(0xFF372754)),
-                                                modifier = Modifier.clickable { fsLayoutMenuExpanded = true }
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.ViewQuilt,
-                                                        contentDescription = "Layout Mode",
-                                                        tint = Color(0xFF81D4FA),
-                                                        modifier = Modifier.size(13.dp)
-                                                    )
-                                                    Text(
-                                                        fsLayoutMode,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = Color.White
-                                                    )
-                                                    Icon(
-                                                        Icons.Default.ArrowDropDown,
-                                                        contentDescription = null,
-                                                        tint = Color.White.copy(0.7f),
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                }
-                                            }
-                                            DropdownMenu(
-                                                expanded = fsLayoutMenuExpanded,
-                                                onDismissRequest = { fsLayoutMenuExpanded = false }
-                                            ) {
-                                                listOf(
-                                                    "Split (Notation + Waterfall)" to "Split",
-                                                    "Keyboard + Waterfall" to "KeyboardWaterfall",
-                                                    "Waterfall Only" to "Waterfall",
-                                                    "Notation Only" to "Notation",
-                                                    "Keyboard Only" to "Keyboard"
-                                                ).forEach { (label, modeKey) ->
-                                                    DropdownMenuItem(
-                                                        text = {
-                                                            Text(
-                                                                label,
-                                                                fontSize = 12.sp,
-                                                                fontWeight = if (fsLayoutMode == modeKey) FontWeight.Bold else FontWeight.Normal,
-                                                                color = if (fsLayoutMode == modeKey) Color(0xFF5C6BC0) else Color.Unspecified
-                                                            )
-                                                        },
-                                                        onClick = {
-                                                            fsLayoutMode = modeKey
-                                                            viewModel.visualizerLayoutMode.value = modeKey
-                                                            val showWf = (modeKey == "Waterfall" || modeKey == "Split" || modeKey == "KeyboardWaterfall")
-                                                            fsShowWaterfall = showWf
-                                                            viewModel.showWaterfall.value = showWf
-                                                            fsLayoutMenuExpanded = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Notation Format Selector (Visible when Split or Notation layout is active)
-                                        if (fsLayoutMode == "Split" || fsLayoutMode == "Notation") {
-                                            Box {
-                                                Surface(
-                                                    shape = RoundedCornerShape(16.dp),
-                                                    color = Color(0xFF1E162E),
-                                                    border = BorderStroke(1.dp, Color(0xFF4A3468)),
-                                                    modifier = Modifier.clickable { fsNotationMenuExpanded = true }
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                    ) {
-                                                        Icon(
-                                                            Icons.Default.MusicNote,
-                                                            contentDescription = "Notation Format",
-                                                            tint = Color(0xFFFFD700),
-                                                            modifier = Modifier.size(13.dp)
-                                                        )
-                                                        val formatLabel = when (viewModel.notationFormat.value.trim().lowercase()) {
-                                                            "tab", "tab only" -> "Tab"
-                                                            "staff", "staff only" -> "Staff"
-                                                            else -> "Both"
-                                                        }
-                                                        Text(
-                                                            formatLabel,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            color = Color(0xFFFFD700)
-                                                        )
-                                                        Icon(
-                                                            Icons.Default.ArrowDropDown,
-                                                            contentDescription = null,
-                                                            tint = Color.White.copy(0.7f),
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
-                                                }
-                                                DropdownMenu(
-                                                    expanded = fsNotationMenuExpanded,
-                                                    onDismissRequest = { fsNotationMenuExpanded = false }
-                                                ) {
-                                                    listOf(
-                                                        "Grand Staff" to "Staff Only",
-                                                        "Guitar Tab" to "Tab Only",
-                                                        "Both (Staff + Tab)" to "Both Viewers"
-                                                    ).forEach { (label, fmtKey) ->
-                                                        val currentFmt = viewModel.notationFormat.value.trim().lowercase()
-                                                        val isSelected = when (fmtKey) {
-                                                            "Staff Only" -> currentFmt == "staff" || currentFmt == "staff only"
-                                                            "Tab Only" -> currentFmt == "tab" || currentFmt == "tab only"
-                                                            else -> currentFmt == "both" || currentFmt == "both viewers"
-                                                        }
-                                                        DropdownMenuItem(
-                                                            text = {
-                                                                Text(
-                                                                    label,
-                                                                    fontSize = 12.sp,
-                                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                                    color = if (isSelected) Color(0xFFFFD700) else Color.Unspecified
-                                                                )
-                                                            },
-                                                            onClick = {
-                                                                viewModel.notationFormat.value = fmtKey
-                                                                notationFormat = fmtKey
-                                                                fsNotationMenuExpanded = false
-                                                            }
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Learn / Theory
-                                        IconButton(
-                                            onClick = { fsShowLyrics = !fsShowLyrics },
+                                            onClick = { showLearnModeDialog = true },
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(
                                                 Icons.Default.School,
-                                                contentDescription = "Learn / Lyrics",
-                                                tint = if (fsShowLyrics) Color(0xFF5C6BC0) else Color.White.copy(0.75f),
+                                                contentDescription = "Practice Scales & Chords",
+                                                tint = Color(0xFF80CBC4),
                                                 modifier = Modifier.size(17.dp)
                                             )
                                         }
 
-                                        // Instrument Dropdown Selector
+                                        // Play-Along Evaluation & Live Accuracy
+                                        val isPlayAlongActive = viewModel.playAlongEngine.isEvaluating.value
+                                        IconButton(
+                                            onClick = {
+                                                if (!isPlayAlongActive) {
+                                                    val score = viewModel.currentScore.value as? Score
+                                                    if (score != null) {
+                                                        viewModel.playAlongEngine.startEvaluation(score, score.tempo)
+                                                        if (!viewModel.isScorePlaying.value) {
+                                                            viewModel.startScorePlayback()
+                                                        }
+                                                    }
+                                                }
+                                                showPlayAlongStatsDialog = true
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.GraphicEq,
+                                                contentDescription = "Play-Along Accuracy",
+                                                tint = if (isPlayAlongActive) Color(0xFF00E676) else Color.White.copy(0.75f),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+
+                                        // AI Audio-to-Score Model (muscriptor-small-lm.onnx)
+                                        IconButton(
+                                            onClick = { showAudioToMidiScreen = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.AutoAwesome,
+                                                contentDescription = "AI Audio to MIDI / Sheet Music",
+                                                tint = Color(0xFFFFD700),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+
+                                        // Instrument / MIDI Tracks Dropdown Selector
                                         Box {
+                                            val currentScoreObj = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
+                                            val foundTracks = currentScoreObj?.tracks ?: emptyList()
+                                            val activeTracksCount = if (foundTracks.isNotEmpty()) {
+                                                foundTracks.count { tr -> viewModel.enabledTrackIndices[tr.trackIndex] ?: tr.isEnabled }
+                                            } else 0
+                                            val buttonLabel = if (foundTracks.isNotEmpty()) {
+                                                "Tracks ($activeTracksCount/${foundTracks.size})"
+                                            } else {
+                                                viewModel.selectedInstrument.value
+                                            }
+
                                             Surface(
                                                 shape = RoundedCornerShape(16.dp),
                                                 color = Color(0xFF1E162E),
@@ -1406,7 +1669,7 @@ Row(
                                                         modifier = Modifier.size(14.dp)
                                                     )
                                                     Text(
-                                                        viewModel.selectedInstrument.value,
+                                                        buttonLabel,
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.Medium,
                                                         color = Color.White
@@ -1423,6 +1686,61 @@ Row(
                                                 expanded = fsInstrumentMenuExpanded,
                                                 onDismissRequest = { fsInstrumentMenuExpanded = false }
                                             ) {
+                                                if (foundTracks.isNotEmpty()) {
+                                                    Text(
+                                                        text = "MIDI TRACKS (${foundTracks.size})",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFFFD700),
+                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                                    )
+                                                    foundTracks.forEach { track ->
+                                                        val isEnabled = viewModel.enabledTrackIndices[track.trackIndex] ?: track.isEnabled
+                                                        DropdownMenuItem(
+                                                            text = {
+                                                                Row(
+                                                                    modifier = Modifier.fillMaxWidth(),
+                                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    Column(modifier = Modifier.weight(1f)) {
+                                                                        Text(
+                                                                            track.trackName.ifBlank { "Track ${track.trackIndex + 1}" },
+                                                                            fontSize = 12.sp,
+                                                                            fontWeight = if (isEnabled) FontWeight.Bold else FontWeight.Normal,
+                                                                            color = if (isEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                                                        )
+                                                                        Text(
+                                                                            "Ch ${track.channel + 1} • ${track.noteCount} notes",
+                                                                            fontSize = 10.sp,
+                                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                                                                        )
+                                                                    }
+                                                                    Switch(
+                                                                        checked = isEnabled,
+                                                                        onCheckedChange = { checked ->
+                                                                            viewModel.enabledTrackIndices[track.trackIndex] = checked
+                                                                        },
+                                                                        modifier = Modifier.padding(start = 8.dp)
+                                                                    )
+                                                                }
+                                                            },
+                                                            onClick = {
+                                                                val currentVal = viewModel.enabledTrackIndices[track.trackIndex] ?: track.isEnabled
+                                                                viewModel.enabledTrackIndices[track.trackIndex] = !currentVal
+                                                            }
+                                                        )
+                                                    }
+                                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                                    Text(
+                                                        text = "VIEW MODE INSTRUMENT",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                                    )
+                                                }
+
                                                 listOf("Piano", "Violin", "Guitar", "Bass", "Flute", "Saxophone").forEach { inst ->
                                                     DropdownMenuItem(
                                                         text = { Text(inst, fontSize = 12.sp) },
@@ -1510,6 +1828,18 @@ Button(
     androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
     Text("TXT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
 }
+          // Settings Menu
+                                        IconButton(
+                                            onClick = { viewModel.showSettings.value = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Settings,
+                                                contentDescription = "Menu / Settings",
+                                                tint = Color.White.copy(0.75f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
 
                                           // 13. Close / Dismiss Pill Button
                                 Surface(
@@ -1583,6 +1913,7 @@ Button(
                                             rightHandColor = viewModel.rightHandColor.value,
                                             isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                             isRightHandHidden = viewModel.isRightHandHidden.value,
+                                            enabledTrackIndices = viewModel.enabledTrackIndices,
                                             showScoreHeader = false,
                                             compactStaffMode = true,
                                             modifier = Modifier.fillMaxSize()
@@ -1643,6 +1974,9 @@ Button(
                                                     noteStyleOval = viewModel.noteStyleOval.value,
                                                     leftHandColor = viewModel.leftHandColor.value,
                                                     rightHandColor = viewModel.rightHandColor.value,
+                                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                    playbackSpeed = viewModel.playbackSpeed.value,
                                                     onFpsDropDetected = {
                                                         if (viewModel.fallingNotesSpeed.value != "Slow" || viewModel.playbackSpeed.value > 0.75f) {
                                                             showSpeedOptimizationDialog = true
@@ -1655,7 +1989,7 @@ Button(
                                             val isGuitarFamily = viewModel.selectedInstrument.value == "Guitar" || viewModel.selectedInstrument.value == "Ukulele"
                                             val keyboardModifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(145.dp)
+                                                .height(viewModel.keyboardHeightFactor.floatValue.dp)
                                                 .background(Color(0xFF161616))
 
                                             Box(modifier = keyboardModifier) {
@@ -1668,6 +2002,8 @@ Button(
                                                         numFrets = if (isUkulele) 15 else 22,
                                                         activeNotes = activeList,
                                                         activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
                                                         accentColor = primaryColor,
                                                         showNoteNames = fsShowLetters,
                                                         stringLabels = if (isUkulele) listOf("A", "E", "C", "G") else listOf("e", "B", "G", "D", "A", "E"),
@@ -1689,6 +2025,9 @@ Button(
                                                         fillWidth = true,
                                                         leftHandColor = viewModel.leftHandColor.value,
                                                         rightHandColor = viewModel.rightHandColor.value,
+                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                        customKeyColors = viewModel.playAlongEngine.liveKeyColors,
                                                         onKeyTapped = { midi ->
                                                             if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
                                                             viewModel.onMidiNoteOn(midi, 95)
@@ -1766,6 +2105,7 @@ Button(
                                                         rightHandColor = viewModel.rightHandColor.value,
                                                         isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                                         isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                        enabledTrackIndices = viewModel.enabledTrackIndices,
                                                         showScoreHeader = false,
                                                         compactStaffMode = true,
                                                         modifier = Modifier.fillMaxSize()
@@ -1809,6 +2149,9 @@ Button(
                                                         noteStyleOval = viewModel.noteStyleOval.value,
                                                         leftHandColor = viewModel.leftHandColor.value,
                                                         rightHandColor = viewModel.rightHandColor.value,
+                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                        playbackSpeed = viewModel.playbackSpeed.value,
                                                         onFpsDropDetected = {
                                                             if (viewModel.fallingNotesSpeed.value != "Slow" || viewModel.playbackSpeed.value > 0.75f) {
                                                                 showSpeedOptimizationDialog = true
@@ -1830,7 +2173,7 @@ Button(
                                             } else {
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .height(145.dp)
+                                                    .height(viewModel.keyboardHeightFactor.floatValue.dp)
                                                     .background(Color(0xFF161616))
                                             }
 
@@ -1844,6 +2187,8 @@ Button(
                                                         numFrets = if (isUkulele) 15 else 22,
                                                         activeNotes = activeList,
                                                         activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
                                                         accentColor = primaryColor,
                                                         showNoteNames = fsShowLetters,
                                                         stringLabels = if (isUkulele) listOf("A", "E", "C", "G") else listOf("e", "B", "G", "D", "A", "E"),
@@ -1865,6 +2210,9 @@ Button(
                                                         fillWidth = true,
                                                         leftHandColor = viewModel.leftHandColor.value,
                                                         rightHandColor = viewModel.rightHandColor.value,
+                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                        customKeyColors = viewModel.playAlongEngine.liveKeyColors,
                                                         onKeyTapped = { midi ->
                                                             if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
                                                             viewModel.onMidiNoteOn(midi, 95)
@@ -2481,6 +2829,34 @@ fun PlaybackSettingsSheet(
                 // =========================================================================
                 // TAB 0: NOTATION VIEWER SETTINGS
                 // =========================================================================
+                SettingsSection(title = "Hands & Notation Visibility") {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Right Hand Notes (Treble)", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Show/hide right hand across Staff, Tab, Keyboard & Waterfall", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), fontSize = 11.sp)
+                            }
+                            Switch(
+                                checked = !viewModel.isRightHandHidden.value,
+                                onCheckedChange = { viewModel.isRightHandHidden.value = !it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Left Hand Notes (Bass)", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Show/hide left hand across Staff, Tab, Keyboard & Waterfall", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), fontSize = 11.sp)
+                            }
+                            Switch(
+                                checked = !viewModel.isLeftHandHidden.value,
+                                onCheckedChange = { viewModel.isLeftHandHidden.value = !it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
+                            )
+                        }
+                    }
+                }
+
                 SettingsSection(title = "Notation Display Format") {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2567,7 +2943,10 @@ fun PlaybackSettingsSheet(
                 SettingsSection(title = "Key Signature & Transposition") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Active Key Signature", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 13.sp)
-                        val keys = listOf("C Major", "G Major", "D Major", "A Major", "F Major", "B♭ Major", "E♭ Major", "A Minor")
+                        val keys = listOf(
+                            "C Major", "G Major", "D Major", "A Major", "E Major", "B Major", "F# Major",
+                            "F Major", "B♭ Major", "E♭ Major", "A♭ Major", "D♭ Major", "A Minor", "E Minor", "D Minor"
+                        )
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2580,7 +2959,31 @@ fun PlaybackSettingsSheet(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(if (selected) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface.copy(0.06f))
-                                        .clickable { viewModel.selectedKeySignature.value = key }
+                                        .clickable {
+                                            viewModel.selectedKeySignature.value = key
+                                            // Map key name to KeySignature enum and update score
+                                            val keySigEnum = when (key) {
+                                                "G Major", "E Minor" -> KeySignature.G_MAJOR
+                                                "D Major", "B Minor" -> KeySignature.D_MAJOR
+                                                "A Major", "F# Minor" -> KeySignature.A_MAJOR
+                                                "E Major", "C# Minor" -> KeySignature.E_MAJOR
+                                                "B Major", "G# Minor" -> KeySignature.B_MAJOR
+                                                "F# Major" -> KeySignature.F_SHARP_MAJOR
+                                                "F Major", "D Minor" -> KeySignature.F_MAJOR
+                                                "B♭ Major", "G Minor" -> KeySignature.B_FLAT_MAJOR
+                                                "E♭ Major", "C Minor" -> KeySignature.E_FLAT_MAJOR
+                                                "A♭ Major", "F Minor" -> KeySignature.A_FLAT_MAJOR
+                                                "D♭ Major", "Bb Minor" -> KeySignature.D_FLAT_MAJOR
+                                                else -> KeySignature.C_MAJOR
+                                            }
+                                            val current = viewModel.currentScore.value as? Score
+                                            if (current != null) {
+                                                viewModel.currentScore.value = current.copy(
+                                                    keySignature = keySigEnum,
+                                                    measures = current.measures.map { it.copy(keySignature = keySigEnum) }
+                                                )
+                                            }
+                                        }
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
                                     Text(
@@ -2782,6 +3185,16 @@ fun PlaybackSettingsSheet(
                                 checked = viewModel.showWaterfall.value,
                                 onCheckedChange = { viewModel.showWaterfall.value = it },
                                 colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFFD700), checkedTrackColor = Color(0xFFFFD700).copy(0.3f))
+                            )
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Falling Note Stream / Visualizer Height: ${viewModel.keyboardHeightFactor.floatValue.toInt()}dp", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 13.sp)
+                            Slider(
+                                value = viewModel.keyboardHeightFactor.floatValue,
+                                onValueChange = { viewModel.keyboardHeightFactor.floatValue = it },
+                                valueRange = 100f..260f,
+                                colors = SliderDefaults.colors(thumbColor = Color(0xFFFFD700), activeTrackColor = Color(0xFFFFD700))
                             )
                         }
 
@@ -3397,6 +3810,9 @@ fun SynthesiaWaterfallOverlay(
     noteStyleOval: Boolean = false,
     leftHandColor: Color = Color(0xFF6C63FF),
     rightHandColor: Color = Color(0xFF4A90E2),
+    isLeftHandHidden: Boolean = false,
+    isRightHandHidden: Boolean = false,
+    playbackSpeed: Float = 1.0f,
     onFpsDropDetected: () -> Unit = {}
 ) {
     val fallingBlocks = remember { ArrayList<PianoWaterfallBlock>() }
@@ -3517,7 +3933,8 @@ fun SynthesiaWaterfallOverlay(
                 val strikeY = contactY
                 val baseColor = if (midi >= 60) rightHandColor else leftHandColor
 
-                if (glowEffect && flashes.none { it.midiNote == midi && it.alpha > 0.4f }) {
+                    val isChordStrike = activeMidiNotes.size >= 2
+                    val chordColor = if (isChordStrike) Color(0xFFFFD700) else baseColor
                     val baseRad = if (geom.isBlack) 28f else 38f
                     if (flashes.size < 24) {
                         flashes.add(
@@ -3525,14 +3942,14 @@ fun SynthesiaWaterfallOverlay(
                                 midiNote = midi,
                                 centerX = strikeX,
                                 centerY = strikeY,
-                                color = baseColor,
+                                color = chordColor,
                                 velocity = 95,
                                 alpha = 0.95f * flashHaloIntensity.coerceIn(0.2f, 1.0f),
-                                radius = baseRad * flashSize.coerceIn(0.2f, 2.5f)
+                                radius = (if (isChordStrike) baseRad * 1.35f else baseRad) * flashSize.coerceIn(0.2f, 2.5f),
+                                isChordStrike = isChordStrike
                             )
                         )
                     }
-                }
 
                 if (particlesEnabled && particles.size < 64) {
                     val sparkBase = if (geom.isBlack) (particleCount * 0.5f).toInt() else (particleCount * 0.75f).toInt()
@@ -3834,7 +4251,7 @@ fun SynthesiaWaterfallOverlay(
                 "Fast" -> 1.5f
                 "Extreme" -> 2.2f
                 else -> 1.0f
-            }
+            } * playbackSpeed.coerceIn(0.5f, 2.0f)
             val pixelsPerBeat = (canvasH / 3.0f) * speedMul
             val contactY = canvasH
 
@@ -3861,6 +4278,10 @@ fun SynthesiaWaterfallOverlay(
             for (idx in startIndex until allNotes.size) {
                 val note = allNotes[idx]
                 if (note.absoluteBeatStart > maxBeat) break
+
+                // Hand visibility filtering
+                if (note.isRightHand && isRightHandHidden) continue
+                if (!note.isRightHand && isLeftHandHidden) continue
 
                 val noteDistBeats = note.absoluteBeatStart - currentPlaybackBeat
                 val noteDurBeats = note.durationBeats
@@ -3973,10 +4394,24 @@ fun SynthesiaWaterfallOverlay(
         if (glowEffect) {
             for (f in flashes) {
                 val flashRadius = f.radius * (size.width / 1200f).coerceIn(0.8f, 1.6f)
+                if (f.isChordStrike) {
+                    // Distinctive Golden Chord Burst Halo
+                    drawCircle(
+                        color = Color(0xFFFFD700).copy(alpha = (f.alpha * 0.45f).coerceIn(0f, 1f)),
+                        radius = flashRadius * 1.4f,
+                        center = Offset(f.centerX, canvasH),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f)
+                    )
+                }
                 // Warm contact flare at the piano key landing edge
                 drawOval(
                     brush = Brush.radialGradient(
-                        colors = listOf(
+                        colors = if (f.isChordStrike) listOf(
+                            Color(0xFFFFF9C4).copy(alpha = (f.alpha * 0.98f).coerceIn(0f, 1f)),
+                            Color(0xFFFFD700).copy(alpha = (f.alpha * 0.85f).coerceIn(0f, 1f)),
+                            Color(0xFFFF8F00).copy(alpha = (f.alpha * 0.30f).coerceIn(0f, 1f)),
+                            Color.Transparent
+                        ) else listOf(
                             Color(0xFFFFCC80).copy(alpha = (f.alpha * 0.95f).coerceIn(0f, 1f)),
                             f.color.copy(alpha = (f.alpha * 0.75f).coerceIn(0f, 1f)),
                             f.color.copy(alpha = (f.alpha * 0.20f).coerceIn(0f, 1f)),

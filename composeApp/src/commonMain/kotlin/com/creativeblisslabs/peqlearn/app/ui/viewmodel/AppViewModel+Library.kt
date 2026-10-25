@@ -152,13 +152,15 @@ fun AppViewModel.toggleFavorite(item: pEQMediaItem) {
 }
 
 fun AppViewModel.resolveItem(path: String): com.creativeblisslabs.peqlearn.app.data.pEQMediaItem? {
-    return mediaLibrary.value.find { it.path == path } ?: run {
+    val norm = normalizePath(path)
+    return mediaLibrary.value.find { normalizePath(it.path) == norm } ?: run {
         if (path.startsWith("http")) {
             com.creativeblisslabs.peqlearn.app.data.pEQMediaItem(
                 id = "stream_${path.hashCode()}",
                 title = "Web Stream",
                 subtitle = path,
                 path = path,
+                thumbnail = null,
                 type = if (path.lowercase().let { it.contains(".mp4") || it.contains(".m3u8") || it.contains(".mov") || it.contains("video") || it.contains(".mkv") }) 
                     com.creativeblisslabs.peqlearn.app.data.MediaType.VIDEO else com.creativeblisslabs.peqlearn.app.data.MediaType.AUDIO,
                 format = path.substringAfterLast(".").uppercase(),
@@ -166,15 +168,18 @@ fun AppViewModel.resolveItem(path: String): com.creativeblisslabs.peqlearn.app.d
                 durationMs = 0L
             )
         } else {
+            val rawFileName = path.substringAfterLast("/").substringBeforeLast(".")
+            val cleanTitle = if (rawFileName.isNotBlank()) rawFileName else "Audio Track"
             com.creativeblisslabs.peqlearn.app.data.pEQMediaItem(
                 id = "engine_${path.hashCode()}",
-                title = path.substringAfterLast("/").substringBeforeLast("."),
-                subtitle = "Neural Engine",
-                artist = "Neural Engine",
+                title = cleanTitle,
+                subtitle = "Local Archive",
+                artist = "Local Archive",
                 path = path,
+                thumbnail = path,
                 type = if (path.lowercase().let { it.contains("video") || it.contains(".mp4") || it.contains(".mkv") }) 
                     com.creativeblisslabs.peqlearn.app.data.MediaType.VIDEO else com.creativeblisslabs.peqlearn.app.data.MediaType.AUDIO,
-                format = path.substringAfterLast(".").uppercase(),
+                format = path.substringAfterLast(".").uppercase().ifBlank { "AUDIO" },
                 sizeBytes = 0L,
                 durationMs = 0L
             )
