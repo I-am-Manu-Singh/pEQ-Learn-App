@@ -208,12 +208,6 @@ fun PianoKeyboard88Keys(
         allNotes.filter { !isMidiNoteBlack(it) }
     }
 
-    var internalKeyboardModeName by rememberSaveable { mutableStateOf("PIANO") }
-    LaunchedEffect(internalKeyboardModeName) {
-        if (internalKeyboardModeName == "PIANO") {
-            viewModel.audioEngine.setInstrument("PIANO")
-        }
-    }
     val fallingBlocks = remember { mutableStateListOf<PianoFallingNoteBlock>() }
     val inlineSparks = remember { mutableStateListOf<PianoSpark>() }
     val inlineFlashes = remember { mutableStateListOf<PianoKeyFlash>() }
@@ -235,10 +229,17 @@ fun PianoKeyboard88Keys(
     }
 
     var frameTicker by remember { mutableLongStateOf(0L) }
-    var showDumpDialog by rememberSaveable { mutableStateOf(false) }
-    var showPlayAlongStatsDialog by rememberSaveable { mutableStateOf(false) }
-    var showLearnModeDialog by rememberSaveable { mutableStateOf(false) }
-    var showAudioToMidiScreen by rememberSaveable { mutableStateOf(false) }
+    var internalKeyboardModeName by rememberSaveable { mutableStateOf("PIANO") }
+    LaunchedEffect(internalKeyboardModeName) {
+        if (internalKeyboardModeName == "PIANO") {
+            viewModel.audioEngine.setInstrument("PIANO")
+        }
+    }
+
+    // var showDumpDialog by rememberSaveable { mutableStateOf(false) }
+    // var showPlayAlongStatsDialog by rememberSaveable { mutableStateOf(false) }
+    // var showLearnModeDialog by rememberSaveable { mutableStateOf(false) }
+    // var showAudioToMidiScreen by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(pressedKeys.toList(), viewModel.rightHandColor.value, viewModel.leftHandColor.value) {
         val rhColor = viewModel.rightHandColor.value
@@ -334,44 +335,38 @@ fun PianoKeyboard88Keys(
         }
     }
 
-LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
-        Column(
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                       
+    val isFullscreen = viewModel.isFullscreenKeyboard.value
+    val activeMidiNoteSet by remember {
+        derivedStateOf { viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet() }
+    }
 
+    var showDumpDialog by rememberSaveable { mutableStateOf(false) }
+    var showPlayAlongStatsDialog by rememberSaveable { mutableStateOf(false) }
+    var showLearnModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showAudioToMidiScreen by rememberSaveable { mutableStateOf(false) }
 
-                                        //  Button(
-                                        //     onClick = { viewModel.showNotationNoteNames.value = !viewModel.showNotationNoteNames.value },
-                                        //     colors = ButtonDefaults.buttonColors(
-                                        //         containerColor = if (viewModel.showNotationNoteNames.value) primaryColor else MaterialTheme.colorScheme.onSurface.copy(0.1f)
-                                        //     ),
-                                        //     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        //     shape = RoundedCornerShape(8.dp),
-                                        //     modifier = Modifier.height(26.dp)
-                                        // ) {
-                                        //     Text("Letters", fontSize = 10.sp, color = if (viewModel.showNotationNoteNames.value) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                                        // }
-                                        
-
-                                        Button(
-                                            onClick = { viewModel.onPickScoreFileRequested?.invoke() },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.onSurface.copy(0.1f)
-                                            ),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.height(26.dp)
-                                        ) {
-                                            Icon(Icons.Default.FileOpen, contentDescription = "Open Score", modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurface)
-                                            Spacer(Modifier.width(3.dp))
-                                            Text("Import", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
-                                        }
-
+    // CRITICAL FIX: Do NOT render or tick the inline Notation + Waterfall + Keyboard when Fullscreen mode is open!
+    if (!isFullscreen) {
+        LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
+            Column {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(
+                            onClick = { viewModel.onPickScoreFileRequested?.invoke() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.onSurface.copy(0.1f)
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Icon(Icons.Default.FileOpen, contentDescription = "Open Score", modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.width(3.dp))
+                            Text("Import", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
+                        }
 
                         IconButton(
                             onClick = { viewModel.isFullscreenKeyboard.value = true },
@@ -384,444 +379,119 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-                        // PianoMidiStatusBadge(
-                        //     deviceName = viewModel.connectedMidiDeviceName.value,
-                        //     lastVelocity = viewModel.lastMidiVelocity.intValue,
-                        //     lastChannel = viewModel.lastMidiChannel.intValue,
-                        //     onDeviceClick = {
-                        //         viewModel.onScanMidiDevicesRequested?.invoke()
-                        //     }
-                        // )
                     }
                 }
 
-            // NOTATION VIEW ON TOP (Explicit height for scrollable container)
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(280.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.15f))
-            ) {
-                StaffAndTabNotationViewer(
-                    score = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score,
-                    playheadMeasure = viewModel.scorePlayheadMeasure.value,
-                    playheadOffset = viewModel.scorePlayheadOffset.value,
-                    activeMidiNotes = viewModel.midiActiveNotes,
-                    playingNote = viewModel.midiPlayingNote.value,
-                    primaryColor = primaryColor,
-                    currentFormat = notationFormat,
-                    onFormatChange = { notationFormat = it },
-                    showLetters = viewModel.showNotationNoteNames.value,
-                    isSplitStaff = viewModel.isSplitStaff.value,
-                    isVerticalScroll = viewModel.isVerticalScroll.value,
-                    leftHandColor = viewModel.leftHandColor.value,
-                    rightHandColor = viewModel.rightHandColor.value,
-                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                    isRightHandHidden = viewModel.isRightHandHidden.value,
-                    enabledTrackIndices = viewModel.enabledTrackIndices,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            // PIANO KEYBOARD ON BOTTOM
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                   
-                    Column(
+                // Only mount StaffAndTabNotationViewer if layout mode includes Notation
+                val layoutMode = viewModel.visualizerLayoutMode.value
+                if (layoutMode == "Split" || layoutMode == "Notation") {
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(scrollState)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.Black.copy(0.3f))
+                            .height(280.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.15f))
                     ) {
-                        if (showWaterfall) {
-                            Canvas(modifier = Modifier.width(keyboardWidth).height(140.dp).background(Color.Black.copy(0.25f))) {
-                                val _tick = frameTicker // Re-draw canvas on frame ticker without causing column recomposition
-                                val availableWidth = size.width
-                                val canvasH = size.height
-                                val maxWhiteKeyWidthPx = with(density) { 42.dp.toPx() }
-                                val calculatedKeyWidth = availableWidth / whiteNotes.size.coerceAtLeast(1)
-                                val finalWhiteKeyWidthPx = if (calculatedKeyWidth > maxWhiteKeyWidthPx) maxWhiteKeyWidthPx else calculatedKeyWidth
-                                val totalKeyboardWidthPx = finalWhiteKeyWidthPx * whiteNotes.size
-                                val startPaddingOffset = (availableWidth - totalKeyboardWidthPx) / 2f
-                                val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
+                        StaffAndTabNotationViewer(
+                            score = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score,
+                            playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                            playheadOffset = viewModel.scorePlayheadOffset.value,
+                            activeMidiNotes = viewModel.midiActiveNotes,
+                            playingNote = viewModel.midiPlayingNote.value,
+                            primaryColor = primaryColor,
+                            currentFormat = notationFormat,
+                            onFormatChange = { notationFormat = it },
+                            showLetters = viewModel.showNotationNoteNames.value,
+                            isSplitStaff = viewModel.isSplitStaff.value,
+                            isVerticalScroll = viewModel.isVerticalScroll.value,
+                            leftHandColor = viewModel.leftHandColor.value,
+                            rightHandColor = viewModel.rightHandColor.value,
+                            isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                            isRightHandHidden = viewModel.isRightHandHidden.value,
+                            enabledTrackIndices = viewModel.enabledTrackIndices,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
 
-                                // 1. Straight Falling Note Ribbons with Neon Glow & Centered Note Names
-                                fallingBlocks.forEach { block ->
-                                    val isBlack = isMidiNoteBlack(block.midiNote)
-                                    val baseBlockWidth = if (isBlack) blackKeyWidthPx else (finalWhiteKeyWidthPx - 2f)
-                                    val finalX = if (isBlack) {
-                                        val prevWhiteNote = block.midiNote - 1
-                                        val whiteIndex = whiteNotes.indexOf(prevWhiteNote)
-                                        if (whiteIndex >= 0) {
-                                            startPaddingOffset + (whiteIndex * finalWhiteKeyWidthPx) + (finalWhiteKeyWidthPx - blackKeyWidthPx / 2f)
-                                        } else {
-                                            startPaddingOffset
-                                        }
-                                    } else {
-                                        val whiteIndex = whiteNotes.indexOf(block.midiNote)
-                                        val left = if (whiteIndex >= 0) startPaddingOffset + (whiteIndex * finalWhiteKeyWidthPx) else startPaddingOffset
-                                        left + 1f
-                                    }
+                // PIANO KEYBOARD & WATERFALL ON BOTTOM
+                if (layoutMode != "Notation") {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(scrollState)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color.Black.copy(0.3f))
+                        ) {
+                            if (showWaterfall && layoutMode != "Keyboard") {
+                                SynthesiaWaterfallOverlay(
+                                    activeMidiNotes = activeMidiNoteSet,
+                                    manualPressedNotes = pressedKeys.toSet(),
+                                    score = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score,
+                                    playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                    playheadOffset = viewModel.scorePlayheadOffset.value,
+                                    isPlaying = viewModel.isScorePlaying.value,
+                                    fallingSpeedSetting = viewModel.fallingNotesSpeed.value,
+                                    modifier = Modifier
+                                        .width(keyboardWidth)
+                                        .height(140.dp)
+                                        .background(Color.Black.copy(0.25f)),
+                                    primaryColor = primaryColor,
+                                    glowEffect = true,
+                                    particlesEnabled = viewModel.showWaterfallParticles.value,
+                                    particleCount = viewModel.particleCount.intValue,
+                                    particleSpeed = viewModel.particleSpeed.floatValue,
+                                    particleScale = viewModel.particleScale.floatValue,
+                                    particleExpansion = viewModel.particleExpansion.floatValue,
+                                    lockParticleColor = viewModel.lockParticleColor.value,
+                                    particleCustomColor = viewModel.particleCustomColor.value,
+                                    flashSize = viewModel.flashSize.floatValue,
+                                    flashHaloIntensity = viewModel.flashHaloIntensity.floatValue,
+                                    noteCornerRadius = viewModel.noteCornerRadius.floatValue,
+                                    noteEdgeThickness = viewModel.noteEdgeThickness.floatValue,
+                                    noteStyleOval = viewModel.noteStyleOval.value,
+                                    leftHandColor = viewModel.leftHandColor.value,
+                                    rightHandColor = viewModel.rightHandColor.value,
+                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                    enabledTrackIndices = viewModel.enabledTrackIndices,
+                                    playbackSpeed = viewModel.playbackSpeed.value
+                                )
+                            }
 
-                                    // Straight vertical fall/rise travelling full height to top of keyboard
-                                    val blockHeight = 28f
-                                    val bottomY = if (block.isAscending) block.currentY + blockHeight else block.currentY.coerceAtMost(canvasH)
-                                    val topY = if (block.isAscending) block.currentY.coerceAtLeast(0f) else (bottomY - blockHeight).coerceAtLeast(0f)
-                                    val centerX = finalX + baseBlockWidth / 2f
-                                    val blockAlpha = block.alpha.coerceIn(0f, 1f)
-
-                                    // Contact line hit detection: triggers right as ribbon reaches top of keyboard keys
-                                    val contactHit = if (block.isAscending) {
-                                        block.currentY >= (canvasH - 20f)
-                                    } else {
-                                        block.currentY >= (canvasH - 14f) && block.currentY <= (canvasH + 18f)
-                                    }
-                                    if (contactHit && viewModel.showWaterfallParticles.value) {
-                                        if (inlineFlashes.none { it.midiNote == block.midiNote && it.alpha > 0.35f }) {
-                                            // Detect if falling note is part of a concurrent chord strike
-                                            val hittingNotes = fallingBlocks.filter { b ->
-                                                b.isAscending == block.isAscending && kotlin.math.abs(b.currentY - block.currentY) < 18f
-                                            }.map { it.midiNote }.distinct()
-                                            val isChordStrike = hittingNotes.size >= 2
-                                            val chordName = if (isChordStrike) LiveChordDetector.detect(hittingNotes)?.fullName ?: "" else ""
-
-                                            inlineFlashes.add(
-                                                PianoKeyFlash(
-                                                    midiNote = block.midiNote,
-                                                    centerX = centerX,
-                                                    centerY = canvasH,
-                                                    color = if (isChordStrike) Color(0xFFFFD700) else block.color,
-                                                    alpha = if (isChordStrike) 1.0f else 0.95f,
-                                                    radius = if (isChordStrike) (if (isBlack) 36f else 46f) else (if (isBlack) 24f else 32f),
-                                                    isChordStrike = isChordStrike,
-                                                    chordName = chordName
-                                                )
-                                            )
-                                            // Trigger Physics Sparks with richer burst for chords
-                                            val sparkCount = if (isChordStrike) (if (isBlack) 16 else 22) else (if (isBlack) 10 else 14)
-                                            for (i in 0 until sparkCount) {
-                                                val angleRad = (-(35f + Random.nextFloat() * 110f) * (Math.PI / 180f)).toFloat()
-                                                val speed = Random.nextFloat() * 6.5f + 2.5f
-                                                val life = Random.nextFloat() * 20f + 16f
-                                                inlineSparks.add(
-                                                    PianoSpark(
-                                                        x = centerX + (Random.nextFloat() - 0.5f) * 6f,
-                                                        y = canvasH,
-                                                        vx = cos(angleRad) * speed,
-                                                        vy = sin(angleRad) * speed,
-                                                        alpha = 1.0f,
-                                                        size = Random.nextFloat() * 2.2f + 1.4f,
-                                                        maxLife = life,
-                                                        currentLife = life,
-                                                        color = block.color
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    val pillCorner = 12f
-                                    val pillHeight = (bottomY - topY).coerceAtLeast(10f)
-
-                                    // Outer Soft Glow
-                                    drawRoundRect(
-                                        brush = Brush.radialGradient(
-                                            colors = listOf(
-                                                block.color.copy(alpha = 0.40f * blockAlpha),
-                                                block.color.copy(alpha = 0.12f * blockAlpha),
-                                                Color.Transparent
-                                            ),
-                                            center = Offset(centerX, topY + pillHeight / 2f),
-                                            radius = baseBlockWidth * 1.3f
-                                        ),
-                                        topLeft = Offset(finalX - 3f, topY - 3f),
-                                        size = Size(baseBlockWidth + 6f, pillHeight + 6f),
-                                        cornerRadius = CornerRadius(pillCorner + 3f, pillCorner + 3f)
-                                    )
-
-                                    // Core Waterdrop Pill Body
-                                    drawRoundRect(
-                                        brush = Brush.verticalGradient(
-                                            colors = listOf(
-                                                block.color.copy(alpha = 0.90f * blockAlpha),
-                                                block.color.copy(alpha = 1.0f * blockAlpha),
-                                                block.color.copy(alpha = 0.92f * blockAlpha)
-                                            ),
-                                            startY = topY,
-                                            endY = bottomY
-                                        ),
-                                        topLeft = Offset(finalX, topY),
-                                        size = Size(baseBlockWidth, pillHeight),
-                                        cornerRadius = CornerRadius(pillCorner, pillCorner)
-                                    )
-
-                                    // Top Gloss Reflection (Waterdrop glassy shine)
-                                    drawRoundRect(
-                                        brush = Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.White.copy(alpha = 0.35f * blockAlpha),
-                                                Color.White.copy(alpha = 0.05f * blockAlpha),
-                                                Color.Transparent
-                                            ),
-                                            startY = topY,
-                                            endY = topY + (pillHeight * 0.55f)
-                                        ),
-                                        topLeft = Offset(finalX + 1.2f, topY + 1.2f),
-                                        size = Size(baseBlockWidth - 2.4f, pillHeight * 0.55f),
-                                        cornerRadius = CornerRadius(pillCorner - 1f, pillCorner - 1f)
-                                    )
-
-                                    // Crisp Border
-                                    drawRoundRect(
-                                        color = Color.White.copy(alpha = 0.28f * blockAlpha),
-                                        topLeft = Offset(finalX, topY),
-                                        size = Size(baseBlockWidth, pillHeight),
-                                        cornerRadius = CornerRadius(pillCorner, pillCorner),
-                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
-                                    )
-
-                                    // Pitch Letter (e.g., A, B, C#, F#)
-                                    val noteLabel = getPitchOnlyFromMidi(block.midiNote)
-                                    val textY = topY + (pillHeight / 2f) + 3.8.dp.toPx()
-                                    drawContext.canvas.nativeCanvas.drawText(
-                                        noteLabel,
-                                        centerX,
-                                        textY,
-                                        android.graphics.Paint().apply {
-                                            color = android.graphics.Color.WHITE
-                                            textSize = 10.dp.toPx()
-                                            textAlign = android.graphics.Paint.Align.CENTER
-                                            typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                            isAntiAlias = true
-                                            setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
-                                        }
-                                    )
-                                }
-
-                                // 1b. MIDI Score Lookahead Falling Notes: streams down from top and reaches contact line (canvasH) exactly when active
-                                val currentScoreObj = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
-                                if (viewModel.isScorePlaying.value && currentScoreObj != null) {
-                                    val currentM = viewModel.scorePlayheadMeasure.value
-                                    val currentOff = viewModel.scorePlayheadOffset.value
-                                    val speedMul = when (viewModel.fallingNotesSpeed.value) {
-                                        "Slow" -> 0.75f
-                                        "Fast" -> 1.5f
-                                        "Extreme" -> 2.2f
-                                        else -> 1.1f
-                                    } * viewModel.playbackSpeed.value.coerceIn(0.5f, 2.0f)
-                                    val pixelsPerBeat = (canvasH / 3.0f) * speedMul
-                                    val rhColor = viewModel.rightHandColor.value
-                                    val lhColor = viewModel.leftHandColor.value
-                                    val isRhHidden = viewModel.isRightHandHidden.value
-                                    val isLhHidden = viewModel.isLeftHandHidden.value
-
-                                    for (mIdx in currentM..(currentM + 2)) {
-                                        val measure = currentScoreObj.measures.getOrNull(mIdx) ?: continue
-                                        val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
-                                        val measureBeatStart = (mIdx - currentM) * beatsInMeasure - (currentOff * beatsInMeasure)
-
-                                        for (note in measure.notes) {
-                                            if (note.isRest || note.midiNote !in startMidi..(startMidi + totalKeys - 1)) continue
-                                            val isTreble = note.midiNote >= 60
-                                            if (isTreble && isRhHidden) continue
-                                            if (!isTreble && isLhHidden) continue
-                                            val noteColor = if (isTreble) rhColor else lhColor
-                                            val noteDistBeats = measureBeatStart + note.position
-                                            val noteDurBeats = note.duration.coerceAtLeast(0.2f)
-
-                                            // Note reaches keys (canvasH) right when noteDistBeats == 0
-                                            val bottomY = canvasH - (noteDistBeats * pixelsPerBeat)
-                                            val topY = bottomY - (noteDurBeats * pixelsPerBeat)
-
-                                            // Render only if visible in canvas viewport
-                                            if (bottomY < 0f || topY > canvasH) continue
-
-                                            val isBlack = isMidiNoteBlack(note.midiNote)
-                                            val baseBlockWidth = if (isBlack) blackKeyWidthPx else (finalWhiteKeyWidthPx - 2f)
-                                            val finalX = if (isBlack) {
-                                                val prevWhiteNote = note.midiNote - 1
-                                                val whiteIndex = whiteNotes.indexOf(prevWhiteNote)
-                                                if (whiteIndex >= 0) {
-                                                    startPaddingOffset + (whiteIndex * finalWhiteKeyWidthPx) + (finalWhiteKeyWidthPx - blackKeyWidthPx / 2f)
-                                                } else {
-                                                    startPaddingOffset
-                                                }
-                                            } else {
-                                                val whiteIndex = whiteNotes.indexOf(note.midiNote)
-                                                val left = if (whiteIndex >= 0) startPaddingOffset + (whiteIndex * finalWhiteKeyWidthPx) else startPaddingOffset
-                                                left + 1f
-                                            }
-
-                                            val clampedTopY = topY.coerceAtLeast(0f)
-                                            val clampedBottomY = bottomY.coerceAtMost(canvasH)
-                                            val pillHeight = (clampedBottomY - clampedTopY).coerceAtLeast(10f)
-                                            val pillCorner = 12f
-                                            val centerX = finalX + baseBlockWidth / 2f
-                                            // Check if note is part of a concurrent harmonic chord in the score
-                                            val isChordNote = measure.notes.count { !it.isRest && kotlin.math.abs(it.position - note.position) < 0.05f } >= 2
-                                            val chordColor = if (isChordNote) Color(0xFFFFD700) else noteColor
-
-                                            // Ambient Glow with enhanced luminous aura for chords
-                                            drawRoundRect(
-                                                brush = Brush.radialGradient(
-                                                    colors = if (isChordNote) listOf(
-                                                        Color(0xFFFFD700).copy(alpha = 0.55f),
-                                                        Color(0xFFFF9100).copy(alpha = 0.22f),
-                                                        Color.Transparent
-                                                    ) else listOf(
-                                                        noteColor.copy(alpha = 0.40f),
-                                                        noteColor.copy(alpha = 0.12f),
-                                                        Color.Transparent
-                                                    ),
-                                                    center = Offset(centerX, clampedTopY + pillHeight / 2f),
-                                                    radius = baseBlockWidth * (if (isChordNote) 1.6f else 1.3f)
-                                                ),
-                                                topLeft = Offset(finalX - 3f, clampedTopY - 3f),
-                                                size = Size(baseBlockWidth + 6f, pillHeight + 6f),
-                                                cornerRadius = CornerRadius(pillCorner + 3f, pillCorner + 3f)
-                                            )
-
-                                            // Core Solid Body with golden metallic sheen if part of a chord
-                                            drawRoundRect(
-                                                brush = Brush.verticalGradient(
-                                                    colors = if (isChordNote) listOf(
-                                                        Color(0xFFFFF9C4),
-                                                        Color(0xFFFFD700),
-                                                        Color(0xFFFF8F00)
-                                                    ) else listOf(
-                                                        noteColor.copy(alpha = 0.90f),
-                                                        noteColor.copy(alpha = 1.0f),
-                                                        noteColor.copy(alpha = 0.92f)
-                                                    ),
-                                                    startY = clampedTopY,
-                                                    endY = clampedBottomY
-                                                ),
-                                                topLeft = Offset(finalX, clampedTopY),
-                                                size = Size(baseBlockWidth, pillHeight),
-                                                cornerRadius = CornerRadius(pillCorner, pillCorner)
-                                            )
-
-                                            // Crisp Border
-                                            drawRoundRect(
-                                                color = if (isChordNote) Color(0xFFFFE082) else Color.White.copy(alpha = 0.28f),
-                                                topLeft = Offset(finalX, clampedTopY),
-                                                size = Size(baseBlockWidth, pillHeight),
-                                                cornerRadius = CornerRadius(pillCorner, pillCorner),
-                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (isChordNote) 1.8f else 1.0f)
-                                            )
-
-                                            // Pitch Letter & Chord Emblem
-                                            val noteLabel = getPitchOnlyFromMidi(note.midiNote)
-                                            val textY = clampedTopY + (pillHeight / 2f) + 3.8.dp.toPx()
-                                            drawContext.canvas.nativeCanvas.drawText(
-                                                noteLabel,
-                                                centerX,
-                                                textY,
-                                                android.graphics.Paint().apply {
-                                                    color = if (isChordNote) android.graphics.Color.BLACK else android.graphics.Color.WHITE
-                                                    textSize = 10.dp.toPx()
-                                                    textAlign = android.graphics.Paint.Align.CENTER
-                                                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                                    isAntiAlias = true
-                                                    if (!isChordNote) setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // 2. Key Strike Contact Bloom / Flashes
-                                inlineFlashes.forEach { f ->
-                                    val flashRadius = f.radius
-                                    if (f.isChordStrike) {
-                                        // Chord burst: golden halo ring connecting harmonic strikes
-                                        drawCircle(
-                                            color = Color(0xFFFFD700).copy(alpha = (f.alpha * 0.4f).coerceIn(0f, 1f)),
-                                            radius = flashRadius * 1.35f,
-                                            center = Offset(f.centerX, canvasH),
-                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
-                                        )
-                                    }
-                                    drawCircle(
-                                        brush = Brush.radialGradient(
-                                            colors = if (f.isChordStrike) listOf(
-                                                Color(0xFFFFF9C4).copy(alpha = (f.alpha * 0.98f).coerceIn(0f, 1f)),
-                                                Color(0xFFFFD700).copy(alpha = (f.alpha * 0.85f).coerceIn(0f, 1f)),
-                                                Color(0xFFFF8F00).copy(alpha = (f.alpha * 0.4f).coerceIn(0f, 1f)),
-                                                Color.Transparent
-                                            ) else listOf(
-                                                Color.White.copy(alpha = (f.alpha * 0.95f).coerceIn(0f, 1f)),
-                                                f.color.copy(alpha = (f.alpha * 0.7f).coerceIn(0f, 1f)),
-                                                f.color.copy(alpha = (f.alpha * 0.25f).coerceIn(0f, 1f)),
-                                                Color.Transparent
-                                            ),
-                                            center = Offset(f.centerX, canvasH),
-                                            radius = flashRadius
-                                        ),
-                                        radius = flashRadius,
-                                        center = Offset(f.centerX, canvasH)
-                                    )
-                                }
-
-                                // 3. Directional Physics Sparks with Velocity Trails
-                                inlineSparks.forEach { p ->
-                                    val pAlpha = p.alpha.coerceIn(0f, 1f)
-                                    val sparkRadius = p.size.dp.toPx()
-
-                                    drawCircle(
-                                        color = Color.White.copy(alpha = pAlpha),
-                                        radius = sparkRadius * 0.55f,
-                                        center = Offset(p.x, p.y)
-                                    )
-                                    drawCircle(
-                                        color = p.color.copy(alpha = pAlpha * 0.75f),
-                                        radius = sparkRadius,
-                                        center = Offset(p.x, p.y)
-                                    )
-                                    drawLine(
-                                        color = p.color.copy(alpha = pAlpha * 0.6f),
-                                        start = Offset(p.x, p.y),
-                                        end = Offset(p.x - p.vx * 1.4f, p.y - p.vy * 1.4f),
-                                        strokeWidth = sparkRadius * 0.7f
-                                    )
-                                }
+                            if (layoutMode != "Waterfall") {
+                                UnifiedPianoKeyboard(
+                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                    accentColor = primaryColor,
+                                    activeCoordinate = viewModel.midiPlayingNote.value,
+                                    isPlaying = viewModel.isScorePlaying.value,
+                                    startNote = startMidi,
+                                    endNote = startMidi + totalKeys - 1,
+                                    leftHandColor = viewModel.leftHandColor.value,
+                                    rightHandColor = viewModel.rightHandColor.value,
+                                    customKeyColors = viewModel.playAlongEngine.liveKeyColors,
+                                    onKeyTapped = { midiNote ->
+                                        if (midiNote !in pressedKeys) pressedKeys.add(midiNote)
+                                        onNotePressed(midiNote)
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        val freq = viewModel.tunerReferenceFrequency.value * 2.0.pow((midiNote - 69) / 12.0).toFloat()
+                                        viewModel.detectedPitch.value = freq
+                                        viewModel.detectedNote.value = getNoteNameFromMidi(midiNote)
+                                    },
+                                    onKeyReleased = { midiNote ->
+                                        viewModel.onMidiNoteOff(midiNote)
+                                        pressedKeys.remove(midiNote)
+                                    },
+                                    modifier = Modifier
+                                        .width(keyboardWidth)
+                                        .height(whiteKeyHeight)
+                                        .padding(vertical = 4.dp)
+                                )
                             }
                         }
-                        
-                            UnifiedPianoKeyboard(
-                                activeMidiNotes = viewModel.midiActiveNotes,
-                                accentColor = primaryColor,
-                                activeCoordinate = viewModel.midiPlayingNote.value,
-                                isPlaying = viewModel.isScorePlaying.value,
-                                startNote = startMidi,
-                                endNote = startMidi + totalKeys - 1,
-                                leftHandColor = viewModel.leftHandColor.value,
-                                rightHandColor = viewModel.rightHandColor.value,
-                                customKeyColors = viewModel.playAlongEngine.liveKeyColors,
-                                onKeyTapped = { midiNote ->
-                                    pressedKeys.add(midiNote)
-                                    onNotePressed(midiNote)
-                                    viewModel.onMidiNoteOn(midiNote, 95)
-                                    val freq = viewModel.tunerReferenceFrequency.value * 2.0.pow((midiNote - 69) / 12.0).toFloat()
-                                    viewModel.detectedPitch.value = freq
-                                    viewModel.detectedNote.value = getNoteNameFromMidi(midiNote)
-                                },
-                                onKeyReleased = { midiNote ->
-                                    viewModel.onMidiNoteOff(midiNote)
-                                    pressedKeys.remove(midiNote)
-                                },
-                                modifier = Modifier
-                                    .width(keyboardWidth)
-                                    .height(whiteKeyHeight)
-                                    .padding(vertical = 4.dp)
-                            )
-                        }
 
-                        // 3-Pedal Grand Piano Unit placed above piano keyboard in right corner
                         PianoThreePedalUnit(
                             sustainPressed = viewModel.sustainPedalActive.value,
                             sostenutoPressed = viewModel.sostenutoPedalActive.value,
@@ -833,9 +503,11 @@ LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
                                 .align(Alignment.TopEnd)
                                 .padding(end = 8.dp, top = 6.dp)
                         )
+                    }
                 }
             }
         }
+    }
     
     
 
@@ -1507,11 +1179,15 @@ Row(
                 val isPlaying = viewModel.isScorePlaying.value
                 val currentScore = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
 
-                val totalSeconds = remember(currentScore) {
+
+               val effectiveTempo = (currentScore?.tempo ?: 120f).coerceAtLeast(20f) * viewModel.playbackSpeed.value.coerceIn(0.25f, 2.5f)
+
+                val totalSeconds = remember(currentScore, effectiveTempo) {
                     if (currentScore == null) 0.0
                     else {
-                        currentScore.measures.sumOf {
-                            (60.0 / currentScore.tempo.toDouble()) * it.timeSignatureNumerator.toDouble()
+                        currentScore.measures.sumOf { m ->
+                            val quarterBeats = m.timeSignatureNumerator.toDouble() * (4.0 / m.timeSignatureDenominator.coerceAtLeast(1).toDouble())
+                            (60.0 / effectiveTempo.toDouble()) * quarterBeats
                         }
                     }
                 }
@@ -1519,17 +1195,19 @@ Row(
                 val currentMeasure = viewModel.scorePlayheadMeasure.value
                 val currentOffset = viewModel.scorePlayheadOffset.value
 
-                val currentSeconds = remember(currentScore, currentMeasure, currentOffset) {
+                val currentSeconds = remember(currentScore, currentMeasure, currentOffset, effectiveTempo) {
                     if (currentScore == null) 0.0
                     else {
                         var elapsed = 0.0
                         for (i in 0 until currentMeasure) {
                             val m = currentScore.measures.getOrNull(i) ?: break
-                            elapsed += (60.0 / currentScore.tempo.toDouble()) * m.timeSignatureNumerator.toDouble()
+                            val quarterBeats = m.timeSignatureNumerator.toDouble() * (4.0 / m.timeSignatureDenominator.coerceAtLeast(1).toDouble())
+                            elapsed += (60.0 / effectiveTempo.toDouble()) * quarterBeats
                         }
                         val m = currentScore.measures.getOrNull(currentMeasure)
                         if (m != null) {
-                            elapsed += (currentOffset.toDouble() * (60.0 / currentScore.tempo.toDouble()) * m.timeSignatureNumerator.toDouble())
+                            val quarterBeats = m.timeSignatureNumerator.toDouble() * (4.0 / m.timeSignatureDenominator.coerceAtLeast(1).toDouble())
+                            elapsed += (currentOffset.toDouble() * (60.0 / effectiveTempo.toDouble()) * quarterBeats)
                         }
                         elapsed
                     }
@@ -2669,7 +2347,7 @@ Button(
                                 // 7. Blue Scrubbing Progress Slider
                                 Slider(
                                     value = timelineProgress,
-                                    onValueChange = { targetProgress ->
+                                   onValueChange = { targetProgress ->
                                         if (currentScore != null && totalSeconds > 0) {
                                             val targetTotalSec = targetProgress * totalSeconds.toFloat()
                                             var accumulated = 0f
@@ -2677,10 +2355,11 @@ Button(
                                             var targetO = 0f
                                             for (i in currentScore.measures.indices) {
                                                 val m = currentScore.measures[i]
-                                                val mDur = (60f / currentScore.tempo) * m.timeSignatureNumerator
+                                                val quarterBeats = m.timeSignatureNumerator.toFloat() * (4f / m.timeSignatureDenominator.coerceAtLeast(1).toFloat())
+                                                val mDur = (60f / effectiveTempo) * quarterBeats
                                                 if (targetTotalSec < accumulated + mDur) {
                                                     targetM = i
-                                                    targetO = (targetTotalSec - accumulated) / mDur
+                                                    targetO = ((targetTotalSec - accumulated) / mDur).coerceIn(0f, 1f)
                                                     break
                                                 }
                                                 accumulated += mDur
@@ -4104,21 +3783,19 @@ object WaterfallKeyGeometryLookup {
         )
     }
 }
-
 data class FlatWaterfallNote(
     val midiNote: Int,
     val absoluteBeatStart: Float,
     val durationBeats: Float,
-    val isRightHand: Boolean
+    val isRightHand: Boolean,
+    val voice: Int,
+    val isChordNote: Boolean
 )
 
 data class WaterfallTimeline(
     val notes: List<FlatWaterfallNote>,
     val measureCumulativeBeats: FloatArray
 ) {
-    /**
-     * Binary search to find the lower bound index for notes starting on or after [targetBeat].
-     */
     fun findStartWindowIndex(targetBeat: Float): Int {
         var low = 0
         var high = notes.lastIndex
@@ -4135,7 +3812,6 @@ data class WaterfallTimeline(
         return result
     }
 }
-
 @Composable
 fun SynthesiaWaterfallOverlay(
     activeMidiNotes: Set<Int>,
@@ -4164,6 +3840,7 @@ fun SynthesiaWaterfallOverlay(
     rightHandColor: Color = Color(0xFF4A90E2),
     isLeftHandHidden: Boolean = false,
     isRightHandHidden: Boolean = false,
+    enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
     playbackSpeed: Float = 1.0f,
     onFpsDropDetected: () -> Unit = {}
 ) {
@@ -4174,7 +3851,7 @@ fun SynthesiaWaterfallOverlay(
     var canvasHeightPx by remember { mutableFloatStateOf(500f) }
     val whiteKeyCount = 52
 
-    // Precomputed flattened temporal score timeline for O(log N) window lookahead
+    // Precomputed flattened temporal score timeline with accurate compound-meter beats & pre-calculated chord flags
     val waterfallTimeline = remember(score) {
         if (score == null || score.measures.isEmpty()) {
             null
@@ -4183,7 +3860,7 @@ fun SynthesiaWaterfallOverlay(
             var currentBeatTotal = 0f
             score.measures.forEachIndexed { idx, measure ->
                 cumBeats[idx] = currentBeatTotal
-                val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
+                val beatsInMeasure = (measure.timeSignatureNumerator.toFloat() * (4f / measure.timeSignatureDenominator.coerceAtLeast(1).toFloat())).coerceAtLeast(1f)
                 currentBeatTotal += beatsInMeasure
             }
             cumBeats[score.measures.size] = currentBeatTotal
@@ -4191,14 +3868,21 @@ fun SynthesiaWaterfallOverlay(
             val flatNotes = ArrayList<FlatWaterfallNote>()
             score.measures.forEachIndexed { mIdx, measure ->
                 val measureStartBeat = cumBeats[mIdx]
+                val hasDifferentiatedVoices = measure.notes.any { it.voice == 0 } && measure.notes.any { it.voice == 1 }
+                val posCounts = measure.notes.filter { !it.isRest }.groupingBy { (it.position * 20f).toInt() }.eachCount()
+
                 for (note in measure.notes) {
                     if (!note.isRest && note.midiNote in 21..108) {
+                        val isRh = if (hasDifferentiatedVoices) note.voice == 0 else note.midiNote >= 60
+                        val isChord = (posCounts[(note.position * 20f).toInt()] ?: 0) >= 2
                         flatNotes.add(
                             FlatWaterfallNote(
                                 midiNote = note.midiNote,
                                 absoluteBeatStart = measureStartBeat + note.position,
-                                durationBeats = note.duration.coerceAtLeast(0.2f),
-                                isRightHand = note.midiNote >= 60
+                                durationBeats = note.duration.coerceAtLeast(0.15f),
+                                isRightHand = isRh,
+                                voice = note.voice,
+                                isChordNote = isChord
                             )
                         )
                     }
@@ -4220,7 +3904,7 @@ fun SynthesiaWaterfallOverlay(
 
     var fsFrameTicker by remember { mutableLongStateOf(0L) }
 
-    // 1. Manual User Key Press: Waterfall rises from bottom (contact line) to top
+    // 1. Manual User Key Press
     LaunchedEffect(manualPressedNotes, leftHandColor, rightHandColor) {
         if (manualPressedNotes.isNotEmpty()) {
             val contactY = if (canvasHeightPx > 50f) canvasHeightPx else 320f
@@ -4243,7 +3927,7 @@ fun SynthesiaWaterfallOverlay(
         }
     }
 
-    // 2. Active MIDI Notes Fallback (when no score loaded): notes land flush against the keys while active
+    // 2. Active MIDI Notes Fallback (when no score loaded)
     LaunchedEffect(activeMidiNotes, leftHandColor, rightHandColor) {
         if (activeMidiNotes.isNotEmpty() && (score == null || !isPlaying)) {
             val currentCanvasH = canvasHeightPx
@@ -4269,7 +3953,7 @@ fun SynthesiaWaterfallOverlay(
         }
     }
 
-    // Trigger key landing flash and particles when a MIDI note becomes active (landing at keyboard)
+    // 3. Key landing flash and particles when a MIDI note becomes active
     LaunchedEffect(activeMidiNotes) {
         if (activeMidiNotes.isNotEmpty()) {
             val currentCanvasH = canvasHeightPx
@@ -4278,6 +3962,7 @@ fun SynthesiaWaterfallOverlay(
             val whiteKeyW = currentCanvasW / whiteKeyCount.toFloat()
 
             for (midi in activeMidiNotes) {
+                if (midi !in 0..127) continue
                 val geom = WaterfallKeyGeometryLookup.keyGeometries[midi]
                 val baseBlockW = if (geom.isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
                 val xOff = (whiteKeyW - baseBlockW) / 2f
@@ -4285,27 +3970,27 @@ fun SynthesiaWaterfallOverlay(
                 val strikeY = contactY
                 val baseColor = if (midi >= 60) rightHandColor else leftHandColor
 
-                    val isChordStrike = activeMidiNotes.size >= 2
-                    val chordColor = if (isChordStrike) Color(0xFFFFD700) else baseColor
-                    val baseRad = if (geom.isBlack) 28f else 38f
-                    if (flashes.size < 24) {
-                        flashes.add(
-                            PianoKeyFlash(
-                                midiNote = midi,
-                                centerX = strikeX,
-                                centerY = strikeY,
-                                color = chordColor,
-                                velocity = 95,
-                                alpha = 0.95f * flashHaloIntensity.coerceIn(0.2f, 1.0f),
-                                radius = (if (isChordStrike) baseRad * 1.35f else baseRad) * flashSize.coerceIn(0.2f, 2.5f),
-                                isChordStrike = isChordStrike
-                            )
+                val isChordStrike = activeMidiNotes.size >= 2
+                val chordColor = if (isChordStrike) Color(0xFFFFD700) else baseColor
+                val baseRad = if (geom.isBlack) 28f else 38f
+                if (flashes.size < 20) {
+                    flashes.add(
+                        PianoKeyFlash(
+                            midiNote = midi,
+                            centerX = strikeX,
+                            centerY = strikeY,
+                            color = chordColor,
+                            velocity = 95,
+                            alpha = 0.95f * flashHaloIntensity.coerceIn(0.2f, 1.0f),
+                            radius = (if (isChordStrike) baseRad * 1.35f else baseRad) * flashSize.coerceIn(0.2f, 2.5f),
+                            isChordStrike = isChordStrike
                         )
-                    }
+                    )
+                }
 
-                if (particlesEnabled && particles.size < 64) {
-                    val sparkBase = if (geom.isBlack) (particleCount * 0.5f).toInt() else (particleCount * 0.75f).toInt()
-                    val count = sparkBase.coerceIn(2, 24)
+                if (particlesEnabled && particles.size < 48) {
+                    val sparkBase = if (geom.isBlack) (particleCount * 0.4f).toInt() else (particleCount * 0.6f).toInt()
+                    val count = sparkBase.coerceIn(2, 16)
                     val pColor = if (lockParticleColor) baseColor else particleCustomColor
                     for (i in 0 until count) {
                         val angleRad = (-(30f + Random.nextFloat() * 120f) * (Math.PI / 180f)).toFloat()
@@ -4330,138 +4015,75 @@ fun SynthesiaWaterfallOverlay(
         }
     }
 
-    LaunchedEffect(Unit) {
+    // 4. VSYNC-Locked Physics Loop (Sleeps when idle to save 100% CPU when paused)
+    val hasActiveAnimations = isPlaying || activeMidiNotes.isNotEmpty() || manualPressedNotes.isNotEmpty()
+    LaunchedEffect(hasActiveAnimations, fallingSpeedSetting) {
+        var lastFrameNanos = 0L
         val gravity = 0.28f
-        var lastTimeNanos = 0L
-        var droppedFrameCount = 0
-        while (true) {
-            val beforeDelay = io.ktor.util.date.getTimeMillis()
-            delay(16L)
-            val afterDelay = io.ktor.util.date.getTimeMillis()
-            val frameDelta = afterDelay - beforeDelay
-            if (frameDelta > 45L) { // Frame took > 45ms (less than 22 FPS)
-                droppedFrameCount++
-                if (droppedFrameCount >= 6) { // 6 lag spikes detected
-                    onFpsDropDetected()
-                    droppedFrameCount = 0
+
+        while (hasActiveAnimations || fallingBlocks.isNotEmpty() || particles.isNotEmpty() || flashes.isNotEmpty()) {
+            withFrameNanos { frameNanos ->
+                val dtScale = if (lastFrameNanos == 0L) 1f else ((frameNanos - lastFrameNanos) / 16_666_667f).coerceIn(0.5f, 2.5f)
+                lastFrameNanos = frameNanos
+
+                val currentCanvasH = canvasHeightPx
+                val contactY = if (currentCanvasH > 50f) currentCanvasH else 320f
+
+                val speedMultiplier = when (fallingSpeedSetting) {
+                    "Slow" -> 0.75f
+                    "Fast" -> 1.5f
+                    "Extreme" -> 2.2f
+                    else -> 1.0f
                 }
-            } else if (frameDelta < 22L) {
-                droppedFrameCount = (droppedFrameCount - 1).coerceAtLeast(0)
-            }
+                val stepY = 6f * speedMultiplier * dtScale
 
-            val currentCanvasH = canvasHeightPx
-            val currentCanvasW = canvasWidthPx
-            val contactY = if (currentCanvasH > 50f) currentCanvasH else 320f
-            val whiteKeyW = currentCanvasW / whiteKeyCount.toFloat()
-
-            val speedMultiplier = when (fallingSpeedSetting) {
-                "Slow" -> 0.75f
-                "Fast" -> 1.5f
-                "Extreme" -> 2.2f
-                else -> 1.0f
-            }
-            val stepY = 6f * speedMultiplier
-
-            val iterator = fallingBlocks.listIterator()
-            while (iterator.hasNext()) {
-                val block = iterator.next()
-                if (block.isAscending) {
-                    // Manual keypress: rises upwards from bottom to top
-                    block.currentY -= stepY
-                    block.startY = block.currentY + 28f
-                    block.alpha = (block.currentY / contactY).coerceIn(0f, 1f)
-                    if (block.currentY < -40f || block.alpha <= 0.04f) {
-                        iterator.remove()
-                    }
-                } else {
-                    block.startY += stepY
-                    block.currentY += stepY
-
-                    // Contact Line Hit Detection when ribbon reaches bottom contact line right on top of keyboard
-                    if (block.currentY in (contactY - 14f)..(contactY + 10f)) {
-                        val geom = WaterfallKeyGeometryLookup.keyGeometries[block.midiNote]
-                        val baseBlockW = if (geom.isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
-                        val xOff = (whiteKeyW - baseBlockW) / 2f
-                        val strikeX = (geom.whiteKeyIndex * whiteKeyW) + xOff + baseBlockW / 2f
-                        val strikeY = contactY
-
-                        // 1. Trigger Contact-Line Light Flash & Radial Bloom with flashSize scaling
-                        if (glowEffect && flashes.none { it.midiNote == block.midiNote && it.alpha > 0.4f }) {
-                            val baseRad = if (geom.isBlack) 28f else 38f
-                            if (flashes.size < 24) {
-                                flashes.add(
-                                    PianoKeyFlash(
-                                        midiNote = block.midiNote,
-                                        centerX = strikeX,
-                                        centerY = strikeY,
-                                        color = block.color,
-                                        velocity = 95,
-                                        alpha = 0.95f * flashHaloIntensity.coerceIn(0.2f, 1.0f),
-                                        radius = baseRad * flashSize.coerceIn(0.2f, 2.5f)
-                                    )
-                                )
-                            }
+                val iterator = fallingBlocks.listIterator()
+                while (iterator.hasNext()) {
+                    val block = iterator.next()
+                    if (block.isAscending) {
+                        block.currentY -= stepY
+                        block.startY = block.currentY + 28f
+                        block.alpha = (block.currentY / contactY).coerceIn(0f, 1f)
+                        if (block.currentY < -40f || block.alpha <= 0.04f) {
+                            iterator.remove()
                         }
-
-                        // 2. Trigger Physics-based Sparks with Directional Velocity Arc erupting from piano keys
-                        if (particlesEnabled && particles.size < 64) {
-                            val sparkBase = if (geom.isBlack) (particleCount * 0.5f).toInt() else (particleCount * 0.75f).toInt()
-                            val count = sparkBase.coerceIn(2, 24)
-                            val pColor = if (lockParticleColor) block.color else particleCustomColor
-                            for (i in 0 until count) {
-                                val angleRad = (-(30f + Random.nextFloat() * 120f) * (Math.PI / 180f)).toFloat()
-                                val speed = (Random.nextFloat() * 4.5f + 2.0f) * (particleSpeed / 4.5f).coerceIn(0.2f, 3.0f)
-                                val life = Random.nextFloat() * 18f + 14f
-                                particles.add(
-                                    PianoSpark(
-                                        x = strikeX + (Random.nextFloat() - 0.5f) * (8f * particleExpansion.coerceIn(0.2f, 4f)),
-                                        y = strikeY,
-                                        vx = cos(angleRad) * speed * particleExpansion.coerceIn(0.5f, 2.5f),
-                                        vy = sin(angleRad) * speed,
-                                        alpha = 1.0f,
-                                        size = (Random.nextFloat() * 2.2f + 1.6f) * particleScale.coerceIn(0.3f, 3.0f),
-                                        maxLife = life,
-                                        currentLife = life,
-                                        color = pColor
-                                    )
-                                )
-                            }
+                    } else {
+                        block.startY += stepY
+                        block.currentY += stepY
+                        if (block.startY > contactY + 80f) {
+                            iterator.remove()
                         }
                     }
+                }
 
-                    if (block.startY > contactY + 80f) {
-                        iterator.remove()
+                val pIter = particles.listIterator()
+                while (pIter.hasNext()) {
+                    val p = pIter.next()
+                    p.x += p.vx * dtScale
+                    p.y += p.vy * dtScale
+                    p.vy += gravity * dtScale
+                    p.vx *= 0.985f
+                    p.currentLife -= dtScale
+                    p.alpha = (p.currentLife / p.maxLife).coerceIn(0f, 1f)
+                    if (p.currentLife <= 0f || p.alpha <= 0f) {
+                        pIter.remove()
                     }
                 }
-            }
 
-            // Update Particle Physics (Velocity + Gravity + Decay)
-            val pIter = particles.listIterator()
-            while (pIter.hasNext()) {
-                val p = pIter.next()
-                p.x += p.vx
-                p.y += p.vy
-                p.vy += gravity // Downward gravity
-                p.vx *= 0.985f  // Air resistance
-                p.currentLife -= 1f
-                p.alpha = (p.currentLife / p.maxLife).coerceIn(0f, 1f)
-                if (p.currentLife <= 0f || p.alpha <= 0f) {
-                    pIter.remove()
+                val fIter = flashes.listIterator()
+                while (fIter.hasNext()) {
+                    val f = fIter.next()
+                    f.radius += 1.8f * flashSize.coerceIn(0.5f, 2.0f) * dtScale
+                    f.alpha *= 0.88f
+                    if (f.alpha < 0.03f) {
+                        fIter.remove()
+                    }
+                }
+
+                if (fallingBlocks.isNotEmpty() || particles.isNotEmpty() || flashes.isNotEmpty()) {
+                    fsFrameTicker++
                 }
             }
-
-            // Update Key Strike Flashes (Exponential Bloom Decay)
-            val fIter = flashes.listIterator()
-            while (fIter.hasNext()) {
-                val f = fIter.next()
-                f.radius += 1.8f * flashSize.coerceIn(0.5f, 2.0f)
-                f.alpha *= 0.88f
-                if (f.alpha < 0.03f) {
-                    fIter.remove()
-                }
-            }
-
-            fsFrameTicker++
         }
     }
 
@@ -4472,30 +4094,17 @@ fun SynthesiaWaterfallOverlay(
         if (canvasWidthPx != size.width) canvasWidthPx = size.width
         if (canvasHeightPx != size.height) canvasHeightPx = size.height
 
-        // Background Subtle Key Lane Grid Lines matching reference image
         val gridLineColor = Color(0xFF221510)
         for (i in 0..whiteKeyCount) {
             val gx = i * whiteKeyWidthPx
-            drawLine(
-                color = gridLineColor,
-                start = Offset(gx, 0f),
-                end = Offset(gx, canvasH),
-                strokeWidth = 1f
-            )
-        }
-        val gridHorizColor = Color(0xFF1C1310)
-        val hStep = canvasH / 4f
-        for (j in 1..3) {
-            val gy = j * hStep
-            drawLine(
-                color = gridHorizColor,
-                start = Offset(0f, gy),
-                end = Offset(size.width, gy),
-                strokeWidth = 1f
-            )
+            drawLine(color = gridLineColor, start = Offset(gx, 0f), end = Offset(gx, canvasH), strokeWidth = 1f)
         }
 
-        // 1. Draw Waterdrop Note Pills (Pure 2D Hardware-Accelerated)
+        val pillCorner = noteCornerRadius.coerceIn(2f, 16f)
+        val cornerRad = CornerRadius(pillCorner, pillCorner)
+        val borderStroke = Stroke(width = noteEdgeThickness.coerceIn(0.5f, 4f))
+
+        // 1. Draw Free-Play / Ascending Note Pills
         for (block in fallingBlocks) {
             val geom = WaterfallKeyGeometryLookup.keyGeometries[block.midiNote]
             val baseBlockWidth = geom.baseWidthFraction * whiteKeyWidthPx
@@ -4505,99 +4114,44 @@ fun SynthesiaWaterfallOverlay(
             val bottomY = if (block.isAscending) (block.currentY + 28f).coerceAtMost(canvasH) else block.currentY.coerceAtMost(canvasH)
             val topY = if (block.isAscending) block.currentY.coerceAtLeast(0f) else block.startY.coerceAtMost(canvasH)
             val blockHeight = (bottomY - topY).coerceAtLeast(18f)
-            val pillCorner = 14f
 
-            val noteRectTop = topY
-            val noteRectHeight = blockHeight
-            val noteRectLeft = finalX
-            val noteRectWidth = baseBlockWidth
-
-            // Soft Ambient Glow
             if (glowEffect) {
                 drawRoundRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            block.color.copy(alpha = 0.45f * blockAlpha),
-                            block.color.copy(alpha = 0.15f * blockAlpha),
-                            Color.Transparent
-                        ),
-                        center = Offset(noteRectLeft + noteRectWidth / 2f, noteRectTop + noteRectHeight / 2f),
-                        radius = noteRectWidth * 1.3f
-                    ),
-                    topLeft = Offset(noteRectLeft - 4f, noteRectTop - 4f),
-                    size = Size(noteRectWidth + 8f, noteRectHeight + 8f),
-                    cornerRadius = CornerRadius(pillCorner + 4f, pillCorner + 4f)
+                    color = block.color.copy(alpha = 0.22f * blockAlpha),
+                    topLeft = Offset(finalX - 3f, topY - 3f),
+                    size = Size(baseBlockWidth + 6f, blockHeight + 6f),
+                    cornerRadius = CornerRadius(pillCorner + 3f, pillCorner + 3f)
                 )
             }
 
-            // Core Solid Pill Body
             drawRoundRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        block.color.copy(alpha = 0.90f * blockAlpha),
-                        block.color.copy(alpha = 1.0f * blockAlpha),
-                        block.color.copy(alpha = 0.92f * blockAlpha)
-                    ),
-                    startY = noteRectTop,
-                    endY = noteRectTop + noteRectHeight
-                ),
-                topLeft = Offset(noteRectLeft, noteRectTop),
-                size = Size(noteRectWidth, noteRectHeight),
-                cornerRadius = CornerRadius(pillCorner, pillCorner)
+                color = block.color.copy(alpha = 0.94f * blockAlpha),
+                topLeft = Offset(finalX, topY),
+                size = Size(baseBlockWidth, blockHeight),
+                cornerRadius = cornerRad
             )
 
-            // Top Gloss Reflection (Waterdrop glassy shine)
             drawRoundRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.35f * blockAlpha),
-                        Color.White.copy(alpha = 0.05f * blockAlpha),
-                        Color.Transparent
-                    ),
-                    startY = noteRectTop,
-                    endY = noteRectTop + (noteRectHeight * 0.55f)
-                ),
-                topLeft = Offset(noteRectLeft + 1.5f, noteRectTop + 1.5f),
-                size = Size(noteRectWidth - 3f, (noteRectHeight * 0.55f)),
-                cornerRadius = CornerRadius(pillCorner - 1f, pillCorner - 1f)
+                color = Color.White.copy(alpha = 0.30f * blockAlpha),
+                topLeft = Offset(finalX, topY),
+                size = Size(baseBlockWidth, blockHeight),
+                cornerRadius = cornerRad,
+                style = borderStroke
             )
 
-            // Subtle Crisp Border
-            drawRoundRect(
-                color = Color.White.copy(alpha = 0.28f * blockAlpha),
-                topLeft = Offset(noteRectLeft, noteRectTop),
-                size = Size(noteRectWidth, noteRectHeight),
-                cornerRadius = CornerRadius(pillCorner, pillCorner),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
-            )
-
-            // Clean Centered Pitch Letter strictly following container geometry
-            val notePitch = geom.pitchName
-            val labelX = finalX + baseBlockWidth / 2f
-            val centerY = (topY + bottomY) / 2f
-            reusableTextPaint.apply {
-                alpha = (255 * blockAlpha).toInt().coerceIn(0, 255)
-                textSize = 10.dp.toPx()
-                setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb((180 * blockAlpha).toInt(), 0, 0, 0))
-            }
-            // Vertical centering using precise fontMetrics (ascent + descent) / 2
-            val fontMetrics = reusableTextPaint.fontMetrics
-            val verticalBaselineOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
-            val labelY = centerY - verticalBaselineOffset
-
-            // Only draw text if the block has sufficient height to contain the letter
-            if (blockHeight >= 12f) {
-                drawContext.canvas.nativeCanvas.drawText(
-                    notePitch,
-                    labelX,
-                    labelY,
-                    reusableTextPaint
-                )
+            if (blockHeight >= 14f) {
+                val labelX = finalX + baseBlockWidth / 2f
+                val centerY = (topY + bottomY) / 2f
+                reusableTextPaint.alpha = (255 * blockAlpha).toInt().coerceIn(0, 255)
+                reusableTextPaint.textSize = 10.dp.toPx()
+                val fm = reusableTextPaint.fontMetrics
+                val labelY = centerY - (fm.ascent + fm.descent) / 2f
+                drawContext.canvas.nativeCanvas.drawText(geom.pitchName, labelX, labelY, reusableTextPaint)
             }
         }
 
-        // 1b. MIDI Score Lookahead Falling Notes: streams down from top and reaches contactY right when active
-        if (isPlaying && waterfallTimeline != null) {
+        // 1b. Draw MIDI Score Lookahead Falling Notes (O(log N) Windowed & Zero-Allocation)
+        if (waterfallTimeline != null) {
             val speedMul = when (fallingSpeedSetting) {
                 "Slow" -> 0.75f
                 "Fast" -> 1.5f
@@ -4607,207 +4161,119 @@ fun SynthesiaWaterfallOverlay(
             val pixelsPerBeat = (canvasH / 3.0f) * speedMul
             val contactY = canvasH
 
-            // Current absolute playback beat
             val cumBeats = waterfallTimeline.measureCumulativeBeats
             val mStartBeat = if (playheadMeasure < cumBeats.size) cumBeats[playheadMeasure] else 0f
             val mNextBeat = if (playheadMeasure + 1 < cumBeats.size) cumBeats[playheadMeasure + 1] else (mStartBeat + 4f)
             val measureBeats = (mNextBeat - mStartBeat).coerceAtLeast(1f)
             val currentPlaybackBeat = mStartBeat + (playheadOffset * measureBeats)
 
-            // Calculate temporal beat window visible on canvas
-            // Bottom arrives at contactY when noteBeat == currentPlaybackBeat
-            // Top of canvas is canvasH beats above contactY
             val maxVisibleLookaheadBeats = (canvasH / pixelsPerBeat) + 0.5f
-            val minVisiblePastBeats = 1.0f // Keep notes visible slightly after contact line
-
-            val minBeat = currentPlaybackBeat - minVisiblePastBeats
+            val minBeat = currentPlaybackBeat - 0.5f
             val maxBeat = currentPlaybackBeat + maxVisibleLookaheadBeats
 
-            // O(log N) Temporal Window Lookup
             val startIndex = waterfallTimeline.findStartWindowIndex(minBeat)
             val allNotes = waterfallTimeline.notes
+
+            reusableTextPaint.alpha = 255
+            reusableTextPaint.textSize = 10.dp.toPx()
+            val fm = reusableTextPaint.fontMetrics
+            val textBaselineOffset = (fm.ascent + fm.descent) / 2f
 
             for (idx in startIndex until allNotes.size) {
                 val note = allNotes[idx]
                 if (note.absoluteBeatStart > maxBeat) break
 
-                // Hand visibility filtering
                 if (note.isRightHand && isRightHandHidden) continue
                 if (!note.isRightHand && isLeftHandHidden) continue
+                if (!(enabledTrackIndices[note.voice] ?: true)) continue
 
                 val noteDistBeats = note.absoluteBeatStart - currentPlaybackBeat
-                val noteDurBeats = note.durationBeats
-
-                // Note arrives at contact line (contactY) right when noteDistBeats == 0
                 val bottomY = contactY - (noteDistBeats * pixelsPerBeat)
-                val topY = bottomY - (noteDurBeats * pixelsPerBeat)
+                val topY = bottomY - (note.durationBeats * pixelsPerBeat)
 
-                // Visible range check
                 if (bottomY < 0f || topY > canvasH) continue
 
                 val geom = WaterfallKeyGeometryLookup.keyGeometries[note.midiNote]
                 val baseBlockWidth = geom.baseWidthFraction * whiteKeyWidthPx
                 val xOffset = (whiteKeyWidthPx - baseBlockWidth) / 2f
                 val finalX = (geom.whiteKeyIndex * whiteKeyWidthPx) + xOffset
-                
-                // Temporal Phase Lock: If note is currently sounding/active, anchor bottom edge directly to contact line
-                val isActive = note.midiNote in activeMidiNotes
-                val effectiveBottomY = if (isActive && bottomY < contactY) contactY else bottomY
+
+                val isCurrentlySounding = noteDistBeats <= 0.05f && (noteDistBeats + note.durationBeats) >= -0.02f
+                val effectiveBottomY = if (isCurrentlySounding && bottomY > contactY - 8f) bottomY.coerceAtMost(contactY) else bottomY
                 val clampedBottomY = effectiveBottomY.coerceAtMost(canvasH)
                 val clampedTopY = topY.coerceAtLeast(0f)
-                val blockHeight = (clampedBottomY - clampedTopY).coerceAtLeast(18f)
-                val pillCorner = 14f
+                val blockHeight = (clampedBottomY - clampedTopY).coerceAtLeast(14f)
                 val noteColor = if (note.isRightHand) rightHandColor else leftHandColor
 
-                // 2D Waterdrop Rounded Pill
-                if (glowEffect) {
+                if (glowEffect && isCurrentlySounding) {
                     drawRoundRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                noteColor.copy(alpha = 0.45f),
-                                noteColor.copy(alpha = 0.15f),
-                                Color.Transparent
-                            ),
-                            center = Offset(finalX + baseBlockWidth / 2f, clampedTopY + blockHeight / 2f),
-                            radius = baseBlockWidth * 1.3f
-                        ),
-                        topLeft = Offset(finalX - 4f, clampedTopY - 4f),
-                        size = Size(baseBlockWidth + 8f, blockHeight + 8f),
-                        cornerRadius = CornerRadius(pillCorner + 4f, pillCorner + 4f)
+                        color = noteColor.copy(alpha = 0.32f),
+                        topLeft = Offset(finalX - 3.5f, clampedTopY - 3.5f),
+                        size = Size(baseBlockWidth + 7f, blockHeight + 7f),
+                        cornerRadius = CornerRadius(pillCorner + 3.5f, pillCorner + 3.5f)
                     )
                 }
 
                 drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            noteColor.copy(alpha = 0.90f),
-                            noteColor.copy(alpha = 1.0f),
-                            noteColor.copy(alpha = 0.92f)
-                        ),
-                        startY = clampedTopY,
-                        endY = clampedBottomY
-                    ),
+                    color = noteColor.copy(alpha = if (isCurrentlySounding) 1.0f else 0.90f),
                     topLeft = Offset(finalX, clampedTopY),
                     size = Size(baseBlockWidth, blockHeight),
-                    cornerRadius = CornerRadius(pillCorner, pillCorner)
-                )
-
-                // Top Gloss Reflection (Waterdrop glassy shine)
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.35f),
-                            Color.White.copy(alpha = 0.05f),
-                            Color.Transparent
-                        ),
-                        startY = clampedTopY,
-                        endY = clampedTopY + (blockHeight * 0.55f)
-                    ),
-                    topLeft = Offset(finalX + 1.5f, clampedTopY + 1.5f),
-                    size = Size(baseBlockWidth - 3f, (blockHeight * 0.55f)),
-                    cornerRadius = CornerRadius(pillCorner - 1f, pillCorner - 1f)
+                    cornerRadius = cornerRad
                 )
 
                 drawRoundRect(
-                    color = Color.White.copy(alpha = 0.28f),
+                    color = if (isCurrentlySounding) Color.White.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.25f),
                     topLeft = Offset(finalX, clampedTopY),
                     size = Size(baseBlockWidth, blockHeight),
-                    cornerRadius = CornerRadius(pillCorner, pillCorner),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.0f)
+                    cornerRadius = cornerRad,
+                    style = borderStroke
                 )
 
-                // Pitch Letter strictly following container geometry and centered
-                val notePitch = geom.pitchName
-                val labelX = finalX + baseBlockWidth / 2f
-                val centerY = (clampedTopY + clampedBottomY) / 2f
-                reusableTextPaint.apply {
-                    alpha = 255
-                    textSize = 10.dp.toPx()
-                    setShadowLayer(3f, 0f, 1f, android.graphics.Color.argb(180, 0, 0, 0))
-                }
-                // Vertical centering using precise fontMetrics (ascent + descent) / 2
-                val fontMetrics = reusableTextPaint.fontMetrics
-                val verticalBaselineOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
-                val labelY = centerY - verticalBaselineOffset
-
-                // Only draw text if the block has sufficient height to contain the letter
-                if (blockHeight >= 12f) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        notePitch,
-                        labelX,
-                        labelY,
-                        reusableTextPaint
-                    )
+                if (blockHeight >= 15f) {
+                    val labelX = finalX + baseBlockWidth / 2f
+                    val centerY = (clampedTopY + clampedBottomY) / 2f
+                    drawContext.canvas.nativeCanvas.drawText(geom.pitchName, labelX, centerY - textBaselineOffset, reusableTextPaint)
                 }
             }
         }
 
-        // 2. Draw Key Landing Warm Glow / Flare at bottom contact line
+        // 2. Draw Contact Line Flashes
         if (glowEffect) {
             for (f in flashes) {
                 val flashRadius = f.radius * (size.width / 1200f).coerceIn(0.8f, 1.6f)
-                if (f.isChordStrike) {
-                    // Distinctive Golden Chord Burst Halo
-                    drawCircle(
-                        color = Color(0xFFFFD700).copy(alpha = (f.alpha * 0.45f).coerceIn(0f, 1f)),
-                        radius = flashRadius * 1.4f,
-                        center = Offset(f.centerX, canvasH),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f)
-                    )
-                }
-                // Warm contact flare at the piano key landing edge
-                drawOval(
-                    brush = Brush.radialGradient(
-                        colors = if (f.isChordStrike) listOf(
-                            Color(0xFFFFF9C4).copy(alpha = (f.alpha * 0.98f).coerceIn(0f, 1f)),
-                            Color(0xFFFFD700).copy(alpha = (f.alpha * 0.85f).coerceIn(0f, 1f)),
-                            Color(0xFFFF8F00).copy(alpha = (f.alpha * 0.30f).coerceIn(0f, 1f)),
-                            Color.Transparent
-                        ) else listOf(
-                            Color(0xFFFFCC80).copy(alpha = (f.alpha * 0.95f).coerceIn(0f, 1f)),
-                            f.color.copy(alpha = (f.alpha * 0.75f).coerceIn(0f, 1f)),
-                            f.color.copy(alpha = (f.alpha * 0.20f).coerceIn(0f, 1f)),
-                            Color.Transparent
-                        ),
-                        center = Offset(f.centerX, canvasH),
-                        radius = flashRadius
-                    ),
-                    topLeft = Offset(f.centerX - flashRadius * 1.4f, canvasH - flashRadius * 0.45f),
-                    size = Size(flashRadius * 2.8f, flashRadius * 0.9f)
+                drawCircle(
+                    color = f.color.copy(alpha = (f.alpha * 0.55f).coerceIn(0f, 1f)),
+                    radius = flashRadius,
+                    center = Offset(f.centerX, canvasH)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = (f.alpha * 0.85f).coerceIn(0f, 1f)),
+                    radius = flashRadius * 0.4f,
+                    center = Offset(f.centerX, canvasH)
                 )
             }
         }
 
-        // 3. Draw Physics Sparks with Velocity Trail and Decay erupting from piano keys
+        // 3. Draw Physics Sparks
         if (particlesEnabled) {
             for (p in particles) {
                 val pAlpha = p.alpha.coerceIn(0f, 1f)
                 val sparkRadius = p.size.dp.toPx()
-
-                // Spark Core
                 drawCircle(
-                    color = Color.White.copy(alpha = pAlpha),
-                    radius = sparkRadius * 0.55f,
-                    center = Offset(p.x, p.y)
-                )
-                // Spark Outer Color Flare
-                drawCircle(
-                    color = p.color.copy(alpha = pAlpha * 0.75f),
+                    color = p.color.copy(alpha = pAlpha * 0.85f),
                     radius = sparkRadius,
                     center = Offset(p.x, p.y)
                 )
-                // Spark Velocity Trail
                 drawLine(
-                    color = p.color.copy(alpha = pAlpha * 0.6f),
+                    color = Color.White.copy(alpha = pAlpha * 0.7f),
                     start = Offset(p.x, p.y),
-                    end = Offset(p.x - p.vx * 1.5f, p.y - p.vy * 1.5f),
-                    strokeWidth = sparkRadius * 0.75f
+                    end = Offset(p.x - p.vx * 1.4f, p.y - p.vy * 1.4f),
+                    strokeWidth = sparkRadius * 0.65f
                 )
             }
         }
     }
 }
-
 @Composable
 fun PianoThreePedalUnit(
     sustainPressed: Boolean,

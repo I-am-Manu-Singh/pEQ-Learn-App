@@ -1489,97 +1489,132 @@ fun scrubSongPlayhead(targetProgress: Float) {
         loadRagas(system)
     }
 
-    fun seekToPosition(measure: Int, offset: Float) {
-        val score = currentScore.value ?: return
-        
-        scorePlayheadMeasure.value = measure
-        scorePlayheadOffset.value = offset
-        firedNotesMap.clear()
-        lastTrackedMeasure = measure
-
-        var accumulatedMs = 0L
-        for (i in 0 until measure) {
-            val m = score.measures.getOrNull(i) ?: break
-            val mDurationMs = ((60f / score.tempo) * m.timeSignatureNumerator * 1000).toLong()
-            accumulatedMs += mDurationMs
-        }
-        
-        val targetMeasure = score.measures.getOrNull(measure)
-        if (targetMeasure != null) {
-            val mDurationMs = ((60f / score.tempo) * targetMeasure.timeSignatureNumerator * 1000).toLong()
-            accumulatedMs += (offset * mDurationMs).toLong()
-        }
-
-        audioEngine.seekTo(accumulatedMs)
+   private fun getMeasureDurationSeconds(measure: Measure, tempoBpm: Float): Float {
+        val safeTempo = tempoBpm.coerceAtLeast(20f)
+        val quarterBeats = measure.timeSignatureNumerator.toFloat() * (4f / measure.timeSignatureDenominator.coerceAtLeast(1).toFloat())
+        return (60f / safeTempo) * quarterBeats
     }
 
-    fun startScorePlayback() {
+    fun seekToPosition(measure: Int, offset: Float) {
+        val score = currentScore.value ?: return
+        val clampedMeasure = measure.coerceIn(0, (score.measures.size - 1).coerceAtLeast(0))
+        val clampedOffset = offset.coerceIn(0f, 1f)
+
+        scorePlayheadMeasure.value = clampedMeasure
+        scorePlayheadOffset.value = clampedOffset
+        firedNotesMap.clear()
+        firedPedalsMap.clear()
+        lastTrackedMeasure = clampedMeasure
+
+        // Pre-mark notes before clampedOffset as already fired so seeking mid-measure doesn't blast earlier notes!
+        val targetMeasure = score.measures.getOrNull(clampedMeasure)
+        if (targetMeasure != null) {
+            val quarterBeats = targetMeasure.timeSignatureNumerator.toFloat() * (4f / targetMeasure.timeSignatureDenominator.coerceAtLeast(1).toFloat())
+            val seekBeat = clampedOffset * quarterBeats
+            targetMeasure.notes.forEachIndexed { idx, note ->
+                if (note.position < seekBeat - 0.05f) {
+                    firedNotesMap[idx] = true
+                }
+            }
+            targetMeasure.pedalEvents.forEachIndexed { pIdx, ev ->
+                if (ev.position < seekBeat - 0.05f) {
+                    firedPedalsMap[pIdx] = true
+                }
+            }
+        }
+
+        var accumulatedMs = 0L
+        for (i in 0 until clampedMeasure) {
+            val m = score.measures.getOrNull(i) ?: break
+            accumulatedMs += (getMeasureDurationSeconds(m, score.tempo) * 1000f).toLong()
+        }
+        if (targetMeasure != null) {
+            val mDurationMs = (getMeasureDurationSeconds(targetMeasure, score.tempo) * 1000f).toLong()
+            accumulatedMs += (clampedOffset * mDurationMs).toLong()
+        }
+
+        currentPosition.value = accumulatedMs
+        audioEngine.allNotesOff()
+        midiActiveNotes.clear()
+        midiPlayingNote.value = null
+        audioEngine.seekTo(accumulatedMs)
+    }
+fun startScorePlayback() {
         val score = currentScore.value ?: return
         if (isScorePlaying.value) return
 
         isScorePlaying.value = true
         isPlaying.value = true
 
+        scorePlaybackJob?.cancel()
         scorePlaybackJob = viewModelScope.launch(Dispatchers.Default) {
-            val startTime = Clock.System.now().toEpochMilliseconds()
-            var startMeasure = scorePlayheadMeasure.value
-            var startOffset = scorePlayheadOffset.value
-            
-            // Calculate initial elapsed time based on sum of previous measures
-            var initialElapsedMs = 0L
-            for (i in 0 until startMeasure) {
-                val m = score.measures.getOrNull(i) ?: break
-                val mDurationMs = ((60f / score.tempo) * m.timeSignatureNumerator * 1000).toLong()
-                initialElapsedMs += mDurationMs
-            }
-            val startMeasureObj = score.measures.getOrNull(startMeasure)
-            if (startMeasureObj != null) {
-                val mDurationMs = ((60f / score.tempo) * startMeasureObj.timeSignatureNumerator * 1000).toLong()
-                initialElapsedMs += (startOffset * mDurationMs).toLong()
+            val numMeasures = score.measures.size
+            if (numMeasures == 0) {
+                withContext(Dispatchers.Main) { stopScorePlayback() }
+                return@launch
             }
 
+            // Precompute exact measure start times & durations in score-time seconds
+            val measureStartsSec = FloatArray(numMeasures)
+            val measureDurationsSec = FloatArray(numMeasures)
+            val measureQuarterBeats = FloatArray(numMeasures)
+            var runningSec = 0f
+            for (i in 0 until numMeasures) {
+                val m = score.measures[i]
+                val qBeats = (m.timeSignatureNumerator.toFloat() * (4f / m.timeSignatureDenominator.coerceAtLeast(1).toFloat())).coerceAtLeast(1f)
+                val durSec = (60f / score.tempo.coerceAtLeast(20f)) * qBeats
+                measureStartsSec[i] = runningSec
+                measureDurationsSec[i] = durSec
+                measureQuarterBeats[i] = qBeats
+                runningSec += durSec
+            }
+
+            val startMeasure = scorePlayheadMeasure.value.coerceIn(0, numMeasures - 1)
+            val startOffset = scorePlayheadOffset.value.coerceIn(0f, 1f)
+            var scoreElapsedSec = measureStartsSec[startMeasure] + (startOffset * measureDurationsSec[startMeasure])
+
+            // Pre-populate firedNotesMap for the starting position so we never burst past notes in the current measure
+            firedNotesMap.clear()
             firedPedalsMap.clear()
+            lastTrackedMeasure = startMeasure
+            val initialBeat = startOffset * measureQuarterBeats[startMeasure]
+            score.measures[startMeasure].notes.forEachIndexed { idx, note ->
+                if (note.position < initialBeat - 0.04f) firedNotesMap[idx] = true
+            }
+            score.measures[startMeasure].pedalEvents.forEachIndexed { pIdx, ev ->
+                if (ev.position < initialBeat - 0.04f) firedPedalsMap[pIdx] = true
+            }
+
+            // Active sounding notes tracker: pitch -> releaseTimeInScoreSeconds (eliminates spawning 100s of child coroutines!)
+            val scheduledNoteReleases = HashMap<Int, Float>(32)
+            val pitchesToActivate = ArrayList<Int>(16)
+            val pitchesToRelease = ArrayList<Int>(16)
+
+            var lastWallTimeNs = System.nanoTime()
+            var lastUiBroadcastMs = 0L
 
             while (isActive && isScorePlaying.value) {
-                val now = Clock.System.now().toEpochMilliseconds()
-                val totalElapsedMs = initialElapsedMs + (now - startTime)
+                val nowNs = System.nanoTime()
+                val wallDeltaSec = ((nowNs - lastWallTimeNs) / 1_000_000_000.0).toFloat().coerceIn(0f, 0.1f)
+                lastWallTimeNs = nowNs
 
-                // Optimized identification of current measure and offset
-                val totalElapsedSec = totalElapsedMs / 1000f
-                val starts = measureStartTimesSeconds.value
-                var currentMeasureIdx = score.measures.size
-                var currentMeasureDurationMs = 0L
-                var accumulatedSec = 0f
+                val speed = playbackSpeed.value.coerceIn(0.25f, 2.5f)
+                scoreElapsedSec += wallDeltaSec * speed
+                val totalElapsedMs = (scoreElapsedSec * 1000f).toLong()
 
-                var i = lastTrackedMeasure.coerceAtLeast(0)
-                if (i >= score.measures.size || totalElapsedSec < (starts.getOrNull(i) ?: 0f)) {
-                    i = 0
+                // 1. Identify current measure index
+                var currentMeasureIdx = lastTrackedMeasure.coerceIn(0, numMeasures - 1)
+                if (scoreElapsedSec < measureStartsSec[currentMeasureIdx]) {
+                    currentMeasureIdx = 0
+                }
+                while (currentMeasureIdx < numMeasures &&
+                    scoreElapsedSec >= measureStartsSec[currentMeasureIdx] + measureDurationsSec[currentMeasureIdx]
+                ) {
+                    currentMeasureIdx++
                 }
 
-                while (i < score.measures.size) {
-                    val start = starts.getOrNull(i) ?: 0f
-                    val m = score.measures[i]
-                    val dur = (60f / score.tempo) * m.timeSignatureNumerator
-                    if (totalElapsedSec < start + dur) {
-                        currentMeasureIdx = i
-                        currentMeasureDurationMs = (dur * 1000).toLong()
-                        accumulatedSec = start
-                        break
-                    }
-                    i++
-                }
-
-                val currentOffset = if (currentMeasureDurationMs > 0) {
-                    (totalElapsedSec - accumulatedSec) / (currentMeasureDurationMs / 1000f)
-                } else 0f
-
-                if (currentMeasureIdx != lastTrackedMeasure) {
-                    firedNotesMap.clear()
-                    firedPedalsMap.clear()
-                    lastTrackedMeasure = currentMeasureIdx
-                }
-
-                if (currentMeasureIdx >= score.measures.size) {
+                // End of score reached
+                if (currentMeasureIdx >= numMeasures) {
                     withContext(Dispatchers.Main) {
                         stopScorePlayback()
                         resetScorePlayhead()
@@ -1587,77 +1622,123 @@ fun scrubSongPlayhead(targetProgress: Float) {
                     break
                 }
 
-                val measure = score.measures[currentMeasureIdx]
-                val beatsInMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
-                val currentBeatInMeasure = currentOffset * beatsInMeasure
-
-                // Broadcast consistent playhead location to UI
-                withContext(Dispatchers.Main) {
-                    if (currentMeasureIdx != scorePlayheadMeasure.value || currentOffset > scorePlayheadOffset.value || currentOffset < scorePlayheadOffset.value - 0.2f) {
-                        scorePlayheadMeasure.value = currentMeasureIdx
-                        scorePlayheadOffset.value = currentOffset
-                    }
-                    currentPosition.value = totalElapsedMs
-                    playAlongEngine.updatePlayheadPosition(totalElapsedMs)
+                // Measure transition
+                if (currentMeasureIdx != lastTrackedMeasure) {
+                    firedNotesMap.clear()
+                    firedPedalsMap.clear()
+                    lastTrackedMeasure = currentMeasureIdx
                 }
 
-                // Process pedal events in current measure
+                val mStartSec = measureStartsSec[currentMeasureIdx]
+                val mDurSec = measureDurationsSec[currentMeasureIdx].coerceAtLeast(0.001f)
+                val currentOffset = ((scoreElapsedSec - mStartSec) / mDurSec).coerceIn(0f, 1f)
+                val beatsInMeasure = measureQuarterBeats[currentMeasureIdx]
+                val currentBeatInMeasure = currentOffset * beatsInMeasure
+                val measure = score.measures[currentMeasureIdx]
+
+                pitchesToActivate.clear()
+                pitchesToRelease.clear()
+
+                // 2. Check scheduled note-offs first (if a note expired before or at this tick)
+                val releaseIter = scheduledNoteReleases.entries.iterator()
+                while (releaseIter.hasNext()) {
+                    val entry = releaseIter.next()
+                    if (scoreElapsedSec >= entry.value) {
+                        val pitch = entry.key
+                        audioEngine.noteOff(pitch)
+                        pitchesToRelease.add(pitch)
+                        releaseIter.remove()
+                    }
+                }
+
+                // 3. Fire due notes on the audio thread IMMEDIATELY (all chord notes trigger within microseconds!)
+                val transOffset = transposition.value + (octaveShift.value * 12)
+                val rhMuted = isRightHandMuted.value
+                val lhMuted = isLeftHandMuted.value
+                val secPerBeat = 60f / score.tempo.coerceAtLeast(20f)
+
+                measure.notes.forEachIndexed { index, note ->
+                    if (note.isRest || firedNotesMap[index] == true) return@forEachIndexed
+                    if (currentBeatInMeasure >= note.position) {
+                        firedNotesMap[index] = true
+
+                        val isTrackEnabled = enabledTrackIndices[note.voice] ?: true
+                        if (!isTrackEnabled) return@forEachIndexed
+
+                        val isRightHand = when (note.voice) {
+                            0 -> true
+                            1 -> false
+                            else -> note.midiNote >= 60
+                        }
+                        if ((isRightHand && rhMuted) || (!isRightHand && lhMuted)) return@forEachIndexed
+
+                        val effectivePitch = (note.midiNote + transOffset).coerceIn(0, 127)
+                        // If same pitch is re-struck while still sustaining, re-articulate cleanly and extend release time
+                        if (scheduledNoteReleases.containsKey(effectivePitch)) {
+                            audioEngine.noteOff(effectivePitch)
+                        }
+                        audioEngine.noteOn(effectivePitch, 0.82f)
+
+                        // Release slightly (92% of duration) before next same-pitch note so repeated notes articulate clearly
+                        val noteDurSec = (note.duration * secPerBeat * 0.94f).coerceAtLeast(0.06f)
+                        scheduledNoteReleases[effectivePitch] = scoreElapsedSec + noteDurSec
+                        pitchesToRelease.remove(effectivePitch)
+                        pitchesToActivate.add(effectivePitch)
+                    }
+                }
+
+                // 4. Process Pedal Events
+                var pedalStateChanged: Pair<Int, Boolean>? = null
                 if (measure.pedalEvents.isNotEmpty()) {
                     measure.pedalEvents.forEachIndexed { pIdx, pedalEvent ->
-                        val alreadyFired = firedPedalsMap[pIdx] == true
-                        if (currentBeatInMeasure >= pedalEvent.position && !alreadyFired) {
+                        if (firedPedalsMap[pIdx] != true && currentBeatInMeasure >= pedalEvent.position) {
                             firedPedalsMap[pIdx] = true
-                            onMidiPedalEventReceived(pedalEvent.pedalType, pedalEvent.isPressed)
-                        }
-                    }
-                } else if (measure.notes.any { !it.isRest }) {
-                    // Auto-pedal heuristic for standard scores lacking explicit MIDI CC64 events:
-                    // Pedal down during harmonic note sustains, pedal up briefly right at beat 0 of new measure
-                    val shouldPedal = currentBeatInMeasure > 0.25f && currentBeatInMeasure < beatsInMeasure - 0.2f
-                    if (sustainPedalActive.value != shouldPedal) {
-                        withContext(Dispatchers.Main) {
-                            sustainPedalActive.value = shouldPedal
-                            sustainActive.value = shouldPedal
+                            pedalStateChanged = pedalEvent.pedalType to pedalEvent.isPressed
                         }
                     }
                 }
 
-                measure.notes.forEachIndexed { index: Int, note: ScoreNote ->
-                    val alreadyFired = firedNotesMap[index] == true
+                // 5. Batch ALL UI state updates into a SINGLE Main-Thread Snapshot (throttled to ~60fps unless notes changed)
+                val nowMs = nowNs / 1_000_000L
+                val hasNoteChanges = pitchesToActivate.isNotEmpty() || pitchesToRelease.isNotEmpty() || pedalStateChanged != null
+                if (hasNoteChanges || (nowMs - lastUiBroadcastMs) >= 16L) {
+                    lastUiBroadcastMs = nowMs
+                    val actCopy = if (pitchesToActivate.isNotEmpty()) pitchesToActivate.toIntArray() else null
+                    val relCopy = if (pitchesToRelease.isNotEmpty()) pitchesToRelease.toIntArray() else null
+                    val pedCopy = pedalStateChanged
 
-                    // Check if note's voice/track is disabled
-                    val isTrackEnabled = enabledTrackIndices[note.voice] ?: true
-                    if (!isTrackEnabled) return@forEachIndexed
+                    withContext(Dispatchers.Main) {
+                        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+                            scorePlayheadMeasure.value = currentMeasureIdx
+                            scorePlayheadOffset.value = currentOffset
+                            currentPosition.value = totalElapsedMs
 
-                    // Hand muting check: Right hand (pitch >= 60 or voice 0) / Left hand (pitch < 60 or voice 1)
-                    val isRightHand = if (note.voice == 0) true else if (note.voice == 1) false else note.midiNote >= 60
-                    if (isRightHand && isRightHandMuted.value) return@forEachIndexed
-                    if (!isRightHand && isLeftHandMuted.value) return@forEachIndexed
-
-                    if (currentBeatInMeasure >= note.position && !alreadyFired) {
-                        firedNotesMap[index] = true
-                        
-                        val effectivePitch = (note.midiNote + transposition.value + (octaveShift.value * 12)).coerceIn(0, 127)
-                        // Direct low-latency native audio trigger without main thread hop
-                        audioEngine.noteOn(effectivePitch, 0.8f)
-                        withContext(Dispatchers.Main) {
-                            midiActiveNotes[effectivePitch] = true
-                            midiPlayingNote.value = effectivePitch
-                        }
-
-                        launch {
-                            delay((note.duration * (60f / score.tempo) * 1000).toLong())
-                            audioEngine.noteOff(effectivePitch)
-                            withContext(Dispatchers.Main) {
-                                midiActiveNotes.remove(effectivePitch)
-                                if (midiPlayingNote.value == effectivePitch) {
-                                    midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                            relCopy?.forEach { p ->
+                                midiActiveNotes.remove(p)
+                            }
+                            actCopy?.forEach { p ->
+                                midiActiveNotes[p] = true
+                                midiPlayingNote.value = p
+                            }
+                            if (relCopy != null && actCopy == null && midiPlayingNote.value !in midiActiveNotes) {
+                                midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                            }
+                            pedCopy?.let { (pType, pressed) ->
+                                when (pType) {
+                                    64 -> {
+                                        sustainPedalActive.value = pressed
+                                        sustainActive.value = pressed
+                                    }
+                                    66 -> sostenutoPedalActive.value = pressed
+                                    67 -> softPedalActive.value = pressed
                                 }
                             }
                         }
+                        playAlongEngine.updatePlayheadPosition(totalElapsedMs)
                     }
                 }
-                delay(20)
+
+                delay(6L) // High-precision 166Hz audio scheduler poll on background thread
             }
         }
     }
@@ -1669,8 +1750,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
             startScorePlayback()
         }
     }
-
-    fun stopScorePlayback() {
+fun stopScorePlayback() {
         isScorePlaying.value = false
         isPlaying.value = false
         scorePlaybackJob?.cancel()
@@ -1678,40 +1758,51 @@ fun scrubSongPlayhead(targetProgress: Float) {
 
         audioEngine.allNotesOff()
 
-        midiActiveNotes.clear()
-        midiPlayingNote.value = null
-        firedNotesMap.clear()
-        firedPedalsMap.clear()
-        sustainPedalActive.value = false
-        sustainActive.value = false
-        sostenutoPedalActive.value = false
-        softPedalActive.value = false
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            midiActiveNotes.clear()
+            midiPlayingNote.value = null
+            firedNotesMap.clear()
+            firedPedalsMap.clear()
+            sustainPedalActive.value = false
+            sustainActive.value = false
+            sostenutoPedalActive.value = false
+            softPedalActive.value = false
+        }
     }
 
-    fun resetScorePlayhead() {
+  fun resetScorePlayhead() {
         stopScorePlayback()
         scorePlayheadMeasure.value = 0
-        scorePlayheadOffset.value = 0f 
+        scorePlayheadOffset.value = 0f
+        currentPosition.value = 0L
         audioEngine.seekTo(0L)
     }
 
-    fun onMidiEventReceived(note: Int, isNoteOn: Boolean, velocity: Int = 90, channel: Int = 1) {
+   fun onMidiEventReceived(note: Int, isNoteOn: Boolean, velocity: Int = 90, channel: Int = 1) {
+        // Trigger native audio engine IMMEDIATELY on the calling MIDI thread for zero-latency hardware keyboard response!
+        if (isNoteOn && velocity > 0) {
+            audioEngine.noteOn(note, (velocity / 127f).coerceIn(0.1f, 1.0f))
+        } else if (!sustainPedalActive.value) {
+            audioEngine.noteOff(note)
+        }
+
+        // Update UI states on Main thread
         viewModelScope.launch(Dispatchers.Main) {
-            lastMidiChannel.intValue = channel
-            if (isNoteOn && velocity > 0) {
-                lastMidiVelocity.intValue = velocity
-                audioEngine.noteOn(note, velocity.toFloat())
-                midiActiveNotes[note] = true
-                midiPlayingNote.value = note
-                playAlongEngine.onUserMidiNoteOn(note, currentPosition.value)
-            } else {
-                if (sustainPedalActive.value) {
-                    notesToReleaseOnSustainUp.add(note)
+            androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+                lastMidiChannel.intValue = channel
+                if (isNoteOn && velocity > 0) {
+                    lastMidiVelocity.intValue = velocity
+                    midiActiveNotes[note] = true
+                    midiPlayingNote.value = note
+                    playAlongEngine.onUserMidiNoteOn(note, currentPosition.value)
                 } else {
-                    audioEngine.noteOff(note)
-                    midiActiveNotes.remove(note)
-                    if (midiPlayingNote.value == note) {
-                        midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                    if (sustainPedalActive.value) {
+                        notesToReleaseOnSustainUp.add(note)
+                    } else {
+                        midiActiveNotes.remove(note)
+                        if (midiPlayingNote.value == note) {
+                            midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                        }
                     }
                 }
             }
