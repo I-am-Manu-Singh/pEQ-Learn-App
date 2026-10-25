@@ -73,21 +73,32 @@ object OnnxModelRegistry {
         purpose = "Stem Separation (Backing Instruments)"
     )
 
-    val HTDEMUCS_QUANTIZED = OnnxModelDefinition(
-        id = "htdemucs_quantized",
-        name = "HTDemucs 4-Stem Neural Network",
-        fileName = "htdemucs_quantized.onnx",
-        downloadUrl = "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/htdemucs.yaml",
+    val HTDEMUCS_QUANTIZED_6s = OnnxModelDefinition(
+        id = "htdemucs_quantized_6s",
+        name = "HTDemucs quantized_6s",
+        fileName = "htdemucs_quantized_6s.onnx",
+        downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/blob/main/htdemucs_6s.onnx",
         sizeBytes = 82_450_000L,
         description = "State-of-the-art hybrid transformer separating Drums, Bass, Vocals, and Other stems.",
         purpose = "Stem Separation (4-Stem Studio Pro)"
     )
-
-    val builtInModels = listOf(
+  val HTDEMUCS_QUANTIZED_fp16 = OnnxModelDefinition(
+        id = "htdemucs_quantized_fp16",
+        name = "HTDemucs fp16_6s",
+        fileName = "htdemucs_quantized_fp16.onnx",
+        downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/blob/main/htdemucs_6s_fp16weights.onnx",
+     sizeBytes = 82_450_000L,
+        description = "State-of-the-art hybrid transformer separating Drums, Bass, Vocals, and Other stems.",
+        purpose = "Stem Separation (4-Stem Studio Pro)"
+    )
+    
+        val builtInModels = listOf(
         MUSCRIPTOR_SMALL_COND,
         MUSCRIPTOR_SMALL,
         SPLEETER_VOCALS,
-        SPLEETER_ACCOMPANIMENT
+        SPLEETER_ACCOMPANIMENT,
+        HTDEMUCS_QUANTIZED_6s,
+        HTDEMUCS_QUANTIZED_fp16
     )
 
     // ── State Maps (Observable by Compose UI) ───────────────────────────────

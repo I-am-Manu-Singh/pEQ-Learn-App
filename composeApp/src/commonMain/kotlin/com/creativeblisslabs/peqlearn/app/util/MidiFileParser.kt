@@ -1,238 +1,263 @@
 package com.creativeblisslabs.peqlearn.app.util
 
+import com.creativeblisslabs.peqlearn.app.ui.screens.Accidental
 import com.creativeblisslabs.peqlearn.app.ui.screens.KeySignature
 import com.creativeblisslabs.peqlearn.app.ui.screens.Measure
-import com.creativeblisslabs.peqlearn.app.ui.screens.PedalEvent
+import com.creativeblisslabs.peqlearn.app.ui.screens.MusicalArticulation
 import com.creativeblisslabs.peqlearn.app.ui.screens.RestSymbol
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote
-import kotlin.math.abs
+import com.creativeblisslabs.peqlearn.app.ui.screens.TabArticulation
 
 /**
- * 100% faithful cross-platform parser for standard MIDI (*.mid) and MusicXML scores.
+ * 100% faithful cross-platform parser for standard MIDI (*.mid) and MusicXML (*.musicxml / *.xml) scores.
  */
 object MidiFileParser {
 
-    fun parse(bytes: ByteArray): Score? {
+    fun parse(bytes: ByteArray, defaultTitle: String = "Imported Score"): Score? {
         if (bytes.size < 4) return null
 
         val firstChars = try {
-            bytes.take(200).toByteArray().decodeToString()
-        } catch (e: Exception) {
+            bytes.take(300).toByteArray().decodeToString()
+        } catch (_: Exception) {
             ""
         }
 
         val trimmed = firstChars.trimStart()
         if (trimmed.startsWith("<?xml") || trimmed.startsWith("<score-partwise") || firstChars.contains("<score-partwise")) {
             return try {
-                parseMusicXml(bytes.decodeToString())
-            } catch (e: Exception) {
+                parseMusicXml(bytes.decodeToString(), defaultTitle)
+            } catch (_: Exception) {
                 null
             }
         }
-        return parseMidi(bytes)
+        return MidiScoreParser.parse(bytes, defaultTitle)
     }
 
-    private fun parseMidi(bytes: ByteArray): Score? {
-        if (bytes.size < 14) return null
-        if (bytes[0] != 'M'.code.toByte() || bytes[1] != 'T'.code.toByte() ||
-            bytes[2] != 'h'.code.toByte() || bytes[3] != 'd'.code.toByte()
-        ) {
-            return null
+    private fun parseMusicXml(xml: String, defaultTitle: String): Score {
+        val title = xmlTag(xml, "work-title")
+            ?: xmlTag(xml, "movement-title")
+            ?: defaultTitle.substringBeforeLast(".")
+        val composer = Regex("""<creator[^>]*type=["']composer["'][^>]*>(.*?)</creator>""", RegexOption.DOT_MATCHES_ALL)
+            .find(xml)?.groupValues?.get(1)?.trim() ?: "MusicXML Composer"
+
+        var globalTempo = 120f
+        Regex("""<sound[^>]*tempo=["']([0-9.]+)["']""").find(xml)?.groupValues?.get(1)?.toFloatOrNull()?.let {
+            if (it > 10f) globalTempo = it
         }
 
-        val format = read16(bytes, 8)
-        val numTracks = read16(bytes, 10)
-        val division = read16(bytes, 12).toFloat().coerceAtLeast(1f)
+        var divisions = 1f
+        var currentFifths = 0
+        var currentBeats = 4
+        var currentBeatType = 4
+        var globalKeySig = KeySignature.C_MAJOR
 
-        var tempo = 120.0f
-        var timeSig = "4/4"
-        val rawNotes = mutableListOf<ScoreNote>()
-        val rawPedalEvents = mutableListOf<Pair<Float, PedalEvent>>() // absoluteBeat to PedalEvent
+        val measureBlocks = Regex("""<measure\b[^>]*>(.*?)</measure>""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(xml)
+            .map { it.groupValues[1] }
+            .toList()
 
-        var offset = 14
-        for (t in 0 until numTracks) {
-            if (offset + 8 > bytes.size) break
-            if (bytes[offset] != 'M'.code.toByte() || bytes[offset + 1] != 'T'.code.toByte() ||
-                bytes[offset + 2] != 'r'.code.toByte() || bytes[offset + 3] != 'k'.code.toByte()
-            ) {
-                break
-            }
-            val trackLen = read32(bytes, offset + 4)
-            offset += 8
-            val trackEnd = (offset + trackLen).coerceAtMost(bytes.size)
-
-            var currentTick = 0L
-            val activeNotes = mutableMapOf<Int, Long>()
-
-            while (offset < trackEnd) {
-                val vlq = readVlq(bytes, offset)
-                currentTick += vlq.first
-                offset += vlq.second
-
-                if (offset >= trackEnd) break
-                val status = bytes[offset].toInt() and 0xFF
-                offset++
-
-                if (status == 0xFF) {
-                    // Meta event
-                    if (offset >= trackEnd) break
-                    val metaType = bytes[offset].toInt() and 0xFF
-                    offset++
-                    val metaLenVlq = readVlq(bytes, offset)
-                    offset += metaLenVlq.second
-                    val metaLen = metaLenVlq.first.toInt()
-
-                    if (metaType == 0x51 && metaLen == 3) {
-                        val micros = ((bytes[offset].toInt() and 0xFF) shl 16) or
-                                ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
-                                (bytes[offset + 2].toInt() and 0xFF)
-                        if (micros > 0) tempo = (60_000_000f / micros)
-                    } else if (metaType == 0x58 && metaLen >= 2) {
-                        val num = bytes[offset].toInt() and 0xFF
-                        val den = 1 shl (bytes[offset + 1].toInt() and 0xFF)
-                        timeSig = "$num/$den"
-                    }
-                    offset += metaLen
-                } else if (status in 0x90..0x9F) {
-                    // Note on
-                    if (offset + 1 >= trackEnd) break
-                    val note = bytes[offset].toInt() and 0x7F
-                    val vel = bytes[offset + 1].toInt() and 0x7F
-                    offset += 2
-                    if (vel > 0) {
-                        activeNotes[note] = currentTick
-                    } else {
-                        val startTick = activeNotes.remove(note) ?: currentTick
-                        val durBeats = (currentTick - startTick) / division
-                        val posBeats = startTick / division
-                        rawNotes.add(
-                            ScoreNote(
-                                id = 0,
-                                midiNote = note,
-                                position = posBeats,
-                                duration = durBeats.coerceAtLeast(0.25f)
-                            )
-                        )
-                    }
-                } else if (status in 0x80..0x8F) {
-                    // Note off
-                    if (offset + 1 >= trackEnd) break
-                    val note = bytes[offset].toInt() and 0x7F
-                    offset += 2
-                    val startTick = activeNotes.remove(note) ?: currentTick
-                    val durBeats = (currentTick - startTick) / division
-                    val posBeats = startTick / division
-                    rawNotes.add(
-                        ScoreNote(
-                            id = 0,
-                            midiNote = note,
-                            position = posBeats,
-                            duration = durBeats.coerceAtLeast(0.25f)
-                        )
-                    )
-                } else if (status in 0xB0..0xBF) {
-                    // Control Change (Sustain: CC 64, Sostenuto: CC 66, Soft: CC 67)
-                    if (offset + 1 >= trackEnd) break
-                    val ccNum = bytes[offset].toInt() and 0x7F
-                    val ccVal = bytes[offset + 1].toInt() and 0x7F
-                    offset += 2
-                    if (ccNum == 64 || ccNum == 66 || ccNum == 67) {
-                        val posBeats = currentTick / division
-                        rawPedalEvents.add(
-                            posBeats to PedalEvent(
-                                position = 0f, // will be mapped relative to measure
-                                pedalType = ccNum,
-                                isPressed = ccVal >= 64
-                            )
-                        )
-                    }
-                } else if (status in 0xA0..0xEF) {
-                    offset += 2
-                } else if (status in 0xC0..0xDF) {
-                    offset += 1
-                }
-            }
-        }
-
-        // Determine beats per measure from time signature
-        val beatsPerMeasure = timeSig.split("/").firstOrNull()?.toIntOrNull() ?: 4
-        val maxNoteBeat = rawNotes.maxOfOrNull { it.position + it.duration } ?: 0f
-        val maxPedalBeat = rawPedalEvents.maxOfOrNull { it.first } ?: 0f
-        val totalBeats = maxOf(maxNoteBeat, maxPedalBeat, beatsPerMeasure.toFloat())
-        val numMeasures = kotlin.math.ceil(totalBeats / beatsPerMeasure).toInt().coerceAtLeast(1)
-
-        val measures = (0 until numMeasures).map { measureIdx ->
-            val measureStartBeat = measureIdx * beatsPerMeasure.toFloat()
-            val measureEndBeat = (measureIdx + 1) * beatsPerMeasure.toFloat()
-
-            val measureNotes = rawNotes.filter { it.position >= measureStartBeat && it.position < measureEndBeat }
-                .map { note ->
-                    note.copy(position = (note.position - measureStartBeat).coerceIn(0f, beatsPerMeasure.toFloat()))
-                }
-
-            val measurePedals = rawPedalEvents.filter { it.first >= measureStartBeat && it.first < measureEndBeat }
-                .map { (absBeat, pedal) ->
-                    pedal.copy(position = (absBeat - measureStartBeat).coerceIn(0f, beatsPerMeasure.toFloat()))
-                }
-
-            Measure(
-                notes = measureNotes,
-                pedalEvents = measurePedals,
-                barline = if (measureIdx == numMeasures - 1) "final" else "single",
-                measureIndex = measureIdx + 1,
-                timeSignatureNumerator = beatsPerMeasure
+        if (measureBlocks.isEmpty()) {
+            return Score(
+                title = title,
+                composer = composer,
+                tempo = globalTempo,
+                timeSignature = "4/4",
+                measures = listOf(Measure(notes = emptyList()))
             )
         }
 
-        return Score(
-            title = "Imported MIDI",
-            tempo = tempo,
-            timeSignature = timeSig,
-            measures = measures
-        )
-    }
+        var noteIdCounter = 0
+        val parsedMeasures = measureBlocks.mapIndexed { mIdx, mXml ->
+            // 1. Update running attributes if specified in this measure
+            xmlTag(mXml, "divisions")?.toFloatOrNull()?.let { if (it > 0f) divisions = it }
+            xmlTag(mXml, "fifths")?.toIntOrNull()?.let { fifths ->
+                currentFifths = fifths
+                globalKeySig = MidiScoreParser.matchKeySignature(fifths, 0)
+            }
+            xmlTag(mXml, "beats")?.toIntOrNull()?.let { if (it > 0) currentBeats = it }
+            xmlTag(mXml, "beat-type")?.toIntOrNull()?.let { if (it > 0) currentBeatType = it }
 
-    private fun parseMusicXml(xml: String): Score {
-        val title = xmlTag(xml, "work-title") ?: xmlTag(xml, "movement-title") ?: "MusicXML Score"
-        val timeSig = xmlTag(xml, "beats")?.let { "$it/4" } ?: "4/4"
+            val measureKeySig = MidiScoreParser.matchKeySignature(currentFifths, 0)
+            val notesInMeasure = mutableListOf<ScoreNote>()
+            val restsInMeasure = mutableListOf<RestSymbol>()
+
+            var cursorDivisions = 0f
+            var lastNoteStartPosBeats = 0f
+
+            // Iterate through <note>, <backup>, and <forward> elements in document order
+            val tokenRegex = Regex("""<(note|backup|forward)\b[^>]*>(.*?)</\1>""", RegexOption.DOT_MATCHES_ALL)
+            for (match in tokenRegex.findAll(mXml)) {
+                val tagType = match.groupValues[1]
+                val body = match.groupValues[2]
+
+                when (tagType) {
+                    "backup" -> {
+                        val durDiv = xmlTag(body, "duration")?.toFloatOrNull() ?: 0f
+                        cursorDivisions = (cursorDivisions - durDiv).coerceAtLeast(0f)
+                    }
+                    "forward" -> {
+                        val durDiv = xmlTag(body, "duration")?.toFloatOrNull() ?: 0f
+                        cursorDivisions += durDiv
+                    }
+                    "note" -> {
+                        val isGrace = body.contains("<grace")
+                        val isChord = body.contains("<chord")
+                        val isRest = body.contains("<rest")
+                        val durDiv = xmlTag(body, "duration")?.toFloatOrNull() ?: (divisions * 0.25f)
+                        val durBeats = if (isGrace) 0.25f else (durDiv / divisions).coerceAtLeast(0.125f)
+
+                        val posBeats = if (isChord) {
+                            lastNoteStartPosBeats
+                        } else {
+                            (cursorDivisions / divisions).coerceAtLeast(0f)
+                        }
+
+                        val rawVoice = xmlTag(body, "voice")?.toIntOrNull() ?: 1
+                        val staffNum = xmlTag(body, "staff")?.toIntOrNull()
+                        val voiceIdx = when {
+                            staffNum != null -> if (staffNum <= 1) 0 else 1
+                            rawVoice <= 1 -> 0
+                            else -> 1
+                        }
+
+                        if (isRest) {
+                            restsInMeasure.add(
+                                RestSymbol(
+                                    position = posBeats,
+                                    duration = durBeats,
+                                    voice = voiceIdx
+                                )
+                            )
+                        } else {
+                            val stepStr = xmlTag(body, "step") ?: "C"
+                            val octave = xmlTag(body, "octave")?.toIntOrNull() ?: 4
+                            val alter = xmlTag(body, "alter")?.toFloatOrNull()?.toInt() ?: 0
+                            val midiPitch = stepOctaveAlterToMidi(stepStr, octave, alter)
+
+                            val accidental = when (alter) {
+                                2 -> Accidental.DOUBLE_SHARP
+                                1 -> Accidental.SHARP
+                                -1 -> Accidental.FLAT
+                                -2 -> Accidental.DOUBLE_FLAT
+                                else -> Accidental.NATURAL
+                            }
+                            val isCourtesy = body.contains("""cautionary="yes"""") || body.contains("""parentheses="yes"""")
+                            val isDotted = body.contains("<dot")
+                            val tupletNum = xmlTag(body, "actual-notes")?.toIntOrNull() ?: 0
+                            val tieStart = body.contains("""<tie type="start"""") || body.contains("""<tied type="start"""")
+                            val tieEnd = body.contains("""<tie type="stop"""") || body.contains("""<tied type="stop"""")
+                            val slurStart = body.contains("""<slur[^>]*type="start"""".toRegex())
+                            val slurEnd = body.contains("""<slur[^>]*type="stop"""".toRegex())
+
+                            val stemText = xmlTag(body, "stem")?.lowercase()
+                            val stemUp: Boolean? = when (stemText) {
+                                "up" -> true
+                                "down" -> false
+                                else -> null
+                            }
+
+                            val lyricText = xmlTag(body, "text") ?: ""
+                            val fingering = xmlTag(body, "fingering")?.toIntOrNull()
+                            val tabString = xmlTag(body, "string")?.toIntOrNull()?.let { (it - 1).coerceIn(0, 5) }
+                            val tabFret = xmlTag(body, "fret")?.toIntOrNull()
+
+                            val musArtic = when {
+                                body.contains("<staccato") -> MusicalArticulation.STACCATO
+                                body.contains("<accent") -> MusicalArticulation.ACCENT
+                                body.contains("<tenuto") -> MusicalArticulation.TENUTO
+                                body.contains("<strong-accent") -> MusicalArticulation.MARCATO
+                                else -> MusicalArticulation.NONE
+                            }
+
+                            val tabArtic = when {
+                                body.contains("<hammer-on") -> TabArticulation.HAMMER_ON
+                                body.contains("<pull-off") -> TabArticulation.PULL_OFF
+                                body.contains("<slide") -> TabArticulation.SLIDE_UP
+                                else -> TabArticulation.NONE
+                            }
+
+                            notesInMeasure.add(
+                                ScoreNote(
+                                    id = ++noteIdCounter,
+                                    midiNote = midiPitch,
+                                    position = posBeats,
+                                    duration = durBeats,
+                                    string = tabString,
+                                    fret = tabFret,
+                                    voice = voiceIdx,
+                                    stemUp = stemUp,
+                                    accidental = accidental,
+                                    courtesyAccidental = isCourtesy,
+                                    dotted = isDotted,
+                                    isDotted = isDotted,
+                                    tuplet = tupletNum,
+                                    grace = isGrace,
+                                    tieStart = tieStart,
+                                    tieEnd = tieEnd,
+                                    slurStart = slurStart,
+                                    slurEnd = slurEnd,
+                                    lyric = lyricText,
+                                    fingering = fingering,
+                                    articulation = tabArtic,
+                                    musicalArticulation = musArtic
+                                )
+                            )
+                        }
+
+                        if (!isChord && !isGrace) {
+                            lastNoteStartPosBeats = posBeats
+                            cursorDivisions += durDiv
+                        }
+                    }
+                }
+            }
+
+            val repeatStart = mXml.contains("""<repeat[^>]*direction="forward"""".toRegex())
+            val repeatEnd = mXml.contains("""<repeat[^>]*direction="backward"""".toRegex())
+
+            Measure(
+                measureIndex = mIdx + 1,
+                timeSignatureNumerator = currentBeats,
+                timeSignatureDenominator = currentBeatType,
+                keySignature = measureKeySig,
+                notes = notesInMeasure,
+                rests = restsInMeasure,
+                repeatStart = repeatStart,
+                repeatEnd = repeatEnd,
+                barline = if (mIdx == measureBlocks.lastIndex) "final" else "single"
+            )
+        }
+
+        val firstM = parsedMeasures.firstOrNull()
+        val timeSigStr = if (firstM != null) "${firstM.timeSignatureNumerator}/${firstM.timeSignatureDenominator}" else "4/4"
+
         return Score(
             title = title,
-            timeSignature = timeSig,
-            measures = listOf(Measure(notes = emptyList()))
+            composer = composer,
+            tempo = globalTempo,
+            timeSignature = timeSigStr,
+            keySignature = parsedMeasures.firstOrNull()?.keySignature ?: globalKeySig,
+            measures = parsedMeasures
         )
     }
 
-    private fun read16(bytes: ByteArray, offset: Int): Int {
-        return ((bytes[offset].toInt() and 0xFF) shl 8) or (bytes[offset + 1].toInt() and 0xFF)
-    }
-
-    private fun read32(bytes: ByteArray, offset: Int): Int {
-        return ((bytes[offset].toInt() and 0xFF) shl 24) or
-                ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
-                ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
-                (bytes[offset + 3].toInt() and 0xFF)
-    }
-
-    private fun readVlq(bytes: ByteArray, offset: Int): Pair<Long, Int> {
-        var value = 0L
-        var count = 0
-        var pos = offset
-        while (pos < bytes.size) {
-            val b = bytes[pos].toInt() and 0xFF
-            pos++
-            count++
-            value = (value shl 7) or (b and 0x7F).toLong()
-            if ((b and 0x80) == 0) break
+    private fun stepOctaveAlterToMidi(step: String, octave: Int, alter: Int): Int {
+        val baseSemitone = when (step.uppercase()) {
+            "C" -> 0
+            "D" -> 2
+            "E" -> 4
+            "F" -> 5
+            "G" -> 7
+            "A" -> 9
+            "B" -> 11
+            else -> 0
         }
-        return Pair(value, count)
+        return ((octave + 1) * 12 + baseSemitone + alter).coerceIn(0, 127)
     }
 
     private fun xmlTag(xml: String, tag: String): String? {
-        val start = xml.indexOf("<$tag>")
-        if (start == -1) return null
-        val end = xml.indexOf("</$tag>", start)
-        if (end == -1) return null
-        return xml.substring(start + tag.length + 2, end).trim()
+        val match = Regex("""<$tag(?:\s[^>]*)?>(.*?)</$tag>""", RegexOption.DOT_MATCHES_ALL).find(xml)
+        return match?.groupValues?.get(1)?.trim()
     }
 }

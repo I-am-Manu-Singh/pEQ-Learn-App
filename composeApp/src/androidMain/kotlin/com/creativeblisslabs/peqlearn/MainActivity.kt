@@ -321,6 +321,22 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        viewModel.onReadAssetBytes = { assetName ->
+            try {
+                assets.open(assetName).use { it.readBytes() }
+            } catch (_: Exception) {
+                try {
+                    assets.open("tutorials/$assetName").use { it.readBytes() }
+                } catch (_: Exception) {
+                    try {
+                        javaClass.classLoader?.getResourceAsStream(assetName)?.use { it.readBytes() }
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            }
+        }
+
         viewModel.onRestoreOnnxState = {
             com.creativeblisslabs.peqlearn.app.ai.OnnxModelRegistry.restoreState(
                 getString = { key -> onnxPrefs.getString(key, null) },

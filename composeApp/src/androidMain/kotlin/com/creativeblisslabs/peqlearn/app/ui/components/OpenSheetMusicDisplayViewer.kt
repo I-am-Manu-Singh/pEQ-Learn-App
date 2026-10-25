@@ -79,7 +79,7 @@ actual fun OpenSheetMusicDisplayViewer(
                         }
                     }
 
-                    loadUrl("file:///android_asset/osmd_viewer.html")
+                    loadUrl("file:///android_asset/osmd/osmd_viewer.html")
                     webViewRef = this
                 }
             },

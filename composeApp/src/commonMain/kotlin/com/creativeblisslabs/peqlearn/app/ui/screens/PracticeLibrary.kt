@@ -176,4 +176,112 @@ object PracticeLibrary {
             measures = measures
         )
     }
+
+    data class BuiltinTutorialMidi(
+        val id: String,
+        val fileName: String,
+        val title: String,
+        val composer: String,
+        val era: String,
+        val difficulty: String,
+        val timeSignature: String,
+        val tempo: Int,
+        val totalMeasures: Int,
+        val description: String,
+        val focusAreas: List<String>
+    )
+
+    val builtInTutorials = listOf(
+        BuiltinTutorialMidi(
+            id = "bach_prelude",
+            fileName = "bach-prelude-in-c.mid",
+            title = "Prelude in C Major (BWV 846)",
+            composer = "J.S. Bach",
+            era = "Baroque",
+            difficulty = "Beginner - Intermediate",
+            timeSignature = "4/4",
+            tempo = 60,
+            totalMeasures = 35,
+            description = "Iconic arpeggiated keyboard prelude. Ideal for developing consistent tempo, smooth finger independence, and fluid hand balancing.",
+            focusAreas = listOf("Arpeggio Fluency", "Both Hands Coordination", "LH Bass Foundation")
+        ),
+        BuiltinTutorialMidi(
+            id = "chopin_nocturne",
+            fileName = "chopin-nocturne-op9-2.mid",
+            title = "Nocturne in E-flat Major (Op. 9 No. 2)",
+            composer = "Frédéric Chopin",
+            era = "Romantic",
+            difficulty = "Intermediate - Advanced",
+            timeSignature = "12/8",
+            tempo = 66,
+            totalMeasures = 38,
+            description = "Chopin's most beloved nocturne. Features lyrical right-hand bel canto ornamentation over rich, wide-spanning left-hand waltz chords.",
+            focusAreas = listOf("Rubato & Phrasing", "LH Jump Accuracy", "12/8 Compound Meter", "RH Melodic Touch")
+        ),
+        BuiltinTutorialMidi(
+            id = "satie_gnossienne",
+            fileName = "satie-gnossienne-1.mid",
+            title = "Gnossienne No. 1",
+            composer = "Erik Satie",
+            era = "Modern / Impressionist",
+            difficulty = "Beginner",
+            timeSignature = "4/4",
+            tempo = 100,
+            totalMeasures = 82,
+            description = "Mesmerizing, mystical piece with rhythmic left-hand ostinato chords and expressive modal right-hand melodic phrases.",
+            focusAreas = listOf("LH Chord Jumping", "Modal Harmony", "Tone Quality & Dynamics")
+        ),
+        BuiltinTutorialMidi(
+            id = "chopin_fantaisie",
+            fileName = "chopin-fantaisie-impromptu-op66.mid",
+            title = "Fantaisie-Impromptu in C# Minor (Op. 66)",
+            composer = "Frédéric Chopin",
+            era = "Romantic Masterwork",
+            difficulty = "Advanced - Virtuoso",
+            timeSignature = "4/4",
+            tempo = 100,
+            totalMeasures = 138,
+            description = "Famous for its cross-rhythm: 4 sixteenth notes in the right hand against 3 triplet eighth notes in the left hand (4 against 3 polyrhythm).",
+            focusAreas = listOf("4:3 Polyrhythm", "Speed & Velocity", "LH Arpeggio Stamina", "Cantabile Trio")
+        )
+    )
+
+    fun loadTutorialScore(
+        tutorial: BuiltinTutorialMidi,
+        readBytes: (String) -> ByteArray?,
+        trainingMode: String = "FULL", // "FULL", "RH_ONLY", "LH_ONLY", "SLOW_TEMPO"
+        targetTempoBpm: Float? = null
+    ): Score? {
+        val bytes = readBytes(tutorial.fileName) ?: return null
+        val baseScore = com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(bytes) ?: return null
+
+        val effectiveTempo = targetTempoBpm ?: when (trainingMode) {
+            "SLOW_TEMPO" -> (baseScore.tempo * 0.7f).coerceAtLeast(40f)
+            else -> baseScore.tempo
+        }
+
+        // Apply training mode filter to measures/notes
+        val filteredMeasures = baseScore.measures.map { measure ->
+            val notes = when (trainingMode) {
+                "RH_ONLY" -> measure.notes.filter { it.voice == 0 || it.midiNote >= 60 }
+                "LH_ONLY" -> measure.notes.filter { it.voice == 1 || it.midiNote < 60 }
+                else -> measure.notes
+            }
+            measure.copy(notes = notes)
+        }
+
+        val titleSuffix = when (trainingMode) {
+            "RH_ONLY" -> " (Right Hand Study)"
+            "LH_ONLY" -> " (Left Hand Study)"
+            "SLOW_TEMPO" -> " (Practice Tempo)"
+            else -> ""
+        }
+
+        return baseScore.copy(
+            title = "${tutorial.title}$titleSuffix",
+            composer = tutorial.composer,
+            tempo = effectiveTempo,
+            measures = filteredMeasures
+        )
+    }
 }

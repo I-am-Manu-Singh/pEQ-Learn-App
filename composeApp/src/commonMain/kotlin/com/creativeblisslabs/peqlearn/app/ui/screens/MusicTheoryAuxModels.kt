@@ -52,8 +52,19 @@ object MusicSymbols {
     const val SLIDE_DOWN = "\\"
     const val VIBRATO = "∿∿∿"
     const val PALM_MUTE = "P.M."
+    const val LET_RING = "let ring"
     const val DEAD_NOTE = "X"
+    const val TAP = "T"
+    const val SLAP = "S"
+    const val POP = "P"
 
+    // Picking & Strumming
+    const val PICK_DOWN = "⊓"
+    const val PICK_UP = "∨"
+    const val STRUM_DOWN = "↓"
+    const val STRUM_UP = "↑"
+
+    // Accidentals & Clefs
     const val SHARP = "♯"
     const val FLAT = "♭"
     const val NATURAL = "♮"
@@ -64,11 +75,26 @@ object MusicSymbols {
     const val ALTO_CLEF = "𝄡"
     const val COMMON_TIME = "𝄴"
     const val CUT_TIME = "𝄵"
+
+    // Articulations & Ornaments
     const val FERMATA = "𝄐"
     const val STACCATO = "•"
+    const val STACCATISSIMO = "▾"
     const val TENUTO = "—"
     const val ACCENT = ">"
     const val MARCATO = "^"
+    const val TRILL = "tr"
+    const val MORDENT = "ffe"
+    const val TURN = "𝄗"
+    const val ARPEGGIO = "𝆃"
+
+    // Octave Shifts & Pedal
+    const val OCTAVE_8VA = "8va"
+    const val OCTAVE_8VB = "8vb"
+    const val OCTAVE_15MA = "15ma"
+    const val OCTAVE_15MB = "15mb"
+    const val PEDAL_DOWN = "Ped."
+    const val PEDAL_UP = "*"
 
     // Rests
     const val SEMIBREVE_REST = "𝄻"
@@ -80,10 +106,13 @@ object MusicSymbols {
     // Dynamics
     const val PIANO = "𝆏"
     const val FORTE = "𝆑"
+    const val MEZZO = "𝆐"
+    const val RINFORZANDO = "𝆒"
+    const val SFORZANDO = "𝆔"
 
-    // Articulation/Repeats
+    // Navigation & Repeats
     const val SEGNO = "𝄋"
-    const val CODA = "𝄊"
+    const val CODA = "𝄌"
     const val REPEAT_DOT = "𝄇"
 }
 
@@ -98,7 +127,13 @@ enum class HarmonicType {
     SEVENTH,
     EXTENDED,
     ALTERED,
-    SUSPENDED
+    SUSPENDED,
+    // Guitar / String Harmonic Articulation Types (Backward & Forward Compatible)
+    NATURAL,
+    ARTIFICIAL,
+    PINCH,
+    TAPPED,
+    SEMI
 }
 
 enum class FretboardViewMode {
@@ -126,8 +161,6 @@ data class SparkParticle(
     val alpha: Float = 1.0f,
     val colorHex: Long = 0xFFFFD700
 )
-
-// DrawingConfig is defined in ScoreModels.kt
 
 data class VisualizerModeItem(
     val id: String,

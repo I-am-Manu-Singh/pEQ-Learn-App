@@ -81,7 +81,25 @@ class AndroidpEQStemSplitter(private val context: Context) : pEQStemSplitter {
                 File(context.filesDir, "stems_${System.currentTimeMillis()}").apply { mkdirs() }
             }
 
-            val inputFile = File(inputPath)
+            val resolvedFile = if (inputPath.startsWith("content://")) {
+                val tempAudio = File(context.cacheDir, "stem_input_${System.currentTimeMillis()}.audio")
+                try {
+                    val uri = android.net.Uri.parse(inputPath)
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempAudio).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    if (tempAudio.exists() && tempAudio.length() > 0) tempAudio else File(inputPath)
+                } catch (e: Exception) {
+                    println("pEQLearn: [STEM_AI] Error resolving content URI $inputPath: ${e.message}")
+                    File(inputPath)
+                }
+            } else {
+                File(inputPath)
+            }
+
+            val inputFile = resolvedFile
             val stemMap = mutableMapOf<String, String>()
 
             // Ensure models are initialized from assets if missing

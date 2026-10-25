@@ -14,12 +14,18 @@ enum class NoteDuration(val beats: Float) {
     QUARTER(1.0f),
     EIGHTH(0.5f),
     SIXTEENTH(0.25f),
-    THIRTY_SECOND(0.125f)
+    THIRTY_SECOND(0.125f),
+    SIXTY_FOURTH(0.0625f)
 }
 
 @Serializable
 enum class MusicalArticulation {
-    NONE, STACCATO, ACCENT, TENUTO, MARCATO
+    NONE,
+    STACCATO,
+    STACCATISSIMO,
+    ACCENT,
+    TENUTO,
+    MARCATO
 }
 
 @Serializable
@@ -29,23 +35,130 @@ enum class TabArticulation {
     PULL_OFF,
     SLIDE_UP,
     SLIDE_DOWN,
+    LEGATO_SLIDE_UP,
+    LEGATO_SLIDE_DOWN,
     TAP,
     RELEASE,
     DEAD_NOTE
 }
 
 @Serializable
+enum class BendType {
+    BEND,
+    PRE_BEND,
+    BEND_RELEASE,
+    PRE_BEND_RELEASE,
+    UNISON_BEND
+}
+
+@Serializable
+enum class GuitarHarmonicType(val label: String) {
+    NONE(""),
+    NATURAL("N.H."),
+    ARTIFICIAL("A.H."),
+    PINCH("P.H."),
+    TAPPED("T.H."),
+    SEMI("S.H.")
+}
+
+@Serializable
+enum class OrnamentType {
+    NONE,
+    TRILL,
+    UPPER_MORDENT,
+    LOWER_MORDENT,
+    TURN,
+    INVERTED_TURN
+}
+
+@Serializable
+enum class ArpeggioDirection {
+    NONE,
+    UP,
+    DOWN
+}
+
+@Serializable
+enum class PickDirection {
+    NONE,
+    DOWN,
+    UP,
+    STRUM_DOWN,
+    STRUM_UP,
+    RASGUEADO,
+    SLAP,
+    POP
+}
+
+@Serializable
+enum class OctaveShift(val label: String, val semitoneShift: Int) {
+    NONE("", 0),
+    OTTAVA_ALTA_8VA("8va", 12),
+    OTTAVA_BASSA_8VB("8vb", -12),
+    QUINDICESIMA_ALTA_15MA("15ma", 24),
+    QUINDICESIMA_BASSA_15MB("15mb", -24)
+}
+
+@Serializable
+enum class WhammyType {
+    NONE,
+    DIP,
+    DIVE,
+    SCOOP,
+    GARGLE
+}
+
+@Serializable
+data class WhammyInfo(
+    val type: WhammyType = WhammyType.DIP,
+    val steps: Float = -1.0f // Negative = pitch drop, Positive = pull up
+)
+
+@Serializable
+enum class HairpinType {
+    CRESCENDO,
+    DECRESCENDO
+}
+
+@Serializable
+data class HairpinSpan(
+    val startPosition: Float = 0.0f,
+    val endPosition: Float = 2.0f,
+    val type: HairpinType = HairpinType.CRESCENDO,
+    val voice: Int = 0
+)
+
+@Serializable
+enum class TempoChangeType(val label: String) {
+    NONE(""),
+    RITARDANDO("rit."),
+    RALLENTANDO("rall."),
+    ACCELERANDO("accel."),
+    A_TEMPO("a tempo")
+}
+
+@Serializable
+enum class TimeSignatureSymbol {
+    NUMERIC,
+    COMMON_TIME,
+    CUT_TIME
+}
+
+@Serializable
 data class BarreInfo(
     val fret: Int = 0,
     val startString: Int = 0,
-    val endString: Int = 5
+    val endString: Int = 5,
+    val isHalfBarre: Boolean = false
 )
 
 @Serializable
 data class BendInfo(
     val stringIndex: Int = 0,
     val fret: Int = 0,
-    val bendSteps: Float = 1.0f // 1.0 = full bend, 0.5 = half bend
+    val bendSteps: Float = 1.0f, // 1.0 = full step (2 semitones), 0.5 = half step (1 semitone)
+    val releaseSteps: Float = 0.0f,
+    val type: BendType = BendType.BEND
 )
 
 @Serializable
@@ -71,9 +184,10 @@ data class RestSymbol(
     val position: Float = 0.0f,
     val duration: Float = 1.0f,
     val voice: Int = 0,
-    val symbolChar: String = "𝄽"
+    val symbolChar: String = "𝄽",
+    val fermata: Boolean = false,
+    val dotted: Boolean = false
 )
-
 @Serializable
 data class ScoreNote(
     val id: Int = 0,
@@ -88,6 +202,7 @@ data class ScoreNote(
     val accidental: Accidental = Accidental.NATURAL,
     val courtesyAccidental: Boolean = false,
     val dotted: Boolean = false,
+    val doubleDotted: Boolean = false,
     val tuplet: Int = 0,
     val grace: Boolean = false,
     val tieStart: Boolean = false,
@@ -99,10 +214,21 @@ data class ScoreNote(
     val chordSymbol: String = "",
     val lyric: String = "",
     val fingering: Int? = null,
+    val rightHandFinger: String = "", // "p", "i", "m", "a", "c" for fingerstyle/classical guitar
     val articulation: TabArticulation = TabArticulation.NONE,
     val musicalArticulation: MusicalArticulation = MusicalArticulation.NONE,
+    val ornament: OrnamentType = OrnamentType.NONE,
+    val tremoloSlashes: Int = 0, // 1 = 8th tremolo, 2 = 16th tremolo, 3 = 32nd unmeasured tremolo
+    val arpeggio: ArpeggioDirection = ArpeggioDirection.NONE,
+    val octaveShift: OctaveShift = OctaveShift.NONE,
+    val pickDirection: PickDirection = PickDirection.NONE,
+    val fermata: Boolean = false,
+    val ghostNote: Boolean = false,
     val bend: BendInfo? = null,
+    val whammy: WhammyInfo? = null,
+    val whammyDip: WhammyDipInfo? = null, // Added to support whammy dip rendering
     val harmonic: HarmonicType? = null,
+    val guitarHarmonic: GuitarHarmonicType = GuitarHarmonicType.NONE,
     val palmMute: Boolean = false,
     val letRing: Boolean = false,
     val vibrato: Boolean = false,
@@ -144,8 +270,10 @@ data class Measure(
     val notes: List<ScoreNote> = emptyList(),
     val rests: List<RestSymbol> = emptyList(),
     val pedalEvents: List<PedalEvent> = emptyList(),
+    val hairpins: List<HairpinSpan> = emptyList(),
     val repeatStart: Boolean = false,
     val repeatEnd: Boolean = false,
+    val repeatCount: Int = 2,
     val endingNumber: Int? = null,
     val rehearsalMark: String = "",
     val segno: Boolean = false,
@@ -158,7 +286,13 @@ data class Measure(
     val measureIndex: Int = 1,
     val timeSignatureNumerator: Int = 4,
     val timeSignatureDenominator: Int = 4,
-    val keySignature: KeySignature = KeySignature.C_MAJOR
+    val timeSignatureSymbol: TimeSignatureSymbol = TimeSignatureSymbol.NUMERIC,
+    val keySignature: KeySignature = KeySignature.C_MAJOR,
+    val tempoOverride: Float? = null,
+    val tempoChangeText: String = "",
+    val tempoChangeType: TempoChangeType = TempoChangeType.NONE,
+    val isPickup: Boolean = false,
+    val multiMeasureRestCount: Int = 0
 )
 
 @Serializable
@@ -186,24 +320,17 @@ data class Score(
     val clef: String = "TREBLE",
     val pdfUri: String? = null,
     val isPdfScore: Boolean = false,
-    val tracks: List<MidiTrackInfo> = emptyList()
+    val tracks: List<MidiTrackInfo> = emptyList(),
+    val capo: Int = 0,
+    val tuningMidi: List<Int> = listOf(64, 59, 55, 50, 45, 40), // 1st string E4 down to 6th string E2
+    val tuningName: String = "Standard (E A D G B E)",
+    val isGuitar8vb: Boolean = false
 ) {
     val bpm: Int get() = tempo.toInt()
 }
 
 /**
  * Generates an ultra-detailed, human-readable forensic representation of the parsed score.
- * Exhaustively analyzes every dimension:
- * - Score & global layout metadata
- * - Measure timing budgets, total duration vs nominal capacity, pickup offsets, barlines
- * - Note-by-note audit: ID, pitch name, scientific octave, MIDI number, frequency (Hz),
- *   clef assignment (Treble / Bass), hand, voice, duration in beats & ticks (assuming 480 PPQ),
- *   beat position, fraction, stem direction, accidental & courtesy state, tuplet, grace,
- *   ties, slurs, dynamics, chord voicings, guitar tab fret/string, articulations, bends, harmonics
- * - Distance analysis: Inter-note delta (beats), horizontal timing density, polyphonic overlaps
- * - Rhythmic beamed-cluster analysis & beamgroup assignment
- * - Rests & silence gaps
- * - Pedal controller events
  */
 fun Score.dumpAsText(): String {
     val sb = StringBuilder()
@@ -234,10 +361,12 @@ fun Score.dumpAsText(): String {
     sb.appendLine("  • Composer           : $composer")
     if (lyricist.isNotEmpty()) sb.appendLine("  • Lyricist           : $lyricist")
     if (copyright.isNotEmpty()) sb.appendLine("  • Copyright          : $copyright")
-    sb.appendLine("  • Primary Clef       : $clef")
+    sb.appendLine("  • Primary Clef       : $clef${if (isGuitar8vb) " (8vb)" else ""}")
     sb.appendLine("  • Key Signature      : ${keySignature.keyName} (${keySignature.accidentalsCount} ${if (keySignature.isSharp) "sharps" else "flats"})")
     sb.appendLine("  • Global Time Sig    : $timeSignature (Pickup measure: $pickupMeasure)")
     sb.appendLine("  • Global Tempo       : $tempo BPM ($tempoText)")
+    if (capo > 0) sb.appendLine("  • Guitar Capo        : Fret $capo")
+    sb.appendLine("  • Guitar Tuning      : $tuningName [${tuningMidi.joinToString { midiToName(it) }}]")
     sb.appendLine("  • Pitch Extents      : Min MIDI $minMidi (${midiToName(minMidi)}) -> Max MIDI $maxMidi (${midiToName(maxMidi)})")
     sb.appendLine("  • Total Measures     : ${measures.size}")
     sb.appendLine("  • Total Notes        : $totalNotes")
@@ -250,7 +379,7 @@ fun Score.dumpAsText(): String {
         val mNum = if (measure.measureIndex > 0) measure.measureIndex else mIdx + 1
         val num = measure.timeSignatureNumerator
         val den = measure.timeSignatureDenominator
-        val nominalCapacity = (num.toFloat() / (den.toFloat() / 4.0f)) // in beats
+        val nominalCapacity = (num.toFloat() / (den.toFloat() / 4.0f))
         val timeSigStr = "$num/$den"
 
         sb.appendLine("########################################################################################################################")
@@ -258,8 +387,9 @@ fun Score.dumpAsText(): String {
         sb.appendLine("########################################################################################################################")
 
         val measureFlags = mutableListOf<String>()
+        if (measure.isPickup || (mIdx == 0 && pickupMeasure)) measureFlags.add("PICKUP_ANACRUSIS")
         if (measure.repeatStart) measureFlags.add("REPEAT_START (|:)")
-        if (measure.repeatEnd) measureFlags.add("REPEAT_END (:|)")
+        if (measure.repeatEnd) measureFlags.add("REPEAT_END (:| x${measure.repeatCount})")
         if (measure.endingNumber != null) measureFlags.add("VOLTA_ENDING #${measure.endingNumber}")
         if (measure.rehearsalMark.isNotEmpty()) measureFlags.add("REHEARSAL_MARK [${measure.rehearsalMark}]")
         if (measure.segno) measureFlags.add("SEGNO (𝄋)")
@@ -268,9 +398,16 @@ fun Score.dumpAsText(): String {
         if (measure.daCapo) measureFlags.add("D.C.")
         if (measure.dalSegno) measureFlags.add("D.S.")
         if (measure.toCoda) measureFlags.add("TO_CODA")
+        if (measure.tempoOverride != null) measureFlags.add("TEMPO:${measure.tempoOverride}BPM")
+        if (measure.tempoChangeType != TempoChangeType.NONE) measureFlags.add("TEMPO_MOD:${measure.tempoChangeType.label}")
+        if (measure.multiMeasureRestCount > 1) measureFlags.add("MULTI_REST:${measure.multiMeasureRestCount} bars")
 
         if (measureFlags.isNotEmpty()) {
             sb.appendLine("  Flags & Navigation : " + measureFlags.joinToString(" | "))
+        }
+
+        if (measure.hairpins.isNotEmpty()) {
+            sb.appendLine("  Hairpins           : " + measure.hairpins.joinToString { "${it.type.name}[%.2fb..%.2fb]".format(it.startPosition, it.endPosition) })
         }
 
         if (measure.pedalEvents.isNotEmpty()) {
@@ -303,7 +440,6 @@ fun Score.dumpAsText(): String {
             sortedNotes.forEachIndexed { nIdx, n ->
                 val pitchName = midiToName(n.midiNote)
                 val freq = midiToFreq(n.midiNote)
-                // If voice is explicitly set (0 for RH, 1 for LH), prioritize voice/hand over arbitrary pitch threshold
                 val isTreble = when (n.voice) {
                     0 -> true
                     1 -> false
@@ -323,9 +459,12 @@ fun Score.dumpAsText(): String {
                 val attrList = mutableListOf<String>()
                 attrList.add("Δ:$deltaStr")
                 if (n.string != null && n.fret != null) attrList.add("Tab(Str:${n.string},Fret:${n.fret})")
-                if (n.dotted || n.isDotted) attrList.add("Dotted")
+                if (n.doubleDotted) attrList.add("DoubleDotted")
+                else if (n.dotted || n.isDotted) attrList.add("Dotted")
                 if (n.tuplet > 0) attrList.add("Tuplet:${n.tuplet}")
                 if (n.grace) attrList.add("Grace")
+                if (n.fermata) attrList.add("Fermata")
+                if (n.ghostNote) attrList.add("GhostNote")
                 if (n.tieStart) attrList.add("TieStart")
                 if (n.tieEnd) attrList.add("TieEnd")
                 if (n.slurStart) attrList.add("SlurStart")
@@ -336,10 +475,18 @@ fun Score.dumpAsText(): String {
                 if (n.dynamic.isNotEmpty()) attrList.add("Dynamic:${n.dynamic}")
                 if (n.lyric.isNotEmpty()) attrList.add("Lyric:\"${n.lyric}\"")
                 if (n.fingering != null) attrList.add("Finger:${n.fingering}")
+                if (n.rightHandFinger.isNotEmpty()) attrList.add("RH:${n.rightHandFinger}")
+                if (n.pickDirection != PickDirection.NONE) attrList.add("Pick:${n.pickDirection.name}")
                 if (n.articulation != TabArticulation.NONE) attrList.add("TabArt:${n.articulation.name}")
                 if (n.musicalArticulation != MusicalArticulation.NONE) attrList.add("MusArt:${n.musicalArticulation.name}")
-                if (n.bend != null) attrList.add("Bend(${n.bend.bendSteps} steps)")
-                if (n.harmonic != null) attrList.add("Harmonic:${n.harmonic.name}")
+                if (n.ornament != OrnamentType.NONE) attrList.add("Ornament:${n.ornament.name}")
+                if (n.tremoloSlashes > 0) attrList.add("Tremolo:${n.tremoloSlashes}")
+                if (n.arpeggio != ArpeggioDirection.NONE) attrList.add("Arp:${n.arpeggio.name}")
+                if (n.octaveShift != OctaveShift.NONE) attrList.add("Oct:${n.octaveShift.label}")
+                if (n.bend != null) attrList.add("Bend(${n.bend.type.name}:${n.bend.bendSteps}->${n.bend.releaseSteps})")
+                if (n.whammy != null) attrList.add("Whammy(${n.whammy.type.name}:${n.whammy.steps})")
+                if (n.guitarHarmonic != GuitarHarmonicType.NONE) attrList.add("Harm:${n.guitarHarmonic.label}")
+                else if (n.harmonic != null) attrList.add("Harmonic:${n.harmonic.name}")
                 if (n.palmMute) attrList.add("P.M.")
                 if (n.letRing) attrList.add("LetRing")
                 if (n.vibrato) attrList.add("Vibrato")
@@ -363,7 +510,6 @@ fun Score.dumpAsText(): String {
             sb.appendLine("  └─" + "─".repeat(45))
         }
 
-        // Voice rhythmic density audit
         voicesInMeasure.forEach { v ->
             val vNotes = sortedNotes.filter { it.voice == v }
             val vDurationSum = vNotes.sumOf { it.duration.toDouble() }
@@ -383,6 +529,11 @@ fun Score.dumpAsText(): String {
     return sb.toString()
 }
 
+@Serializable
+data class WhammyDipInfo(
+    val depth: Float = 1f, // e.g., semitones or depth amount
+    val duration: Float = 1.0f
+)
 data class DrawingConfig(
     val lineSpacing: Float = 10.0f,
     val trebleBaseline: Float = 48.0f,
@@ -400,7 +551,13 @@ data class DrawingConfig(
     val showLabels: Boolean = true,
     val showLyrics: Boolean = true,
     val isDarkMode: Boolean = isDark,
-    val colorScheme: ColorScheme? = null
+    val colorScheme: ColorScheme? = null,
+    val tuning: List<Int> = listOf(64, 59, 55, 50, 45, 40),
+    val tuningMidi: List<Int> = tuning,
+    val capo: Int = 0,
+    val isGuitar8vb: Boolean = false,
+    val isSingleStaff: Boolean = false,
+    val isGuitarScore: Boolean = false
 )
 
 @Serializable
@@ -419,7 +576,6 @@ data class NotationOptions(
     val useVexflow: Boolean = useOsmdRenderer
 )
 
-
 @Serializable
 data class RhythmColumn(
     val stepIndex: Int,
@@ -434,7 +590,6 @@ data class FallingNoteBlock(
     val speed: Float = 4f,
     val isHit: Boolean = false
 )
-
 
 data class StaffAssignment(
     val trebleNotes: Set<ScoreNote> = emptySet(),
@@ -465,10 +620,9 @@ data class PdfExportOptions(
     val includeMeasureNumbers: Boolean = true,
     val includeChordLabels: Boolean = true,
     val includeLyrics: Boolean = true,
-    val staffFormat: String = "Both", // "Staff", "Tab", "Both"
-    val colorTheme: String = "Monochrome", // "Monochrome", "Color (LH/RH)", "Inverted Dark"
+    val staffFormat: String = "Both",
+    val colorTheme: String = "Monochrome",
     val staffLineSpacing: Float = 14f,
     val measuresPerSystem: Int = 4,
     val authorNotes: String = ""
 )
-

@@ -138,6 +138,36 @@ val client = createHttpClient()
     val metronomeEnabled = mutableStateOf(false)
     private var metronomeJob: Job? = null
 
+    // Hand Practice Mode: "BOTH", "RIGHT", "LEFT"
+    val activeHandMode = mutableStateOf("BOTH")
+
+    fun setHandPracticeMode(mode: String) {
+        activeHandMode.value = mode
+        when (mode.uppercase()) {
+            "RIGHT" -> {
+                // Right hand only: Mute and hide Left hand
+                isLeftHandMuted.value = true
+                isLeftHandHidden.value = true
+                isRightHandMuted.value = false
+                isRightHandHidden.value = false
+            }
+            "LEFT" -> {
+                // Left hand only: Mute and hide Right hand
+                isRightHandMuted.value = true
+                isRightHandHidden.value = true
+                isLeftHandMuted.value = false
+                isLeftHandHidden.value = false
+            }
+            else -> {
+                // Both hands: Unmute and show both
+                isLeftHandMuted.value = false
+                isLeftHandHidden.value = false
+                isRightHandMuted.value = false
+                isRightHandHidden.value = false
+            }
+        }
+    }
+
     // System Settings, Notation & SoundFont Preferences
     val videoExportFormat = mutableStateOf("MP4")
     val notationFormat = mutableStateOf("Both Viewers")
@@ -510,6 +540,8 @@ val client = createHttpClient()
     var onRestoreOnnxState: (() -> Unit)? = null
     /** Resolves a model file name to its full path on disk (filesDir or assets), null if missing */
     var onResolveModelPath: ((fileName: String) -> String?)? = null
+    /** Reads raw bytes of an asset / resource file by name, null if missing */
+    var onReadAssetBytes: ((assetName: String) -> ByteArray?)? = null
 
     // 📂 PLYLIST ENGINE (P-12)
     val customPlaylists = mutableStateMapOf<String, SnapshotStateList<pEQMediaItem>>()
@@ -1597,6 +1629,11 @@ fun scrubSongPlayhead(targetProgress: Float) {
                     val isTrackEnabled = enabledTrackIndices[note.voice] ?: true
                     if (!isTrackEnabled) return@forEachIndexed
 
+                    // Hand muting check: Right hand (pitch >= 60 or voice 0) / Left hand (pitch < 60 or voice 1)
+                    val isRightHand = if (note.voice == 0) true else if (note.voice == 1) false else note.midiNote >= 60
+                    if (isRightHand && isRightHandMuted.value) return@forEachIndexed
+                    if (!isRightHand && isLeftHandMuted.value) return@forEachIndexed
+
                     if (currentBeatInMeasure >= note.position && !alreadyFired) {
                         firedNotesMap[index] = true
                         
@@ -1722,12 +1759,15 @@ fun scrubSongPlayhead(targetProgress: Float) {
     fun dismissMidiPrompt() {
         midiConnectionPrompt.value = null
     }
-
-    fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, fileName: String = "Imported Score") {
+fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, fileName: String = "Imported Score") {
         isImportingPDF.value = true
+        pdfImportProgress.value = 0.05f
+
         viewModelScope.launch(Dispatchers.Default) {
-            val parsedScore = fileBytes?.let { com.creativeblisslabs.peqlearn.app.util.UniversalScoreParser.parse(it, fileName, uriString) }
-                ?: com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(fileBytes ?: ByteArray(0))
+            val parsedScore = fileBytes?.let { bytes ->
+                com.creativeblisslabs.peqlearn.app.util.UniversalScoreParser.parse(bytes, fileName, uriString)
+                    ?: com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(bytes, fileName)
+            }
 
             val finalScore = parsedScore ?: Score(
                 title = fileName.substringBeforeLast("."),
@@ -1736,11 +1776,13 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 measures = listOf(Measure(notes = emptyList()))
             )
 
-            // Calculate total score duration in milliseconds
+            // Calculate total score duration in milliseconds accounting for timeSignatureDenominator (e.g. 6/8, 3/8, 2/2)
+            val safeTempo = finalScore.tempo.coerceAtLeast(20f)
             var totalDurationMs = 0L
             finalScore.measures.forEach { m ->
-                val mDurSec = (60f / finalScore.tempo) * m.timeSignatureNumerator
-                totalDurationMs += (mDurSec * 1000).toLong()
+                val quarterBeatsInMeasure = m.timeSignatureNumerator.toFloat() * (4f / m.timeSignatureDenominator.toFloat().coerceAtLeast(1f))
+                val mDurSec = (60f / safeTempo) * quarterBeatsInMeasure
+                totalDurationMs += (mDurSec * 1000f).toLong()
             }
             if (totalDurationMs <= 0L) totalDurationMs = 180000L // 3 min default fallback
 
@@ -1748,7 +1790,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
             val scoreItem = pEQMediaItem(
                 id = "score_${uriString.hashCode()}",
                 title = finalScore.title.ifBlank { fileName.substringBeforeLast(".") },
-                subtitle = "${finalScore.composer.ifBlank { "Score" }} • ${finalScore.timeSignature} • ${finalScore.tempo.toInt()} BPM",
+                subtitle = "${finalScore.composer.ifBlank { "Score" }} • ${finalScore.timeSignature} •${finalScore.tempo.toInt()} BPM",
                 artist = finalScore.composer.ifBlank { "Score Composer" },
                 path = uriString,
                 type = MediaType.AUDIO,
@@ -1756,6 +1798,13 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 sizeBytes = fileBytes?.size?.toLong() ?: 0L,
                 durationMs = totalDurationMs
             )
+
+            for (progress in 10..90 step 10) {
+                delay(12)
+                withContext(Dispatchers.Main) {
+                    pdfImportProgress.value = progress / 100f
+                }
+            }
 
             withContext(Dispatchers.Main) {
                 currentScore.value = finalScore
@@ -1781,22 +1830,12 @@ fun scrubSongPlayhead(targetProgress: Float) {
                 updateMostPlayed(scoreItem)
                 persistSession()
 
-                isImportingPDF.value = false
-            }
-
-            for (progress in 1..100) {
-                delay(5)
-                withContext(Dispatchers.Main) {
-                    pdfImportProgress.value = progress / 100f
-                }
-            }
-            withContext(Dispatchers.Main) {
+                pdfImportProgress.value = 1f
                 isImportingPDF.value = false
                 pdfImportProgress.value = 0f
             }
         }
     }
-
     fun compileCurrentNotationToPDF(options: PdfExportOptions = pdfExportOptions.value, onComplete: ((String?) -> Unit)? = null) {
         val score = currentScore.value ?: Score(
             title = options.title.ifBlank { "pEQ Score Study" },

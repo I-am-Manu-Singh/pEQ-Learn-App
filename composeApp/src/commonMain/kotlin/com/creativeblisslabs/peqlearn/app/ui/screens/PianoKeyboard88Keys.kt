@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.ViewQuilt
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -1173,13 +1175,17 @@ Row(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = Color(0xFF0E0B1A)
         ) {
+            var practiceStudioTab by remember { mutableIntStateOf(0) } // 0 = Masterworks Tutorials, 1 = Scales, Chords & Exercises
+            var selectedTrainingMode by remember { mutableStateOf("FULL") } // "FULL", "RH_ONLY", "LH_ONLY", "SLOW_TEMPO"
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.85f)
+                    .fillMaxHeight(0.9f)
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1187,50 +1193,250 @@ Row(
                 ) {
                     Column {
                         Text("Interactive Practice Studio", color = Color(0xFFFFD700), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Scales, Arpeggios & Chords with Hand Fingering", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                        Text("Masterworks, Hand Separation & Technical Mastery", color = Color.White.copy(0.7f), fontSize = 12.sp)
                     }
                     IconButton(onClick = { showLearnModeDialog = false }) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                     }
                 }
 
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                // Tab Switcher: Inbuilt Masterworks vs Scales/Chords
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF130E24))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(PracticeLibrary.items) { item ->
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFF19132E),
-                            border = BorderStroke(1.dp, Color(0xFF2C2250)),
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (practiceStudioTab == 0) Color(0xFF5C6BC0) else Color.Transparent)
+                            .clickable { practiceStudioTab = 0 }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Text("Masterworks Tutorials (${PracticeLibrary.builtInTutorials.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (practiceStudioTab == 1) Color(0xFF5C6BC0) else Color.Transparent)
+                            .clickable { practiceStudioTab = 1 }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.School, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Text("Scales & Chords (${PracticeLibrary.items.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+
+                // If in Masterworks tab: Training Mode selector pill
+                if (practiceStudioTab == 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("TRAINING FOCUS:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val practiceScore = PracticeLibrary.createScoreForPracticeItem(item)
-                                    viewModel.currentScore.value = practiceScore
-                                    viewModel.resetScorePlayhead()
-                                    showLearnModeDialog = false
-                                }
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF19132E))
+                                .padding(2.dp)
                         ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                            listOf(
+                                "FULL" to "Full Score",
+                                "RH_ONLY" to "RH Only",
+                                "LH_ONLY" to "LH Only",
+                                "SLOW_TEMPO" to "0.7x Tempo"
+                            ).forEach { (modeKey, label) ->
+                                val isSelected = selectedTrainingMode == modeKey
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSelected) Color(0xFF6C63FF) else Color.Transparent)
+                                        .clickable { selectedTrainingMode = modeKey }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
-                                    Text(item.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                    AssistChip(
-                                        onClick = {},
-                                        label = { Text(item.category, fontSize = 10.sp) }
+                                    Text(
+                                        label,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) Color.White else Color.White.copy(0.6f)
                                     )
                                 }
-                                Text(item.description, color = Color.White.copy(0.7f), fontSize = 12.sp)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("RH: ${item.fingeringRightHand.joinToString(" ")}", fontSize = 11.sp, color = Color(0xFF81D4FA))
-                                    Text("LH: ${item.fingeringLeftHand.joinToString(" ")}", fontSize = 11.sp, color = Color(0xFFCE93D8))
+                            }
+                        }
+                    }
+                }
+
+                // List content
+                if (practiceStudioTab == 0) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(PracticeLibrary.builtInTutorials) { tutorial ->
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF19132E),
+                                border = BorderStroke(1.dp, Color(0xFF2C2250)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val readBytesFn: (String) -> ByteArray? = { name ->
+                                            viewModel.onReadAssetBytes?.invoke(name)
+                                        }
+                                        val loadedScore = PracticeLibrary.loadTutorialScore(
+                                            tutorial = tutorial,
+                                            readBytes = readBytesFn,
+                                            trainingMode = selectedTrainingMode
+                                        )
+                                        if (loadedScore != null) {
+                                            viewModel.currentScore.value = loadedScore
+                                            viewModel.resetScorePlayhead()
+                                            // Synchronize hand practice toggle
+                                            when (selectedTrainingMode) {
+                                                "RH_ONLY" -> viewModel.setHandPracticeMode("RIGHT")
+                                                "LH_ONLY" -> viewModel.setHandPracticeMode("LEFT")
+                                                else -> viewModel.setHandPracticeMode("BOTH")
+                                            }
+                                            showLearnModeDialog = false
+                                        }
+                                    }
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(tutorial.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                            Text("${tutorial.composer} • ${tutorial.era}", color = Color(0xFF81D4FA), fontSize = 11.sp)
+                                        }
+                                        AssistChip(
+                                            onClick = {},
+                                            label = { Text(tutorial.difficulty, fontSize = 10.sp, color = Color(0xFFA5D6A7)) }
+                                        )
+                                    }
+
+                                    Text(tutorial.description, color = Color.White.copy(0.75f), fontSize = 11.sp, lineHeight = 16.sp)
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text("${tutorial.timeSignature} Time", fontSize = 10.sp, color = Color.White.copy(0.6f))
+                                            Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                            Text("${tutorial.tempo} BPM", fontSize = 10.sp, color = Color(0xFFFFD700))
+                                            Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                            Text("${tutorial.totalMeasures} Bars", fontSize = 10.sp, color = Color.White.copy(0.6f))
+                                        }
+                                        Button(
+                                            onClick = {
+                                                val readBytesFn: (String) -> ByteArray? = { name ->
+                                                    viewModel.onReadAssetBytes?.invoke(name)
+                                                }
+                                                val loadedScore = PracticeLibrary.loadTutorialScore(
+                                                    tutorial = tutorial,
+                                                    readBytes = readBytesFn,
+                                                    trainingMode = selectedTrainingMode
+                                                )
+                                                if (loadedScore != null) {
+                                                    viewModel.currentScore.value = loadedScore
+                                                    viewModel.resetScorePlayhead()
+                                                    when (selectedTrainingMode) {
+                                                        "RH_ONLY" -> viewModel.setHandPracticeMode("RIGHT")
+                                                        "LH_ONLY" -> viewModel.setHandPracticeMode("LEFT")
+                                                        else -> viewModel.setHandPracticeMode("BOTH")
+                                                    }
+                                                    showLearnModeDialog = false
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C6BC0)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(13.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Practice", fontSize = 11.sp)
+                                        }
+                                    }
+
+                                    // Focus pills
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        tutorial.focusAreas.forEach { focus ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color(0xFF281D45))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(focus, fontSize = 9.sp, color = Color(0xFFCE93D8))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(PracticeLibrary.items) { item ->
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF19132E),
+                                border = BorderStroke(1.dp, Color(0xFF2C2250)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val practiceScore = PracticeLibrary.createScoreForPracticeItem(item)
+                                        viewModel.currentScore.value = practiceScore
+                                        viewModel.resetScorePlayhead()
+                                        showLearnModeDialog = false
+                                    }
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(item.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                        AssistChip(
+                                            onClick = {},
+                                            label = { Text(item.category, fontSize = 10.sp) }
+                                        )
+                                    }
+                                    Text(item.description, color = Color.White.copy(0.7f), fontSize = 12.sp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("RH: ${item.fingeringRightHand.joinToString(" ")}", fontSize = 11.sp, color = Color(0xFF81D4FA))
+                                        Text("LH: ${item.fingeringLeftHand.joinToString(" ")}", fontSize = 11.sp, color = Color(0xFFCE93D8))
+                                    }
                                 }
                             }
                         }
@@ -1432,28 +1638,115 @@ Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        // Open / Import Score Button
-                                        Button(
-                                            onClick = { viewModel.onPickScoreFileRequested?.invoke() },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E204A)),
-                                            shape = RoundedCornerShape(16.dp),
-                                            border = BorderStroke(1.dp, Color(0xFF523B7A)),
-                                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(30.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.FileOpen,
-                                                contentDescription = "Import Score",
-                                                tint = Color(0xFFC5CAE9),
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                            Spacer(Modifier.width(4.dp))
-                                            Text(
-                                                "Import",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFFC5CAE9)
-                                            )
+                                        // Open / Import Score Button with Dropdown
+                                        var showImportMenu by remember { mutableStateOf(false) }
+                                        Box {
+                                            Button(
+                                                onClick = { showImportMenu = true },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E204A)),
+                                                shape = RoundedCornerShape(16.dp),
+                                                border = BorderStroke(1.dp, Color(0xFF523B7A)),
+                                                contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                                                modifier = Modifier.height(30.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.FileOpen,
+                                                    contentDescription = "Import Score",
+                                                    tint = Color(0xFFC5CAE9),
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(
+                                                    "Import",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(0xFFC5CAE9)
+                                                )
+                                                Icon(
+                                                    Icons.Default.ArrowDropDown,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFC5CAE9).copy(alpha = 0.7f),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+
+                                            DropdownMenu(
+                                                expanded = showImportMenu,
+                                                onDismissRequest = { showImportMenu = false },
+                                                modifier = Modifier
+                                                    .background(Color(0xFF140E26))
+                                                    .border(BorderStroke(1.dp, Color(0xFF382956)), RoundedCornerShape(8.dp))
+                                            ) {
+                                                // 1. Custom File Picker
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
+                                                            Spacer(Modifier.width(8.dp))
+                                                            Column {
+                                                                Text("Import Custom File...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                                Text("MIDI (.mid), MusicXML (.xml), PDF Score", fontSize = 10.sp, color = Color.White.copy(0.6f))
+                                                            }
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        showImportMenu = false
+                                                        viewModel.onPickScoreFileRequested?.invoke()
+                                                    }
+                                                )
+
+                                                HorizontalDivider(color = Color(0xFF281C3F), modifier = Modifier.padding(vertical = 4.dp))
+
+                                                // 2. Header for Built-in Tutorials
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color(0xFF81D4FA), modifier = Modifier.size(13.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text("INBUILT MIDI TUTORIALS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81D4FA))
+                                                }
+
+                                                // List each built-in tutorial
+                                                PracticeLibrary.builtInTutorials.forEach { tutorial ->
+                                                    DropdownMenuItem(
+                                                        text = {
+                                                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                                                Row(
+                                                                    modifier = Modifier.fillMaxWidth(),
+                                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    Text(tutorial.title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                                                    Text("${tutorial.tempo} BPM", fontSize = 10.sp, color = Color(0xFFFFD700))
+                                                                }
+                                                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                                    Text(tutorial.composer, fontSize = 10.sp, color = Color(0xFF81D4FA))
+                                                                    Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                                                    Text(tutorial.timeSignature, fontSize = 10.sp, color = Color.White.copy(0.6f))
+                                                                    Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                                                    Text(tutorial.difficulty, fontSize = 10.sp, color = Color(0xFFA5D6A7))
+                                                                }
+                                                            }
+                                                        },
+                                                        onClick = {
+                                                            showImportMenu = false
+                                                            val readBytesFn: (String) -> ByteArray? = { name ->
+                                                                viewModel.onReadAssetBytes?.invoke(name)
+                                                            }
+                                                            val loadedScore = PracticeLibrary.loadTutorialScore(
+                                                                tutorial = tutorial,
+                                                                readBytes = readBytesFn,
+                                                                trainingMode = "FULL"
+                                                            )
+                                                            if (loadedScore != null) {
+                                                                viewModel.currentScore.value = loadedScore
+                                                                viewModel.resetScorePlayhead()
+                                                            }
+                                                        }
+                                                    )
+                                                }
+                                            }
                                         }
 
                     
@@ -2497,6 +2790,65 @@ Button(
                                             contentDescription = "Transpose Up",
                                             tint = Color.White.copy(0.8f),
                                             modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+
+                                // 12. Hand Practice Mode Toggle (Both / Right / Left)
+                                val currentHandMode = viewModel.activeHandMode.value
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF1E162E))
+                                        .border(BorderStroke(1.dp, Color(0xFF372754)), RoundedCornerShape(12.dp))
+                                        .padding(2.dp)
+                                ) {
+                                    // Both Hands
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (currentHandMode == "BOTH") Color(0xFF5C6BC0) else Color.Transparent)
+                                            .clickable { viewModel.setHandPracticeMode("BOTH") }
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            "Both",
+                                            fontSize = 10.sp,
+                                            fontWeight = if (currentHandMode == "BOTH") FontWeight.Bold else FontWeight.Normal,
+                                            color = if (currentHandMode == "BOTH") Color.White else Color.White.copy(0.6f)
+                                        )
+                                    }
+
+                                    // Right Hand Only
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (currentHandMode == "RIGHT") Color(0xFF4A90E2) else Color.Transparent)
+                                            .clickable { viewModel.setHandPracticeMode("RIGHT") }
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            "Right (RH)",
+                                            fontSize = 10.sp,
+                                            fontWeight = if (currentHandMode == "RIGHT") FontWeight.Bold else FontWeight.Normal,
+                                            color = if (currentHandMode == "RIGHT") Color.White else Color.White.copy(0.6f)
+                                        )
+                                    }
+
+                                    // Left Hand Only
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (currentHandMode == "LEFT") Color(0xFF8E24AA) else Color.Transparent)
+                                            .clickable { viewModel.setHandPracticeMode("LEFT") }
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            "Left (LH)",
+                                            fontSize = 10.sp,
+                                            fontWeight = if (currentHandMode == "LEFT") FontWeight.Bold else FontWeight.Normal,
+                                            color = if (currentHandMode == "LEFT") Color.White else Color.White.copy(0.6f)
                                         )
                                     }
                                 }
