@@ -24,6 +24,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.creativeblisslabs.peqlearn.app.Tab
 import com.creativeblisslabs.peqlearn.app.ui.components.*
 import com.creativeblisslabs.peqlearn.app.ui.screens.*
+import kotlin.invoke
+import kotlin.text.clear
+import kotlin.text.toFloat
+import kotlin.text.toInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -566,23 +570,46 @@ fun ExportTabContent(viewModel: AppViewModel) {
 
 @Composable
 fun VideoExportStudioSection(viewModel: AppViewModel) {
-    // Layout Mode (Combined / Visualizer / Notation)
+    // 1. Layout Mode (Score + Waterfall / Waterfall / Notation)
     SettingsSection("Export Composition Mode", icon = Icons.Default.Dashboard) {
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("Score + Waterfall", "Waterfall", "Notation").forEach { mode ->
+            listOf(
+                "Score + Waterfall" to "Split (Notation + Waterfall + Piano)",
+                "Waterfall" to "Piano + Waterfall Only",
+                "Notation" to "Sheet Music / Tab Only"
+            ).forEach { (modeKey, label) ->
                 pEQFilterChip(
-                    selected = viewModel.videoExportLayoutMode.value == mode,
-                    onClick = { viewModel.videoExportLayoutMode.value = mode },
-                    label = { Text(mode, style = MaterialTheme.typography.labelSmall) }
+                    selected = viewModel.videoExportLayoutMode.value == modeKey,
+                    onClick = { viewModel.videoExportLayoutMode.value = modeKey },
+                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
                 )
+            }
+        }
+
+        // Sub-selector for Staff / Tab / Both when Notation is included in the video
+        if (viewModel.videoExportLayoutMode.value != "Waterfall") {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Notation Style in Video",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Staff Only", "Tab Only", "Both Viewers").forEach { fmt ->
+                    pEQFilterChip(
+                        selected = viewModel.notationFormat.value.equals(fmt, ignoreCase = true),
+                        onClick = { viewModel.notationFormat.value = fmt },
+                        label = { Text(fmt, style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
             }
         }
     }
 
-    // Rendering Visual Theme
+    // 2. Rendering Visual Theme
     SettingsSection("Rendering Visual Theme", icon = Icons.Default.Palette) {
         Text("Visual style/colors of the visualizer scene.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -596,11 +623,11 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Resolution
+    // 3. Resolution
     SettingsSection("Resolution", icon = Icons.Default.Hd) {
         Text("Output dimensions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("1080p", "4K").forEach { res ->
+            listOf("720p", "1080p", "1440p", "4K").forEach { res ->
                 pEQFilterChip(
                     selected = viewModel.videoExportResolution.value == res,
                     onClick = { viewModel.videoExportResolution.value = res },
@@ -610,7 +637,7 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Frame Rate (FPS)
+    // 4. Frame Rate (FPS)
     SettingsSection("Frame Rate (FPS)", icon = Icons.Default.Speed) {
         Text("Target video smoothness.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -624,7 +651,7 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Bitrate Limit
+    // 5. Bitrate Limit
     SettingsSection("Bitrate Limit", icon = Icons.Default.Compress) {
         Text("Output compression rate.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -638,7 +665,7 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Video Container
+    // 6. Video Container
     SettingsSection("Video Container", icon = Icons.Default.Movie) {
         Text("Output format container.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -652,7 +679,7 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Audio Track Source for Video (MIDI Score Synth vs Custom Audio File via picker)
+    // 7. Audio Track Source for Video
     SettingsSection("Video Audio Track Source", icon = Icons.Default.Audiotrack) {
         Text("Choose the soundtrack source for the rendered video.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(
@@ -708,7 +735,7 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Audio Codec
+    // 8. Audio Codec & Sample Rate
     SettingsSection("Audio Codec", icon = Icons.Default.Audiotrack) {
         Text("Compression format for the audio stream.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -722,7 +749,6 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Audio Sample Rate
     SettingsSection("Audio Sample Rate", icon = Icons.Default.GraphicEq) {
         Text("Frequency response fidelity.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -736,7 +762,7 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Render Piano Pedals in Video Option
+    // 9. Render Piano Pedals in Video Option
     SettingsSection("Piano Pedals in Video", icon = Icons.Default.LinearScale) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -754,18 +780,14 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
         }
     }
 
-    // Camera Perspective Yaw & Pitch & Visualizer Configs
-    pEQGlassCard(
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    // 10. Camera Perspective & EQ Bars
+    pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            // Yaw
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Camera Perspective Yaw", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text("${viewModel.videoExportCameraYaw.floatValue.toInt()}°", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("Adjust horizontal viewing angle of the scene.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Slider(
                     value = viewModel.videoExportCameraYaw.floatValue,
                     onValueChange = { viewModel.videoExportCameraYaw.floatValue = it },
@@ -774,13 +796,11 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
                 )
             }
 
-            // Pitch
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Camera Perspective Pitch", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text("${viewModel.videoExportCameraPitch.floatValue.toInt()}°", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("Adjust vertical tilt viewing angle of the scene.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Slider(
                     value = viewModel.videoExportCameraPitch.floatValue,
                     onValueChange = { viewModel.videoExportCameraPitch.floatValue = it },
@@ -789,13 +809,11 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
                 )
             }
 
-            // Visualizer EQ Bars Density
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Visualizer EQ Bars Density", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text("${viewModel.videoExportEqBars.intValue} Bars", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("Number of active spectrum analyzer bars.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Slider(
                     value = viewModel.videoExportEqBars.intValue.toFloat(),
                     onValueChange = { viewModel.videoExportEqBars.intValue = it.toInt() },
@@ -804,13 +822,11 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
                 )
             }
 
-            // Audio Reactive Peak Sensitivity
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Audio Reactive Peak Sensitivity", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text("${viewModel.videoExportPeakSensitivity.floatValue.toInt()}%", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
-                Text("Multiplier for volume-based object scaling.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 Slider(
                     value = viewModel.videoExportPeakSensitivity.floatValue,
                     onValueChange = { viewModel.videoExportPeakSensitivity.floatValue = it },
@@ -911,7 +927,11 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(item.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-                                Text("${item.resolution} • ${item.fps} • ${item.audioSource}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                Text(
+                                    text = "${item.resolution} • ${item.fps} • ${item.audioSource}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
                             }
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -961,10 +981,10 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
 
 @Composable
 fun PdfExportStudioSection(viewModel: AppViewModel) {
+    val pdfOpts = viewModel.pdfExportOptions.value
+
     SectionHeader("HIGH-RESOLUTION SHEET MUSIC PDF EXPORT")
     Spacer(Modifier.height(8.dp))
-
-    val pdfOpts = viewModel.pdfExportOptions.value
 
     // PDF Paper Size & Orientation
     SettingsSection("Page Dimensions & Orientation", icon = Icons.Default.Description) {

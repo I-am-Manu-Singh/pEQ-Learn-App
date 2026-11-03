@@ -35,6 +35,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withTimeoutOrNull
 
 import com.creativeblisslabs.peqlearn.app.data.normalizePath
+import com.creativeblisslabs.peqlearn.app.video.VideoExportConfig
+import com.creativeblisslabs.peqlearn.app.video.compilePdfPlatformSpecific
+import com.creativeblisslabs.peqlearn.app.video.exportVideoPlatformSpecific
+import kotlin.time.TimeSource
 
 data class VideoExportHistoryItem(
     val id: String = "${Clock.System.now().toEpochMilliseconds()}",
@@ -942,85 +946,6 @@ val client = createHttpClient()
     fun selectPresetByIndex(instrumentKey: String, index: Int): Pair<Int, Int>? =
         audioEngine.selectPresetByIndex(instrumentKey, index) ?: Pair(0, index)
 
-    fun exportVideoToFile(onComplete: (String) -> Unit) {
-        val score = currentScore.value ?: Score(
-            title = currentMediaItem.value?.title ?: "pEQ Performance",
-            tempo = metronomeBpm.value.toFloat(),
-            timeSignature = "4/4"
-        )
-        val res = videoExportResolution.value
-        val fpsInt = when (videoExportFps.value) {
-            "24 FPS" -> 24
-            "30 FPS" -> 30
-            "120 FPS" -> 120
-            else -> 60
-        }
-        val effects = mapOf(
-            "Glow" to (videoExportPeakSensitivity.floatValue > 30f),
-            "Particles" to showWaterfallParticles.value,
-            "Notation" to (videoExportLayoutMode.value.contains("Score") || videoExportLayoutMode.value.contains("Notation")),
-            "Visualizer" to (videoExportLayoutMode.value.contains("Waterfall") || videoExportLayoutMode.value.contains("Visualizer")),
-            "Theme" to (videoExportTheme.value == "Cyberpunk"),
-            "RenderPedals" to videoExportRenderPedals.value,
-            "AudioSource" to (videoExportAudioSource.value == "MidiScore")
-        )
-
-        val queueItem = VideoExportHistoryItem(
-            title = score.title.ifBlank { "pEQ Composition" },
-            resolution = res,
-            fps = videoExportFps.value,
-            audioSource = if (videoExportAudioSource.value == "AudioFile") videoExportExternalAudioName.value ?: "Custom Audio File" else "MIDI Score Synth",
-            status = "Rendering",
-            progress = 0.01f
-        )
-        videoExportHistory.add(0, queueItem)
-
-        isVideoExporting.value = true
-        videoExportProgress.value = 0.01f
-
-        val exporter = onVideoExportRequested
-        if (exporter != null) {
-            exporter(score, res, fpsInt, effects, { progress ->
-                videoExportProgress.value = progress
-                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
-                if (idx != -1) {
-                    videoExportHistory[idx] = videoExportHistory[idx].copy(progress = progress)
-                }
-            }, { filePath ->
-                isVideoExporting.value = false
-                videoExportProgress.value = 1.0f
-                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
-                if (idx != -1) {
-                    videoExportHistory[idx] = videoExportHistory[idx].copy(
-                        status = "Completed",
-                        progress = 1.0f,
-                        filePath = filePath
-                    )
-                }
-                onComplete(filePath ?: "/sdcard/Movies/pEQ_Visualizer_${Clock.System.now().toEpochMilliseconds()}.mp4")
-            })
-        } else {
-            scope.launch {
-                for (p in 1..10) {
-                    delay(150)
-                    val prog = p / 10f
-                    videoExportProgress.value = prog
-                    val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
-                    if (idx != -1) {
-                        videoExportHistory[idx] = videoExportHistory[idx].copy(progress = prog)
-                    }
-                }
-                isVideoExporting.value = false
-                val path = "/sdcard/Movies/pEQ_Visualizer_${Clock.System.now().toEpochMilliseconds()}.mp4"
-                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
-                if (idx != -1) {
-                    videoExportHistory[idx] = videoExportHistory[idx].copy(status = "Completed", progress = 1.0f, filePath = path)
-                }
-                onComplete(path)
-            }
-        }
-    }
-
     // --- Optimized Score Temporal States ---
     val measureStartTimesSeconds = derivedStateOf {
         val score = currentScore.value ?: return@derivedStateOf emptyList<Float>()
@@ -1539,7 +1464,43 @@ fun scrubSongPlayhead(targetProgress: Float) {
         midiPlayingNote.value = null
         audioEngine.seekTo(accumulatedMs)
     }
-fun startScorePlayback() {
+    fun toggleScorePlayback() {
+        if (isScorePlaying.value) {
+            stopScorePlayback()
+        } else {
+            startScorePlayback()
+        }
+    }
+
+    fun stopScorePlayback() {
+        isScorePlaying.value = false
+        isPlaying.value = false
+        scorePlaybackJob?.cancel()
+        scorePlaybackJob = null
+
+        audioEngine.allNotesOff()
+
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            midiActiveNotes.clear()
+            midiPlayingNote.value = null
+            firedNotesMap.clear()
+            firedPedalsMap.clear()
+            sustainPedalActive.value = false
+            sustainActive.value = false
+            sostenutoPedalActive.value = false
+            softPedalActive.value = false
+        }
+    }
+
+    fun resetScorePlayhead() {
+        stopScorePlayback()
+        scorePlayheadMeasure.value = 0
+        scorePlayheadOffset.value = 0f
+        currentPosition.value = 0L
+        audioEngine.seekTo(0L)
+    }
+
+    fun startScorePlayback() {
         val score = currentScore.value ?: return
         if (isScorePlaying.value) return
 
@@ -1561,7 +1522,10 @@ fun startScorePlayback() {
             var runningSec = 0f
             for (i in 0 until numMeasures) {
                 val m = score.measures[i]
-                val qBeats = (m.timeSignatureNumerator.toFloat() * (4f / m.timeSignatureDenominator.coerceAtLeast(1).toFloat())).coerceAtLeast(1f)
+                val qBeats =
+                    (m.timeSignatureNumerator.toFloat() * (4f / m.timeSignatureDenominator.coerceAtLeast(
+                        1
+                    ).toFloat())).coerceAtLeast(1f)
                 val durSec = (60f / score.tempo.coerceAtLeast(20f)) * qBeats
                 measureStartsSec[i] = runningSec
                 measureDurationsSec[i] = durSec
@@ -1571,7 +1535,8 @@ fun startScorePlayback() {
 
             val startMeasure = scorePlayheadMeasure.value.coerceIn(0, numMeasures - 1)
             val startOffset = scorePlayheadOffset.value.coerceIn(0f, 1f)
-            var scoreElapsedSec = measureStartsSec[startMeasure] + (startOffset * measureDurationsSec[startMeasure])
+            var scoreElapsedSec =
+                measureStartsSec[startMeasure] + (startOffset * measureDurationsSec[startMeasure])
 
             // Pre-populate firedNotesMap for the starting position so we never burst past notes in the current measure
             firedNotesMap.clear()
@@ -1590,13 +1555,14 @@ fun startScorePlayback() {
             val pitchesToActivate = ArrayList<Int>(16)
             val pitchesToRelease = ArrayList<Int>(16)
 
-            var lastWallTimeNs = System.nanoTime()
+            val timeSource = TimeSource.Monotonic
+            var lastMark = timeSource.markNow()
             var lastUiBroadcastMs = 0L
 
             while (isActive && isScorePlaying.value) {
-                val nowNs = System.nanoTime()
-                val wallDeltaSec = ((nowNs - lastWallTimeNs) / 1_000_000_000.0).toFloat().coerceIn(0f, 0.1f)
-                lastWallTimeNs = nowNs
+                val elapsedDuration = lastMark.elapsedNow()
+                lastMark = timeSource.markNow()
+                val wallDeltaSec = elapsedDuration.inWholeMilliseconds / 1000f
 
                 val speed = playbackSpeed.value.coerceIn(0.25f, 2.5f)
                 scoreElapsedSec += wallDeltaSec * speed
@@ -1679,7 +1645,7 @@ fun startScorePlayback() {
                         }
                         audioEngine.noteOn(effectivePitch, 0.82f)
 
-                        // Release slightly (92% of duration) before next same-pitch note so repeated notes articulate clearly
+                        // Release slightly (94% of duration) before next same-pitch note so repeated notes articulate clearly
                         val noteDurSec = (note.duration * secPerBeat * 0.94f).coerceAtLeast(0.06f)
                         scheduledNoteReleases[effectivePitch] = scoreElapsedSec + noteDurSec
                         pitchesToRelease.remove(effectivePitch)
@@ -1699,12 +1665,15 @@ fun startScorePlayback() {
                 }
 
                 // 5. Batch ALL UI state updates into a SINGLE Main-Thread Snapshot (throttled to ~60fps unless notes changed)
-                val nowMs = nowNs / 1_000_000L
-                val hasNoteChanges = pitchesToActivate.isNotEmpty() || pitchesToRelease.isNotEmpty() || pedalStateChanged != null
+                val nowMs = lastMark.elapsedNow().inWholeMilliseconds
+                val hasNoteChanges =
+                    pitchesToActivate.isNotEmpty() || pitchesToRelease.isNotEmpty() || pedalStateChanged != null
                 if (hasNoteChanges || (nowMs - lastUiBroadcastMs) >= 16L) {
                     lastUiBroadcastMs = nowMs
-                    val actCopy = if (pitchesToActivate.isNotEmpty()) pitchesToActivate.toIntArray() else null
-                    val relCopy = if (pitchesToRelease.isNotEmpty()) pitchesToRelease.toIntArray() else null
+                    val actCopy =
+                        if (pitchesToActivate.isNotEmpty()) pitchesToActivate.toIntArray() else null
+                    val relCopy =
+                        if (pitchesToRelease.isNotEmpty()) pitchesToRelease.toIntArray() else null
                     val pedCopy = pedalStateChanged
 
                     withContext(Dispatchers.Main) {
@@ -1729,6 +1698,7 @@ fun startScorePlayback() {
                                         sustainPedalActive.value = pressed
                                         sustainActive.value = pressed
                                     }
+
                                     66 -> sostenutoPedalActive.value = pressed
                                     67 -> softPedalActive.value = pressed
                                 }
@@ -1742,42 +1712,6 @@ fun startScorePlayback() {
             }
         }
     }
-
-    fun toggleScorePlayback() {
-        if (isScorePlaying.value) {
-            stopScorePlayback()
-        } else {
-            startScorePlayback()
-        }
-    }
-fun stopScorePlayback() {
-        isScorePlaying.value = false
-        isPlaying.value = false
-        scorePlaybackJob?.cancel()
-        scorePlaybackJob = null
-
-        audioEngine.allNotesOff()
-
-        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
-            midiActiveNotes.clear()
-            midiPlayingNote.value = null
-            firedNotesMap.clear()
-            firedPedalsMap.clear()
-            sustainPedalActive.value = false
-            sustainActive.value = false
-            sostenutoPedalActive.value = false
-            softPedalActive.value = false
-        }
-    }
-
-  fun resetScorePlayhead() {
-        stopScorePlayback()
-        scorePlayheadMeasure.value = 0
-        scorePlayheadOffset.value = 0f
-        currentPosition.value = 0L
-        audioEngine.seekTo(0L)
-    }
-
    fun onMidiEventReceived(note: Int, isNoteOn: Boolean, velocity: Int = 90, channel: Int = 1) {
         // Trigger native audio engine IMMEDIATELY on the calling MIDI thread for zero-latency hardware keyboard response!
         if (isNoteOn && velocity > 0) {
@@ -1937,30 +1871,106 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
         isExportingPDF.value = true
         pdfExportProgress.value = 0.05f
 
-        val exporter = onPdfExportRequested
-        if (exporter != null) {
-            exporter(score, options, { progress ->
-                pdfExportProgress.value = progress
-            }, { path ->
-                isExportingPDF.value = false
-                pdfExportProgress.value = 1.0f
-                onComplete?.invoke(path)
-            })
-        } else {
-            viewModelScope.launch(Dispatchers.Default) {
-                for (progress in 1..100) {
-                    delay(20)
-                    withContext(Dispatchers.Main) {
-                        pdfExportProgress.value = progress / 100f
-                    }
+        compilePdfPlatformSpecific(
+            score = score,
+            options = options,
+            onProgress = { progress: Float ->
+                viewModelScope.launch(Dispatchers.Main) {
+                    pdfExportProgress.value = progress
                 }
-                withContext(Dispatchers.Main) {
+            },
+            onComplete = { path: String? ->
+                viewModelScope.launch(Dispatchers.Main) {
                     isExportingPDF.value = false
-                    pdfExportProgress.value = 0f
-                    onComplete?.invoke("/sdcard/Documents/pEQ_${score.title.replace(" ", "_")}.pdf")
+                    pdfExportProgress.value = 1.0f
+                    onComplete?.invoke(path)
                 }
             }
-        }
+        )
+    }
+
+    fun exportVideoToFile(onComplete: (String) -> Unit) {
+        val score = currentScore.value ?: Score(
+            title = currentMediaItem.value?.title ?: "pEQ Performance",
+            tempo = metronomeBpm.value.toFloat(),
+            timeSignature = "4/4"
+        )
+        val res = videoExportResolution.value
+        val fpsInt = videoExportFps.value.filter { it.isDigit() }.toIntOrNull() ?: 60
+
+        val effectsMap = mapOf(
+            "Notation" to (videoExportLayoutMode.value != "Waterfall"),
+            "Visualizer" to (videoExportLayoutMode.value != "Notation"),
+            "Glow" to (videoExportPeakSensitivity.floatValue > 30f),
+            "Particles" to showWaterfallParticles.value,
+            "RenderPedals" to videoExportRenderPedals.value,
+            "Theme" to (videoExportTheme.value == "Cyberpunk"),
+            "AudioSource" to (videoExportAudioSource.value == "MidiScore")
+        )
+
+        val queueItem = VideoExportHistoryItem(
+            title = score.title.ifBlank { "pEQ Composition" },
+            resolution = res,
+            fps = videoExportFps.value,
+            audioSource = if (videoExportAudioSource.value == "AudioFile") videoExportExternalAudioName.value
+                ?: "Custom Audio File" else "MIDI Score Synth",
+            status = "Rendering",
+            progress = 0.01f
+        )
+        videoExportHistory.add(0, queueItem)
+
+        isVideoExporting.value = true
+        videoExportProgress.value = 0.01f
+
+        val config = VideoExportConfig(
+            score = score,
+            resolution = res,
+            fps = fpsInt,
+            effects = effectsMap,
+            layoutMode = videoExportLayoutMode.value,
+            notationFormat = notationFormat.value,
+            visualTheme = videoExportTheme.value,
+            bitrateMbps = videoExportBitrate.value.filter { it.isDigit() }.toIntOrNull() ?: 12,
+            sampleRateHz = if (videoExportSampleRate.value.contains("48")) 48000 else 44100,
+            cameraYawDeg = videoExportCameraYaw.floatValue,
+            cameraPitchDeg = videoExportCameraPitch.floatValue,
+            eqBarsCount = videoExportEqBars.intValue,
+            peakSensitivity = videoExportPeakSensitivity.floatValue,
+            rightHandColorInt = rightHandColor.value.hashCode(),
+            leftHandColorInt = leftHandColor.value.hashCode(),
+            isRightHandHidden = isRightHandHidden.value,
+            isLeftHandHidden = isLeftHandHidden.value,
+            enabledTrackIndices = enabledTrackIndices.toMap(),
+            externalAudioUri = videoExportExternalAudioUri.value
+        )
+
+        exportVideoPlatformSpecific(
+            config = config,
+            onProgress = { progress: Float ->
+                videoExportProgress.value = progress
+                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
+                if (idx != -1) {
+                    videoExportHistory[idx] = videoExportHistory[idx].copy(progress = progress)
+                }
+            },
+            onComplete = { filePath: String? ->
+                val finalPath = filePath ?: "/sdcard/Movies/pEQ_Visualizer_${
+                    kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+                }.mp4"
+                isVideoExporting.value = false
+                videoExportProgress.value = 1.0f
+
+                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
+                if (idx != -1) {
+                    videoExportHistory[idx] = videoExportHistory[idx].copy(
+                        status = "Completed",
+                        progress = 1.0f,
+                        filePath = finalPath
+                    )
+                }
+                onComplete(finalPath)
+            }
+        )
     }
 
     fun playPattern(pattern: GroovePattern) {
@@ -1980,6 +1990,37 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
 
     val liveRiyaazBpm = mutableIntStateOf(100)
 
+        fun onSequencerStepTick(stepIndex: Int, selectedScale: String, bolSequence: List<String> = emptyList()) {
+            val stepValue = sequencerSteps.getOrNull(stepIndex)?.value ?: 0
+            if (stepValue > 0) {
+                val bol = bolSequence.getOrNull(stepIndex)
+                if (!bol.isNullOrBlank() && !bol.all { it.isDigit() }) {
+                    audioEngine.playSample(
+                        label = bol,
+                        index = stepIndex,
+                        string = "TABLA"
+                    )
+                } else {
+                    audioEngine.playSample(
+                        label = if (stepIndex == 0) "METRONOME-STRONG" else "METRONOME-WEAK",
+                        index = stepIndex,
+                        string = "SYSTEM"
+                    )
+                }
+            }
+
+            if (stepIndex % 4 == 0) {
+                audioEngine.playSample(
+                    label = selectedScale.uppercase().trim(),
+                    index = stepIndex,
+                    string = "TANPURA"
+                )
+            }
+
+            viewModelScope.launch(Dispatchers.Main) {
+                currentStep.intValue = stepIndex
+            }
+        }
     fun startRiyaazEngine(initialScale: String, totalBeats: Int, bolSequence: List<String> = emptyList()) {
         stopScorePlayback()
         isSequencerActive.value = true
@@ -2000,37 +2041,6 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
         }
     }
 
-    private fun onSequencerStepTick(stepIndex: Int, selectedScale: String, bolSequence: List<String> = emptyList()) {
-        val stepValue = sequencerSteps.getOrNull(stepIndex)?.value ?: 0
-        if (stepValue > 0) {
-            val bol = bolSequence.getOrNull(stepIndex)
-            if (!bol.isNullOrBlank() && !bol.all { it.isDigit() }) {
-                audioEngine.playSample(
-                    label = bol,
-                    index = stepIndex,
-                    string = "TABLA"
-                )
-            } else {
-                audioEngine.playSample(
-                    label = if (stepIndex == 0) "METRONOME-STRONG" else "METRONOME-WEAK",
-                    index = stepIndex,
-                    string = "SYSTEM"
-                )
-            }
-        }
-
-        if (stepIndex % 4 == 0) {
-            audioEngine.playSample(
-                label = selectedScale.uppercase().trim(),
-                index = stepIndex,
-                string = "TANPURA"
-            )
-        }
-
-        viewModelScope.launch(Dispatchers.Main) {
-            currentStep.intValue = stepIndex
-        }
-    }
 
     fun stopRiyaazEngine() {
         isSequencerActive.value = false
@@ -2096,7 +2106,7 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
         audioEngine.playMidiNote(midiNote)
     }
 
-    private fun getNoteNameFromMidi(midiNote: Int): String {
+    fun getNoteNameFromMidi(midiNote: Int): String {
         if (midiNote !in 0..127) return "UNKNOWN"
         val noteNames = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
         val noteIndex = midiNote % 12
