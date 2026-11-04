@@ -533,6 +533,8 @@ val client = createHttpClient()
     val isStemDeReverbEnabled = mutableStateOf(false)
     val isStemDeNoiseEnabled = mutableStateOf(false)
     val isStemKaraokeExtraction = mutableStateOf(false)
+    val songStructureAnalysis = mutableStateOf<com.creativeblisslabs.peqlearn.app.ai.AllInOneAnalysisResult?>(null)
+    val isAnalyzingStructure = mutableStateOf(false)
     var onPickModelRequested: (((String, String) -> Unit) -> Unit)? = null
 
     // ─── ONNX Model Management Platform Callbacks ───────────────────────────

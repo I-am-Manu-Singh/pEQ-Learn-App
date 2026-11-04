@@ -210,7 +210,10 @@ var isSearchActive by remember { mutableStateOf(false) }
                     RhythmGrooveWorkstation(viewModel = viewModel)
                 }
                 TheoryPart.STRUCTURE -> {
-                    SongStructureAcademyPanel()
+                    SongStructureAcademyPanel(viewModel = viewModel)
+                }
+                TheoryPart.EAR_SIGHT -> {
+                    EarTrainingAcademyScreen(viewModel = viewModel, primaryColor = MaterialTheme.colorScheme.primary)
                 }
                 TheoryPart.INDIAN_CLASSICAL -> {
                     IndianClassicalInteractivePanel(viewModel = viewModel)
@@ -341,18 +344,42 @@ private fun ConceptsBrowser(
 
 
 @Composable
-private fun SongStructureAcademyPanel() {
-    val sections = listOf(
-        Triple("Intro", 4, MaterialTheme.colorScheme.primary),
-        Triple("Verse 1", 16, MaterialTheme.colorScheme.secondary),
-        Triple("Pre-Chorus", 8, MaterialTheme.colorScheme.tertiary),
-        Triple("Chorus", 16, MaterialTheme.colorScheme.error),
-        Triple("Verse 2", 16, MaterialTheme.colorScheme.secondary),
-        Triple("Chorus 2", 16, MaterialTheme.colorScheme.error),
-        Triple("Bridge", 8, MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)),
-        Triple("Chorus 3", 16, MaterialTheme.colorScheme.error),
-        Triple("Outro", 8, MaterialTheme.colorScheme.outline)
-    )
+private fun SongStructureAcademyPanel(viewModel: AppViewModel? = null) {
+    val importedAnalysis = viewModel?.songStructureAnalysis?.value
+    val currentTrack = viewModel?.selectedMixerItem?.value ?: viewModel?.currentMediaItem?.value
+    val isAnalyzing = viewModel?.isAnalyzingStructure?.value == true
+
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val errorColor = MaterialTheme.colorScheme.error
+    val outlineColor = MaterialTheme.colorScheme.outline
+
+    val sections = remember(importedAnalysis, primaryColor, secondaryColor, tertiaryColor, errorColor, outlineColor) {
+        if (importedAnalysis != null && importedAnalysis.segments.isNotEmpty()) {
+            importedAnalysis.segments.map { segment ->
+                val duration = (segment.end - segment.start).coerceAtLeast(1f)
+                val bars = (duration / 2.0f).toInt().coerceAtLeast(1)
+                Triple(
+                    segment.label.replaceFirstChar { it.uppercase() },
+                    bars,
+                    com.creativeblisslabs.peqlearn.app.ui.components.AllInOneColorPalette.getColorForLabel(segment.label)
+                )
+            }
+        } else {
+            listOf(
+                Triple("Intro", 4, primaryColor),
+                Triple("Verse 1", 16, secondaryColor),
+                Triple("Pre-Chorus", 8, tertiaryColor),
+                Triple("Chorus", 16, errorColor),
+                Triple("Verse 2", 16, secondaryColor),
+                Triple("Chorus 2", 16, errorColor),
+                Triple("Bridge", 8, primaryColor.copy(alpha = 0.7f)),
+                Triple("Chorus 3", 16, errorColor),
+                Triple("Outro", 8, outlineColor)
+            )
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -360,11 +387,60 @@ private fun SongStructureAcademyPanel() {
         contentPadding = PaddingValues(bottom = 120.dp)
     ) {
         item {
-            Text(
-                text = "SONG STRUCTURE MAP & TIMELINE LAB",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "SONG STRUCTURE MAP & TIMELINE LAB",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = if (importedAnalysis != null) "All-In-One Model Analysis: ${currentTrack?.displayName ?: "Imported Song"}"
+                               else "Standard Reference Pop/Rock Arrangement",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+
+                if (viewModel != null) {
+                    FilledTonalButton(
+                        onClick = {
+                            val track = viewModel.selectedMixerItem.value ?: viewModel.currentMediaItem.value
+                            if (track != null) {
+                                viewModel.runAllInOneAnalysis(track.path)
+                            } else {
+                                viewModel.onPickTrackRequested?.invoke { item ->
+                                    viewModel.selectTrackForMixer(item)
+                                }
+                            }
+                        },
+                        enabled = !isAnalyzing,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        if (isAnalyzing) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Analyzing...", fontSize = 11.sp)
+                        } else {
+                            Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (currentTrack != null) "Re-Analyze" else "Import Song", fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (viewModel != null) {
+            item {
+                com.creativeblisslabs.peqlearn.app.ui.components.SongWritingTimelineScrubber(
+                    viewModel = viewModel
+                )
+            }
         }
 
         item {
@@ -372,7 +448,11 @@ private fun SongStructureAcademyPanel() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Standard Pop/Rock Structure Timeline", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        if (importedAnalysis != null) "Detected Song Structure (${importedAnalysis.bpm.toInt()} BPM)"
+                        else "Standard Pop/Rock Structure Timeline",
+                        style = MaterialTheme.typography.titleSmall
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth().height(36.dp).clip(MaterialTheme.shapes.small)
                     ) {

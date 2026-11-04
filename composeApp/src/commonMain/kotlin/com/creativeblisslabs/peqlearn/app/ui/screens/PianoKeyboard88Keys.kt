@@ -757,106 +757,118 @@ Row(
         val scorecard = viewModel.playAlongEngine.scorecard.value
         val isEvaluating = viewModel.playAlongEngine.isEvaluating.value
 
-        ModalBottomSheet(
-            onDismissRequest = { showPlayAlongStatsDialog = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = Color(0xFF0F0B1E)
+        FullscreenDialog(
+            onDismissRequest = { showPlayAlongStatsDialog = false }
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color(0xFF0F0B1E)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Live Play-Along Performance", color = Color(0xFFFFD700), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text(if (isEvaluating) "Listening to USB MIDI Keyboard Input..." else "Evaluation Stopped", color = Color.White.copy(0.7f), fontSize = 12.sp)
-                    }
-                    IconButton(onClick = { showPlayAlongStatsDialog = false }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                    }
-                }
-
-                // Grade & Accuracy Banner
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF1E1638),
-                    border = BorderStroke(1.dp, Color(0xFF382966)),
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(18.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("ACCURACY", color = Color.White.copy(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Text("${scorecard.accuracyPercentage}%", color = Color(0xFF00E676), fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
-                            Text("Avg timing error: ${scorecard.averageTimingErrorMs} ms", color = Color.White.copy(0.7f), fontSize = 11.sp)
+                            Text("Live Play-Along Performance Studio", color = Color(0xFFFFD700), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text(if (isEvaluating) "Listening to USB MIDI Keyboard Input..." else "Evaluation Stopped", color = Color.White.copy(0.7f), fontSize = 13.sp)
                         }
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(32.dp))
-                                .background(Brush.linearGradient(listOf(Color(0xFFFFD700), Color(0xFFFF9100)))),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(scorecard.grade, color = Color.Black, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold)
+                        IconButton(onClick = { showPlayAlongStatsDialog = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(28.dp))
                         }
                     }
-                }
 
-                // Detailed Statistics Grid
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
-                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("HIT NOTES", fontSize = 10.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
-                            Text("${scorecard.hitNotesCount}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E676))
-                        }
-                    }
-                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
-                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("MISSED", fontSize = 10.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
-                            Text("${scorecard.missedNotesCount}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF5252))
-                        }
-                    }
-                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
-                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("STREAK", fontSize = 10.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
-                            Text("${scorecard.currentStreak}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
-                        }
-                    }
-                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
-                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("BEST", fontSize = 10.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
-                            Text("${scorecard.bestStreak}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF80D8FF))
-                        }
-                    }
-                }
-
-                // Control Actions
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = {
-                            if (isEvaluating) {
-                                viewModel.playAlongEngine.stopEvaluation()
-                            } else {
-                                val s = viewModel.currentScore.value as? Score
-                                if (s != null) viewModel.playAlongEngine.startEvaluation(s, s.tempo)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isEvaluating) Color(0xFFD32F2F) else Color(0xFF00E676),
-                            contentColor = if (isEvaluating) Color.White else Color.Black
-                        )
+                    // Grade & Accuracy Banner
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF1E1638),
+                        border = BorderStroke(1.dp, Color(0xFF382966)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (isEvaluating) "Stop Evaluating" else "Start Evaluating", fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.padding(24.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("ACCURACY", color = Color.White.copy(0.6f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("${scorecard.accuracyPercentage}%", color = Color(0xFF00E676), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Avg timing error: ${scorecard.averageTimingErrorMs} ms", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(76.dp)
+                                    .clip(RoundedCornerShape(38.dp))
+                                    .background(Brush.linearGradient(listOf(Color(0xFFFFD700), Color(0xFFFF9100)))),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(scorecard.grade, color = Color.Black, fontSize = 36.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+
+                    // Detailed Statistics Grid
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
+                            Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("HIT NOTES", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                                Text("${scorecard.hitNotesCount}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E676))
+                            }
+                        }
+                        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
+                            Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("MISSED", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                                Text("${scorecard.missedNotesCount}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF5252))
+                            }
+                        }
+                        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
+                            Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("STREAK", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                                Text("${scorecard.currentStreak}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                            }
+                        }
+                        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
+                            Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("BEST", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                                Text("${scorecard.bestStreak}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF80D8FF))
+                            }
+                        }
+                    }
+
+                    // Control Actions
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = {
+                                if (isEvaluating) {
+                                    viewModel.playAlongEngine.stopEvaluation()
+                                } else {
+                                    val s = viewModel.currentScore.value as? Score
+                                    if (s != null) viewModel.playAlongEngine.startEvaluation(s, s.tempo)
+                                }
+                            },
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isEvaluating) Color(0xFFD32F2F) else Color(0xFF00E676),
+                                contentColor = if (isEvaluating) Color.White else Color.Black
+                            )
+                        ) {
+                            Text(if (isEvaluating) "Stop Evaluating" else "Start Evaluating", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                        OutlinedButton(
+                            onClick = { showPlayAlongStatsDialog = false },
+                            modifier = Modifier.height(48.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Close", color = Color.White)
+                        }
                     }
                 }
             }

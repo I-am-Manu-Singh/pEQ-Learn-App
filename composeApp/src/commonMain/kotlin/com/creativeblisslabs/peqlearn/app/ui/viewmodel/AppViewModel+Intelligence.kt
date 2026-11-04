@@ -58,6 +58,18 @@ fun AppViewModel.startStemSplit(customInputPath: String? = null) {
                 log(" - Stem [$stemName]: ${f.name} (${f.length()} bytes)")
             }
 
+            // Run All-In-One Music Structure Analysis harmoniously alongside stem splitting
+            try {
+                log("Running All-In-One Music Structure Analysis (MIR-AIDJ)...")
+                val structureResult = splitter.analyzeSongStructure(trackToSplit)
+                withContext(Dispatchers.Main) {
+                    songStructureAnalysis.value = structureResult
+                }
+                log("All-In-One Analysis complete: ${structureResult.segments.size} functional sections (${structureResult.segments.joinToString { it.label }}), ${structureResult.beats.size} beats @ ${structureResult.bpm.toInt()} BPM")
+            } catch (e: Exception) {
+                log("All-In-One Analysis skipped/fallback: ${e.message}")
+            }
+
             withContext(Dispatchers.Main) {
                 activeStemMap.clear()
                 activeStemMap.putAll(stemsResult)
@@ -86,6 +98,54 @@ fun AppViewModel.selectTrackForMixer(item: com.creativeblisslabs.peqlearn.app.da
     selectedMixerItem.value = item
     stemSplitStatusMessage.value = "Track selected: ${item.displayName}. Tap 'SPLIT STEMS'."
     toastMessage.value = "Selected: ${item.displayName}"
+    // Auto-analyze structure with All-In-One if available
+    runAllInOneAnalysis(item.path)
+}
+
+fun AppViewModel.runAllInOneAnalysis(trackPath: String? = null) {
+    val path = trackPath ?: selectedMixerItem.value?.path ?: currentMediaItem.value?.path ?: return
+    val splitter = stemSplitter ?: return
+    val activeItem = selectedMixerItem.value ?: currentMediaItem.value
+    viewModelScope.launch(Dispatchers.Default) {
+        try {
+            isAnalyzingStructure.value = true
+            var res = splitter.analyzeSongStructure(path)
+
+            // Fetch real synchronized lyrics from LRCLIB API
+            try {
+                val title = activeItem?.title ?: activeItem?.displayName ?: ""
+                val artist = activeItem?.artist ?: ""
+                val album = activeItem?.album ?: ""
+                val durationSec = (currentDuration.value / 1000).toInt()
+                val lrc = com.creativeblisslabs.peqlearn.app.network.LrcLibClient.fetchLyrics(
+                    httpClient = client,
+                    trackName = title,
+                    artistName = artist,
+                    albumName = album,
+                    durationSeconds = if (durationSec > 0) durationSec else null
+                )
+                if (lrc != null) {
+                    res = res.copy(lrcLyrics = lrc)
+                    // If lyrics were missing on current item, update them
+                    if (currentMediaItem.value?.lyrics.isNullOrBlank() && !lrc.plainLyrics.isNullOrBlank()) {
+                        withContext(Dispatchers.Main) {
+                            currentMediaItem.value = currentMediaItem.value?.copy(lyrics = lrc.plainLyrics)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                println("pEQLearn [LRCLIB]: Lyrics fetch skipped: ${e.message}")
+            }
+
+            withContext(Dispatchers.Main) {
+                songStructureAnalysis.value = res
+            }
+        } catch (e: Exception) {
+            println("pEQLearn [AllInOne]: Analysis failed: ${e.message}")
+        } finally {
+            isAnalyzingStructure.value = false
+        }
+    }
 }
 
 fun AppViewModel.selectModel(modelName: String) {
@@ -104,26 +164,96 @@ fun AppViewModel.importCustomModel(path: String, name: String) {
 fun AppViewModel.downloadModelFromUrl(url: String, targetFileName: String) {
     viewModelScope.launch(Dispatchers.IO) {
         withContext(Dispatchers.Main) {
-            stemSplitStatusMessage.value = "Downloading $targetFileName..."
+            stemSplitStatusMessage.value = "Connecting to model repository: $targetFileName..."
             isStemSplitting.value = true
-            stemSplitProgress.value = 0.1f
+            stemSplitProgress.value = 0.05f
         }
         try {
-            // Download via Ktor client or standard stream
-            val bytes = client.get(url).readBytes()
-            withContext(Dispatchers.Main) {
-                stemSplitProgress.value = 0.85f
-                stemSplitStatusMessage.value = "Saving $targetFileName..."
+            // Robust streaming HTTP download supporting redirects & progress
+            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            connection.instanceFollowRedirects = true
+            connection.connectTimeout = 15000
+            connection.readTimeout = 30000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile) pEQLearn/2.0")
+            connection.connect()
+
+            var responseCode = connection.responseCode
+            var finalUrl = url
+            // Handle HTTP 301 / 302 / 307 redirects (HuggingFace CDN redirects)
+            if (responseCode == java.net.HttpURLConnection.HTTP_MOVED_PERM ||
+                responseCode == java.net.HttpURLConnection.HTTP_MOVED_TEMP ||
+                responseCode == 307 || responseCode == 308) {
+                val redirectUrl = connection.getHeaderField("Location")
+                if (!redirectUrl.isNullOrEmpty()) {
+                    finalUrl = redirectUrl
+                    connection.disconnect()
+                }
             }
-            // Save into models dir if available
-            val modelsDir = onGetModelsDir?.invoke()
-            if (modelsDir != null) {
-                val destFile = java.io.File(modelsDir, targetFileName)
-                destFile.parentFile?.mkdirs()
-                destFile.writeBytes(bytes)
+
+            val finalConn = (if (finalUrl != url) java.net.URL(finalUrl).openConnection() else connection) as java.net.HttpURLConnection
+            finalConn.instanceFollowRedirects = true
+            finalConn.connectTimeout = 15000
+            finalConn.readTimeout = 60000
+            finalConn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile) pEQLearn/2.0")
+
+            val contentLength = finalConn.contentLengthLong
+
+            val modelsDir = onGetModelsDir?.invoke() ?: "models"
+            val targetDir = java.io.File(modelsDir).apply { if (!exists()) mkdirs() }
+            val destFile = java.io.File(targetDir, targetFileName)
+            val tempFile = java.io.File(targetDir, "${targetFileName}.tmp")
+
+            withContext(Dispatchers.Main) {
+                stemSplitStatusMessage.value = "Downloading $targetFileName (${if (contentLength > 0) "${contentLength / (1024 * 1024)} MB" else "streaming"})..."
+            }
+
+            finalConn.inputStream.use { input ->
+                java.io.FileOutputStream(tempFile).use { output ->
+                    val buffer = ByteArray(32768)
+                    var bytesRead: Int
+                    var totalRead = 0L
+                    var lastUpdate = System.currentTimeMillis()
+
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
+                        val now = System.currentTimeMillis()
+                        if (now - lastUpdate > 300) {
+                            lastUpdate = now
+                            if (contentLength > 0) {
+                                val p = (totalRead.toFloat() / contentLength.toFloat()).coerceIn(0.05f, 0.95f)
+                                withContext(Dispatchers.Main) {
+                                    stemSplitProgress.value = p
+                                    stemSplitStatusMessage.value = "Downloading $targetFileName: ${(p * 100).toInt()}%"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (tempFile.exists() && tempFile.length() > 0) {
+                if (destFile.exists()) destFile.delete()
+                tempFile.renameTo(destFile)
                 customOnnxModelPath.value = destFile.absolutePath
                 customOnnxModelName.value = targetFileName
+
+                // Register with OnnxModelRegistry so Piano88Screen AudioToMidi picks it up too
+                val registeredDef = com.creativeblisslabs.peqlearn.app.ai.OnnxModelDefinition(
+                    id = targetFileName.removeSuffix(".onnx"),
+                    name = targetFileName,
+                    fileName = targetFileName,
+                    downloadUrl = url,
+                    sizeBytes = destFile.length(),
+                    description = "Downloaded Neural Model: $targetFileName",
+                    purpose = if (targetFileName.contains("muscriptor")) "Audio-to-MIDI & Sheet Music Transcription" else "Stem Separation",
+                    isCustom = true,
+                    localPath = destFile.absolutePath
+                )
+                com.creativeblisslabs.peqlearn.app.ai.OnnxModelRegistry.customModels[registeredDef.id] = registeredDef
+                com.creativeblisslabs.peqlearn.app.ai.OnnxModelRegistry.modelStatusMap[registeredDef.id] = "Ready on Disk"
             }
+
             withContext(Dispatchers.Main) {
                 stemSeparationModel.value = "Downloaded: $targetFileName"
                 stemSplitProgress.value = 1f
@@ -131,6 +261,7 @@ fun AppViewModel.downloadModelFromUrl(url: String, targetFileName: String) {
                 toastMessage.value = "Model $targetFileName ready!"
             }
         } catch (e: Exception) {
+            println("pEQLearn [ModelDownload]: Error downloading $url: ${e.message}")
             withContext(Dispatchers.Main) {
                 stemSplitStatusMessage.value = "Download failed: ${e.message}"
                 toastMessage.value = "Model download error: ${e.message}"

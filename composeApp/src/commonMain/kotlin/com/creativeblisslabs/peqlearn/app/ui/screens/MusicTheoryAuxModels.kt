@@ -18,6 +18,7 @@ enum class TheoryPart(
     CONCEPTS("Theory Concepts", Icons.Default.AutoStories, Color(0xFF29B6F6)),
     GROOVE("Drums", Icons.Default.PlayArrow, Color(0xFF00E676)),
     STRUCTURE("Song Str.", Icons.AutoMirrored.Filled.List, Color(0xFFFF7043)),
+    EAR_SIGHT("Ear & Sight", Icons.Default.Hearing, Color(0xFFE91E63)),
     INDIAN_CLASSICAL("Ind. Class.", Icons.Default.Home, Color(0xFFFF9800)),
     KARNATIC("Karnatic", Icons.Default.Info, Color(0xFF00BCD4))
 }

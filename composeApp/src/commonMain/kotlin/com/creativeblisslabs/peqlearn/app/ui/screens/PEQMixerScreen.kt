@@ -269,6 +269,18 @@ fun pEQMixerScreen(
                     }
                 }
 
+                // Songwriting Timeline Scrubber & Active Track Player
+                SongWritingTimelineScrubber(
+                    viewModel = viewModel,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+
+                // Songwriting Timeline Scrubber & Active Track Player
+                SongWritingTimelineScrubber(
+                    viewModel = viewModel,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+
                 if (isLandscapeOrWide) {
                     Row(
                         modifier = Modifier
