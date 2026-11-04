@@ -360,18 +360,23 @@ private fun KeyFinderTool(roots: List<String>) {
 @Composable
 private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
     var frets by remember { mutableStateOf(listOf(-1, 3, 2, 0, 1, 0)) }
-    val strings = remember { listOf("E (6th)", "A (5th)", "D (4th)", "G (3rd)", "B (2nd)", "e (1st)") }
-    val stringOpenMidi = remember { listOf(40, 45, 50, 55, 59, 64) }
+    val stringOpenMidi = remember { listOf(64, 59, 55, 50, 45, 40) } // Strings 1st to 6th (e4, B3, G3, D3, A2, E2)
+    var selectedFinderInstrument by remember { mutableStateOf(ChordInstrumentType.GUITAR) }
+    var isPlayingVoicing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
-    // Detect active notes
     val soundedNotes = remember(frets) {
-        frets.mapIndexedNotNull { strIdx, fret ->
-            if (fret >= 0) {
-                val midi = stringOpenMidi[strIdx] + fret
+        val list = mutableListOf<Pair<String, Int>>()
+        for (i in 0..5) {
+            val f = frets[i]
+            if (f >= 0) {
+                val openMidi = stringOpenMidi[5 - i]
+                val midi = openMidi + f
                 val noteName = roots[midi % 12]
-                noteName to midi
-            } else null
+                list.add(noteName to midi)
+            }
         }
+        list
     }
 
     val detectedName = remember(soundedNotes) {
@@ -379,7 +384,6 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
         if (noteNames.isEmpty()) "Muted / No Frets Selected"
         else if (noteNames.size == 1) "${noteNames[0]} Single Note"
         else {
-            // Find root and match common triad/seventh
             val rootCandidate = soundedNotes.firstOrNull()?.first ?: "C"
             val allNotePitches = soundedNotes.map { it.second % 12 }.distinct()
             val rIdx = roots.indexOf(rootCandidate).coerceAtLeast(0)
@@ -404,68 +408,123 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Reverse Chord Finder (Find Chords by Shape)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFCE93D8))
-        Text("Tap frets for each guitar string from 6th (low E) to 1st (high e) to detect the chord name, notes, and voicing inversion.", fontSize = 12.sp, color = Color.Gray)
-
-        // String selector rows
-        strings.forEachIndexed { sIdx, strName ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(strName, fontSize = 11.sp, color = Color.White, modifier = Modifier.width(65.dp), fontWeight = FontWeight.Bold)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    val fretOptions = listOf(-1, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 12)
-                    items(fretOptions) { f ->
-                        val isSel = frets[sIdx] == f
-                        pEQFilterChip(
-                            selected = isSel,
-                            onClick = {
-                                val next = frets.toMutableList()
-                                next[sIdx] = f
-                                frets = next
-                            },
-                            label = { Text(if (f == -1) "✕" else "$f", fontSize = 10.sp) }
-                        )
-                    }
-                }
-            }
-        }
-
-        // Action Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(
-                onClick = {
-                    frets = listOf(-1, -1, -1, -1, -1, -1)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C3242)),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("Clear All Strings", fontSize = 11.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Reverse Chord Finder (Find Chords by Shape)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFCE93D8))
+                Text("Tap frets directly on the interactive Unified Fretboard to identify the chord.", fontSize = 12.sp, color = Color.Gray)
             }
 
-            Button(
-                onClick = {
-                    soundedNotes.forEach { (_, midi) ->
-                        viewModel.audioEngine.setInstrument("GUITAR")
-                        viewModel.audioEngine.noteOn(midi, 0.85f)
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFAB47BC)),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Strum Voicing", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            pEQInstrumentDropdown(
+                selectedInstrument = selectedFinderInstrument,
+                accentColor = Color(0xFFCE93D8),
+                onInstrumentChange = { selectedFinderInstrument = it },
+                modifier = Modifier.width(180.dp)
+            )
+        }
+
+        // Interactive Unified Guitar Fretboard for Direct Fret Tapping
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF161922),
+            border = BorderStroke(1.dp, Color(0xFF333C4E)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TOUCH FRETBOARD (TAP TO SET FRETS)",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFCE93D8),
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "Tab: [${frets.joinToString(", ") { if (it == -1) "X" else "$it" }}]",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF9E1B)
+                    )
+                }
+
+                com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard(
+                    frets = 15,
+                    accentColor = Color(0xFFCE93D8),
+                    showNoteNames = true,
+                    markOctaves = true,
+                    highlightOctaveC = true,
+                    baseFret = 1,
+                    fretMinConstrain = 0,
+                    fretMaxConstrain = 15,
+                    openStringsSemis = listOf(4, 11, 7, 2, 9, 4),
+                    stringLabels = listOf("e", "B", "G", "D", "A", "E"),
+                    activeNotes = soundedNotes.map { it.second },
+                    onFretTapped = { strIdx, fretIdx, midi ->
+                        val guitarStringIdx = 5 - strIdx
+                        val currentFret = frets[guitarStringIdx]
+                        val nextFrets = frets.toMutableList()
+                        nextFrets[guitarStringIdx] = if (currentFret == fretIdx) -1 else fretIdx
+                        frets = nextFrets
+                        try {
+                            viewModel.audioEngine.setInstrument(selectedFinderInstrument.soundEngineName)
+                            viewModel.audioEngine.noteOn(midi, 0.85f)
+                        } catch (_: Exception) {}
+                    },
+                    modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(8.dp))
+                )
             }
         }
 
-        // Result Card
+        // Action Toolbar with Clear and InstrumentPlayButton
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = { frets = listOf(-1, -1, -1, -1, -1, -1) },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Clear All Strings", fontSize = 11.sp)
+            }
+
+            InstrumentPlayButton(
+                isPlaying = isPlayingVoicing,
+                accentColor = Color(0xFFCE93D8),
+                onTogglePlay = {
+                    if (isPlayingVoicing) {
+                        isPlayingVoicing = false
+                    } else {
+                        isPlayingVoicing = true
+                        scope.launch {
+                            try {
+                                viewModel.audioEngine.setInstrument(selectedFinderInstrument.soundEngineName)
+                                soundedNotes.forEach { (_, midi) ->
+                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                    delay(40L)
+                                }
+                                delay(600L)
+                            } finally {
+                                isPlayingVoicing = false
+                            }
+                        }
+                    }
+                },
+                text = "Strum Chord"
+            )
+        }
+
+        // Identified Chord Result Card with Dynamic Visualizer
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = Color(0xFF221A2B),

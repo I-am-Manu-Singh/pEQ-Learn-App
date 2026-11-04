@@ -1006,6 +1006,7 @@ Row(
             }
         }
 
+        
         StaffAndTabNotationViewer(
             score = viewModel.currentScore.value as Score?,
             playheadMeasure = viewModel.scorePlayheadMeasure.value,

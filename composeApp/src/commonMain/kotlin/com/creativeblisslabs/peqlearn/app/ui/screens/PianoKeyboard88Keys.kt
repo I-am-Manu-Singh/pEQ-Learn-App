@@ -875,37 +875,38 @@ Row(
         }
     }
 
-    // Learn Mode (Scales & Chords Practice Library) Dialog
+    // Learn Mode (Scales & Chords Practice Library) Fullscreen Studio
     if (showLearnModeDialog) {
-        ModalBottomSheet(
-            onDismissRequest = { showLearnModeDialog = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = Color(0xFF0E0B1A)
+        FullscreenDialog(
+            onDismissRequest = { showLearnModeDialog = false }
         ) {
-            var practiceStudioTab by remember { mutableIntStateOf(0) } // 0 = Masterworks Tutorials, 1 = Scales, Chords & Exercises
-            var selectedTrainingMode by remember { mutableStateOf("FULL") } // "FULL", "RH_ONLY", "LH_ONLY", "SLOW_TEMPO"
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.9f)
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color(0xFF0E0B1A)
             ) {
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                var practiceStudioTab by remember { mutableIntStateOf(0) } // 0 = Masterworks Tutorials, 1 = Scales, Chords & Exercises
+                var selectedTrainingMode by remember { mutableStateOf("FULL") } // "FULL", "RH_ONLY", "LH_ONLY", "SLOW_TEMPO"
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column {
-                        Text("Interactive Practice Studio", color = Color(0xFFFFD700), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Masterworks, Hand Separation & Technical Mastery", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Interactive Practice Studio", color = Color(0xFFFFD700), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text("Masterworks, Hand Separation & Technical Mastery", color = Color.White.copy(0.7f), fontSize = 13.sp)
+                        }
+                        IconButton(onClick = { showLearnModeDialog = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(28.dp))
+                        }
                     }
-                    IconButton(onClick = { showLearnModeDialog = false }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                    }
-                }
 
                 // Tab Switcher: Inbuilt Masterworks vs Scales/Chords
                 Row(
@@ -1155,16 +1156,12 @@ Row(
 
     // AI Audio-to-Score Screen
     if (showAudioToMidiScreen) {
-        Dialog(
-            onDismissRequest = { showAudioToMidiScreen = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+        FullscreenDialog(
+            onDismissRequest = { showAudioToMidiScreen = false }
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 24.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .border(1.dp, Color(0xFF6C63FF).copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color(0xFF0F0B1E)
             ) {
                 com.creativeblisslabs.peqlearn.app.ai.AudioToMidiScreen(
                     viewModel = viewModel,

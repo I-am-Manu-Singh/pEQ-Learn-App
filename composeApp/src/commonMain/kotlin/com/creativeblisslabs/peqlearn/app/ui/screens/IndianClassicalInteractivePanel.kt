@@ -363,6 +363,8 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                 showScoreHeader = false,
                 modifier = Modifier.fillMaxWidth().height(240.dp)
             )
+                        Spacer(modifier = Modifier.height(110.dp))
+
         }
     }
 }
