@@ -25,7 +25,13 @@ data class Alankaar(
     val name: String,
     val pattern: String,
     val midiPattern: List<Int>,
-    val description: String
+    val description: String,
+    val arohan: String = "",
+    val avarohan: String = "",
+    val type: String = "Shuddha Swar Alankaar", // "Shuddha Swar" | "Vakra" | "Palta" | "Ornamental"
+    val technique: String = "Sargam", // "Meend" | "Kan-swar" | "Andolan" | "Khatka" | "Murki" | "Palta" | "Sargam"
+    val devanagariArohan: String = "",
+    val devanagariAvarohan: String = ""
 )
 data class Thaat(
     val name: String,

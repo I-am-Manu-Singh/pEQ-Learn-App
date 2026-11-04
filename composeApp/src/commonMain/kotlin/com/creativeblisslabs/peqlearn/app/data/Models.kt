@@ -2,6 +2,7 @@ package com.creativeblisslabs.peqlearn.app.data
 
 import kotlin.collections.emptyMap
 import kotlin.collections.emptyList
+import kotlin.random.Random
 
 import kotlinx.serialization.Serializable
 import androidx.compose.ui.graphics.Color
@@ -266,3 +267,148 @@ data class DownloadJob(
 )
 
 
+
+// ==========================================
+// MEDIA METADATA & PRESETS (Consolidated)
+// ==========================================
+
+@Serializable
+data class MediaChapter(
+    val id: Long = Random.nextLong(),
+    val title: String,
+    val startMs: Long,
+    val endMs: Long,
+    val thumbnail: String? = null
+)
+
+@Serializable
+data class SyncedLine(
+    val id: Long = Random.nextLong(),
+    val timestampMs: Long,
+    val text: String,
+    val translation: String? = null,
+    val content: String = text
+)
+
+@Serializable
+data class MediaTrack(
+    val id: String,
+    val language: String,
+    val type: TrackType,
+    val codec: String? = null,
+    val isHardwareDecoded: Boolean = true,
+    val isExternal: Boolean = false,
+    val externalUrl: String? = null
+)
+
+enum class TrackType {
+    AUDIO, SUBTITLE, VIDEO, LYRICS
+}
+
+@Serializable
+data class pEQMediaMetadata(
+    val chapters: List<MediaChapter> = emptyList(),
+    val lyrics: List<SyncedLine> = emptyList(),
+    val activeAudioTrack: MediaTrack? = null,
+    val activeSubtitleTrack: MediaTrack? = null,
+    val availableTracks: List<MediaTrack> = emptyList()
+)
+
+data class EQBand(
+    val frequency: Float,
+    val gain: Float,
+    val qFactor: Float,
+    val type: BandType = BandType.PEAKING
+)
+
+enum class BandType {
+    LOW_SHELF,
+    PEAKING,
+    HIGH_SHELF,
+    NOTCH,
+    BANDPASS
+}
+
+data class Preset(val name: String, val bands: List<EQBand>)
+
+object Presets {
+    val Flat = Preset("Flat", emptyList())
+
+    val BassBoost = Preset(
+        "Bass Boost",
+        listOf(
+            EQBand(60f, 6f, 0.7f, BandType.LOW_SHELF),
+            EQBand(150f, 2f, 1.0f, BandType.PEAKING)
+        )
+    )
+
+    val Bollywood = Preset(
+        "Trending",
+        listOf(
+            EQBand(100f, 4f, 0.8f, BandType.PEAKING),
+            EQBand(3000f, 2f, 1.2f, BandType.PEAKING),
+            EQBand(8000f, 3f, 1.0f, BandType.HIGH_SHELF)
+        )
+    )
+
+    val Pop = Preset(
+        "Pop",
+        listOf(
+            EQBand(100f, 2f, 0.7f, BandType.LOW_SHELF),
+            EQBand(1000f, -1f, 1.0f, BandType.PEAKING),
+            EQBand(10000f, 2f, 0.7f, BandType.HIGH_SHELF)
+        )
+    )
+
+    val ReferenceStudio = Preset(
+        "Reference",
+        listOf(
+            EQBand(30f, 3.0f, 0.7f, BandType.LOW_SHELF),
+            EQBand(200f, -1.5f, 1.0f, BandType.PEAKING),
+            EQBand(3000f, 1.0f, 1.5f, BandType.PEAKING),
+            EQBand(4000f, -2.5f, 2.0f, BandType.PEAKING),
+            EQBand(8000f, 1.5f, 1.5f, BandType.PEAKING),
+            EQBand(12000f, 3.5f, 0.7f, BandType.HIGH_SHELF)
+        )
+    )
+
+    val WirelessEarbuds = Preset(
+        "TWS Earbuds",
+        listOf(
+            EQBand(60f, 5.0f, 0.8f, BandType.LOW_SHELF),
+            EQBand(400f, -2.0f, 1.0f, BandType.PEAKING),
+            EQBand(3000f, 3.0f, 1.5f, BandType.PEAKING),
+            EQBand(10000f, 4.0f, 0.7f, BandType.HIGH_SHELF)
+        )
+    )
+
+    val SystemSpeakers = Preset(
+        "System Speakers",
+        listOf(
+            EQBand(100f, 6.0f, 0.7f, BandType.LOW_SHELF),
+            EQBand(1000f, -2.0f, 1.0f, BandType.PEAKING),
+            EQBand(4000f, 2.0f, 1.2f, BandType.PEAKING),
+            EQBand(12000f, 3.0f, 0.7f, BandType.HIGH_SHELF)
+        )
+    )
+
+    val PodcastDialogue = Preset(
+        "Podcast",
+        listOf(
+            EQBand(100f, -6.0f, 0.7f, BandType.LOW_SHELF),
+            EQBand(3000f, 3.5f, 1.2f, BandType.PEAKING),
+            EQBand(6000f, 2.0f, 1.5f, BandType.PEAKING),
+            EQBand(12000f, 2.0f, 0.7f, BandType.HIGH_SHELF)
+        )
+    )
+
+    val PhoneSpeakers = Preset(
+        "Phone Speakers",
+        listOf(
+            EQBand(200f, 4.0f, 0.7f, BandType.LOW_SHELF),
+            EQBand(4000f, 2.0f, 1.2f, BandType.PEAKING)
+        )
+    )
+
+    val all = listOf(Flat, BassBoost, Bollywood, Pop, ReferenceStudio, WirelessEarbuds, SystemSpeakers, PhoneSpeakers, PodcastDialogue)
+}

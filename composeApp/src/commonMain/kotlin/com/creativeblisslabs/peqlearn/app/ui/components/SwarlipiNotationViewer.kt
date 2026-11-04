@@ -465,7 +465,6 @@ private fun SwarlipiMatraCell(
  * - Kan swar superscript before note
  */
 @Composable
-private @Composable
 private fun SwaraGlyph(
     note: SwarlipiNote,
     script: String,

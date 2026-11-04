@@ -898,12 +898,45 @@ fun UnifiedAlankaarPanel(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = alankaram.name,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = accentColor
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = alankaram.name,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = accentColor
+                            )
+                            if (alankaram.type.isNotEmpty()) {
+                                Surface(
+                                    color = accentColor.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = alankaram.type,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = accentColor,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            if (alankaram.technique.isNotEmpty() && alankaram.technique != "Sargam") {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = alankaram.technique,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
 
                         // Structured visual group layout preventing notes from mixing up
                         FlowRow(
@@ -940,6 +973,23 @@ fun UnifiedAlankaarPanel(
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        if (alankaram.arohan.isNotEmpty() && alankaram.avarohan.isNotEmpty()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Arohan: ${alankaram.arohan}",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                )
+                                Text(
+                                    text = "Avarohan: ${alankaram.avarohan}",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)
+                                )
                             }
                         }
 

@@ -35,10 +35,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.vector.ImageVector
 
-enum class ChordInstrumentType(val label: String) {
-    PIANO("🎹"),
-    GUITAR("🎸"),
-    UKULELE("🪕")
+enum class ChordInstrumentType(val label: String, val title: String) {
+    GUITAR("🎸", "6-String Guitar"),
+    GUITAR_7("🎸", "7-String Guitar"),
+    UKULELE("🪕", "Ukulele"),
+    HARMONIUM("🪗", "Harmonium"),
+    PIANO("🎹", "Piano"),
+    FLUTE("🪈", "Flute"),
+    VIOLIN("🎻", "Violin")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -245,14 +249,16 @@ fun ChordDictionaryPanel(
 
     LaunchedEffect(selectedInstrument) {
         selectedVoicingType = when (selectedInstrument) {
-            ChordInstrumentType.PIANO -> "Closed"
+            ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> "Closed"
             ChordInstrumentType.UKULELE -> "Open"
             else -> "Open"
         }
         try {
             val instr = when (selectedInstrument) {
-                ChordInstrumentType.GUITAR, ChordInstrumentType.UKULELE -> "GUITAR"
-                ChordInstrumentType.PIANO -> "PIANO"
+                ChordInstrumentType.GUITAR, ChordInstrumentType.GUITAR_7, ChordInstrumentType.UKULELE -> "GUITAR"
+                ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> "PIANO"
+                ChordInstrumentType.VIOLIN -> "VIOLIN"
+                ChordInstrumentType.FLUTE -> "FLUTE"
             }
             getAudioEngine().setInstrument(instr)
         } catch (e: Exception) {
@@ -290,10 +296,11 @@ Row(
     horizontalArrangement = Arrangement.spacedBy(8.dp), 
     verticalAlignment = Alignment.CenterVertically
 ) {
-    // 1. Instrument row
-    Box(modifier = Modifier.weight(1f)) {
-        InstrumentSelectionRow(
+    // 1. Instrument Dropdown Switcher
+    Box(modifier = Modifier.weight(1.3f)) {
+        pEQInstrumentDropdown(
             selectedInstrument = selectedInstrument,
+            accentColor = partColor,
             onInstrumentChange = { selectedInstrument = it }
         )
     }
@@ -406,9 +413,11 @@ Row(
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val currentVoicingList = when (selectedInstrument) {
-                    ChordInstrumentType.GUITAR -> guitarVoicings
+                    ChordInstrumentType.GUITAR, ChordInstrumentType.GUITAR_7 -> guitarVoicings
                     ChordInstrumentType.UKULELE -> ukeVoicings
-                    ChordInstrumentType.PIANO -> pianoVoicings
+                    ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> pianoVoicings
+                    ChordInstrumentType.VIOLIN -> listOf("Open", "Single Position", "Double Stop")
+                    ChordInstrumentType.FLUTE -> listOf("Standard", "Overblown", "Harmonic")
                 }
                 Box(modifier = Modifier.weight(1f)) {
                     M3DropdownMenu(
@@ -558,7 +567,11 @@ Row(
                             }
 
                             // Open string pitch references: Guitar (e4=64, B3=59, G3=55, D3=50, A2=45, E2=40), Ukulele (A4=69, E4=64, C4=60, G4=67)
-                            val openStrings = if (selectedInstrument == ChordInstrumentType.UKULELE) listOf(69, 64, 60, 67) else listOf(64, 59, 55, 50, 45, 40)
+                            val openStrings = when (selectedInstrument) {
+                                ChordInstrumentType.UKULELE -> listOf(69, 64, 60, 67)
+                                ChordInstrumentType.GUITAR_7 -> listOf(64, 59, 55, 50, 45, 40, 35)
+                                else -> listOf(64, 59, 55, 50, 45, 40)
+                            }
 
                             val mockNotesList = soundSequencePitches.mapIndexed { idx: Int, midiPitch: Int ->
                                 val targetString: Int?
@@ -600,7 +613,12 @@ Row(
                             )
 
                             playbackJob = scope.launch {
-                                val instr = if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.UKULELE) "GUITAR" else "PIANO"
+                                val instr = when (selectedInstrument) {
+                                    ChordInstrumentType.GUITAR, ChordInstrumentType.GUITAR_7, ChordInstrumentType.UKULELE -> "GUITAR"
+                                    ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> "PIANO"
+                                    ChordInstrumentType.VIOLIN -> "VIOLIN"
+                                    ChordInstrumentType.FLUTE -> "FLUTE"
+                                }
                                 try {
                                     viewModel.audioEngine.setInstrument(instr)
                                 } catch (_: Exception) {}
@@ -750,9 +768,9 @@ Row(
                                 cagedMode = resolvedCaged,
                                 fretMinConstrain = fretMin,
                                 fretMaxConstrain = fretMax,
-                                chordFrets = fretboardChordFrets,
-                                chordFingers = fretboardChordFingers,
-                                baseFret = fretboardBaseFret,
+                                chordFrets = if (!isArpeggioRunning && mode == 0) guitarShape.frets else null,
+                                chordFingers = if (!isArpeggioRunning && mode == 0) guitarShape.fingers else null,
+                                baseFret = if (mode == 0) (guitarShape.baseFret ?: 1) else 1,
                                 barreFret = if (mode == 0) (guitarShape.barre ?: -1) else -1,
                                 stringLabels = listOf("e", "B", "G", "D", "A", "E"),
                                 openStringsSemis = listOf(4, 11, 7, 2, 9, 4),
@@ -861,6 +879,126 @@ Row(
                             GuitarFingerLegend(accentColor = partColor)
                         }
                     }
+                    ChordInstrumentType.GUITAR_7 -> {
+                        val activeMidiToken = viewModel.midiPlayingNote.value
+                        // 7-string standard tuning: e4(64), B3(59), G3(55), D3(50), A2(45), E2(40), B1(35)
+                        val open7Strings = listOf(64, 59, 55, 50, 45, 40, 35)
+                        val (fretMin, fretMax) = remember(selectedFretRange) {
+                            when (selectedFretRange) {
+                                "Open (0-3)" -> 0 to 3
+                                "Low (1-5)" -> 1 to 5
+                                "Mid (5-9)" -> 5 to 9
+                                "High (9-14)" -> 9 to 14
+                                "12+ Frets" -> 12 to 24
+                                else -> 0 to 24
+                            }
+                        }
+
+                        val highlighted7Coordinate = remember(activeMidiToken, isArpeggioRunning, mode, fretMin, fretMax) {
+                            if (isArpeggioRunning && activeMidiToken != null) {
+                                var targetMatch: Pair<Int, Int>? = null
+                                for (s in open7Strings.indices) {
+                                    val fret = (activeMidiToken % 12 - open7Strings[s] % 12 + 12) % 12
+                                    if (fret in fretMin..fretMax) {
+                                        targetMatch = s to fret
+                                        break
+                                    }
+                                }
+                                targetMatch
+                            } else null
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            UnifiedGuitarFretboard(
+                                numFrets = 15,
+                                accentColor = partColor,
+                                rootNote = rootIdx,
+                                showNoteNames = (mode == 1),
+                                markOctaves = true,
+                                highlightOctaveC = true,
+                                fretMinConstrain = fretMin,
+                                fretMaxConstrain = fretMax,
+                                baseFret = 1,
+                                stringLabels = listOf("e", "B", "G", "D", "A", "E", "B"),
+                                openStringsSemis = listOf(4, 11, 7, 2, 9, 4, 11),
+                                activeCoordinate = highlighted7Coordinate,
+                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
+                                activeNotes = pianoPitches,
+                                onFretTapped = { _, _, midiNote ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("GUITAR")
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.fillMaxWidth().height(155.dp).clip(RoundedCornerShape(12.dp))
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            GuitarFingerLegend(accentColor = partColor)
+                        }
+                    }
+                    ChordInstrumentType.HARMONIUM -> {
+                        val activeMidiToken = viewModel.midiPlayingNote.value
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            UnifiedHarmoniumVisualizer(
+                                activeMidiNotes = activeMidiMap,
+                                accentColor = partColor,
+                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
+                                onKeyTapped = { midiNote ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("PIANO")
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.fillMaxWidth().height(118.dp).clip(RoundedCornerShape(12.dp))
+                            )
+                            PianoFingerLegend(
+                                accentColor = partColor,
+                                fingering = pianoFingering,
+                                noteNames = noteNames
+                            )
+                        }
+                    }
+                    ChordInstrumentType.VIOLIN -> {
+                        val activeMidiToken = viewModel.midiPlayingNote.value
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            UnifiedViolinFingerboard(
+                                activeNotes = pianoPitches,
+                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
+                                accentColor = partColor,
+                                showNoteNames = true,
+                                onPositionTapped = { _, midiNote ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("VIOLIN")
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp))
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            GuitarFingerLegend(accentColor = partColor)
+                        }
+                    }
+                    ChordInstrumentType.FLUTE -> {
+                        val activeMidiToken = viewModel.midiPlayingNote.value
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            UnifiedFluteVisualizer(
+                                activeNotes = pianoPitches,
+                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
+                                accentColor = partColor,
+                                onToneHoleTapped = { _, midiNote ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument("FLUTE")
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(12.dp))
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -899,7 +1037,7 @@ Row(
             scrollState = scrollState
         )
 
-        if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.UKULELE) {
+        if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.GUITAR_7 || selectedInstrument == ChordInstrumentType.UKULELE) {
             HorizontalDivider(color = partColor.copy(0.1f))
             CapoSection(
                 capoFret = capoFret,
@@ -959,43 +1097,73 @@ Row(
 }
 
 @Composable
-fun InstrumentSelectionRow(
+fun pEQInstrumentDropdown(
     selectedInstrument: ChordInstrumentType,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     onInstrumentChange: (ChordInstrumentType) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .height(40.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ChordInstrumentType.entries.forEach { inst ->
-            val isSelected = inst == selectedInstrument
-            Box(
-                modifier = Modifier
-                    .weight(1f) // Distributes width evenly across items
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(if (isSelected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) else Color.Transparent)
-                    .clickable { onInstrumentChange(inst) }
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp), 
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+    var expanded by remember { mutableStateOf(false) }
 
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth().height(42.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.45f)),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(selectedInstrument.label, fontSize = 16.sp)
                     Text(
-                        text = inst.label,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                        text = selectedInstrument.title,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                    contentDescription = "Select Instrument",
+                    tint = accentColor
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .width(220.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            ChordInstrumentType.entries.forEach { inst ->
+                val isSelected = inst == selectedInstrument
+                DropdownMenuItem(
+                    leadingIcon = {
+                        Text(inst.label, fontSize = 16.sp)
+                    },
+                    text = {
+                        Text(
+                            text = inst.title,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    onClick = {
+                        onInstrumentChange(inst)
+                        expanded = false
+                    }
+                )
             }
         }
     }
