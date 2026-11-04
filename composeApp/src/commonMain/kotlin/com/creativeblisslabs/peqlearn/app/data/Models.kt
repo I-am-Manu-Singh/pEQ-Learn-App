@@ -21,12 +21,16 @@ enum class ChordInstrumentType(
     val assetFolder: String,
     val defaultSf2Path: String? = null
 ) {
-    GUITAR("🎸", "6-String Guitar", "GUITAR", "guitar/guitar-acoustic", "guitar/guitar_samples_clean.sf2"),
-    GUITAR_7("🎸", "7-String Guitar", "GUITAR", "guitar/guitar-acoustic", "guitar/guitar_samples_clean.sf2"),
-    UKULELE("🪕", "Ukulele", "GUITAR", "guitar/guitar-acoustic", "guitar/guitar_samples_clean.sf2"),
-    HARMONIUM("🪗", "Harmonium", "HARMONIUM", "harmonium", "harmonium/Wetthasinghe_Harmnium_GM_Ver.sf2"),
+    GUITAR_ACOUSTIC("🎸", "Acoustic Guitar", "GUITAR_ACOUSTIC", "guitar/guitar-acoustic", null),
+    GUITAR_ELECTRIC("⚡", "Electric Guitar", "GUITAR_ELECTRIC", "guitar/guitar-electric", null),
+    GUITAR_CLASSICAL("🎻", "Classical Guitar", "GUITAR_CLASSICAL", "guitar/guitar-classical", null),
+    GUITAR_7("🎸", "7-String Guitar", "GUITAR_ELECTRIC", "guitar/guitar-electric", null),
+    UKULELE("🪕", "Ukulele", "UKULELE", "guitar/guitar-acoustic", null),
+    HARMONIUM("🪗", "Harmonium", "HARMONIUM", "harmonium", null),
+    TABLA("🪘", "Tabla", "TABLA", "tabla", null),
     SITAR("🪕", "Sitar", "SITAR", "sitar", null),
-    PIANO("🎹", "Piano", "PIANO", "piano", "piano/Grand_Piano.sf2"),
+    PIANO_ACOUSTIC("🎹", "Acoustic Piano", "PIANO_ACOUSTIC", "piano/acoustic", null),
+    PIANO_ELECTRIC("🎹", "Electric Piano", "PIANO_ELECTRIC", "piano/electric", null),
     FLUTE("🪈", "Flute", "FLUTE", "flute", null),
     VIOLIN("🎻", "Violin", "VIOLIN", "violin", null);
 

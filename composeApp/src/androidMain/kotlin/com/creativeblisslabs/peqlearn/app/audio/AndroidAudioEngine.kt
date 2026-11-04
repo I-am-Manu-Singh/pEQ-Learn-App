@@ -295,6 +295,11 @@ class AndroidAudioEngine(
     private val sitarActiveStreamMap = ConcurrentHashMap<Int, Int>() // midiNote -> streamId
     private val sitarLoaded = AtomicBoolean(false)
 
+    // Dedicated zero-lag SoundPool sample maps for acoustic/electric/classical guitars, harmonium, flute, violin
+    private val sampleMapsByInstrument = ConcurrentHashMap<String, ConcurrentHashMap<Int, Int>>()
+    private val activeStreamsByInstrument = ConcurrentHashMap<String, ConcurrentHashMap<Int, Int>>()
+    private val sampleLoadedByInstrument = ConcurrentHashMap<String, AtomicBoolean>()
+
     // --- STEP 2: CLASS LEVEL STATE, CACHES, AND MEDIA3/DSP FIELDS ---
     private var bassHandle = 0
     private val stemHandles = ConcurrentHashMap<String, Int>()
@@ -557,23 +562,24 @@ class AndroidAudioEngine(
         val targetKey = when {
             upper.contains("SITAR") -> "SITAR"
             upper.contains("HARMONIUM") -> "HARMONIUM"
-            upper.contains("GUITAR") -> "GUITAR"
+            upper.contains("TABLA") -> "TABLA"
+            upper.contains("FLUTE") -> "FLUTE"
+            upper.contains("VIOLIN") -> "VIOLIN"
+            upper.contains("PIANO_ELECTRIC") || (upper.contains("ELECTRIC") && upper.contains("PIANO")) -> "PIANO_ELECTRIC"
+            upper.contains("ELECTRIC") -> "GUITAR_ELECTRIC"
+            upper.contains("CLASSICAL") && upper.contains("GUITAR") -> "GUITAR_CLASSICAL"
+            upper.contains("UKULELE") || upper.contains("UKE") -> "UKULELE"
+            upper.contains("ACOUSTIC") || upper.contains("GUITAR") -> "GUITAR_ACOUSTIC"
             else -> "PIANO"
         }
 
-        if (currentInstrument == targetKey && sf2Loaded.get()) return
+        currentInstrument = targetKey
 
         synchronized(sf2Lock) {
-            currentInstrument = targetKey
-            val targetSf = soundFontPool[targetKey]
+            val targetSf = soundFontPool[targetKey] ?: soundFontPool["PIANO"]
             if (targetSf != null) {
                 globalSoundFont = targetSf
                 sf2Loaded.set(true)
-                println("AudioEngine Architecture: Route active pointer to $targetKey [SUCCESS]")
-            } else {
-                // If specific instrument isn't loaded yet, keep sf2Loaded true if piano fallback exists
-                sf2Loaded.set(soundFontPool["PIANO"] != null)
-                println("AudioEngine Warning: Target $targetKey not loaded in RAM pool yet (Background thread processing).")
             }
         }
     }
@@ -593,10 +599,16 @@ class AndroidAudioEngine(
         initSystemSounds()
         initAllAssets()
         loadSalamanderSamples()
-        loadSitarSamples()
+        loadInstrumentSampleKit("SITAR", "sitar")
+        loadInstrumentSampleKit("GUITAR_ACOUSTIC", "guitar/guitar-acoustic")
+        loadInstrumentSampleKit("GUITAR_ELECTRIC", "guitar/guitar-electric")
+        loadInstrumentSampleKit("GUITAR_CLASSICAL", "guitar/guitar-classical")
+        loadInstrumentSampleKit("HARMONIUM", "harmonium")
+        loadInstrumentSampleKit("PIANO_ELECTRIC", "piano/electric")
+        loadInstrumentSampleKit("TABLA", "tabla/samples")
+        loadInstrumentSampleKit("FLUTE", "flute")
+        loadInstrumentSampleKit("VIOLIN", "violin")
         loadSf2Piano()
-        loadSf2Guitar()
-        loadSf2Harmonium()
 
         engineScope.launch(Dispatchers.IO) {
             loadSf2Tanpura()?.let { sf ->
@@ -1824,42 +1836,55 @@ class AndroidAudioEngine(
         }
     }
 
-    private fun loadSitarSamples() {
+    private fun loadInstrumentSampleKit(instrumentKey: String, assetFolderPath: String) {
         engineScope.launch(Dispatchers.IO) {
             try {
-                // Pitch mapping for all standard note names in the sitar folder
                 val noteBaseMap = mapOf(
-                    "C" to 0, "Db" to 1, "D" to 2, "Eb" to 3,
-                    "E" to 4, "F" to 5, "Gb" to 6, "G" to 7,
-                    "Ab" to 8, "A" to 9, "Bb" to 10, "B" to 11
+                    "C" to 0, "Db" to 1, "Cs" to 1, "D" to 2, "Eb" to 3, "Ds" to 3,
+                    "E" to 4, "F" to 5, "Gb" to 6, "Fs" to 6, "G" to 7,
+                    "Ab" to 8, "Gs" to 8, "A" to 9, "Bb" to 10, "As" to 10, "B" to 11
                 )
-                val assetList = try { context.assets.list("sitar") ?: emptyArray() } catch (_: Exception) { emptyArray() }
+                val sampleMap = sampleMapsByInstrument.getOrPut(instrumentKey) { ConcurrentHashMap() }
+                activeStreamsByInstrument.getOrPut(instrumentKey) { ConcurrentHashMap() }
+                val loadedFlag = sampleLoadedByInstrument.getOrPut(instrumentKey) { AtomicBoolean(false) }
+
+                val assetList = try { context.assets.list(assetFolderPath) ?: emptyArray() } catch (_: Exception) { emptyArray() }
                 assetList.forEach { fileName ->
                     if (fileName.endsWith(".mp3")) {
-                        val base = fileName.removeSuffix(".mp3")
+                        val base = fileName.removeSuffix(".mp3").trim()
                         val octave = base.lastOrNull()?.digitToIntOrNull()
                         val noteName = if (octave != null) base.dropLast(1) else null
                         if (noteName != null && octave != null && noteBaseMap.containsKey(noteName)) {
                             val midi = (octave + 1) * 12 + (noteBaseMap[noteName] ?: 0)
                             try {
-                                val afd: AssetFileDescriptor = context.assets.openFd("sitar/$fileName")
+                                val afd: AssetFileDescriptor = context.assets.openFd("$assetFolderPath/$fileName")
                                 val soundId = salamanderSoundPool.load(afd, 1)
-                                sitarSampleMap[midi] = soundId
+                                sampleMap[midi] = soundId
                             } catch (_: Exception) {}
                         }
                     }
                 }
-                sitarLoaded.set(sitarSampleMap.isNotEmpty())
-                Log.i("AudioEngine", "Sitar acoustic samples loaded successfully (${sitarSampleMap.size} notes) into SoundPool.")
+                loadedFlag.set(sampleMap.isNotEmpty())
+                Log.i("AudioEngine", "Instrument [$instrumentKey] audio samples loaded (${sampleMap.size} pitches) from $assetFolderPath.")
             } catch (e: Exception) {
-                Log.e("AudioEngine", "Failed loading Sitar samples: ${e.message}")
+                Log.e("AudioEngine", "Failed loading audio samples for $instrumentKey: ${e.message}")
             }
         }
     }
 
     override fun noteOn(midiNote: Int, velocity: Float) {
         val clampedVel = velocity.coerceIn(0f, 1f)
-        if (currentInstrument == "SITAR" && sitarLoaded.get()) {
+
+        // 1. Check if the active instrument has audio samples loaded in SoundPool
+        val sampleInstrumentKey = when {
+            currentInstrument == "SITAR" -> "SITAR"
+            currentInstrument == "UKULELE" -> "GUITAR_ACOUSTIC"
+            sampleLoadedByInstrument[currentInstrument]?.get() == true -> currentInstrument
+            currentInstrument.contains("GUITAR") -> "GUITAR_ACOUSTIC"
+            else -> null
+        }
+
+        if (sampleInstrumentKey == "SITAR" && sitarLoaded.get()) {
             val soundId = sitarSampleMap[midiNote]
             if (soundId != null) {
                 sitarActiveStreamMap.remove(midiNote)?.let { oldStreamId ->
@@ -1871,7 +1896,6 @@ class AndroidAudioEngine(
                 }
                 return
             } else {
-                // Find closest sampled anchor note if exact note isn't loaded
                 var closestMidi = 60
                 var minDiff = Int.MAX_VALUE
                 sitarSampleMap.keys.forEach { sampledMidi ->
@@ -1896,6 +1920,48 @@ class AndroidAudioEngine(
                 }
             }
         }
+
+        if (sampleInstrumentKey != null && sampleInstrumentKey != "SITAR") {
+            val sampleMap = sampleMapsByInstrument[sampleInstrumentKey]
+            val activeStreams = activeStreamsByInstrument[sampleInstrumentKey]
+            if (sampleMap != null && sampleMap.isNotEmpty()) {
+                val soundId = sampleMap[midiNote]
+                if (soundId != null) {
+                    activeStreams?.remove(midiNote)?.let { oldStreamId ->
+                        salamanderSoundPool.stop(oldStreamId)
+                    }
+                    val streamId = salamanderSoundPool.play(soundId, clampedVel, clampedVel, 1, 0, 1.0f)
+                    if (streamId != 0 && activeStreams != null) {
+                        activeStreams[midiNote] = streamId
+                    }
+                    return
+                } else {
+                    var closestMidi = 60
+                    var minDiff = Int.MAX_VALUE
+                    sampleMap.keys.forEach { sampledMidi ->
+                        val diff = kotlin.math.abs(sampledMidi - midiNote)
+                        if (diff < minDiff) {
+                            minDiff = diff
+                            closestMidi = sampledMidi
+                        }
+                    }
+                    val fallbackSoundId = sampleMap[closestMidi]
+                    if (fallbackSoundId != null) {
+                        val semitoneDiff = midiNote - closestMidi
+                        val rate = java.lang.Math.pow(2.0, semitoneDiff.toDouble() / 12.0).toFloat().coerceIn(0.5f, 2.0f)
+                        activeStreams?.remove(midiNote)?.let { oldStreamId ->
+                            salamanderSoundPool.stop(oldStreamId)
+                        }
+                        val streamId = salamanderSoundPool.play(fallbackSoundId, clampedVel, clampedVel, 1, 0, rate)
+                        if (streamId != 0 && activeStreams != null) {
+                            activeStreams[midiNote] = streamId
+                        }
+                        return
+                    }
+                }
+            }
+        }
+
         if (currentInstrument == "PIANO" && pianoAudioMode == "SalamanderSamples" && salamanderLoaded.get()) {
             // Find closest sampled anchor note
             var closestMidi = 60
@@ -1980,13 +2046,35 @@ class AndroidAudioEngine(
             currentlyPlayingNoteEngine = activeMidiNotesEngine.keys.firstOrNull()
         }
 
-        if (currentInstrument == "SITAR") {
+        val sampleInstrumentKey = when {
+            currentInstrument == "SITAR" -> "SITAR"
+            currentInstrument == "UKULELE" -> "GUITAR_ACOUSTIC"
+            sampleLoadedByInstrument[currentInstrument]?.get() == true -> currentInstrument
+            currentInstrument.contains("GUITAR") -> "GUITAR_ACOUSTIC"
+            else -> null
+        }
+
+        if (sampleInstrumentKey == "SITAR") {
             val streamId = sitarActiveStreamMap.remove(note)
             if (streamId != null) {
                 engineScope.launch {
                     try {
                         salamanderSoundPool.setVolume(streamId, 0.4f, 0.4f)
                         delay(250L)
+                        salamanderSoundPool.stop(streamId)
+                    } catch (_: Exception) {}
+                }
+            }
+            return
+        }
+
+        if (sampleInstrumentKey != null) {
+            val streamId = activeStreamsByInstrument[sampleInstrumentKey]?.remove(note)
+            if (streamId != null) {
+                engineScope.launch {
+                    try {
+                        salamanderSoundPool.setVolume(streamId, 0.4f, 0.4f)
+                        delay(220L)
                         salamanderSoundPool.stop(streamId)
                     } catch (_: Exception) {}
                 }

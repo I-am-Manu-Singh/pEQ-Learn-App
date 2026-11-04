@@ -159,7 +159,7 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                 }
 
                 when (inst) {
-                    ChordInstrumentType.HARMONIUM -> {
+                    ChordInstrumentType.HARMONIUM, ChordInstrumentType.TABLA -> {
                         UnifiedHarmoniumVisualizer(
                             activeMidiNotes = baseScaleMap,
                             accentColor = accentColor,
@@ -178,7 +178,7 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                             modifier = Modifier.fillMaxWidth().height(118.dp).clip(RoundedCornerShape(8.dp))
                         )
                     }
-                    ChordInstrumentType.PIANO -> {
+                    ChordInstrumentType.PIANO_ACOUSTIC, ChordInstrumentType.PIANO_ELECTRIC -> {
                         UnifiedPianoKeyboard(
                             activeMidiNotes = baseScaleMap,
                             accentColor = accentColor,
@@ -204,7 +204,7 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                                 .clip(RoundedCornerShape(8.dp))
                         )
                     }
-                    ChordInstrumentType.GUITAR -> {
+                    ChordInstrumentType.GUITAR_ACOUSTIC, ChordInstrumentType.GUITAR_ELECTRIC, ChordInstrumentType.GUITAR_CLASSICAL -> {
                         val highlightedGuitarList = remember(activeSemitones, playingNote) {
                             if (playingNote != null) listOf(playingNote - 60) else activeSemitones
                         }

@@ -57,7 +57,7 @@ fun ChordDictionaryPanel(
     var mode by remember { mutableStateOf(0) }
     var rootIdx by remember { mutableStateOf(0) }
     var chordTypeIdx by remember { mutableStateOf(0) }
-    var selectedInstrument by remember { mutableStateOf(ChordInstrumentType.GUITAR) }
+    var selectedInstrument by remember { mutableStateOf(ChordInstrumentType.GUITAR_ACOUSTIC) }
     var selectedDiff by remember { mutableStateOf(ChordDiff.EASY) }
     var capoFret by remember { mutableStateOf(0) }
     var fromKeyIdx by remember { mutableStateOf(0) }
@@ -212,7 +212,7 @@ fun ChordDictionaryPanel(
         val rangeStr = selectedFretRange
         val cagedStr = selectedCagedFilter
         val startFretStr = "Fret $selectedStartFret"
-        val voicingStr = if (selectedInstrument == ChordInstrumentType.PIANO) {
+        val voicingStr = if (selectedInstrument == ChordInstrumentType.PIANO_ACOUSTIC) {
             voicingOptions.getOrNull(selectedVoicingIdx) ?: "Default"
         } else {
             selectedVoicingType
@@ -242,7 +242,7 @@ fun ChordDictionaryPanel(
 
     LaunchedEffect(selectedInstrument) {
         selectedVoicingType = when (selectedInstrument) {
-            ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> "Closed"
+            ChordInstrumentType.PIANO_ACOUSTIC, ChordInstrumentType.HARMONIUM -> "Closed"
             ChordInstrumentType.UKULELE -> "Open"
             else -> "Open"
         }
@@ -382,10 +382,10 @@ Row(
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val currentVoicingList = when (selectedInstrument) {
-                    ChordInstrumentType.GUITAR, ChordInstrumentType.GUITAR_7 -> guitarVoicings
+                    ChordInstrumentType.GUITAR_ACOUSTIC, ChordInstrumentType.GUITAR_ELECTRIC, ChordInstrumentType.GUITAR_CLASSICAL, ChordInstrumentType.GUITAR_7 -> guitarVoicings
                     ChordInstrumentType.UKULELE -> ukeVoicings
                     ChordInstrumentType.SITAR -> listOf("Kharaj-Pancham", "Gandhar-Pancham", "Sympathetic Drone")
-                    ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> pianoVoicings
+                    ChordInstrumentType.PIANO_ACOUSTIC, ChordInstrumentType.PIANO_ELECTRIC, ChordInstrumentType.HARMONIUM, ChordInstrumentType.TABLA -> pianoVoicings
                     ChordInstrumentType.VIOLIN -> listOf("Open", "Single Position", "Double Stop")
                     ChordInstrumentType.FLUTE -> listOf("Standard", "Overblown", "Harmonic")
                 }
@@ -397,7 +397,7 @@ Row(
                         onItemSelect = { selectedVoicingType = currentVoicingList[it] }
                     )
                 }
-                if (selectedInstrument == ChordInstrumentType.PIANO) {
+                if (selectedInstrument == ChordInstrumentType.PIANO_ACOUSTIC) {
                     if (mode == 0) {
                         Box(modifier = Modifier.weight(1f)) {
                             M3DropdownMenu(
@@ -428,7 +428,7 @@ Row(
                 }
             }
 
-            if (selectedInstrument == ChordInstrumentType.GUITAR) {
+            if (selectedInstrument == ChordInstrumentType.GUITAR_ACOUSTIC || selectedInstrument == ChordInstrumentType.GUITAR_ELECTRIC || selectedInstrument == ChordInstrumentType.GUITAR_CLASSICAL) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(modifier = Modifier.weight(1f)) {
                         M3DropdownMenu(
@@ -465,7 +465,7 @@ Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    val displayCapoText = if (capoFret > 0 && mode == 0 && selectedInstrument != ChordInstrumentType.PIANO) " (Capo $capoFret)" else ""
+                    val displayCapoText = if (capoFret > 0 && mode == 0 && selectedInstrument != ChordInstrumentType.PIANO_ACOUSTIC && selectedInstrument != ChordInstrumentType.PIANO_ELECTRIC) " (Capo $capoFret)" else ""
                     Text(
                         text = if (mode == 0) "$chordName$displayCapoText" else "${roots[rootIdx]} ${scalePair.first.split(" ")[0]}",
                         fontSize = 22.sp,
@@ -651,7 +651,7 @@ Row(
         ) { inst ->
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 when (inst) {
-                    ChordInstrumentType.GUITAR -> {
+                    ChordInstrumentType.GUITAR_ACOUSTIC, ChordInstrumentType.GUITAR_ELECTRIC, ChordInstrumentType.GUITAR_CLASSICAL -> {
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         // Strings top to bottom: e4 (64), B3 (59), G3 (55), D3 (50), A2 (45), E2 (40)
                         val openGuitarStrings = listOf(64, 59, 55, 50, 45, 40)
@@ -754,7 +754,7 @@ Row(
                             GuitarFingerLegend(accentColor = partColor)
                         }
                     }
-                    ChordInstrumentType.PIANO -> {
+                    ChordInstrumentType.PIANO_ACOUSTIC, ChordInstrumentType.PIANO_ELECTRIC -> {
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         val startNoteBoundary = (pianoPitches.minOrNull() ?: 60) - 2
                         val endNoteBoundary = (pianoPitches.maxOrNull() ?: 72) + (if (selectedOctaveSpan == 1) 24 else 12)
@@ -901,7 +901,7 @@ Row(
                             GuitarFingerLegend(accentColor = partColor)
                         }
                     }
-                    ChordInstrumentType.HARMONIUM -> {
+                    ChordInstrumentType.HARMONIUM, ChordInstrumentType.TABLA -> {
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             UnifiedHarmoniumVisualizer(
@@ -1021,7 +1021,7 @@ Row(
             scrollState = scrollState
         )
 
-        if (selectedInstrument == ChordInstrumentType.GUITAR || selectedInstrument == ChordInstrumentType.GUITAR_7 || selectedInstrument == ChordInstrumentType.UKULELE) {
+        if (selectedInstrument == ChordInstrumentType.GUITAR_ACOUSTIC || selectedInstrument == ChordInstrumentType.GUITAR_ELECTRIC || selectedInstrument == ChordInstrumentType.GUITAR_CLASSICAL || selectedInstrument == ChordInstrumentType.GUITAR_7 || selectedInstrument == ChordInstrumentType.UKULELE) {
             HorizontalDivider(color = partColor.copy(0.1f))
             CapoSection(
                 capoFret = capoFret,
@@ -1030,7 +1030,7 @@ Row(
                 partColor = partColor,
                 onKeyDispatched = { rootIdx = it }
             )
-        } else if (selectedInstrument == ChordInstrumentType.PIANO) {
+        } else if (selectedInstrument == ChordInstrumentType.PIANO_ACOUSTIC) {
             HorizontalDivider(color = partColor.copy(0.1f))
             TransposeSection(
                 fromKeyIdx = fromKeyIdx,
@@ -1390,7 +1390,7 @@ fun ImmersiveKeyboardFretboardLabDialog(
             setSystemBarsVisibility(true)
         }
     }
-    var activeLabTab by remember { mutableStateOf(if (instrumentType == ChordInstrumentType.PIANO) "Piano" else if (instrumentType == ChordInstrumentType.UKULELE) "Uke" else "Guitar") }
+    var activeLabTab by remember { mutableStateOf(if (instrumentType == ChordInstrumentType.PIANO_ACOUSTIC) "Piano" else if (instrumentType == ChordInstrumentType.UKULELE) "Uke" else "Guitar") }
     var selectedSpeed by remember { mutableStateOf("1.0x") }
     var playbackMode by remember { mutableStateOf("Sequential") }
     var isPlaying by remember { mutableStateOf(false) }

@@ -88,6 +88,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQInstrumentDropdown
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQDynamicInstrumentVisualizer
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -1681,55 +1684,71 @@ Box {
                                             )
                                         }
 
-                                        // Instrument / MIDI Tracks Dropdown Selector
-                                        Box {
-                                            val currentScoreObj = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
-                                            val foundTracks = currentScoreObj?.tracks ?: emptyList()
-                                            val activeTracksCount = if (foundTracks.isNotEmpty()) {
-                                                foundTracks.count { tr -> viewModel.enabledTrackIndices[tr.trackIndex] ?: tr.isEnabled }
-                                            } else 0
-                                            val buttonLabel = if (foundTracks.isNotEmpty()) {
-                                                "Tracks ($activeTracksCount/${foundTracks.size})"
-                                            } else {
-                                                viewModel.selectedInstrument.value
-                                            }
-
-                                            Surface(
-                                                shape = RoundedCornerShape(16.dp),
-                                                color = Color(0xFF1E162E),
-                                                border = BorderStroke(1.dp, Color(0xFF2E2445)),
-                                                modifier = Modifier.clickable { fsInstrumentMenuExpanded = true }
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.Tune,
-                                                        contentDescription = null,
-                                                        tint = Color(0xFF9FA8DA),
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                    Text(
-                                                        buttonLabel,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = Color.White
-                                                    )
-                                                    Icon(
-                                                        Icons.Default.ArrowDropDown,
-                                                        contentDescription = null,
-                                                        tint = Color.White.copy(0.7f),
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
+                                        // pEQInstrument Dropdown for visualizer & audio sample playback
+                                        var currentSelectedInstType by remember(viewModel.selectedInstrument.value) {
+                                            mutableStateOf(ChordInstrumentType.fromNameOrNull(viewModel.selectedInstrument.value) ?: ChordInstrumentType.PIANO_ACOUSTIC)
+                                        }
+                                        pEQInstrumentDropdown(
+                                            selectedInstrument = currentSelectedInstType,
+                                            accentColor = Color(0xFF64B5F6),
+                                            onInstrumentChange = { newInst ->
+                                                currentSelectedInstType = newInst
+                                                viewModel.selectedInstrument.value = newInst.title
+                                                try {
+                                                    viewModel.audioEngine.setInstrument(newInst.soundEngineName)
+                                                } catch (_: Exception) {}
+                                                if (newInst.title.contains("Guitar") || newInst == ChordInstrumentType.UKULELE) {
+                                                    viewModel.notationFormat.value = "Tab Only"
+                                                    notationFormat = "Tab Only"
+                                                } else if (newInst == ChordInstrumentType.PIANO_ACOUSTIC || newInst == ChordInstrumentType.PIANO_ELECTRIC || newInst == ChordInstrumentType.HARMONIUM) {
+                                                    viewModel.notationFormat.value = "Staff Only"
+                                                    notationFormat = "Staff Only"
                                                 }
-                                            }
-                                            DropdownMenu(
-                                                expanded = fsInstrumentMenuExpanded,
-                                                onDismissRequest = { fsInstrumentMenuExpanded = false }
-                                            ) {
-                                                if (foundTracks.isNotEmpty()) {
+                                            },
+                                            modifier = Modifier.width(185.dp).height(32.dp)
+                                        )
+
+                                        // MIDI Tracks Dropdown Selector (if score has tracks)
+                                        val currentScoreObj = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
+                                        val foundTracks = currentScoreObj?.tracks ?: emptyList()
+                                        if (foundTracks.isNotEmpty()) {
+                                            Box {
+                                                val activeTracksCount = foundTracks.count { tr -> viewModel.enabledTrackIndices[tr.trackIndex] ?: tr.isEnabled }
+                                                Surface(
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    color = Color(0xFF1E162E),
+                                                    border = BorderStroke(1.dp, Color(0xFF2E2445)),
+                                                    modifier = Modifier.clickable { fsInstrumentMenuExpanded = true }
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.Tune,
+                                                            contentDescription = null,
+                                                            tint = Color(0xFF9FA8DA),
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                        Text(
+                                                            "Tracks ($activeTracksCount/${foundTracks.size})",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                            color = Color.White
+                                                        )
+                                                        Icon(
+                                                            Icons.Default.ArrowDropDown,
+                                                            contentDescription = null,
+                                                            tint = Color.White.copy(0.7f),
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                }
+                                                DropdownMenu(
+                                                    expanded = fsInstrumentMenuExpanded,
+                                                    onDismissRequest = { fsInstrumentMenuExpanded = false }
+                                                ) {
                                                     Text(
                                                         text = "MIDI TRACKS (${foundTracks.size})",
                                                         fontSize = 10.sp,
@@ -1774,31 +1793,6 @@ Box {
                                                             }
                                                         )
                                                     }
-                                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                                                    Text(
-                                                        text = "VIEW MODE INSTRUMENT",
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                                                    )
-                                                }
-
-                                                listOf("Piano", "Harmonium", "Guitar", "7-String Guitar", "Ukulele", "Violin", "Flute", "Bass", "Saxophone").forEach { inst ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(inst, fontSize = 12.sp) },
-                                                        onClick = {
-                                                            viewModel.selectedInstrument.value = inst
-                                                            if (inst.contains("Guitar") || inst == "Ukulele") {
-                                                                viewModel.notationFormat.value = "Tab Only"
-                                                                notationFormat = "Tab Only"
-                                                            } else if (inst == "Piano" || inst == "Harmonium") {
-                                                                viewModel.notationFormat.value = "Staff Only"
-                                                                notationFormat = "Staff Only"
-                                                            }
-                                                            fsInstrumentMenuExpanded = false
-                                                        }
-                                                    )
                                                 }
                                             }
                                         }
@@ -2071,7 +2065,22 @@ Button(
                                                         },
                                                         modifier = Modifier.fillMaxSize()
                                                     )
-                                                } else if (currentInst == "Harmonium") {
+                                                } else if (currentInst == "Sitar") {
+                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                        viewModel.midiActiveNotes.keys.toList()
+                                                    }
+                                                    com.creativeblisslabs.peqlearn.app.ui.components.UnifiedSitarVisualizer(
+                                                        activeNotes = activeList,
+                                                        activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        accentColor = Color(0xFFFFB300),
+                                                        showNoteNames = fsShowLetters,
+                                                        onFretTapped = { _, midi ->
+                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                            viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else if (currentInst == "Harmonium" || currentInst == "Tabla") {
                                                     UnifiedHarmoniumVisualizer(
                                                         activeMidiNotes = viewModel.midiActiveNotes,
                                                         accentColor = Color(0xFFFFB300),
@@ -2310,7 +2319,22 @@ Button(
                                                         },
                                                         modifier = Modifier.fillMaxSize()
                                                     )
-                                                } else if (currentInst == "Harmonium") {
+                                                } else if (currentInst == "Sitar") {
+                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                        viewModel.midiActiveNotes.keys.toList()
+                                                    }
+                                                    com.creativeblisslabs.peqlearn.app.ui.components.UnifiedSitarVisualizer(
+                                                        activeNotes = activeList,
+                                                        activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        accentColor = Color(0xFFFFB300),
+                                                        showNoteNames = fsShowLetters,
+                                                        onFretTapped = { _, midi ->
+                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                            viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else if (currentInst == "Harmonium" || currentInst == "Tabla") {
                                                     UnifiedHarmoniumVisualizer(
                                                         activeMidiNotes = viewModel.midiActiveNotes,
                                                         accentColor = Color(0xFFFFB300),

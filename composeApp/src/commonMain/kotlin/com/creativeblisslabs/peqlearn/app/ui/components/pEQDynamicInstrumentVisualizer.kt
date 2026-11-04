@@ -36,7 +36,7 @@ fun pEQDynamicInstrumentVisualizer(
     ) {
         Box(modifier = Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
             when (selectedInstrument) {
-                ChordInstrumentType.PIANO -> {
+                ChordInstrumentType.PIANO_ACOUSTIC, ChordInstrumentType.PIANO_ELECTRIC -> {
                     UnifiedPianoKeyboard(
                         activeMidiNotes = activeMap,
                         accentColor = accentColor,
@@ -49,7 +49,16 @@ fun pEQDynamicInstrumentVisualizer(
                         modifier = Modifier.fillMaxWidth().height(125.dp).clip(RoundedCornerShape(8.dp))
                     )
                 }
-                ChordInstrumentType.GUITAR, ChordInstrumentType.UKULELE, ChordInstrumentType.GUITAR_7 -> {
+                ChordInstrumentType.TABLA -> {
+                    UnifiedHarmoniumVisualizer(
+                        activeMidiNotes = activeMap,
+                        accentColor = accentColor,
+                        activeMidiNote = activeMidiToken,
+                        onKeyTapped = onNoteTapped,
+                        modifier = Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(8.dp))
+                    )
+                }
+                ChordInstrumentType.GUITAR_ACOUSTIC, ChordInstrumentType.GUITAR_ELECTRIC, ChordInstrumentType.GUITAR_CLASSICAL, ChordInstrumentType.UKULELE, ChordInstrumentType.GUITAR_7 -> {
                     val stringLabels = when (selectedInstrument) {
                         ChordInstrumentType.UKULELE -> listOf("A", "E", "C", "G")
                         ChordInstrumentType.GUITAR_7 -> listOf("e", "B", "G", "D", "A", "E", "B")

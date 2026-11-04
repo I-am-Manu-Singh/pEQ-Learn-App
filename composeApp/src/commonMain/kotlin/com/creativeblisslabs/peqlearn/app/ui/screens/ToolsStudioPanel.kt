@@ -199,7 +199,7 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
 
                 if (chordList.isNotEmpty()) {
                     val scope = rememberCoroutineScope()
-                    var selectedToolInstrument by remember { mutableStateOf(ChordInstrumentType.PIANO) }
+                    var selectedToolInstrument by remember { mutableStateOf(ChordInstrumentType.PIANO_ACOUSTIC) }
                     var isPlayingChord by remember { mutableStateOf(false) }
 
                     Row(
@@ -362,7 +362,7 @@ private fun KeyFinderTool(roots: List<String>) {
 private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
     var frets by remember { mutableStateOf(listOf(-1, 3, 2, 0, 1, 0)) }
     val stringOpenMidi = remember { listOf(64, 59, 55, 50, 45, 40) } // Strings 1st to 6th (e4, B3, G3, D3, A2, E2)
-    var selectedFinderInstrument by remember { mutableStateOf(ChordInstrumentType.GUITAR) }
+    var selectedFinderInstrument by remember { mutableStateOf(ChordInstrumentType.GUITAR_ACOUSTIC) }
     var isPlayingVoicing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 

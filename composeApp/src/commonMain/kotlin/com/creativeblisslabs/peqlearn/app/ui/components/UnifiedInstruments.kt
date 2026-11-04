@@ -1276,23 +1276,7 @@ fun UnifiedHarmoniumVisualizer(
                 }
             }
 
-            // Central Inlay Title
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Surface(
-                    color = Color(0xFF100905),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, Color(0xFFFFD54F).copy(alpha = 0.5f))
-                ) {
-                    Text(
-                        text = "HARMONIUM • REED BELLOWS",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFFFFD54F),
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
+            
         }
 
         Spacer(Modifier.height(3.dp))
@@ -1347,29 +1331,7 @@ fun UnifiedViolinFingerboard(
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-            // Header with scroll/pegbox branding
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("VIOLIN", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFE040FB))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xFFE040FB).copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            "Fretless Ebony Fingerboard",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFE040FB),
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-                Text("G3 • D4 • A4 • E5 (Intonation Tapes: 1st, 3rd, 5th, 7th)", fontSize = 9.sp, color = Color.White.copy(0.6f))
-            }
+           
 
             // Fingerboard Strings & Intonation Tapes
             Column(
@@ -1481,28 +1443,7 @@ fun UnifiedFluteVisualizer(
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("BANSURI / FLUTE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = accentColor)
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = accentColor.copy(alpha = 0.15f)
-                ) {
-                    Text(
-                        "Seasoned Assam Bamboo",
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = accentColor,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-            }
-            Text("Mouthpiece + 8 Tone Holes", fontSize = 9.sp, color = Color.White.copy(0.6f))
-        }
+       
 
         // FLUTE BODY (Natural bamboo tube with traditional red/gold bindings & tone holes)
         Box(
@@ -1756,29 +1697,7 @@ fun UnifiedSitarVisualizer(
             .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-            // Header: Sitar title and tuning info
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("SITAR", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFFFB300))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xFFFFB300).copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            "Arched Curved Brass Pardas",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFFB300),
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-                Text("Kharaj-Pancham (Ravi Shankar Style) • Javari Bridge", fontSize = 9.sp, color = Color.White.copy(0.6f))
-            }
+           
 
             // Sitar Fretboard Neck with Arched Brass Frets and Strings
             Box(
@@ -1903,22 +1822,6 @@ fun UnifiedSitarVisualizer(
                         }
                     }
                 }
-            }
-
-            // Bottom Bone Bridge (Ghoraj / Javari)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(16.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color(0xFFFFF8E1))
-                    .border(1.dp, Color(0xFFD7CCC8), RoundedCornerShape(3.dp))
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("CAMEL BONE JAVARI (Ghoraj)", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5D4037))
-                Text("Open Resonant Sympathetic Buzzing", fontSize = 7.5.sp, color = Color(0xFF8D6E63))
             }
         }
     }

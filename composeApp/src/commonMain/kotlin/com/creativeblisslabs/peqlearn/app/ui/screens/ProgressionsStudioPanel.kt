@@ -49,10 +49,10 @@ fun ProgressionsStudioPanel(
     val scope = rememberCoroutineScope()
     val roots = remember { listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B") }
     var selectedKey by remember { mutableStateOf("C") }
-    var selectedInstrumentType by remember { mutableStateOf(ChordInstrumentType.GUITAR) }
+    var selectedInstrumentType by remember { mutableStateOf(ChordInstrumentType.GUITAR_ACOUSTIC) }
     val selectedInstrument = remember(selectedInstrumentType) {
         when (selectedInstrumentType) {
-            ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> "piano"
+            ChordInstrumentType.PIANO_ACOUSTIC, ChordInstrumentType.HARMONIUM -> "piano"
             ChordInstrumentType.UKULELE -> "ukulele"
             else -> "guitar"
         }

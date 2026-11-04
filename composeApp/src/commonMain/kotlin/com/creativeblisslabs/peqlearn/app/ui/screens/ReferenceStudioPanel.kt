@@ -21,6 +21,10 @@ import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.ui.components.SvgChordBox
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
+import com.creativeblisslabs.peqlearn.app.ui.components.InstrumentPlayButton
+import com.creativeblisslabs.peqlearn.app.ui.components.InstrumentSoundStyle
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQInstrumentDropdown
+import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.RealChordPosition
 import com.creativeblisslabs.peqlearn.app.util.RealChordsDb
@@ -50,7 +54,14 @@ fun ReferenceStudioPanel(
     val roots = remember { listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B") }
     var selectedRoot by remember { mutableStateOf("C") }
     var selectedSuffix by remember { mutableStateOf("major") }
-    var selectedInstrument by remember { mutableStateOf("guitar") } // "guitar", "piano", "ukulele"
+    var selectedInstrumentType by remember { mutableStateOf(ChordInstrumentType.GUITAR_ACOUSTIC) }
+    val selectedInstrument = remember(selectedInstrumentType) {
+        when (selectedInstrumentType) {
+            ChordInstrumentType.PIANO_ACOUSTIC -> "piano"
+            ChordInstrumentType.UKULELE -> "ukulele"
+            else -> "guitar"
+        }
+    }
 
     val scope = rememberCoroutineScope()
     var searchQuery by remember { mutableStateOf("") }
@@ -182,7 +193,7 @@ fun ReferenceStudioPanel(
             }
         }
 
-        // Instrument Switcher Row: Guitar, Ukulele, Piano
+        // Instrument Switcher Row with pEQInstrumentDropdown
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -195,22 +206,17 @@ fun ReferenceStudioPanel(
                 color = Color(0xFF7E8B9B),
                 letterSpacing = 1.sp
             )
-            SingleChoiceSegmentedButtonRow {
-                listOf("guitar" to "🎸 Guitar", "ukulele" to "🪕 Ukulele", "piano" to "🎹 Piano").forEachIndexed { idx, (key, label) ->
-                    SegmentedButton(
-                        selected = selectedInstrument == key,
-                        onClick = {
-                            selectedInstrument = key
-                            try {
-                                viewModel.audioEngine.setInstrument(if (key == "piano") "PIANO" else "GUITAR")
-                            } catch (_: Exception) {}
-                        },
-                        shape = SegmentedButtonDefaults.itemShape(index = idx, count = 3)
-                    ) {
-                        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
+            pEQInstrumentDropdown(
+                selectedInstrument = selectedInstrumentType,
+                accentColor = Color(0xFFFFB347),
+                onInstrumentChange = { newInst ->
+                    selectedInstrumentType = newInst
+                    try {
+                        viewModel.audioEngine.setInstrument(newInst.soundEngineName)
+                    } catch (_: Exception) {}
+                },
+                modifier = Modifier.width(220.dp)
+            )
         }
 
         // Subtabs: Chords | Inversions | Scales | Arpeggios
@@ -417,24 +423,18 @@ fun ReferenceStudioPanel(
                                 color = Color(0xFF9EABB8)
                             )
 
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        viewModel.audioEngine.setInstrument("PIANO")
-                                        pianoMidiNotes.forEach { midi ->
-                                            viewModel.audioEngine.noteOn(midi, 0.85f)
-                                            delay(35L)
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9E1B)),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.Black)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Play Piano", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                            }
+                            InstrumentPlayButton(
+                                notes = pianoMidiNotes,
+                                accentColor = Color(0xFFFF9E1B),
+                                label = "Play Chord",
+                                arpDelayMs = 40L,
+                                onPlay = { midi ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
+                                        viewModel.audioEngine.noteOn(midi, 0.85f)
+                                    } catch (_: Exception) {}
+                                }
+                            )
                         }
 
                         com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
@@ -446,7 +446,7 @@ fun ReferenceStudioPanel(
                             showNoteNames = true,
                             onKeyTapped = { midi ->
                                 try {
-                                    viewModel.audioEngine.setInstrument("PIANO")
+                                    viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
                                     viewModel.audioEngine.noteOn(midi, 0.85f)
                                 } catch (_: Exception) {}
                             },
@@ -471,8 +471,7 @@ fun ReferenceStudioPanel(
                                 height = 175.dp,
                                 onClick = {
                                     scope.launch {
-                                        val instr = if (selectedInstrument == "ukulele") "GUITAR" else "GUITAR"
-                                        viewModel.audioEngine.setInstrument(instr)
+                                        viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
                                         pos.midi.forEach { midi ->
                                             viewModel.audioEngine.noteOn(midi, 0.85f)
                                             delay(35L)
@@ -560,12 +559,36 @@ fun ReferenceStudioPanel(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = "$selectedRoot $activeSubTab on " + (if (selectedInstrument == "piano") "Piano Keyboard" else "Fretboard"),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF81C784)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$selectedRoot $activeSubTab on " + (if (selectedInstrument == "piano") "Piano Keyboard" else "Fretboard"),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF81C784)
+                        )
+
+                        val scaleNotes = remember(rootIdx, scaleIntervals) {
+                            val baseMidi = 60 + rootIdx
+                            scaleIntervals.map { baseMidi + it }
+                        }
+                        InstrumentPlayButton(
+                            notes = scaleNotes,
+                            accentColor = Color(0xFF81C784),
+                            label = "Play $activeSubTab",
+                            soundStyle = InstrumentSoundStyle.SEQUENTIAL,
+                            arpDelayMs = 120L,
+                            onPlay = { midi ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
+                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                } catch (_: Exception) {}
+                            }
+                        )
+                    }
 
                     if (selectedInstrument == "piano") {
                         val activeScalePitches = remember(rootIdx, scaleIntervals) {
@@ -581,7 +604,7 @@ fun ReferenceStudioPanel(
                             showNoteNames = true,
                             onKeyTapped = { midi ->
                                 try {
-                                    viewModel.audioEngine.setInstrument("PIANO")
+                                    viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
                                     viewModel.audioEngine.noteOn(midi, 0.85f)
                                 } catch (_: Exception) {}
                             },
@@ -601,7 +624,7 @@ fun ReferenceStudioPanel(
                             baseFret = 1,
                             onFretTapped = { _, _, midi ->
                                 try {
-                                    viewModel.audioEngine.setInstrument(if (selectedInstrument == "ukulele") "GUITAR" else "GUITAR")
+                                    viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
                                     viewModel.audioEngine.noteOn(midi, 0.85f)
                                 } catch (_: Exception) {}
                             },
