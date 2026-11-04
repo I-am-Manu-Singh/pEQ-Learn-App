@@ -25,18 +25,19 @@ object SwarlipiParser {
             return generateDefaultMovement(movementTitle, lyricText, taalName, beatsPerVibhag, totalBeats)
         }
 
-        val lines = notationText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val rawLines = notationText.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val avartans = mutableListOf<SwarlipiAvartan>()
         var currentAvartanNumber = 1
 
         var idx = 0
-        while (idx < lines.size) {
-            val line = lines[idx]
+        while (idx < rawLines.size) {
+            val line = rawLines[idx]
 
             // Check if line contains vibhags '|'
             if (line.contains("|")) {
-                val nextLineLyrics = if (idx + 1 < lines.size && !lines[idx + 1].contains("|")) {
-                    lines[idx + 1]
+                // If next line exists and is a lyric line (does not contain note letters as primary tokens)
+                val nextLineLyrics = if (idx + 1 < rawLines.size && !isSwaraLine(rawLines[idx + 1])) {
+                    rawLines[idx + 1]
                 } else null
 
                 val avartan = parseVibhagLine(
@@ -55,16 +56,24 @@ object SwarlipiParser {
                 }
             } else {
                 // Space-separated sargam tokens
+                val nextLineLyrics = if (idx + 1 < rawLines.size && !isSwaraLine(rawLines[idx + 1])) {
+                    rawLines[idx + 1]
+                } else null
+
                 val avartan = parseSpaceSeparatedLine(
                     swaraLine = line,
-                    lyricLine = if (idx + 1 < lines.size) lines[idx + 1] else null,
+                    lyricLine = nextLineLyrics,
                     avartanIndex = currentAvartanNumber++,
                     taalName = taalName,
                     beatsPerVibhag = beatsPerVibhag,
                     totalBeats = totalBeats
                 )
                 avartans.add(avartan)
-                idx += 1
+                if (nextLineLyrics != null) {
+                    idx += 2
+                } else {
+                    idx += 1
+                }
             }
         }
 
@@ -262,7 +271,7 @@ object SwarlipiParser {
         }
 
         // Saptak detection:
-        // Mandra (lower): lowercase in some traditions, or followed by '.', or prefixed by '.' (e.g. "N.", ".N", "n", "ḍ", or Ome Swarlipi "Nl")
+        // Mandra (lower): lowercase in some traditions, or followed by '.', or prefixed by '.' (e.g. "N.", ".N", "n.", or Ome Swarlipi "Nl")
         // Taar (upper): followed by `'` or dot above (e.g. "S'", "S*", "s'", or Ome Swarlipi "Su")
         var saptak = SwaraSaptak.MADHYA
         if (str.endsWith("u") && str.length > 1 && str.first().isLetter()) {
@@ -285,7 +294,10 @@ object SwarlipiParser {
         var variation = SwaraVariation.SHUDDHA
         val upper = str.uppercase()
 
-        if (str.contains("'") || str.contains("#") || upper == "MA(T)" || str == "Ma" || str == "M'") {
+        if (raw.contains("'") && upper.startsWith("M")) {
+            // "M'" was explicitly marked as Teevra Madhyam!
+            variation = SwaraVariation.TEEVRA
+        } else if (str.contains("#") || upper == "MA(T)" || str == "Ma") {
             variation = SwaraVariation.TEEVRA
         } else if (str == "r" || str == "g" || str == "d" || str == "n" ||
             str == "re" || str == "ga" || str == "dha" || str == "ni" ||
@@ -376,6 +388,29 @@ object SwarlipiParser {
                 if (vibhagIdx == 0) "✕" else "${vibhagIdx + 1}"
             }
         }
+    }
+
+    /**
+     * Determines whether a line contains primarily Swara notation tokens
+     * or lyric syllables (Devanagari or text).
+     */
+    fun isSwaraLine(line: String): Boolean {
+        val tokens = line.split("|", " ")
+            .map { it.trim().trim(';', '\'', '\\', '.', ',', '-', '~', '(', ')') }
+            .filter { it.isNotEmpty() }
+        if (tokens.isEmpty()) return true
+        
+        val swaraCount = tokens.count { token ->
+            val upper = token.uppercase()
+            upper in listOf("S", "R", "G", "M", "P", "D", "N", "SA", "RE", "GA", "MA", "PA", "DHA", "NI") ||
+            token in listOf("s", "r", "g", "m", "p", "d", "n", "re", "ga", "ma", "pa", "dha", "ni", "dha", "ga", "ni", "ra") ||
+            token.startsWith("R₁") || token.startsWith("R₂") || token.startsWith("R₃") ||
+            token.startsWith("G₁") || token.startsWith("G₂") || token.startsWith("G₃") ||
+            token.startsWith("M₁") || token.startsWith("M₂") ||
+            token.startsWith("D₁") || token.startsWith("D₂") || token.startsWith("D₃") ||
+            token.startsWith("N₁") || token.startsWith("N₂") || token.startsWith("N₃")
+        }
+        return swaraCount >= (tokens.size * 0.4)
     }
 
     private fun generateDefaultMovement(

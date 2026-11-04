@@ -14,6 +14,32 @@ import androidx.compose.material.icons.filled.*
 enum class MediaType { AUDIO, VIDEO }
 
 @Serializable
+enum class ChordInstrumentType(
+    val label: String,
+    val title: String,
+    val soundEngineName: String,
+    val assetFolder: String,
+    val defaultSf2Path: String? = null
+) {
+    GUITAR("🎸", "6-String Guitar", "GUITAR", "guitar/guitar-acoustic", "guitar/guitar_samples_clean.sf2"),
+    GUITAR_7("🎸", "7-String Guitar", "GUITAR", "guitar/guitar-acoustic", "guitar/guitar_samples_clean.sf2"),
+    UKULELE("🪕", "Ukulele", "GUITAR", "guitar/guitar-acoustic", "guitar/guitar_samples_clean.sf2"),
+    HARMONIUM("🪗", "Harmonium", "HARMONIUM", "harmonium", "harmonium/Wetthasinghe_Harmnium_GM_Ver.sf2"),
+    SITAR("🪕", "Sitar", "SITAR", "sitar", null),
+    PIANO("🎹", "Piano", "PIANO", "piano", "piano/Grand_Piano.sf2"),
+    FLUTE("🪈", "Flute", "FLUTE", "flute", null),
+    VIOLIN("🎻", "Violin", "VIOLIN", "violin", null);
+
+    companion object {
+        fun fromNameOrNull(name: String?): ChordInstrumentType? {
+            if (name == null) return null
+            val upper = name.uppercase().trim()
+            return entries.firstOrNull { it.name == upper || it.soundEngineName == upper || upper.contains(it.name) }
+        }
+    }
+}
+
+@Serializable
 enum class RepeatMode { OFF, ALL, ONE, FOLDER }
 
 data class AudioFile(

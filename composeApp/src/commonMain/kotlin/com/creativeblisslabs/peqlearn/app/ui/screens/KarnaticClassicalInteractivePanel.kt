@@ -1,6 +1,7 @@
 package com.creativeblisslabs.peqlearn.app.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.rotate
@@ -47,17 +48,15 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
     var notationFormat by remember { mutableStateOf("Staff") }
 
     var selectedRagaState by remember { mutableStateOf<Raaga?>(null) }
-    var visualizerMode by remember { mutableIntStateOf(0) } // 0 = Harmonium, 1 = Guitar
+    var selectedInstrument by remember { mutableStateOf(ChordInstrumentType.HARMONIUM) }
     val scope = rememberCoroutineScope()
 
     Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-        // Changed TabRow to ScrollableTabRow to support horizontal scrolling
-        ScrollableTabRow(
+        TabRow(
             selectedTabIndex = selectedTab,
             containerColor = Color.Transparent,
             contentColor = accentColor,
-            edgePadding = 0.dp, // Removes default start/end padding for left alignment
             indicator = { tabPositions ->
                 if (selectedTab < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(
@@ -65,6 +64,9 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                         color = accentColor
                     )
                 }
+            },
+            divider = {
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
             }
         ) {
             tabs.forEachIndexed { i, label ->
@@ -75,7 +77,6 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                         selectedTab = i
                         viewModel.currentScore.value = null
                     },
-                    modifier = Modifier.padding(horizontal = 8.dp),
                     icon = {
                         Icon(
                             imageVector = tabIcons.getOrElse(i) { Icons.Default.MusicNote },
@@ -132,88 +133,225 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     letterSpacing = 0.5.sp
                 )
-                Row(
-                    modifier = Modifier
-                        .height(36.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    listOf("🪗 Harmonium", "🎸 Guitar").forEachIndexed { idx, label ->
-                        val isSelected = visualizerMode == idx
-                        pEQFilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                visualizerMode = idx
-                                val inst = if (idx == 0) "HARMONIUM" else "GUITAR"
-                                getAudioEngine().setInstrument(inst)
+                pEQInstrumentDropdown(
+                    selectedInstrument = selectedInstrument,
+                    accentColor = accentColor,
+                    onInstrumentChange = {
+                        selectedInstrument = it
+                        try {
+                            getAudioEngine().setInstrument(it.soundEngineName)
+                        } catch (_: Exception) {}
+                    },
+                    modifier = Modifier.width(180.dp)
+                )
+            }
+
+            AnimatedContent(
+                targetState = selectedInstrument,
+                transitionSpec = { fadeIn(tween(200)).togetherWith(fadeOut(tween(150))) },
+                label = "karnatic_instrument_visualizer"
+            ) { inst ->
+                val baseScaleMap = remember(activeSemitones) {
+                    activeSemitones.associate { (60 + it) to true }
+                }
+                val scalePitches = remember(activeSemitones) {
+                    activeSemitones.map { 60 + it }
+                }
+
+                when (inst) {
+                    ChordInstrumentType.HARMONIUM -> {
+                        UnifiedHarmoniumVisualizer(
+                            activeMidiNotes = baseScaleMap,
+                            accentColor = accentColor,
+                            activeMidiNote = playingNote,
+                            onKeyTapped = { midiNote ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                    viewModel.onMidiNoteOn(midiNote, 95)
+                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    scope.launch {
+                                        delay(300L)
+                                        viewModel.onMidiNoteOff(midiNote)
+                                    }
+                                } catch (_: Exception) {}
                             },
-                            label = {
-                                Text(
-                                    text = label,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
+                            modifier = Modifier.fillMaxWidth().height(118.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    ChordInstrumentType.PIANO -> {
+                        UnifiedPianoKeyboard(
+                            activeMidiNotes = baseScaleMap,
+                            accentColor = accentColor,
+                            activeCoordinate = playingNote,
+                            startNote = 48,
+                            endNote = 84,
+                            showNoteNames = true,
+                            isPlaying = playingNote != null,
+                            onKeyTapped = { midi ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                    viewModel.onMidiNoteOn(midi, 95)
+                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                    scope.launch {
+                                        delay(300L)
+                                        viewModel.onMidiNoteOff(midi)
+                                    }
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier
+                                .height(120.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    ChordInstrumentType.GUITAR -> {
+                        val highlightedGuitarList = remember(activeSemitones, playingNote) {
+                            if (playingNote != null) listOf(playingNote - 60) else activeSemitones
+                        }
+                        UnifiedGuitarFretboard(
+                            numFrets = 12,
+                            activeNotes = highlightedGuitarList,
+                            rootNote = 0,
+                            accentColor = accentColor,
+                            showNoteNames = true,
+                            onFretTapped = { _, _, midiNote ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                    viewModel.onMidiNoteOn(midiNote, 95)
+                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    scope.launch {
+                                        delay(300L)
+                                        viewModel.onMidiNoteOff(midiNote)
+                                    }
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(125.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    ChordInstrumentType.GUITAR_7 -> {
+                        UnifiedGuitarFretboard(
+                            numFrets = 12,
+                            accentColor = accentColor,
+                            rootNote = 0,
+                            showNoteNames = true,
+                            markOctaves = true,
+                            highlightOctaveC = true,
+                            baseFret = 1,
+                            stringLabels = listOf("e", "B", "G", "D", "A", "E", "B"),
+                            openStringsSemis = listOf(4, 11, 7, 2, 9, 4, 11),
+                            activeMidiNote = playingNote,
+                            activeNotes = scalePitches,
+                            onFretTapped = { _, _, midiNote ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                    viewModel.onMidiNoteOn(midiNote, 95)
+                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    scope.launch {
+                                        delay(300L)
+                                        viewModel.onMidiNoteOff(midiNote)
+                                    }
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    ChordInstrumentType.UKULELE -> {
+                        UnifiedGuitarFretboard(
+                            numFrets = 5,
+                            accentColor = accentColor,
+                            rootNote = 0,
+                            showNoteNames = true,
+                            markOctaves = true,
+                            highlightOctaveC = true,
+                            baseFret = 1,
+                            stringLabels = listOf("A", "E", "C", "G"),
+                            openStringsSemis = listOf(9, 4, 0, 7),
+                            activeMidiNote = playingNote,
+                            activeNotes = scalePitches,
+                            onFretTapped = { _, _, midiNote ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                    viewModel.onMidiNoteOn(midiNote, 95)
+                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    scope.launch {
+                                        delay(300L)
+                                        viewModel.onMidiNoteOff(midiNote)
+                                    }
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(115.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    ChordInstrumentType.SITAR -> {
+                        UnifiedGuitarFretboard(
+                            numFrets = 16,
+                            accentColor = accentColor,
+                            rootNote = 0,
+                            showNoteNames = true,
+                            markOctaves = true,
+                            highlightOctaveC = true,
+                            baseFret = 1,
+                            stringLabels = listOf("Ma", "Sa", "Pa", "Sa", "Pa", "Sa", "Sa"),
+                            openStringsSemis = listOf(5, 0, 7, 0, 7, 0, 0),
+                            activeMidiNote = playingNote,
+                            activeNotes = scalePitches,
+                            onFretTapped = { _, _, midiNote ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                    viewModel.onMidiNoteOn(midiNote, 95)
+                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    scope.launch {
+                                        delay(300L)
+                                        viewModel.onMidiNoteOff(midiNote)
+                                    }
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(148.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    ChordInstrumentType.VIOLIN -> {
+                        UnifiedViolinFingerboard(
+                            activeNotes = scalePitches,
+                            activeMidiNote = playingNote,
+                            accentColor = accentColor,
+                            showNoteNames = true,
+                            onPositionTapped = { _, midiNote ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                    viewModel.onMidiNoteOn(midiNote, 95)
+                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    scope.launch {
+                                        delay(300L)
+                                        viewModel.onMidiNoteOff(midiNote)
+                                    }
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(135.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    ChordInstrumentType.FLUTE -> {
+                        UnifiedFluteVisualizer(
+                            activeNotes = scalePitches,
+                            activeMidiNote = playingNote,
+                            accentColor = accentColor,
+                            onToneHoleTapped = { _, midiNote ->
+                                try {
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                    viewModel.onMidiNoteOn(midiNote, 95)
+                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    scope.launch {
+                                        delay(300L)
+                                        viewModel.onMidiNoteOff(midiNote)
+                                    }
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(88.dp).clip(RoundedCornerShape(8.dp))
                         )
                     }
                 }
             }
-            if (visualizerMode == 0) {
-                val baseScaleMap = remember(activeSemitones) {
-                    activeSemitones.associate { (60 + it) to true }
-                }
-                
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    UnifiedPianoKeyboard(
-                        activeMidiNotes = baseScaleMap,
-                        accentColor = accentColor,
-                        activeCoordinate = playingNote,
-                        startNote = 48,
-                        endNote = 84,
-                        showNoteNames = true,
-                        isPlaying = playingNote != null,
-                        onKeyTapped = { midi ->
-                            viewModel.audioEngine.setInstrument("HARMONIUM")
-                            viewModel.onMidiNoteOn(midi, 95)
-                            viewModel.audioEngine.noteOn(midi, 0.85f)
-                            scope.launch {
-                                delay(300L)
-                                viewModel.onMidiNoteOff(midi)
-                            }
-                        },
-                        modifier = Modifier
-                            .height(120.dp)       // Lock the desired height
-                            .wrapContentWidth()  // Let internal key math determine the proportional width
-                            .clip(RoundedCornerShape(8.dp))
-                    )
-                }
-            } else {
-                val highlightedGuitarList = remember(activeSemitones, playingNote) {
-                    if (playingNote != null) listOf(playingNote - 60) else activeSemitones
-                }
-                UnifiedGuitarFretboard(
-                    numFrets = 12,
-                    activeNotes = highlightedGuitarList,
-                    rootNote = 0,
-                    accentColor = accentColor,
-                    showNoteNames = true,
-                    onFretTapped = { _, _, midiNote ->
-                        viewModel.audioEngine.setInstrument("GUITAR")
-                        viewModel.onMidiNoteOn(midiNote, 95)
-                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
-                        scope.launch {
-                            delay(300L)
-                            viewModel.onMidiNoteOff(midiNote)
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(125.dp).clip(RoundedCornerShape(8.dp))
-                )
-            }
 
-            // Notation Viewer linked to viewModel.currentScore
+            // Notation Viewer linked to viewModel.currentScore with full comprehensive attributes wired
             StaffAndTabNotationViewer(
                 score = viewModel.currentScore.value as? Score,
                 playheadMeasure = viewModel.scorePlayheadMeasure.value,
@@ -223,7 +361,18 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                 primaryColor = accentColor,
                 currentFormat = notationFormat,
                 onFormatChange = { notationFormat = it },
-                modifier = Modifier.fillMaxWidth().height(220.dp)
+                showLetters = viewModel.showNotationNoteNames.value,
+                showLyrics = true,
+                isSplitStaff = viewModel.isSplitStaff.value,
+                isVerticalScroll = viewModel.isVerticalScroll.value,
+                onVerticalScrollChange = { viewModel.isVerticalScroll.value = it },
+                leftHandColor = viewModel.leftHandColor.value,
+                rightHandColor = viewModel.rightHandColor.value,
+                isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                isRightHandHidden = viewModel.isRightHandHidden.value,
+                enabledTrackIndices = viewModel.enabledTrackIndices,
+                showScoreHeader = true,
+                modifier = Modifier.fillMaxWidth().height(240.dp)
             )
         }
     }

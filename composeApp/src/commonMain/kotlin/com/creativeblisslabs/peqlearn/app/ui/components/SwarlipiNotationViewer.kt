@@ -24,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import peq_learn.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.Font
 import com.creativeblisslabs.peqlearn.app.audio.getAudioEngine
 import com.creativeblisslabs.peqlearn.app.data.*
 import com.creativeblisslabs.peqlearn.app.util.SwarlipiParser
@@ -56,6 +58,12 @@ fun SwarlipiNotationViewer(
     var currentMatraIndex by remember { mutableIntStateOf(-1) }
     var notationScript by remember { mutableStateOf("Ome Swarlipi") } // "Ome Swarlipi", "Devanagari", "Latin"
     val scope = rememberCoroutineScope()
+    val swarlipiFont = Font(Res.font.ome_swarlipi)
+    val bhatkhandeHindiFont = Font(Res.font.ome_bhatkhande_hindi)
+    val bhatkhandeEnglishFont = Font(Res.font.ome_bhatkhande_english)
+    val swarlipiFontFamily = remember(swarlipiFont) { FontFamily(swarlipiFont) }
+    val bhatkhandeHindiFontFamily = remember(bhatkhandeHindiFont) { FontFamily(bhatkhandeHindiFont) }
+    val bhatkhandeEnglishFontFamily = remember(bhatkhandeEnglishFont) { FontFamily(bhatkhandeEnglishFont) }
 
     // Resolve taal vibhag structure
     val taalName = raaga.taal.ifEmpty { "Teentaal" }
@@ -141,13 +149,15 @@ fun SwarlipiNotationViewer(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // Script & Font Switcher (Ome Swarlipi / Devanagari / Latin)
+                    // Script & Font Switcher (Ome Swarlipi / Bhatkhande Hindi / Bhatkhande English / Devanagari / Latin)
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                         modifier = Modifier.clickable {
                             notationScript = when (notationScript) {
-                                "Ome Swarlipi" -> "Devanagari"
+                                "Ome Swarlipi" -> "Bhatkhande Hindi"
+                                "Bhatkhande Hindi" -> "Bhatkhande English"
+                                "Bhatkhande English" -> "Devanagari"
                                 "Devanagari" -> "Latin"
                                 else -> "Ome Swarlipi"
                             }
@@ -156,6 +166,8 @@ fun SwarlipiNotationViewer(
                         Text(
                             text = when (notationScript) {
                                 "Ome Swarlipi" -> "🎵 Ome Swarlipi"
+                                "Bhatkhande Hindi" -> "🎼 Bhatkhande (Hindi)"
+                                "Bhatkhande English" -> "🔤 Bhatkhande (Eng)"
                                 "Devanagari" -> "अ Devanagari"
                                 else -> "A Latin"
                             },
@@ -319,7 +331,10 @@ fun SwarlipiNotationViewer(
                                             matra = matra,
                                             script = notationScript,
                                             accentColor = accentColor,
-                                            isHighlighted = isCurrentActiveMatra
+                                            isHighlighted = isCurrentActiveMatra,
+                                            swarlipiFontFamily = swarlipiFontFamily,
+                                            bhatkhandeHindiFontFamily = bhatkhandeHindiFontFamily,
+                                            bhatkhandeEnglishFontFamily = bhatkhandeEnglishFontFamily
                                         )
                                     }
                                 }
@@ -359,7 +374,10 @@ private fun SwarlipiMatraCell(
     matra: SwarlipiMatra,
     script: String,
     accentColor: Color,
-    isHighlighted: Boolean
+    isHighlighted: Boolean,
+    swarlipiFontFamily: FontFamily? = null,
+    bhatkhandeHindiFontFamily: FontFamily? = null,
+    bhatkhandeEnglishFontFamily: FontFamily? = null
 ) {
     val count = matra.notes.size.coerceAtLeast(1)
     val cellWidth = (count * 24 + 16).dp
@@ -391,7 +409,10 @@ private fun SwarlipiMatraCell(
                     SwaraGlyph(
                         note = note,
                         script = script,
-                        accentColor = if (isHighlighted) Color(0xFFFFEB3B) else MaterialTheme.colorScheme.onSurface
+                        accentColor = if (isHighlighted) Color(0xFFFFEB3B) else MaterialTheme.colorScheme.onSurface,
+                        swarlipiFontFamily = swarlipiFontFamily,
+                        bhatkhandeHindiFontFamily = bhatkhandeHindiFontFamily,
+                        bhatkhandeEnglishFontFamily = bhatkhandeEnglishFontFamily
                     )
                 }
             }
@@ -468,10 +489,13 @@ private fun SwarlipiMatraCell(
 private fun SwaraGlyph(
     note: SwarlipiNote,
     script: String,
-    accentColor: Color
+    accentColor: Color,
+    swarlipiFontFamily: FontFamily? = null,
+    bhatkhandeHindiFontFamily: FontFamily? = null,
+    bhatkhandeEnglishFontFamily: FontFamily? = null
 ) {
-    if (script == "Ome Swarlipi") {
-        // Authentic Ome Swarlipi notation format (https://omenad.github.io/fonts/ome-swarlipi/)
+    if (script == "Ome Swarlipi" || script == "Bhatkhande Hindi" || script == "Bhatkhande English") {
+        // Authentic Ome Swarlipi & Bhatkhande notation format (https://omenad.github.io/fonts/ome-swarlipi/)
         // Lowercase for Shuddha notes: s, r, g, m, p, d, n
         // Uppercase for Vikrit notes: R, G, D, N (Komal), M (Teevra)
         // Octaves: 'u' suffix for Tar Saptak, 'l' suffix for Mandra Saptak
@@ -484,6 +508,8 @@ private fun SwaraGlyph(
             "P" -> "p"
             "D" -> if (note.variation == SwaraVariation.KOMAL) "D" else "d"
             "N" -> if (note.variation == SwaraVariation.KOMAL) "N" else "n"
+            "-" -> "-"
+            "," -> "-"
             else -> note.swar.lowercase()
         }
 
@@ -499,15 +525,21 @@ private fun SwaraGlyph(
             else -> "${baseNote}${octaveIndicator}"
         }
 
+        val targetFontFamily = when (script) {
+            "Bhatkhande Hindi" -> bhatkhandeHindiFontFamily ?: swarlipiFontFamily
+            "Bhatkhande English" -> bhatkhandeEnglishFontFamily ?: swarlipiFontFamily
+            else -> swarlipiFontFamily
+        }
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = glyphText,
-                fontSize = 15.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = targetFontFamily ?: FontFamily.Monospace,
                 color = accentColor,
                 textAlign = TextAlign.Center
             )

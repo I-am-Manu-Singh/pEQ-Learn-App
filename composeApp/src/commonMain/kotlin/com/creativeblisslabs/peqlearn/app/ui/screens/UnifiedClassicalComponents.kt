@@ -271,51 +271,51 @@ fun UnifiedRaagaBrowser(
                             )
                         }
 
-                        Button(
-                            onClick = {
-                                if (!isAuditionRunning) {
-                                    isAuditionRunning = true
-                                    val engine = getAudioEngine()
-                                    engine.setInstrument("HARMONIUM")
-                                    scope.launch {
-                                        try {
-                                            val scaleNotes = if (raga.semitones.isNotEmpty()) raga.semitones else listOf(0, 2, 4, 5, 7, 9, 11, 12)
-                                            scaleNotes.forEachIndexed { idx, semi ->
-                                                currentPlayingIdx = idx
-                                                val note = 60 + semi
-                                                viewModel?.let {
-                                                    it.scorePlayheadMeasure.value = idx / activeTaalFramework.beats
-                                                    it.scorePlayheadOffset.value = (idx % activeTaalFramework.beats).toFloat() / activeTaalFramework.beats.toFloat()
-                                                    it.midiPlayingNote.value = note
-                                                }
-                                                engine.noteOn(note, 0.85f)
-                                                delay(360L)
-                                                engine.noteOff(note)
-                                            }
-                                        } finally {
-                                            currentPlayingIdx = -1
+                    InstrumentPlayButton(
+                        accentColor = accentColor,
+                        label = if (isAuditionRunning) "Playing..." else "Audition Scale",
+                        isPlaying = isAuditionRunning,
+                        onPlayClick = {
+                            if (!isAuditionRunning) {
+                                isAuditionRunning = true
+                                val engine = getAudioEngine()
+                                engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
+                                scope.launch {
+                                    try {
+                                        val scaleNotes = if (raga.semitones.isNotEmpty()) raga.semitones else listOf(0, 2, 4, 5, 7, 9, 11, 12)
+                                        scaleNotes.forEachIndexed { idx, semi ->
+                                            currentPlayingIdx = idx
+                                            val note = 60 + semi
                                             viewModel?.let {
-                                                it.midiPlayingNote.value = null
-                                                it.scorePlayheadMeasure.value = 0
-                                                it.scorePlayheadOffset.value = 0f
+                                                it.scorePlayheadMeasure.value = idx / activeTaalFramework.beats
+                                                it.scorePlayheadOffset.value = (idx % activeTaalFramework.beats).toFloat() / activeTaalFramework.beats.toFloat()
+                                                it.midiPlayingNote.value = note
                                             }
-                                            isAuditionRunning = false
+                                            engine.noteOn(note, 0.85f)
+                                            delay(360L)
+                                            engine.noteOff(note)
                                         }
+                                    } finally {
+                                        currentPlayingIdx = -1
+                                        viewModel?.let {
+                                            it.midiPlayingNote.value = null
+                                            it.scorePlayheadMeasure.value = 0
+                                            it.scorePlayheadOffset.value = 0f
+                                        }
+                                        isAuditionRunning = false
                                     }
                                 }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                if (isAuditionRunning) Icons.Default.GraphicEq else Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (isAuditionRunning) "Playing..." else "Audition Scale", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                isAuditionRunning = false
+                                currentPlayingIdx = -1
+                                viewModel?.let {
+                                    it.midiPlayingNote.value = null
+                                    it.scorePlayheadMeasure.value = 0
+                                    it.scorePlayheadOffset.value = 0f
+                                }
+                            }
                         }
+                    )
                     }
 
                     Row(
@@ -523,8 +523,11 @@ fun UnifiedTaalBrowser(
                         )
                     }
 
-                    Button(
-                        onClick = {
+                    InstrumentPlayButton(
+                        accentColor = accentColor,
+                        label = if (isTaalLooping) "Stop Loop" else "Play Loop",
+                        isPlaying = isTaalLooping,
+                        onPlayClick = {
                             if (isTaalLooping) {
                                 isTaalLooping = false
                                 currentBeatPlayhead = -1
@@ -547,15 +550,8 @@ fun UnifiedTaalBrowser(
                                     }
                                 }
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isTaalLooping) MaterialTheme.colorScheme.error else accentColor),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Icon(if (isTaalLooping) Icons.Default.Stop else Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (isTaalLooping) "Stop Loop" else "Play Loop", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
+                        }
+                    )
                 }
 
                 // Devanagari Theka Representation if available
@@ -639,7 +635,10 @@ fun UnifiedTaalBrowser(
                 }
 
                 // Bhatkhande Full Notation Grid
-                if (currentTaal.notationGrid.isNotEmpty()) {
+                val cleanedNotation = remember(currentTaal.notationGrid) {
+                    currentTaal.notationGrid.replace("\\n", "\n").trim()
+                }
+                if (cleanedNotation.isNotEmpty()) {
                     Surface(
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
                         shape = RoundedCornerShape(8.dp),
@@ -653,7 +652,7 @@ fun UnifiedTaalBrowser(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = currentTaal.notationGrid,
+                                text = cleanedNotation,
                                 fontSize = 12.sp,
                                 lineHeight = 18.sp,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
@@ -791,8 +790,11 @@ fun UnifiedThaatBrowser(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(currentThaat.name + " Thaat", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = accentColor)
-                    IconButton(
-                        onClick = {
+                    InstrumentPlayButton(
+                        accentColor = accentColor,
+                        label = "Play Thaat",
+                        isPlaying = isPlaying,
+                        onPlayClick = {
                             if (!isPlaying) {
                                 isPlaying = true
                                 val engine = getAudioEngine()
@@ -813,11 +815,8 @@ fun UnifiedThaatBrowser(
                                     }
                                 }
                             }
-                        },
-                        modifier = Modifier.size(36.dp).background(accentColor.copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Icon(if (isPlaying) Icons.Default.GraphicEq else Icons.Default.PlayArrow, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
-                    }
+                        }
+                    )
                 }
 
                 Row(
@@ -1002,8 +1001,11 @@ fun UnifiedAlankaarPanel(
 
                     Spacer(modifier = Modifier.width(10.dp))
 
-                    IconButton(
-                        onClick = {
+                    InstrumentPlayButton(
+                        accentColor = accentColor,
+                        label = "Play",
+                        isPlaying = isThisRunning,
+                        onPlayClick = {
                             if (!isRunning) {
                                 isRunning = true
                                 activeIdx = idx
@@ -1037,19 +1039,14 @@ fun UnifiedAlankaarPanel(
                                         activeIdx = -1
                                     }
                                 }
+                            } else if (isThisRunning) {
+                                isRunning = false
+                                activeIdx = -1
+                                activeNoteIndex = -1
+                                viewModel?.midiPlayingNote?.value = null
                             }
-                        },
-                        modifier = Modifier
-                            .size(34.dp)
-                            .background(accentColor.copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Icon(
-                            if (isThisRunning) Icons.Default.GraphicEq else Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = accentColor,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                        }
+                    )
                 }
             }
         }
@@ -1118,12 +1115,15 @@ fun PlayableInfoRowShared(
             }
         }
 
-        IconButton(
-            onClick = {
+        InstrumentPlayButton(
+            accentColor = accentColor,
+            label = "Play",
+            isPlaying = isRowPlaying,
+            onPlayClick = {
                 if (!isRowPlaying) {
                     isRowPlaying = true
                     val engine = getAudioEngine()
-                    engine.setInstrument("HARMONIUM")
+                    engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
                     scope.launch {
                         try {
                             val notes = if (semitones.isNotEmpty()) semitones else listOf(0, 2, 4, 5, 7, 9, 11, 12)
@@ -1141,17 +1141,13 @@ fun PlayableInfoRowShared(
                             isRowPlaying = false
                         }
                     }
+                } else {
+                    isRowPlaying = false
+                    currentPlayingRowIdx = -1
+                    viewModel?.midiPlayingNote?.value = null
                 }
-            },
-            modifier = Modifier.size(28.dp).background(accentColor.copy(alpha = 0.15f), CircleShape)
-        ) {
-            Icon(
-                if (isRowPlaying) Icons.Default.GraphicEq else Icons.Default.PlayArrow,
-                contentDescription = null,
-                tint = accentColor,
-                modifier = Modifier.size(14.dp)
-            )
-        }
+            }
+        )
     }
 }
 
@@ -1298,28 +1294,60 @@ fun BandishSection(
         return targetBlock.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
     }
 
-    val sthaiLines = selectedRaga.sthai.ifEmpty { "Traditional Classical Verse\nSthai Line 2" }.split("\n")
-    val sthaiTrans = if (selectedRaga.sthaiTransliteration.isNotEmpty()) {
-        selectedRaga.sthaiTransliteration.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-    } else {
-        parseSectionLines(selectedRaga.transliteration, "Sthai")
-    }
-    val sthaiMean = if (selectedRaga.sthaiMeaning.isNotEmpty()) {
-        selectedRaga.sthaiMeaning.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-    } else {
-        parseSectionLines(selectedRaga.meaning, "Sthai")
+    /**
+     * Aligns transliteration or meaning clauses to each individual verse line.
+     * Prevents single sentence meaning/transliteration from inappropriately repeating
+     * or appearing on only line 1 without matching line 2.
+     */
+    fun alignFieldLines(rawFieldText: String, targetCount: Int, isTransliteration: Boolean = false): List<String> {
+        val trimmed = rawFieldText.trim()
+        if (trimmed.isEmpty()) return emptyList()
+
+        // 1. Direct newline split if already formatted across lines
+        val rawLines = trimmed.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        if (rawLines.size == targetCount) return rawLines
+
+        // 2. Semicolon split
+        if (trimmed.contains(";")) {
+            val semiParts = trimmed.split(";").map { it.trim().trimEnd('.') }.filter { it.isNotEmpty() }
+            if (semiParts.size == targetCount) return semiParts
+        }
+
+        // 3. Comma split for transliterations (e.g. "Ja re kagva..., piya se kahiyo...")
+        if (isTransliteration && trimmed.contains(",")) {
+            val commaParts = trimmed.split(",").map { it.trim().trimEnd('.') }.filter { it.isNotEmpty() }
+            if (commaParts.size == targetCount) return commaParts
+            if (targetCount == 2 && commaParts.size > 2) {
+                val mid = commaParts.size / 2
+                return listOf(commaParts.take(mid).joinToString(", "), commaParts.drop(mid).joinToString(", "))
+            }
+        }
+
+        return rawLines
     }
 
-    val antaraLines = selectedRaga.antara.ifEmpty { "Second Movement Verse\nAntara Line 2" }.split("\n")
-    val antaraTrans = if (selectedRaga.antaraTransliteration.isNotEmpty()) {
-        selectedRaga.antaraTransliteration.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    val sthaiLines = selectedRaga.sthai.ifEmpty { "Traditional Classical Verse\nSthai Line 2" }.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    val sthaiTrans = if (selectedRaga.sthaiTransliteration.isNotEmpty()) {
+        alignFieldLines(selectedRaga.sthaiTransliteration, sthaiLines.size, isTransliteration = true)
     } else {
-        parseSectionLines(selectedRaga.transliteration, "Antara")
+        alignFieldLines(parseSectionLines(selectedRaga.transliteration, "Sthai").joinToString("\n"), sthaiLines.size, isTransliteration = true)
+    }
+    val sthaiMean = if (selectedRaga.sthaiMeaning.isNotEmpty()) {
+        alignFieldLines(selectedRaga.sthaiMeaning, sthaiLines.size, isTransliteration = false)
+    } else {
+        alignFieldLines(parseSectionLines(selectedRaga.meaning, "Sthai").joinToString("\n"), sthaiLines.size, isTransliteration = false)
+    }
+
+    val antaraLines = selectedRaga.antara.ifEmpty { "Second Movement Verse\nAntara Line 2" }.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    val antaraTrans = if (selectedRaga.antaraTransliteration.isNotEmpty()) {
+        alignFieldLines(selectedRaga.antaraTransliteration, antaraLines.size, isTransliteration = true)
+    } else {
+        alignFieldLines(parseSectionLines(selectedRaga.transliteration, "Antara").joinToString("\n"), antaraLines.size, isTransliteration = true)
     }
     val antaraMean = if (selectedRaga.antaraMeaning.isNotEmpty()) {
-        selectedRaga.antaraMeaning.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        alignFieldLines(selectedRaga.antaraMeaning, antaraLines.size, isTransliteration = false)
     } else {
-        parseSectionLines(selectedRaga.meaning, "Antara")
+        alignFieldLines(parseSectionLines(selectedRaga.meaning, "Antara").joinToString("\n"), antaraLines.size, isTransliteration = false)
     }
 
     Column(
@@ -1424,16 +1452,27 @@ fun BandishSection(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface)
-                    val lineTrans = sthaiTrans.getOrNull(index)
+                    val lineTrans = sthaiTrans.getOrNull(index) ?: (if (sthaiTrans.size == 1 && index == 0) sthaiTrans[0] else null)
                     if (!lineTrans.isNullOrEmpty()) {
                         Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
-                    val lineMean = sthaiMean.getOrNull(index)
+                    val lineMean = sthaiMean.getOrNull(index) ?: (if (sthaiMean.size == 1 && index == 0) sthaiMean[0] else null)
                     AnimatedVisibility(visible = showTranslation && !lineMean.isNullOrEmpty()) {
                         if (lineMean != null) {
                             Text(text = lineMean, fontSize = 11.sp, color = MaterialTheme.colorScheme.tertiary)
                         }
                     }
+                }
+            }
+            if (sthaiMean.size == 1 && sthaiLines.size > 1) {
+                // If the entire Sthai verse is translated as a single cohesive sentence:
+                AnimatedVisibility(visible = showTranslation && sthaiMean.isNotEmpty()) {
+                    Text(
+                        text = sthaiMean[0],
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
                 }
             }
         }
@@ -1456,16 +1495,26 @@ fun BandishSection(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface)
-                    val lineTrans = antaraTrans.getOrNull(index)
+                    val lineTrans = antaraTrans.getOrNull(index) ?: (if (antaraTrans.size == 1 && index == 0) antaraTrans[0] else null)
                     if (!lineTrans.isNullOrEmpty()) {
                         Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
-                    val lineMean = antaraMean.getOrNull(index)
+                    val lineMean = antaraMean.getOrNull(index) ?: (if (antaraMean.size == 1 && index == 0) antaraMean[0] else null)
                     AnimatedVisibility(visible = showTranslation && !lineMean.isNullOrEmpty()) {
                         if (lineMean != null) {
                             Text(text = lineMean, fontSize = 11.sp, color = MaterialTheme.colorScheme.tertiary)
                         }
                     }
+                }
+            }
+            if (antaraMean.size == 1 && antaraLines.size > 1) {
+                AnimatedVisibility(visible = showTranslation && antaraMean.isNotEmpty()) {
+                    Text(
+                        text = antaraMean[0],
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
                 }
             }
         }

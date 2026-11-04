@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.creativeblisslabs.peqlearn.app.audio.getAudioEngine
+import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
 import com.creativeblisslabs.peqlearn.app.ui.components.*
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.*
@@ -35,15 +36,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.vector.ImageVector
 
-enum class ChordInstrumentType(val label: String, val title: String) {
-    GUITAR("🎸", "6-String Guitar"),
-    GUITAR_7("🎸", "7-String Guitar"),
-    UKULELE("🪕", "Ukulele"),
-    HARMONIUM("🪗", "Harmonium"),
-    PIANO("🎹", "Piano"),
-    FLUTE("🪈", "Flute"),
-    VIOLIN("🎻", "Violin")
-}
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -254,13 +247,7 @@ fun ChordDictionaryPanel(
             else -> "Open"
         }
         try {
-            val instr = when (selectedInstrument) {
-                ChordInstrumentType.GUITAR, ChordInstrumentType.GUITAR_7, ChordInstrumentType.UKULELE -> "GUITAR"
-                ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> "PIANO"
-                ChordInstrumentType.VIOLIN -> "VIOLIN"
-                ChordInstrumentType.FLUTE -> "FLUTE"
-            }
-            getAudioEngine().setInstrument(instr)
+            getAudioEngine().setInstrument(selectedInstrument.soundEngineName)
         } catch (e: Exception) {
             println("pEQLearn: [INSTRUMENT-SWITCH] Failed to sync audio engine pointer: ${e.message}")
         }
@@ -329,17 +316,7 @@ Row(
         Text("Lab", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = partColor)
     }
 
-    // 4. Circle of Fifths Button
-    IconButton(
-        onClick = { showCircleOfFifths = !showCircleOfFifths },
-        modifier = Modifier.size(40.dp)
-    ) {
-        Icon(
-            imageVector = Icons.Default.Adjust,
-            contentDescription = "Circle of Fifths",
-            tint = if (showCircleOfFifths) partColor else Color.White.copy(alpha = 0.7f)
-        )
-    }
+
 }
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             SegmentedButton(
@@ -353,14 +330,6 @@ Row(
                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
             ) { Text("Scales", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
         }
-
-        AnimatedVisibility(visible = showCircleOfFifths) {
-            CircleOfFifthsVisualizer(
-                selectedRootIdx = rootIdx,
-                onSelectRoot = { rootIdx = it }
-            )
-        }
-
       
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -415,6 +384,7 @@ Row(
                 val currentVoicingList = when (selectedInstrument) {
                     ChordInstrumentType.GUITAR, ChordInstrumentType.GUITAR_7 -> guitarVoicings
                     ChordInstrumentType.UKULELE -> ukeVoicings
+                    ChordInstrumentType.SITAR -> listOf("Kharaj-Pancham", "Gandhar-Pancham", "Sympathetic Drone")
                     ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> pianoVoicings
                     ChordInstrumentType.VIOLIN -> listOf("Open", "Single Position", "Double Stop")
                     ChordInstrumentType.FLUTE -> listOf("Standard", "Overblown", "Harmonic")
@@ -613,14 +583,8 @@ Row(
                             )
 
                             playbackJob = scope.launch {
-                                val instr = when (selectedInstrument) {
-                                    ChordInstrumentType.GUITAR, ChordInstrumentType.GUITAR_7, ChordInstrumentType.UKULELE -> "GUITAR"
-                                    ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> "PIANO"
-                                    ChordInstrumentType.VIOLIN -> "VIOLIN"
-                                    ChordInstrumentType.FLUTE -> "FLUTE"
-                                }
                                 try {
-                                    viewModel.audioEngine.setInstrument(instr)
+                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
                                 } catch (_: Exception) {}
 
                                 try {
@@ -960,6 +924,35 @@ Row(
                             )
                         }
                     }
+                    ChordInstrumentType.SITAR -> {
+                        val activeMidiToken = viewModel.midiPlayingNote.value
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            UnifiedGuitarFretboard(
+                                numFrets = 16,
+                                accentColor = partColor,
+                                rootNote = rootIdx,
+                                showNoteNames = (mode == 1),
+                                markOctaves = true,
+                                highlightOctaveC = true,
+                                baseFret = 1,
+                                stringLabels = listOf("Ma", "Sa", "Pa", "Sa", "Pa", "Sa", "Sa"),
+                                openStringsSemis = listOf(5, 0, 7, 0, 7, 0, 0),
+                                activeCoordinate = null,
+                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
+                                activeNotes = pianoPitches,
+                                onFretTapped = { _, _, midiNote ->
+                                    try {
+                                        viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                                        viewModel.onMidiNoteOn(midiNote, 95)
+                                        viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.fillMaxWidth().height(155.dp).clip(RoundedCornerShape(12.dp))
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            GuitarFingerLegend(accentColor = partColor)
+                        }
+                    }
                     ChordInstrumentType.VIOLIN -> {
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1096,78 +1089,7 @@ Row(
     }
 }
 
-@Composable
-fun pEQInstrumentDropdown(
-    selectedInstrument: ChordInstrumentType,
-    accentColor: Color = MaterialTheme.colorScheme.primary,
-    onInstrumentChange: (ChordInstrumentType) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth().height(42.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                contentColor = MaterialTheme.colorScheme.onSurface
-            ),
-            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.45f)),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(selectedInstrument.label, fontSize = 16.sp)
-                    Text(
-                        text = selectedInstrument.title,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                    contentDescription = "Select Instrument",
-                    tint = accentColor
-                )
-            }
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier
-                .width(220.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-        ) {
-            ChordInstrumentType.entries.forEach { inst ->
-                val isSelected = inst == selectedInstrument
-                DropdownMenuItem(
-                    leadingIcon = {
-                        Text(inst.label, fontSize = 16.sp)
-                    },
-                    text = {
-                        Text(
-                            text = inst.title,
-                            fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface
-                        )
-                    },
-                    onClick = {
-                        onInstrumentChange(inst)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun PianoFingerLegend(
@@ -1456,73 +1378,6 @@ fun EasyChordQuickRef(
     }
 }
 
-@Composable
-fun CircleOfFifthsVisualizer(
-    selectedRootIdx: Int,
-    onSelectRoot: (Int) -> Unit
-) {
-    val circleKeys = listOf("C", "G", "D", "A", "E", "B", "F♯", "D♭", "A♭", "E♭", "B♭", "F")
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1E28))
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                "Circle of Fifths Harmonic Wheel",
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                itemsIndexed(circleKeys) { index, key ->
-                    val isSelected = index == selectedRootIdx
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onSelectRoot(index) },
-                        label = {
-                            Text(key, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                        }
-                    )
-                }
-            }
-
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .padding(8.dp)
-            ) {
-                val center = Offset(constraints.maxWidth / 2f, constraints.maxHeight / 2f)
-                val radius = constraints.maxWidth / 2.6f
-
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    for (i in 0..11) {
-                        val angle = (i * 30.0 - 90.0) * Math.PI / 180.0
-                        val x = center.x + radius * kotlin.math.cos(angle).toFloat()
-                        val y = center.y + radius * kotlin.math.sin(angle).toFloat()
-                        val isSelected = i == selectedRootIdx
-
-                        drawCircle(
-                            color = if (isSelected) Color(0xFFFFB347) else Color.Gray.copy(alpha = 0.2f),
-                            radius = 32f,
-                            center = Offset(x, y)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

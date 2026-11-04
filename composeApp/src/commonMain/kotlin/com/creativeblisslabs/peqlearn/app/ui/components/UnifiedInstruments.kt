@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData
 import com.creativeblisslabs.peqlearn.app.ui.screens.PianoKeyboard88Keys
+import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
 import com.creativeblisslabs.peqlearn.app.util.GuitarShape
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -252,15 +253,52 @@ fun UnifiedGuitarFretboard(
         Brush.verticalGradient(colors = listOf(Color(0xFF2B303C), Color(0xFF20242E), Color(0xFF1B1E26)))
     }
 
-    BoxWithConstraints(modifier = modifier) {
+    BoxWithConstraints(
+        modifier = modifier
+            .background(Color(0xFF0F1218).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+            .border(1.dp, Color(0xFF2E3544).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+    ) {
         val totalWidth = constraints.maxWidth.toFloat()
         val totalHeight = constraints.maxHeight.toFloat()
         val leftPad = 46f
         val topPad = 16f
         val rightPad = 20f
         val bottomPad = 26f
-        val fretW = (totalWidth - leftPad - rightPad) / numFrets.coerceAtLeast(1)
+        val playableW = (totalWidth - leftPad - rightPad).coerceAtLeast(1f)
         val playableH = totalHeight - topPad - bottomPad
+
+        // Rule of 17.817 fret progression ratio (realistic decreasing fret width towards bridge)
+        // Ratio r = 1 - 2^(-1/12) ≈ 0.056125687
+        val r = 0.056125687f
+        val fretScaleFactor = remember(numFrets, baseFret) {
+            var sum = 0f
+            for (f in 1..numFrets) {
+                val absoluteFret = baseFret + f - 1
+                val lengthFraction = kotlin.math.pow((1f - r).toDouble(), absoluteFret.toDouble()).toFloat() * r
+                sum += lengthFraction
+            }
+            sum.coerceAtLeast(0.001f)
+        }
+
+        // Compute exact non-linear fret boundaries
+        val fretXPositions = remember(playableW, numFrets, baseFret, fretScaleFactor) {
+            val list = mutableListOf<Float>()
+            var accumulated = 0f
+            for (f in 1..numFrets) {
+                val absoluteFret = baseFret + f - 1
+                val lengthFraction = kotlin.math.pow((1f - r).toDouble(), absoluteFret.toDouble()).toFloat() * r
+                accumulated += (lengthFraction / fretScaleFactor) * playableW
+                list.add(leftPad + accumulated)
+            }
+            list
+        }
+
+        fun getFretStartX(f: Int): Float = if (f <= 0) leftPad else fretXPositions.getOrElse(f - 1) { totalWidth - rightPad }
+        fun getFretCenterX(f: Int): Float {
+            val start = if (f <= 1) leftPad else fretXPositions[f - 2]
+            val end = fretXPositions.getOrElse(f - 1) { totalWidth - rightPad }
+            return (start + end) / 2f
+        }
 
         val nutH = playableH * 0.88f
         val bridgeH = playableH * 0.98f
@@ -272,7 +310,7 @@ fun UnifiedGuitarFretboard(
         val bridgeBottom = midY + bridgeH / 2f
 
         fun getYForStringAtX(s: Int, x: Float): Float {
-            val t = ((x - leftPad) / (totalWidth - leftPad - rightPad).coerceAtLeast(1f)).coerceIn(0f, 1f)
+            val t = ((x - leftPad) / playableW).coerceIn(0f, 1f)
             val currentH = nutH + (bridgeH - nutH) * t
             val currentTop = midY - currentH / 2f
             val curStringH = currentH / (numStrings - 1).coerceAtLeast(1).toFloat()
@@ -299,8 +337,15 @@ fun UnifiedGuitarFretboard(
                         val tappedFret = if (offset.x < leftPad) {
                             0
                         } else {
-                            val relFret = ((offset.x - leftPad) / fretW).toInt() + 1
-                            (baseFret + relFret - 1).coerceIn(0, 24)
+                            var matchedFret = numFrets
+                            for (f in 1..numFrets) {
+                                val wireX = fretXPositions.getOrElse(f - 1) { totalWidth - rightPad }
+                                if (offset.x <= wireX) {
+                                    matchedFret = f
+                                    break
+                                }
+                            }
+                            (baseFret + matchedFret - 1).coerceIn(0, 24)
                         }
 
                         var closestString = 0
@@ -348,6 +393,18 @@ fun UnifiedGuitarFretboard(
             val w = size.width
             val pillColor = Color(0xFFFF9E1B)
 
+            // Realistic deep drop shadow behind the wooden fretboard neck
+            drawPath(
+                path = fretboardPath,
+                color = Color.Black.copy(alpha = 0.55f),
+                style = Stroke(width = 8.dp.toPx())
+            )
+            drawPath(
+                path = fretboardPath,
+                color = Color.Black.copy(alpha = 0.35f),
+                style = Stroke(width = 4.dp.toPx())
+            )
+
             drawPath(path = fretboardPath, brush = fretboardBrush ?: defaultNeckBrush)
             drawPath(path = fretboardPath, color = Color(0xFF3E4554).copy(alpha = 0.5f), style = Stroke(width = 1.dp.toPx()))
 
@@ -363,14 +420,14 @@ fun UnifiedGuitarFretboard(
             if (showInlayDots) {
                 val inlayColor = Color(0xFF8A7E72).copy(alpha = 0.65f)
                 val dotRad = 3.5f.dp.toPx()
-                for (markerFret in intArrayOf(3, 5, 7, 9, 12)) {
+                for (markerFret in intArrayOf(3, 5, 7, 9, 12, 15, 17, 19, 21, 24)) {
                     if (markerFret in baseFret..(baseFret + numFrets - 1)) {
                         val relFret = markerFret - baseFret + 1
-                        val inlayX = leftPad + (relFret - 0.5f) * fretW
+                        val inlayX = getFretCenterX(relFret)
                         val t = ((inlayX - leftPad) / (w - leftPad - rightPad)).coerceIn(0f, 1f)
                         val currentH = nutH + (bridgeH - nutH) * t
                         val curStringH = currentH / (numStrings - 1).coerceAtLeast(1).toFloat()
-                        if (markerFret == 12) {
+                        if (markerFret == 12 || markerFret == 24) {
                             drawCircle(color = inlayColor, radius = dotRad, center = Offset(inlayX, midY - curStringH * 0.75f))
                             drawCircle(color = inlayColor, radius = dotRad, center = Offset(inlayX, midY + curStringH * 0.75f))
                         } else {
@@ -380,15 +437,22 @@ fun UnifiedGuitarFretboard(
                 }
             }
 
-            // Fret wires
-            val fretStroke = 1.5.dp.toPx()
+            // Fret wires with nickel-silver sheen
+            val fretStroke = 1.6.dp.toPx()
             for (f in 1..numFrets) {
-                val x = leftPad + f * fretW
+                val x = fretXPositions.getOrElse(f - 1) { totalWidth - rightPad }
                 val t = ((x - leftPad) / (w - leftPad - rightPad)).coerceIn(0f, 1f)
                 val curTop = nutTop + (bridgeTop - nutTop) * t
                 val curBottom = nutBottom + (bridgeBottom - nutBottom) * t
+                // Subtle fret shadow
                 drawLine(
-                    color = Color(0xFF8D7365).copy(alpha = 0.85f),
+                    color = Color.Black.copy(alpha = 0.45f),
+                    start = Offset(x + 1f, curTop),
+                    end = Offset(x + 1f, curBottom),
+                    strokeWidth = fretStroke
+                )
+                drawLine(
+                    color = Color(0xFFC5C9D3).copy(alpha = 0.9f),
                     start = Offset(x, curTop),
                     end = Offset(x, curBottom),
                     strokeWidth = fretStroke
@@ -420,7 +484,7 @@ fun UnifiedGuitarFretboard(
             if (barreFret != null && barreFret > 0) {
                 val relFret = if (barreFret >= baseFret) barreFret - baseFret + 1 else barreFret
                 if (relFret in 1..numFrets) {
-                    val barreX = leftPad + (relFret - 0.5f) * fretW
+                    val barreX = getFretCenterX(relFret)
                     val t = ((barreX - leftPad) / (w - leftPad - rightPad)).coerceIn(0f, 1f)
                     val curTop = nutTop + (bridgeTop - nutTop) * t
                     val curH = (nutBottom + (bridgeBottom - nutBottom) * t) - curTop
@@ -444,9 +508,8 @@ fun UnifiedGuitarFretboard(
                     if (fretSemi == 0) {
                         val fullMidiNote = baseStringMidi + absoluteFret
                         val octaveNum = (fullMidiNote / 12) - 1
-                        val cx = leftPad + (f - 0.5f) * fretW
+                        val cx = getFretCenterX(f)
                         val cy = getYForStringAtX(s, cx)
-                        // Draw subtle permanent octave label right under the string on the fret
                         drawContext.canvas.nativeCanvas.drawText(
                             "C$octaveNum",
                             cx,
@@ -561,7 +624,7 @@ fun UnifiedGuitarFretboard(
                     val isRoot = fretSemi == normalizedRootNote
 
                     if (isChordFret || isCurrentlyPlaying || isScaleFret) {
-                        val cx = leftPad + (f - 0.5f) * fretW
+                        val cx = getFretCenterX(f)
                         val cy = getYForStringAtX(s, cx)
                         val dotRadius = when {
                             isCurrentlyPlaying -> 13.dp.toPx()
@@ -612,10 +675,10 @@ fun UnifiedGuitarFretboard(
 
             // Bottom Fret Numbers
             fretNumPaint.textSize = 11.dp.toPx()
-            for (f in intArrayOf(3, 5, 7, 9, 12)) {
+            for (f in intArrayOf(3, 5, 7, 9, 12, 15, 17, 19, 21, 24)) {
                 if (f in baseFret..(baseFret + numFrets - 1)) {
                     val relF = f - baseFret + 1
-                    val x = leftPad + (relF - 0.5f) * fretW
+                    val x = getFretCenterX(relF)
                     drawContext.canvas.nativeCanvas.drawText("$f", x, size.height - 6f, fretNumPaint)
                 }
             }
@@ -1061,6 +1124,80 @@ fun InstrumentPlayButton(
                         color = accentColor
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun pEQInstrumentDropdown(
+    selectedInstrument: ChordInstrumentType,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    onInstrumentChange: (ChordInstrumentType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth().height(42.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.45f)),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(selectedInstrument.label, fontSize = 16.sp)
+                    Text(
+                        text = selectedInstrument.title,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                    contentDescription = "Select Instrument",
+                    tint = accentColor
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .width(220.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            ChordInstrumentType.entries.forEach { inst ->
+                val isSelected = inst == selectedInstrument
+                DropdownMenuItem(
+                    leadingIcon = {
+                        Text(inst.label, fontSize = 16.sp)
+                    },
+                    text = {
+                        Text(
+                            text = inst.title,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    onClick = {
+                        onInstrumentChange(inst)
+                        expanded = false
+                    }
+                )
             }
         }
     }
