@@ -335,17 +335,20 @@ class AndroidAudioEngine(
 
     // Hindustani Classical Bols and Carnatic Solkattu Syllables Mapped to Percussion MIDI Keys
     private val percussionMidiMap = mapOf(
-        // Hindustani Classical Bols - Exact Tabla SF2 Key Mapping
-        "DHA" to 72, "DHIN" to 68, "DHI" to 68, "DIN" to 70,
-        "TIN" to 63, "TA" to 64, "NA" to 64, "GE" to 60,
-        "GHE" to 60, "GA" to 60, "KA" to 61, "KE" to 61,
-        "KI" to 61, "KAT" to 61, "TI" to 62, "TE" to 62,
-        "TU" to 69, "TUN" to 69, "DHAGE" to 74, "TIRAKITA" to 62,
-        "KITONE" to 61, "DU" to 60, "RA" to 62,
+        // Hindustani Classical Bols - Exact Tabla SF2 Key & Sample Mapping
+        "DHA" to 72, "DHIN" to 68, "DHI" to 68, "DIN" to 70, "DHINA" to 68, "DHIDHI" to 68,
+        "TIN" to 63, "TINA" to 63, "TA" to 64, "NA" to 64, "GE" to 60, "GAN" to 60,
+        "GHE" to 60, "GA" to 60, "GADI" to 60, "GANA" to 60, "KA" to 61, "KE" to 61,
+        "KI" to 61, "KIT" to 61, "KAT" to 61, "KATA" to 61, "KATTA" to 61, "KDHA" to 72,
+        "TI" to 62, "TE" to 62, "TAT" to 61, "TAK" to 61, "TIT" to 61, "TITE" to 62,
+        "TU" to 69, "TUN" to 69, "TUNA" to 69, "DHAGE" to 74, "TIRAKITA" to 62,
+        "TIRIKITA" to 62, "TIRKIT" to 62, "TIRKITA" to 62, "TERIKIT" to 62, "TRAK" to 62,
+        "KRAN" to 69, "KITONE" to 61, "DU" to 60, "RA" to 62, "DHE" to 68, "DHET" to 61,
+        "DHU" to 60, "DI" to 70, "MA" to 64, "NADHA" to 72, "NADHI" to 68, "NAK" to 61,
 
         // Carnatic Solkattu Syllables - Exact Solkattu to Percussion Mapping
         "THA" to 61, "THI" to 62, "THOM" to 60, "THON" to 60,
-        "NAM" to 64, "NU" to 64, "MI" to 62, "JO" to 63, "DI" to 68,
+        "NAM" to 64, "NU" to 64, "MI" to 62, "JO" to 63,
         "THA-KA" to 61, "TAKA" to 61, "THA-KI-TA" to 62, "TAKITA" to 62,
         "THA-KA-DHI-MI" to 72, "THAKADHIMI" to 72, "THA-KA-THA-KI-TA" to 61,
         "THA-KI-TA-THA-KA-DHI-MI" to 72, "THA-KA-DHI-MI-THA-KA-THA-KI-TA" to 72
@@ -353,10 +356,84 @@ class AndroidAudioEngine(
 
     private val tablaMidiMap = ConcurrentHashMap<String, Int>(percussionMidiMap)
 
+    // Direct mapping from Bol name to authentic extracted sample audio file in assets/tabla/
+    private val tablaBolSampleFileMap = mapOf(
+        "DHA" to "Tabla_Banya_num1.mp3",
+        "DHIN" to "Tabla_Banya_num2.mp3",
+        "DHI" to "Tabla_Banya_num2.mp3",
+        "DIN" to "Tabla_Tone_num7.mp3",
+        "DHINA" to "Tabla_Banya_num3.mp3",
+        "DHIDHI" to "Tabla_Banya_num2.mp3",
+        "DHAGE" to "Tabla_Banya_num1.mp3",
+        "DHE" to "Tabla_Banya_num3.mp3",
+        "DHET" to "Tabla_Slap_num1.mp3",
+        "DHU" to "Banya_num1.mp3",
+        "DI" to "Tabla_Tone_num7.mp3",
+        "KDHA" to "Tabla_Banya_num1.mp3",
+        "NADHA" to "Tabla_Banya_num1.mp3",
+        "NADHI" to "Tabla_Banya_num2.mp3",
+        "GE" to "Banya_num1.mp3",
+        "GA" to "Banya_num2.mp3",
+        "GHE" to "Banya_num1.mp3",
+        "GAN" to "Banya_num3.mp3",
+        "GADI" to "Banya_num4.mp3",
+        "GANA" to "Banya_num5.mp3",
+        "DU" to "Banya_num1.mp3",
+        "NA" to "Tabla_Tone_num1.mp3",
+        "TA" to "Tabla_Tone_num2.mp3",
+        "TIN" to "Tabla_Tone_num3.mp3",
+        "TINA" to "Tabla_Tone_num4.mp3",
+        "TI" to "Tabla_Tone_num5.mp3",
+        "TE" to "Tabla_Tone_num6.mp3",
+        "TU" to "Open_Tabla_Hit.mp3",
+        "TUN" to "Open_Tabla_Hit.mp3",
+        "TUNA" to "Open_Tabla_Hit.mp3",
+        "MA" to "Tabla_Tone_num1.mp3",
+        "KA" to "Sharp_Hit.mp3",
+        "KE" to "Sharp_Hit.mp3",
+        "KI" to "Sharp_Hit.mp3",
+        "KIT" to "Sharp_Hit.mp3",
+        "KAT" to "Tabla_Slap_num1.mp3",
+        "KATA" to "Tabla_Slap_num2.mp3",
+        "KATTA" to "Tabla_Slap_num3.mp3",
+        "TAK" to "Tabla_Slap_num4.mp3",
+        "TAT" to "Tabla_Slap_num5.mp3",
+        "TIT" to "Sharp_Hit.mp3",
+        "TITE" to "Tabla_Slap_num2.mp3",
+        "NAK" to "Tabla_Slap_num3.mp3",
+        "TIRAKITA" to "Tabla_Slap_num1.mp3",
+        "TIRIKITA" to "Tabla_Slap_num1.mp3",
+        "TIRKIT" to "Tabla_Slap_num1.mp3",
+        "TIRKITA" to "Tabla_Slap_num1.mp3",
+        "TERIKIT" to "Tabla_Slap_num1.mp3",
+        "TRAK" to "Tabla_Slap_num5.mp3",
+        "KRAN" to "Open_Tabla_Hit.mp3",
+        "THA" to "Sharp_Hit.mp3",
+        "THI" to "Tabla_Tone_num6.mp3",
+        "THOM" to "Banya_num1.mp3",
+        "THON" to "Banya_num1.mp3",
+        "NAM" to "Tabla_Tone_num1.mp3",
+        "NU" to "Tabla_Tone_num1.mp3",
+        "MI" to "Tabla_Tone_num5.mp3",
+        "JO" to "Tabla_Tone_num3.mp3"
+    )
+
+    private val tablaBolSoundIdMap = ConcurrentHashMap<String, Int>()
+
     // Helper mapping for compound bols (breaking them down into constituent playable sub-strokes)
     private val compoundBolMap = mapOf(
         "DHAGE" to listOf(72, 60),
         "TIRAKITA" to listOf(62, 61, 62, 61),
+        "TIRIKITA" to listOf(62, 61, 62, 61),
+        "TIRKIT" to listOf(62, 61, 62, 61),
+        "TIRKITA" to listOf(62, 61, 62, 61),
+        "TERIKIT" to listOf(62, 61, 62, 61),
+        "TITE" to listOf(62, 61),
+        "KATA" to listOf(61, 64),
+        "GADI" to listOf(60, 70),
+        "GANA" to listOf(60, 64),
+        "DHINA" to listOf(68, 64),
+        "DHIDHI" to listOf(68, 68),
         "KITONE" to listOf(61, 60, 67),
         "THA-KA" to listOf(61, 61),
         "TAKA" to listOf(61, 61),
@@ -605,7 +682,8 @@ class AndroidAudioEngine(
         loadInstrumentSampleKit("GUITAR_CLASSICAL", "guitar/guitar-classical")
         loadInstrumentSampleKit("HARMONIUM", "harmonium")
         loadInstrumentSampleKit("PIANO_ELECTRIC", "piano/electric")
-        loadInstrumentSampleKit("TABLA", "tabla/samples")
+        loadInstrumentSampleKit("TABLA", "tabla")
+        loadTablaBolAudioSamples()
         loadInstrumentSampleKit("FLUTE", "flute")
         loadInstrumentSampleKit("VIOLIN", "violin")
         loadSf2Piano()
@@ -2331,8 +2409,37 @@ class AndroidAudioEngine(
         }
     }
 
+    private fun loadTablaBolAudioSamples() {
+        engineScope.launch(Dispatchers.IO) {
+            try {
+                tablaBolSampleFileMap.forEach { (bol, fileName) ->
+                    try {
+                        val afd = context.assets.openFd("tabla/$fileName")
+                        val soundId = salamanderSoundPool.load(afd, 1)
+                        if (soundId != 0) {
+                            tablaBolSoundIdMap[bol] = soundId
+                        }
+                    } catch (e: Exception) {
+                        Log.w("AudioEngine", "Failed to load direct bol sample tabla/$fileName for $bol: ${e.message}")
+                    }
+                }
+                Log.i("AudioEngine", "Loaded ${tablaBolSoundIdMap.size} authentic direct bol audio samples for tabla!")
+            } catch (e: Exception) {
+                Log.e("AudioEngine", "Error initializing tabla bol audio samples: ${e.message}")
+            }
+        }
+    }
+
     private suspend fun handleTabla(target: String) {
         val rawBol = target.uppercase().trim().replace(" ", "").replace("-", "")
+
+        // 0. Check direct high-fidelity audio sample playback first for genuine authentic tabla sound
+        val directSoundId = tablaBolSoundIdMap[rawBol] ?: tablaBolSoundIdMap[target.uppercase().trim()]
+        if (directSoundId != null && directSoundId != 0) {
+            val vol = (tablaGain * 0.95f).coerceIn(0.1f, 1.0f)
+            salamanderSoundPool.play(directSoundId, vol, vol, 1, 0, 1.0f)
+            return
+        }
 
         // 1. Check if bol is a compound pattern with rapid sub-strokes (e.g. TiRaKiTa, DhaGe, KiTone, ThaKaDhiMi)
         val compoundSubNotes = compoundBolMap[rawBol] 
