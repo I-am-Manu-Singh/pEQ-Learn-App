@@ -40,7 +40,7 @@ fun pEQDynamicInstrumentVisualizer(
                     UnifiedPianoKeyboard(
                         activeMidiNotes = activeMap,
                         accentColor = accentColor,
-                        activeMidiNote = activeMidiToken,
+                        activeCoordinate = activeMidiToken,
                         startNote = 36,
                         endNote = 84,
                         fillWidth = true,
@@ -50,11 +50,6 @@ fun pEQDynamicInstrumentVisualizer(
                     )
                 }
                 ChordInstrumentType.GUITAR, ChordInstrumentType.UKULELE, ChordInstrumentType.GUITAR_7 -> {
-                    val stringsCount = when (selectedInstrument) {
-                        ChordInstrumentType.UKULELE -> 4
-                        ChordInstrumentType.GUITAR_7 -> 7
-                        else -> 6
-                    }
                     val stringLabels = when (selectedInstrument) {
                         ChordInstrumentType.UKULELE -> listOf("A", "E", "C", "G")
                         ChordInstrumentType.GUITAR_7 -> listOf("e", "B", "G", "D", "A", "E", "B")
@@ -66,9 +61,8 @@ fun pEQDynamicInstrumentVisualizer(
                         else -> listOf(4, 11, 7, 2, 9, 4)
                     }
 
-                    UnifiedFretboard(
-                        strings = stringsCount,
-                        frets = 15,
+                    UnifiedGuitarFretboard(
+                        numFrets = 15,
                         accentColor = accentColor,
                         showNoteNames = true,
                         markOctaves = true,
@@ -78,7 +72,7 @@ fun pEQDynamicInstrumentVisualizer(
                         openStringsSemis = openSemis,
                         activeMidiNote = activeMidiToken,
                         activeNotes = activeNotes,
-                        onFretTapped = { _, _, midi -> onNoteTapped(midi) },
+                        onFretTapped = { _, _, midi: Int -> onNoteTapped(midi) },
                         modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(8.dp))
                     )
                 }

@@ -198,6 +198,7 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
                 Text(transposedChords, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF9E1B))
 
                 if (chordList.isNotEmpty()) {
+                    val scope = rememberCoroutineScope()
                     var selectedToolInstrument by remember { mutableStateOf(ChordInstrumentType.PIANO) }
                     var isPlayingChord by remember { mutableStateOf(false) }
 
@@ -257,7 +258,8 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
                         InstrumentPlayButton(
                             isPlaying = isPlayingChord,
                             accentColor = Color(0xFFFF9E1B),
-                            onTogglePlay = {
+                            label = if (isPlayingChord) "Stop" else "Play Chord",
+                            onPlayClick = {
                                 if (isPlayingChord) {
                                     isPlayingChord = false
                                 } else {
@@ -275,8 +277,7 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
                                         }
                                     }
                                 }
-                            },
-                            text = "Play Chord"
+                            }
                         )
                     }
 
@@ -455,7 +456,7 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
                 }
 
                 com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard(
-                    frets = 15,
+                    numFrets = 15,
                     accentColor = Color(0xFFCE93D8),
                     showNoteNames = true,
                     markOctaves = true,
@@ -466,7 +467,7 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
                     openStringsSemis = listOf(4, 11, 7, 2, 9, 4),
                     stringLabels = listOf("e", "B", "G", "D", "A", "E"),
                     activeNotes = soundedNotes.map { it.second },
-                    onFretTapped = { strIdx, fretIdx, midi ->
+                    onFretTapped = { strIdx: Int, fretIdx: Int, midi: Int ->
                         val guitarStringIdx = 5 - strIdx
                         val currentFret = frets[guitarStringIdx]
                         val nextFrets = frets.toMutableList()
@@ -501,7 +502,8 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
             InstrumentPlayButton(
                 isPlaying = isPlayingVoicing,
                 accentColor = Color(0xFFCE93D8),
-                onTogglePlay = {
+                label = if (isPlayingVoicing) "Stop" else "Strum Voicing",
+                onPlayClick = {
                     if (isPlayingVoicing) {
                         isPlayingVoicing = false
                     } else {
@@ -519,8 +521,7 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
                             }
                         }
                     }
-                },
-                text = "Strum Chord"
+                }
             )
         }
 

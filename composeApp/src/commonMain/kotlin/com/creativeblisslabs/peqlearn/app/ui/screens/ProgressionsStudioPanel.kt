@@ -200,8 +200,8 @@ fun ProgressionsStudioPanel(
                 InstrumentPlayButton(
                     isPlaying = isPlaying,
                     accentColor = Color(0xFFAB47BC),
-                    onTogglePlay = { playProgression() },
-                    text = if (isPlaying) "Stop" else "Play Progression"
+                    label = if (isPlaying) "Stop" else "Play Progression",
+                    onPlayClick = { playProgression() }
                 )
             }
         }

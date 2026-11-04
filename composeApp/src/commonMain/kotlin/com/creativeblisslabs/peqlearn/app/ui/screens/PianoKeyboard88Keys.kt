@@ -1153,6 +1153,7 @@ Row(
             }
         }
     }
+}
 
     // AI Audio-to-Score Screen
     if (showAudioToMidiScreen) {
