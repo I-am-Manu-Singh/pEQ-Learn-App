@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * INSTRUMENT TUNING DATA MODEL & CATALOG
- * Matches user screenshots (Choona Tuner):
+ * Matches user screenshots (Chrome Tuner):
  * - Auto vs Manual string selection
  * - Favorite tunings with pin icon
  * - Custom tunings with add/delete string & pitch buttons

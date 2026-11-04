@@ -354,13 +354,16 @@ fun PianoKeyboard88Keys(
     // CRITICAL FIX: Do NOT render or tick the inline Notation + Waterfall + Keyboard when Fullscreen mode is open!
     if (!isFullscreen) {
         LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
-            Column {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Button(
+Row(
+    modifier = Modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically,
+    // 1. Changes alignment to align elements to the end (right side)
+    horizontalArrangement = Arrangement.End 
+) {                        Button(
                             onClick = { viewModel.onPickScoreFileRequested?.invoke() },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.onSurface.copy(0.1f)
@@ -386,7 +389,7 @@ fun PianoKeyboard88Keys(
                             )
                         }
                     }
-                }
+                
 
                 // Only mount StaffAndTabNotationViewer if layout mode includes Notation
                 val layoutMode = viewModel.visualizerLayoutMode.value
@@ -406,6 +409,7 @@ fun PianoKeyboard88Keys(
                             activeMidiNotes = viewModel.midiActiveNotes,
                             playingNote = viewModel.midiPlayingNote.value,
                             primaryColor = primaryColor,
+                            showScoreHeader = false,
                             currentFormat = notationFormat,
                             onFormatChange = { notationFormat = it },
                             showLetters = viewModel.showNotationNoteNames.value,
@@ -1683,7 +1687,32 @@ Box {
                                                 modifier = Modifier.size(17.dp)
                                             )
                                         }
-
+  // MIDI Device Button
+                                        val isMidiConnected = viewModel.connectedMidiDeviceName.value?.isNotBlank() == true
+                                        Surface(
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (isMidiConnected) Color(0xFF1C2B24) else Color(0xFF1E162E),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isMidiConnected) Color(0xFF10B981).copy(0.5f) else Color(0xFF2E2445)
+                                            ),
+                                            modifier = Modifier.clickable {
+                                                viewModel.onScanMidiDevicesRequested?.invoke()
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                 Icon(
+                                                     Icons.Default.Piano,
+                                                     contentDescription = "MIDI Device",
+                                                     tint = if (isMidiConnected) Color(0xFF10B981) else Color.White.copy(0.8f),
+                                                     modifier = Modifier.size(15.dp)
+                                                 )
+                                            }
+                                        }
                                         // pEQInstrument Dropdown for visualizer & audio sample playback
                                         var currentSelectedInstType by remember(viewModel.selectedInstrument.value) {
                                             mutableStateOf(ChordInstrumentType.fromNameOrNull(viewModel.selectedInstrument.value) ?: ChordInstrumentType.PIANO_ACOUSTIC)
@@ -1707,7 +1736,7 @@ Box {
                                             },
                                             modifier = Modifier.width(185.dp).height(32.dp)
                                         )
-
+                                        
                                         // MIDI Tracks Dropdown Selector (if score has tracks)
                                         val currentScoreObj = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
                                         val foundTracks = currentScoreObj?.tracks ?: emptyList()
@@ -1797,32 +1826,7 @@ Box {
                                             }
                                         }
 
-                                        // MIDI Device Button
-                                        val isMidiConnected = viewModel.connectedMidiDeviceName.value?.isNotBlank() == true
-                                        Surface(
-                                            shape = RoundedCornerShape(16.dp),
-                                            color = if (isMidiConnected) Color(0xFF1C2B24) else Color(0xFF1E162E),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (isMidiConnected) Color(0xFF10B981).copy(0.5f) else Color(0xFF2E2445)
-                                            ),
-                                            modifier = Modifier.clickable {
-                                                viewModel.onScanMidiDevicesRequested?.invoke()
-                                            }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                 Icon(
-                                                     Icons.Default.Piano,
-                                                     contentDescription = "MIDI Device",
-                                                     tint = if (isMidiConnected) Color(0xFF10B981) else Color.White.copy(0.8f),
-                                                     modifier = Modifier.size(15.dp)
-                                                 )
-                                            }
-                                        }
+                                      
 
                                         // Export Button
                                         Button(
@@ -1847,24 +1851,7 @@ Box {
                                                 color = Color(0xFFC5CAE9)
                                             )
                                         }
-                                        // Parser Score .txt Dump button
-Button(
-    onClick = { showDumpDialog = true },
-    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
-    shape = RoundedCornerShape(10.dp),
-    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-) {
-    // Fully qualified core baseline icon
-    Icon(
-        imageVector = androidx.compose.material.icons.Icons.Default.Menu, 
-        contentDescription = "Score Dump", 
-        modifier = Modifier.size(16.dp), 
-        tint = Color.White
-    )
-    // Fully qualified Spacer package path
-    androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
-    Text("TXT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-}
+                                        
           // Settings Menu
                                         IconButton(
                                             onClick = { viewModel.showSettings.value = true },
@@ -2828,6 +2815,7 @@ Button(
                 dragHandle = { BottomSheetDefaults.DragHandle() },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ) {
+                
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2835,6 +2823,7 @@ Button(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -2855,6 +2844,24 @@ Button(
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                        // Parser Score .txt Dump button
+Button(
+    onClick = { showDumpDialog = true },
+    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+    shape = RoundedCornerShape(10.dp),
+    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+) {
+    // Fully qualified core baseline icon
+    Icon(
+        imageVector = androidx.compose.material.icons.Icons.Default.Menu, 
+        contentDescription = "Score Dump", 
+        modifier = Modifier.size(16.dp), 
+        tint = Color.White
+    )
+    // Fully qualified Spacer package path
+    androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
+    Text("TXT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+}
                         IconButton(onClick = { showExportDialog = false }) {
                             Icon(Icons.Default.Close, contentDescription = "Close")
                         }

@@ -1218,12 +1218,18 @@ fun UnifiedHarmoniumVisualizer(
     activeMidiNotes: Map<Int, Boolean> = emptyMap(),
     accentColor: Color = Color(0xFFFFB300),
     activeMidiNote: Int? = null,
+    rootNote: Int = 0,
+    showNoteNames: Boolean = true,
+    startNote: Int = 48, // C3 default
+    endNote: Int = 84,   // C6 default (3 octaves)
+    leftHandColor: Color = Color(0xFFFF8F00),
+    rightHandColor: Color = Color(0xFFFFD54F),
+    isLeftHandHidden: Boolean = false,
+    isRightHandHidden: Boolean = false,
     onKeyTapped: ((midiNote: Int) -> Unit)? = null,
+    onKeyReleased: ((midiNote: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val startMidi = 48 // C3
-    val endMidi = 84   // C6 (3 octaves)
-
     Column(
         modifier = modifier
             .background(
@@ -1235,11 +1241,11 @@ fun UnifiedHarmoniumVisualizer(
             .border(1.5.dp, Color(0xFF5D361F), RoundedCornerShape(8.dp))
             .padding(4.dp)
     ) {
-        // TOP BELLOWS & BRASS STOPS PANEL
+        // TOP BELLOWS & BRASS STOPS PANEL (Clean decorative bellows fold)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(34.dp)
+                .height(20.dp)
                 .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                 .background(
                     brush = Brush.horizontalGradient(
@@ -1253,46 +1259,47 @@ fun UnifiedHarmoniumVisualizer(
                     )
                 )
                 .border(1.dp, Color(0xFF8D5B34), RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                .padding(horizontal = 10.dp),
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.Center
         ) {
             // Brass decorative stops with authentic pull knobs
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                listOf("C", "G", "Swell", "Tremolo", "Drone 1", "Drone 2", "Main").forEachIndexed { i, stopName ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(Color(0xFFFFF176), Color(0xFFFFB300), Color(0xFF8D6E63))
-                                    )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                repeat(9) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(Color(0xFFFFF176), Color(0xFFFFB300), Color(0xFF8D6E63))
                                 )
-                                .border(1.dp, Color(0xFFB58500), CircleShape)
-                        )
-                    }
+                            )
+                            .border(0.8.dp, Color(0xFFB58500), CircleShape)
+                    )
                 }
             }
-
-            
         }
 
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(2.dp))
 
         // HARMONIUM KEYBED (REEDS)
         UnifiedPianoKeyboard(
             activeMidiNotes = activeMidiNotes,
             accentColor = accentColor,
+            rootNote = rootNote,
             activeCoordinate = activeMidiNote,
+            showNoteNames = showNoteNames,
             isPlaying = activeMidiNotes.values.any { it } || activeMidiNote != null,
-            startNote = startMidi,
-            endNote = endMidi,
+            startNote = startNote,
+            endNote = endNote,
             fillWidth = true,
-            leftHandColor = Color(0xFFFF8F00),
-            rightHandColor = Color(0xFFFFD54F),
+            leftHandColor = leftHandColor,
+            rightHandColor = rightHandColor,
+            isLeftHandHidden = isLeftHandHidden,
+            isRightHandHidden = isRightHandHidden,
             onKeyTapped = { onKeyTapped?.invoke(it) },
+            onKeyReleased = { onKeyReleased?.invoke(it) },
             modifier = Modifier.fillMaxWidth().weight(1f)
         )
     }
@@ -1308,16 +1315,27 @@ fun UnifiedHarmoniumVisualizer(
 fun UnifiedViolinFingerboard(
     activeNotes: List<Int> = emptyList(),
     activeMidiNote: Int? = null,
+    rootNote: Int = 0,
     accentColor: Color = Color(0xFFE040FB),
     showNoteNames: Boolean = true,
+    numPositions: Int = 14,
+    stringLabels: List<String> = listOf("E", "A", "D", "G"),
+    openStringsMidi: List<Int> = listOf(76, 69, 62, 55),
+    isLeftHandHidden: Boolean = false,
+    isRightHandHidden: Boolean = false,
     onPositionTapped: ((stringIndex: Int, midiNote: Int) -> Unit)? = null,
+    onPositionReleased: ((stringIndex: Int, midiNote: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Violin open strings: G3 (55), D4 (62), A4 (69), E5 (76)
-    val stringLabels = listOf("E", "A", "D", "G")
-    val stringNames = listOf("E5 (Plain Steel)", "A4 (Alum Wound)", "D4 (Silver Wound)", "G3 (Gut Wound)")
-    val openStringsMidi = listOf(76, 69, 62, 55)
-    val totalPositions = 14 // Half-step intonation positions along neck
+    val totalPositions = numPositions.coerceIn(7, 24)
+    val filteredActiveNotes = remember(activeNotes, isLeftHandHidden, isRightHandHidden) {
+        activeNotes.filter { midi ->
+            val isTreble = midi >= 65
+            if (isTreble && isRightHandHidden) false
+            else if (!isTreble && isLeftHandHidden) false
+            else true
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -1328,76 +1346,111 @@ fun UnifiedViolinFingerboard(
                 shape = RoundedCornerShape(8.dp)
             )
             .border(1.5.dp, Color(0xFF6A3B18), RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-           
-
-            // Fingerboard Strings & Intonation Tapes
-            Column(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.SpaceEvenly
-            ) {
-                openStringsMidi.forEachIndexed { sIdx, openMidi ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(26.dp),
-                        verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceEvenly
+        ) {
+            openStringsMidi.forEachIndexed { sIdx, openMidi ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // String Label & Peg with pearloid inlay (clear, unclipt)
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF23140C),
+                        border = BorderStroke(1.2.dp, Color(0xFFFFD54F)),
+                        modifier = Modifier.size(24.dp)
                     ) {
-                        // String Label & Peg with pearloid inlay
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFF23140C),
-                            border = BorderStroke(1.dp, Color(0xFF8D5B34)),
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(stringLabels[sIdx], fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFFFD54F))
-                            }
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = stringLabels.getOrElse(sIdx) { "S" },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFFFD54F)
+                            )
                         }
+                    }
 
-                        Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
 
-                        // String Length with chromatic pitch markers
-                        Row(
+                    // String wire with intonation position markers and glowing active notes
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        // String wire
+                        val wireHeight = if (sIdx == 3) 3.5.dp else if (sIdx == 2) 2.8.dp else if (sIdx == 1) 2.2.dp else 1.5.dp
+                        Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .height(if (sIdx == 3) 4.5.dp else if (sIdx == 2) 3.5.dp else if (sIdx == 1) 2.5.dp else 1.8.dp)
+                                .fillMaxWidth()
+                                .height(wireHeight)
                                 .background(
-                                    when (sIdx) {
+                                    when (sIdx % 4) {
                                         0 -> Color(0xFFE0E0E0) // Plain Steel E
                                         1 -> Color(0xFFCFD8DC) // Aluminum A
                                         2 -> Color(0xFFB0BEC5) // Silver D
                                         else -> Color(0xFFFFD54F).copy(alpha = 0.85f) // Gold Gut G
                                     }
-                                ),
+                                )
+                        )
+
+                        // Chromatic note positions along the fingerboard
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             for (pos in 0..totalPositions) {
                                 val currentMidi = openMidi + pos
-                                val isActive = activeNotes.contains(currentMidi) || activeMidiNote == currentMidi
+                                val isActive = filteredActiveNotes.contains(currentMidi) || activeMidiNote == currentMidi
+                                val isRoot = (currentMidi % 12) == (rootNote % 12)
+
+                                val dotSize by animateFloatAsState(
+                                    targetValue = if (isActive) 22f else 10f,
+                                    animationSpec = spring(stiffness = Spring.StiffnessMedium)
+                                )
 
                                 Box(
                                     modifier = Modifier
-                                        .size(if (isActive) 20.dp else 11.dp)
+                                        .size(dotSize.dp)
                                         .clip(CircleShape)
                                         .background(
-                                            if (isActive) accentColor
-                                            else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.4f)
+                                            if (isActive) (if (isRoot) Color(0xFFFF5252) else accentColor)
+                                            else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.35f)
                                             else Color.Transparent
                                         )
                                         .border(
                                             width = if (isActive) 1.5.dp else 0.5.dp,
-                                            color = if (isActive) Color.White else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.6f) else Color.Transparent,
+                                            color = if (isActive) Color.White else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.5f) else Color.Transparent,
                                             shape = CircleShape
                                         )
-                                        .clickable { onPositionTapped?.invoke(sIdx, currentMidi) },
+                                        .pointerInput(sIdx, currentMidi) {
+                                            detectTapGestures(
+                                                onPress = {
+                                                    onPositionTapped?.invoke(sIdx, currentMidi)
+                                                    tryAwaitRelease()
+                                                    onPositionReleased?.invoke(sIdx, currentMidi)
+                                                }
+                                            )
+                                        },
                                     contentAlignment = Alignment.Center
                                 ) {
+                                    if (isActive) {
+                                        // Inner glowing core
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.White)
+                                        )
+                                    }
                                     if (isActive && showNoteNames) {
                                         Text(
                                             text = NOTE_NAMES[currentMidi % 12],
-                                            fontSize = 8.5.sp,
+                                            fontSize = 8.sp,
                                             fontWeight = FontWeight.Black,
                                             color = Color.Black
                                         )
@@ -1421,17 +1474,16 @@ fun UnifiedViolinFingerboard(
 fun UnifiedFluteVisualizer(
     activeNotes: List<Int> = emptyList(),
     activeMidiNote: Int? = null,
+    rootNote: Int = 0,
     accentColor: Color = Color(0xFF00E5FF),
+    showNoteNames: Boolean = true,
+    holeMidiPitches: List<Int> = listOf(60, 62, 64, 65, 67, 69, 71, 72), // C4, D4, E4, F4, G4, A4, B4, C5
+    holeNames: List<String> = listOf("Sa", "Re", "Ga", "Ma", "Pa", "Dha", "Ni", "Ṡa"),
     onToneHoleTapped: ((holeIndex: Int, midiNote: Int) -> Unit)? = null,
+    onToneHoleReleased: ((holeIndex: Int, midiNote: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Concert Flute standard register C4 (60) to C7 (96)
-    // 8 Main Tone Holes (Sa, Re, Ga, Ma, Pa, Dha, Ni, Sa')
-    val holeMidiPitches = listOf(60, 62, 64, 65, 67, 69, 71, 72) // C4, D4, E4, F4, G4, A4, B4, C5
-    val holeNames = listOf("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5")
-    val indianHoleNames = listOf("Sa", "Re", "Ga", "Ma", "Pa", "Dha", "Ni", "Ṡa")
-
-    Column(
+    Box(
         modifier = modifier
             .background(
                 brush = Brush.verticalGradient(
@@ -1440,24 +1492,22 @@ fun UnifiedFluteVisualizer(
                 shape = RoundedCornerShape(8.dp)
             )
             .border(1.5.dp, Color(0xFF6B4226), RoundedCornerShape(8.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
     ) {
-       
-
         // FLUTE BODY (Natural bamboo tube with traditional red/gold bindings & tone holes)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(16.dp))
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(Color(0xFFD4A373), Color(0xFFFAEDCD), Color(0xFFCCD5AE), Color(0xFFB58463))
                     )
                 )
-                .border(1.dp, Color(0xFF8B5A2B), RoundedCornerShape(24.dp))
-                .padding(horizontal = 16.dp),
+                .border(1.dp, Color(0xFF8B5A2B), RoundedCornerShape(16.dp))
+                .padding(horizontal = 14.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             Row(
@@ -1468,7 +1518,7 @@ fun UnifiedFluteVisualizer(
                 // Embouchure hole (Mouthpiece) with cork plug
                 Box(
                     modifier = Modifier
-                        .size(24.dp, 16.dp)
+                        .size(22.dp, 16.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0xFF1B1B1B))
                         .border(1.5.dp, Color(0xFF3E2723), RoundedCornerShape(8.dp))
@@ -1478,7 +1528,7 @@ fun UnifiedFluteVisualizer(
                 Box(
                     modifier = Modifier
                         .width(6.dp)
-                        .height(36.dp)
+                        .height(34.dp)
                         .background(
                             brush = Brush.verticalGradient(
                                 colors = listOf(Color(0xFFD32F2F), Color(0xFFFFD54F), Color(0xFFD32F2F))
@@ -1486,7 +1536,7 @@ fun UnifiedFluteVisualizer(
                         )
                 )
 
-                // 8 Tone Holes
+                // Tone Holes with glowing active states
                 Row(
                     modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1494,32 +1544,50 @@ fun UnifiedFluteVisualizer(
                 ) {
                     holeMidiPitches.forEachIndexed { index, midi ->
                         val isCovered = activeNotes.contains(midi) || activeMidiNote == midi
+                        val isRoot = (midi % 12) == (rootNote % 12)
+
+                        val holeSize by animateFloatAsState(
+                            targetValue = if (isCovered) 24f else 18f,
+                            animationSpec = spring(stiffness = Spring.StiffnessMedium)
+                        )
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(1.dp)
+                            verticalArrangement = Arrangement.Center
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(22.dp)
+                                    .size(holeSize.dp)
                                     .clip(CircleShape)
-                                    .background(if (isCovered) accentColor else Color(0xFF2B1810))
-                                    .border(1.5.dp, if (isCovered) Color.White else Color(0xFF5D4037), CircleShape)
-                                    .clickable { onToneHoleTapped?.invoke(index, midi) },
+                                    .background(if (isCovered) (if (isRoot) Color(0xFFFF5252) else accentColor) else Color(0xFF2B1810))
+                                    .border(
+                                        width = if (isCovered) 2.dp else 1.2.dp,
+                                        color = if (isCovered) Color.White else Color(0xFF5D4037),
+                                        shape = CircleShape
+                                    )
+                                    .pointerInput(index, midi) {
+                                        detectTapGestures(
+                                            onPress = {
+                                                onToneHoleTapped?.invoke(index, midi)
+                                                tryAwaitRelease()
+                                                onToneHoleReleased?.invoke(index, midi)
+                                            }
+                                        )
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (isCovered) {
                                     Box(
                                         modifier = Modifier
-                                            .size(8.dp)
+                                            .size(7.dp)
                                             .clip(CircleShape)
                                             .background(Color.White)
                                     )
                                 }
                             }
                             Text(
-                                text = indianHoleNames[index],
-                                fontSize = 8.sp,
+                                text = holeNames.getOrElse(index) { NOTE_NAMES[midi % 12] },
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isCovered) Color(0xFFB71C1C) else Color(0xFF3E2723)
                             )
@@ -1541,9 +1609,16 @@ fun UnifiedFluteVisualizer(
 fun UnifiedTablaVisualizer(
     activeBol: String? = null,
     accentColor: Color = Color(0xFFFF9800),
+    showLabels: Boolean = true,
+    dayanTonicName: String = "Sa (C)",
+    bayanBassName: String = "Ge/Ghe",
     onBolTapped: ((String) -> Unit)? = null,
+    onBolReleased: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val isBayanActive = activeBol != null && activeBol in listOf("GHE", "GE", "KA", "KAT", "DHA", "DHIN")
+    val isDayanActive = activeBol != null && activeBol in listOf("DHA", "DHIN", "NA", "TA", "TIN", "TI", "TE", "RE")
+
     Row(
         modifier = modifier
             .background(
@@ -1559,18 +1634,29 @@ fun UnifiedTablaVisualizer(
     ) {
         // BAYAN (Left Bass Drum, Dagga)
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("BAYAN (Dagga)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+            if (showLabels) {
+                Text("BAYAN ($bayanBassName)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+            }
             Box(
                 modifier = Modifier
                     .size(82.dp)
                     .clip(CircleShape)
                     .background(
                         brush = Brush.radialGradient(
-                            colors = listOf(Color(0xFFB0BEC5), Color(0xFF78909C), Color(0xFF37474F), Color(0xFF263238))
+                            colors = if (isBayanActive) listOf(Color(0xFFFFD54F), accentColor, Color(0xFF37474F))
+                            else listOf(Color(0xFFB0BEC5), Color(0xFF78909C), Color(0xFF37474F), Color(0xFF263238))
                         )
                     )
-                    .border(2.5.dp, Color(0xFF8D6E63), CircleShape)
-                    .clickable { onBolTapped?.invoke("GHE") },
+                    .border(if (isBayanActive) 3.dp else 2.5.dp, if (isBayanActive) Color.White else Color(0xFF8D6E63), CircleShape)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                onBolTapped?.invoke("GHE")
+                                tryAwaitRelease()
+                                onBolReleased?.invoke("GHE")
+                            }
+                        )
+                    },
                 contentAlignment = Alignment.TopStart
             ) {
                 // Braided Gajra Outer Rim
@@ -1588,28 +1674,41 @@ fun UnifiedTablaVisualizer(
                             .padding(start = 14.dp, top = 14.dp)
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF1A1A1A))
+                            .background(if (isBayanActive) accentColor else Color(0xFF1A1A1A))
                             .border(1.dp, Color(0xFF424242), CircleShape)
                     )
                 }
             }
-            Text("Bols: Ghe, Ge, Ka, Kat", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+            if (showLabels) {
+                Text("Bols: Ghe, Ge, Ka, Kat", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+            }
         }
 
         // DAYAN (Right Treble Drum, Tabla)
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("DAYAN (Treble)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+            if (showLabels) {
+                Text("DAYAN ($dayanTonicName)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+            }
             Box(
                 modifier = Modifier
                     .size(76.dp)
                     .clip(CircleShape)
                     .background(
                         brush = Brush.radialGradient(
-                            colors = listOf(Color(0xFF8D5B34), Color(0xFF5D361F), Color(0xFF3E1E11))
+                            colors = if (isDayanActive) listOf(Color(0xFFFFD54F), accentColor, Color(0xFF3E1E11))
+                            else listOf(Color(0xFF8D5B34), Color(0xFF5D361F), Color(0xFF3E1E11))
                         )
                     )
-                    .border(2.5.dp, Color(0xFF8D6E63), CircleShape)
-                    .clickable { onBolTapped?.invoke("DHA") },
+                    .border(if (isDayanActive) 3.dp else 2.5.dp, if (isDayanActive) Color.White else Color(0xFF8D6E63), CircleShape)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                onBolTapped?.invoke("DHA")
+                                tryAwaitRelease()
+                                onBolReleased?.invoke("DHA")
+                            }
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 // Outer Gajra Rim & Chanti
@@ -1635,13 +1734,15 @@ fun UnifiedTablaVisualizer(
                             modifier = Modifier
                                 .size(30.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF111111))
+                                .background(if (isDayanActive) accentColor else Color(0xFF111111))
                                 .border(1.dp, Color(0xFF424242), CircleShape)
                         )
                     }
                 }
             }
-            Text("Bols: Dha, Dhin, Na, Ta, Tin", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+            if (showLabels) {
+                Text("Bols: Dha, Dhin, Na, Ta, Tin", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+            }
         }
     }
 }
@@ -1661,29 +1762,34 @@ fun UnifiedTablaVisualizer(
 fun UnifiedSitarVisualizer(
     activeNotes: List<Int> = emptyList(),
     activeMidiNote: Int? = null,
+    rootNote: Int = 0,
     accentColor: Color = Color(0xFFFFB300),
     showNoteNames: Boolean = true,
+    numFrets: Int = 16,
+    stringSetup: List<Triple<String, Int, Float>> = listOf(
+        Triple("Ma", 53, 2.8f),
+        Triple("Sa", 48, 2.5f),
+        Triple("Pa", 43, 3.2f),
+        Triple("Sa'", 36, 3.6f),
+        Triple("Pa'", 55, 1.6f),
+        Triple("Sa", 60, 1.3f),
+        Triple("Sa''", 72, 1.0f)
+    ),
+    isLeftHandHidden: Boolean = false,
+    isRightHandHidden: Boolean = false,
     onFretTapped: ((fretIndex: Int, midiNote: Int) -> Unit)? = null,
+    onFretReleased: ((fretIndex: Int, midiNote: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Sitar Strings (Ravi Shankar style 7-string setup):
-    // 1: Baj Tar (Melody string) -> Ma (F3 / 53 or C4 / 60)
-    // 2: Jod -> Sa (C3 / 48)
-    // 3: Kharaj -> Pa (G2 / 43)
-    // 4: Kharaj -> Sa (C2 / 36)
-    // 5: Pancham Chikari -> Pa (G3 / 55)
-    // 6: Sa Chikari -> Sa (C4 / 60)
-    // 7: Tar Sa Chikari -> Sa' (C5 / 72)
-    val sitarStrings = listOf(
-        Triple("Baj (Ma)", 53, 2.5f),
-        Triple("Jod (Sa)", 48, 2.2f),
-        Triple("Pancham (Pa)", 43, 3.0f),
-        Triple("Kharaj (Sa)", 36, 3.5f),
-        Triple("Chikari (Pa)", 55, 1.2f),
-        Triple("Chikari (Sa)", 60, 1.0f),
-        Triple("Chikari (Sa')", 72, 0.8f)
-    )
-    val numFrets = 16
+    val sitarStrings = stringSetup
+    val filteredActiveNotes = remember(activeNotes, isLeftHandHidden, isRightHandHidden) {
+        activeNotes.filter { midi ->
+            val isTreble = midi >= 60
+            if (isTreble && isRightHandHidden) false
+            else if (!isTreble && isLeftHandHidden) false
+            else true
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -1694,127 +1800,143 @@ fun UnifiedSitarVisualizer(
                 shape = RoundedCornerShape(8.dp)
             )
             .border(1.5.dp, Color(0xFF6B3A19), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-           
-
-            // Sitar Fretboard Neck with Arched Brass Frets and Strings
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color(0xFF3E1F0E), Color(0xFF271308), Color(0xFF3E1F0E))
-                        )
+        // Sitar Fretboard Neck with Arched Brass Frets and Strings
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(6.dp))
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFF3E1F0E), Color(0xFF271308), Color(0xFF3E1F0E))
                     )
+                )
+        ) {
+            // Draw 16 Curved Brass Frets
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Draw 16 Curved Brass Frets
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    for (fret in 1..numFrets) {
-                        // Arched brass fret column
+                for (fret in 1..numFrets) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .fillMaxHeight()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(Color(0xFFFFD54F), Color(0xFFFFB300), Color(0xFFB58500), Color(0xFFFFD54F))
+                                )
+                            )
+                            .border(0.5.dp, Color(0xFF6D4C41))
+                    )
+                }
+            }
+
+            // Overlay Strings & Interactive Notes
+            Column(
+                modifier = Modifier.fillMaxSize().padding(vertical = 2.dp),
+                verticalArrangement = Arrangement.SpaceEvenly
+            ) {
+                sitarStrings.forEachIndexed { sIdx, (name, baseMidi, gauge) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // String Label & Peg with clear padding and no clipping
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF150A04),
+                            border = BorderStroke(1.2.dp, Color(0xFFFFD54F)),
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = name,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (sIdx == 0) Color(0xFFFFD54F) else Color.White.copy(alpha = 0.9f),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.width(6.dp))
+
+                        // String wire and interactive note hits
                         Box(
                             modifier = Modifier
-                                .width(3.5.dp)
-                                .fillMaxHeight()
-                                .background(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(Color(0xFFFFD54F), Color(0xFFFFB300), Color(0xFFB58500), Color(0xFFFFD54F))
-                                    )
-                                )
-                                .border(0.5.dp, Color(0xFF6D4C41))
-                        )
-                    }
-                }
-
-                // Overlay Strings & Interactive Notes
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(vertical = 2.dp),
-                    verticalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    sitarStrings.forEachIndexed { sIdx, (name, baseMidi, gauge) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().height(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            contentAlignment = Alignment.CenterStart
                         ) {
-                            // String Label & Peg
-                            Surface(
-                                shape = RoundedCornerShape(3.dp),
-                                color = Color(0xFF150A04),
-                                border = BorderStroke(0.5.dp, Color(0xFFFFD54F).copy(alpha = 0.4f)),
-                                modifier = Modifier.width(52.dp).height(14.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = name,
-                                        fontSize = 7.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (sIdx == 0) Color(0xFFFFD54F) else Color.White.copy(alpha = 0.7f),
-                                        maxLines = 1
-                                    )
-                                }
-                            }
-
-                            Spacer(Modifier.width(4.dp))
-
-                            // String wire and interactive note hits
                             Box(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight(),
-                                contentAlignment = Alignment.CenterStart
+                                    .fillMaxWidth()
+                                    .height(gauge.dp)
+                                    .background(
+                                        if (sIdx == 0) Color(0xFFFFF9C4)
+                                        else if (sIdx in 1..3) Color(0xFFFFD54F).copy(alpha = 0.85f)
+                                        else Color(0xFFE0E0E0)
+                                    )
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(gauge.dp)
-                                        .background(
-                                            if (sIdx == 0) Color(0xFFFFF9C4)
-                                            else if (sIdx in 1..3) Color(0xFFFFD54F).copy(alpha = 0.85f)
-                                            else Color(0xFFE0E0E0)
-                                        )
-                                )
+                                for (fret in 1..numFrets) {
+                                    val midi = baseMidi + fret
+                                    val isActive = filteredActiveNotes.contains(midi) || activeMidiNote == midi
+                                    val isRoot = (midi % 12) == (rootNote % 12)
 
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    for (fret in 1..numFrets) {
-                                        val midi = baseMidi + fret
-                                        val isActive = activeNotes.contains(midi) || activeMidiNote == midi
+                                    val beadSize by animateFloatAsState(
+                                        targetValue = if (isActive) 20f else 9f,
+                                        animationSpec = spring(stiffness = Spring.StiffnessMedium)
+                                    )
 
-                                        Box(
-                                            modifier = Modifier
-                                                .size(if (isActive) 16.dp else 10.dp)
-                                                .clip(CircleShape)
-                                                .background(
-                                                    if (isActive) accentColor
-                                                    else if (fret in listOf(1, 3, 5, 7, 8, 10, 12, 13, 15)) Color.White.copy(alpha = 0.15f)
-                                                    else Color.Transparent
+                                    Box(
+                                        modifier = Modifier
+                                            .size(beadSize.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isActive) (if (isRoot) Color(0xFFFF5252) else accentColor)
+                                                else if (fret in listOf(1, 3, 5, 7, 8, 10, 12, 13, 15)) Color.White.copy(alpha = 0.25f)
+                                                else Color.Transparent
+                                            )
+                                            .border(
+                                                width = if (isActive) 1.5.dp else 0.5.dp,
+                                                color = if (isActive) Color.White else if (fret in listOf(1, 3, 5, 7, 8, 10, 12, 13, 15)) Color.White.copy(alpha = 0.4f) else Color.Transparent,
+                                                shape = CircleShape
+                                            )
+                                            .pointerInput(fret, midi) {
+                                                detectTapGestures(
+                                                    onPress = {
+                                                        onFretTapped?.invoke(fret, midi)
+                                                        tryAwaitRelease()
+                                                        onFretReleased?.invoke(fret, midi)
+                                                    }
                                                 )
-                                                .border(
-                                                    width = if (isActive) 1.dp else 0.5.dp,
-                                                    color = if (isActive) Color.White else Color.Transparent,
-                                                    shape = CircleShape
-                                                )
-                                                .clickable { onFretTapped?.invoke(fret, midi) },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (isActive && showNoteNames) {
-                                                Text(
-                                                    text = NOTE_NAMES[midi % 12],
-                                                    fontSize = 7.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.Black
-                                                )
-                                            }
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isActive) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.White)
+                                            )
+                                        }
+                                        if (isActive && showNoteNames) {
+                                            Text(
+                                                text = NOTE_NAMES[midi % 12],
+                                                fontSize = 7.5.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.Black
+                                            )
                                         }
                                     }
                                 }

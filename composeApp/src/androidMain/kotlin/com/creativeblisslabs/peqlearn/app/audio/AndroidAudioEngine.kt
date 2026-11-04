@@ -643,6 +643,8 @@ class AndroidAudioEngine(
             upper.contains("FLUTE") -> "FLUTE"
             upper.contains("VIOLIN") -> "VIOLIN"
             upper.contains("PIANO_ELECTRIC") || (upper.contains("ELECTRIC") && upper.contains("PIANO")) -> "PIANO_ELECTRIC"
+            upper.contains("PIANO_ACOUSTIC") -> "PIANO_ACOUSTIC"
+            upper.contains("PIANO") -> "PIANO"
             upper.contains("ELECTRIC") -> "GUITAR_ELECTRIC"
             upper.contains("CLASSICAL") && upper.contains("GUITAR") -> "GUITAR_CLASSICAL"
             upper.contains("UKULELE") || upper.contains("UKE") -> "UKULELE"
@@ -650,7 +652,44 @@ class AndroidAudioEngine(
             else -> "PIANO"
         }
 
+        val previousInstrument = currentInstrument
         currentInstrument = targetKey
+
+        // Smooth transition: stop lingering active audio streams from previous instruments
+        if (previousInstrument != targetKey) {
+            engineScope.launch {
+                try {
+                    // Stop any active SoundPool sample streams
+                    activeStreamsByInstrument.values.forEach { streamMap ->
+                        streamMap.values.forEach { streamId ->
+                            try {
+                                salamanderSoundPool.stop(streamId)
+                            } catch (_: Exception) {}
+                        }
+                        streamMap.clear()
+                    }
+                    salamanderActiveStreamMap.values.forEach { streamId ->
+                        try {
+                            salamanderSoundPool.stop(streamId)
+                        } catch (_: Exception) {}
+                    }
+                    salamanderActiveStreamMap.clear()
+
+                    // Also silence any active SoundFont synth voices
+                    synchronized(sf2Lock) {
+                        for (voice in soundFontPool.values) {
+                            try {
+                                for (m in 0..127) {
+                                    voice.noteOff(0, m)
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+
+                    activeMidiNotesEngine.clear()
+                } catch (_: Exception) {}
+            }
+        }
 
         synchronized(sf2Lock) {
             val targetSf = soundFontPool[targetKey] ?: soundFontPool["PIANO"]
@@ -1962,44 +2001,7 @@ class AndroidAudioEngine(
             else -> null
         }
 
-        if (sampleInstrumentKey == "SITAR" && sitarLoaded.get()) {
-            val soundId = sitarSampleMap[midiNote]
-            if (soundId != null) {
-                sitarActiveStreamMap.remove(midiNote)?.let { oldStreamId ->
-                    salamanderSoundPool.stop(oldStreamId)
-                }
-                val streamId = salamanderSoundPool.play(soundId, clampedVel, clampedVel, 1, 0, 1.0f)
-                if (streamId != 0) {
-                    sitarActiveStreamMap[midiNote] = streamId
-                }
-                return
-            } else {
-                var closestMidi = 60
-                var minDiff = Int.MAX_VALUE
-                sitarSampleMap.keys.forEach { sampledMidi ->
-                    val diff = kotlin.math.abs(sampledMidi - midiNote)
-                    if (diff < minDiff) {
-                        minDiff = diff
-                        closestMidi = sampledMidi
-                    }
-                }
-                val fallbackSoundId = sitarSampleMap[closestMidi]
-                if (fallbackSoundId != null) {
-                    val semitoneDiff = midiNote - closestMidi
-                    val rate = java.lang.Math.pow(2.0, semitoneDiff.toDouble() / 12.0).toFloat().coerceIn(0.5f, 2.0f)
-                    sitarActiveStreamMap.remove(midiNote)?.let { oldStreamId ->
-                        salamanderSoundPool.stop(oldStreamId)
-                    }
-                    val streamId = salamanderSoundPool.play(fallbackSoundId, clampedVel, clampedVel, 1, 0, rate)
-                    if (streamId != 0) {
-                        sitarActiveStreamMap[midiNote] = streamId
-                    }
-                    return
-                }
-            }
-        }
-
-        if (sampleInstrumentKey != null && sampleInstrumentKey != "SITAR") {
+        if (sampleInstrumentKey != null) {
             val sampleMap = sampleMapsByInstrument[sampleInstrumentKey]
             val activeStreams = activeStreamsByInstrument[sampleInstrumentKey]
             if (sampleMap != null && sampleMap.isNotEmpty()) {
@@ -2130,20 +2132,6 @@ class AndroidAudioEngine(
             sampleLoadedByInstrument[currentInstrument]?.get() == true -> currentInstrument
             currentInstrument.contains("GUITAR") -> "GUITAR_ACOUSTIC"
             else -> null
-        }
-
-        if (sampleInstrumentKey == "SITAR") {
-            val streamId = sitarActiveStreamMap.remove(note)
-            if (streamId != null) {
-                engineScope.launch {
-                    try {
-                        salamanderSoundPool.setVolume(streamId, 0.4f, 0.4f)
-                        delay(250L)
-                        salamanderSoundPool.stop(streamId)
-                    } catch (_: Exception) {}
-                }
-            }
-            return
         }
 
         if (sampleInstrumentKey != null) {

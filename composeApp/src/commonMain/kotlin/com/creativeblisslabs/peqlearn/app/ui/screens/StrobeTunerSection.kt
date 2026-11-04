@@ -27,7 +27,7 @@ import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import kotlin.math.abs
 
 /**
- * PRODUCTION-GRADE PRECISION CHROMATIC & INSTRUMENT TUNER (Choona-Inspired)
+ * PRODUCTION-GRADE PRECISION CHROMATIC & INSTRUMENT TUNER (Chroma-Inspired)
  * 
  * Features:
  * 1. Real-time microphone listening with PermissionManager check
@@ -140,7 +140,7 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         shape = RoundedCornerShape(24.dp),
-        color = Color(0xFF0F1710), // Deep emerald/forest dark theme matching Choona
+        color = Color(0xFF0F1710), // Deep emerald/forest dark theme matching chroma
         border = BorderStroke(1.dp, Color(0xFF1E3824))
     ) {
         Column(
@@ -156,7 +156,7 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Choona Tuner",
+                        text = "Chrome Tuner",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = inTuneColor
@@ -618,7 +618,7 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
     }
 
     // ========================================================================
-    // 3. SETTINGS DIALOG (Choona Settings Replica)
+    // 3. SETTINGS DIALOG (Chroma Settings Replica)
     // ========================================================================
     if (showSettingsDialog) {
         AlertDialog(
