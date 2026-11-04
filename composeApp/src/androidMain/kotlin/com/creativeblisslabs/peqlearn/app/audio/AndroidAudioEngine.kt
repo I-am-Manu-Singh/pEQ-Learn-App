@@ -715,12 +715,14 @@ class AndroidAudioEngine(
         initSystemSounds()
         initAllAssets()
         loadSalamanderSamples()
+        loadInstrumentSampleKit("PIANO", "piano/acoustic")
+        loadInstrumentSampleKit("PIANO_ACOUSTIC", "piano/acoustic")
+        loadInstrumentSampleKit("PIANO_ELECTRIC", "piano/electric")
         loadInstrumentSampleKit("SITAR", "sitar")
         loadInstrumentSampleKit("GUITAR_ACOUSTIC", "guitar/guitar-acoustic")
         loadInstrumentSampleKit("GUITAR_ELECTRIC", "guitar/guitar-electric")
         loadInstrumentSampleKit("GUITAR_CLASSICAL", "guitar/guitar-classical")
         loadInstrumentSampleKit("HARMONIUM", "harmonium")
-        loadInstrumentSampleKit("PIANO_ELECTRIC", "piano/electric")
         loadInstrumentSampleKit("TABLA", "tabla")
         loadTablaBolAudioSamples()
         loadInstrumentSampleKit("FLUTE", "flute")
@@ -1934,7 +1936,7 @@ class AndroidAudioEngine(
 
                 samplePitches.forEach { (name, midi) ->
                     try {
-                        val afdMp3: AssetFileDescriptor = context.assets.openFd("piano/salamander/salamander_mp3/$name.mp3")
+                        val afdMp3: AssetFileDescriptor = context.assets.openFd("piano/acoustic/$name.mp3")
                         val soundId = salamanderSoundPool.load(afdMp3, 1)
                         salamanderSampleMap[midi] = soundId
                     } catch (e: Exception) {
@@ -1996,6 +1998,11 @@ class AndroidAudioEngine(
         val sampleInstrumentKey = when {
             currentInstrument == "SITAR" -> "SITAR"
             currentInstrument == "UKULELE" -> "GUITAR_ACOUSTIC"
+            currentInstrument == "PIANO" || currentInstrument == "PIANO_ACOUSTIC" -> {
+                if (sampleLoadedByInstrument["PIANO_ACOUSTIC"]?.get() == true) "PIANO_ACOUSTIC"
+                else if (sampleLoadedByInstrument["PIANO"]?.get() == true) "PIANO"
+                else null
+            }
             sampleLoadedByInstrument[currentInstrument]?.get() == true -> currentInstrument
             currentInstrument.contains("GUITAR") -> "GUITAR_ACOUSTIC"
             else -> null
@@ -2129,6 +2136,11 @@ class AndroidAudioEngine(
         val sampleInstrumentKey = when {
             currentInstrument == "SITAR" -> "SITAR"
             currentInstrument == "UKULELE" -> "GUITAR_ACOUSTIC"
+            currentInstrument == "PIANO" || currentInstrument == "PIANO_ACOUSTIC" -> {
+                if (sampleLoadedByInstrument["PIANO_ACOUSTIC"]?.get() == true) "PIANO_ACOUSTIC"
+                else if (sampleLoadedByInstrument["PIANO"]?.get() == true) "PIANO"
+                else null
+            }
             sampleLoadedByInstrument[currentInstrument]?.get() == true -> currentInstrument
             currentInstrument.contains("GUITAR") -> "GUITAR_ACOUSTIC"
             else -> null

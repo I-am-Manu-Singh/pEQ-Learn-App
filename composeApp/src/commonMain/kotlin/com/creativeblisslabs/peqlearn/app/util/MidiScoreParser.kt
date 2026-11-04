@@ -416,10 +416,28 @@ object MidiScoreParser {
         }
 
         // Deduplicate any identical (position, midiNote, voice) notes produced by quantization and assign intra-measure ties if needed
+        // Only assign dynamic markings to the FIRST note of an onset or when the dynamic changes, preventing repeated overlapping marks (p, mp, mf) on every single note
+        var lastAssignedDynamic = ""
         val measures = List(numMeasures) { mIdx ->
-            val cleanedNotes = measureNotes[mIdx]
+            val rawList = measureNotes[mIdx]
                 .distinctBy { "${it.position}_${it.midiNote}_${it.voice}" }
                 .sortedWith(compareBy({ it.position }, { it.voice }, { it.midiNote }))
+
+            // Clean dynamics: in classical sheet music, dynamics appear once per section or when loudness shifts
+            val cleanedNotes = ArrayList<ScoreNote>(rawList.size)
+            var lastPos = -1f
+            for (n in rawList) {
+                val shouldShowDynamic = n.dynamic.isNotEmpty() &&
+                    n.dynamic != lastAssignedDynamic &&
+                    (cleanedNotes.isEmpty() || n.position != lastPos)
+                if (shouldShowDynamic) {
+                    lastAssignedDynamic = n.dynamic
+                    lastPos = n.position
+                    cleanedNotes.add(n)
+                } else {
+                    cleanedNotes.add(n.copy(dynamic = ""))
+                }
+            }
 
             Measure(
                 measureIndex = mIdx + 1,

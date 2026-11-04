@@ -1346,6 +1346,8 @@ fun scrubSongPlayhead(targetProgress: Float) {
     val scorePlayheadMeasure = mutableIntStateOf(0)
     val scorePlayheadOffset = mutableFloatStateOf(0f)
     val isScorePlaying = mutableStateOf(false)
+    val practiceMeasureRange = mutableStateOf<Pair<Int, Int>?>(null) // Optional (startMeasureIdx, endMeasureIdx) for measure-by-measure looping
+    val isPracticeLoopEnabled = mutableStateOf(false)
     private var scorePlaybackJob: Job? = null
 
     private val firedNotesMap = mutableMapOf<Int, Boolean>()
@@ -1586,13 +1588,31 @@ fun scrubSongPlayhead(targetProgress: Float) {
                     currentMeasureIdx++
                 }
 
-                // End of score reached
-                if (currentMeasureIdx >= numMeasures) {
-                    withContext(Dispatchers.Main) {
-                        stopScorePlayback()
-                        resetScorePlayhead()
+                // End of score reached or loop boundary reached in measure-by-measure practice mode
+                val loopRange = practiceMeasureRange.value
+                val isLoopActive = isPracticeLoopEnabled.value && loopRange != null
+                val targetEndMeasure = if (isLoopActive) loopRange!!.second else numMeasures - 1
+
+                if (currentMeasureIdx > targetEndMeasure || currentMeasureIdx >= numMeasures) {
+                    if (isLoopActive) {
+                        // Loop seamlessly back to start of practice measure
+                        val loopStartMeasure = loopRange!!.first.coerceIn(0, numMeasures - 1)
+                        currentMeasureIdx = loopStartMeasure
+                        scoreElapsedSec = measureStartsSec[loopStartMeasure]
+                        firedNotesMap.clear()
+                        firedPedalsMap.clear()
+                        lastTrackedMeasure = loopStartMeasure
+                        scheduledNoteReleases.forEach { (p, _) -> audioEngine.noteOff(p) }
+                        scheduledNoteReleases.clear()
+                        pitchesToActivate.clear()
+                        pitchesToRelease.clear()
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            stopScorePlayback()
+                            resetScorePlayhead()
+                        }
+                        break
                     }
-                    break
                 }
 
                 // Measure transition

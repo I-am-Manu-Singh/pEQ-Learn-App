@@ -346,15 +346,17 @@ internal class MeasureLayoutCache {
         lineSpacing: Float,
         isLeftHandHidden: Boolean,
         isRightHandHidden: Boolean,
-        enabledTrackIndices: Map<Int, Boolean> = emptyMap()
+        enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
+        transposition: Int = 0
     ): PrecomputedStaffLayout {
         val tracksKey = enabledTrackIndices.entries.sortedBy { it.key }.joinToString(",") { "${it.key}:${it.value}" }
-        val key = "${measure.measureIndex}_${drawClefHeader}_${drawKeyHeader}_${drawTimeHeader}_${startX.toInt()}_${endX.toInt()}_${trebleBaseline.toInt()}_${bassBaseline.toInt()}_${lineSpacing.toInt()}_${isLeftHandHidden}_${isRightHandHidden}_${measure.notes.size}_$tracksKey"
+        val key = "${measure.measureIndex}_${drawClefHeader}_${drawKeyHeader}_${drawTimeHeader}_${startX.toInt()}_${endX.toInt()}_${trebleBaseline.toInt()}_${bassBaseline.toInt()}_${lineSpacing.toInt()}_${isLeftHandHidden}_${isRightHandHidden}_${measure.notes.size}_${transposition}_$tracksKey"
         return staffCache.getOrPut(key) {
             computeStaffLayout(
                 measure, drawClefHeader, drawKeyHeader, drawTimeHeader,
                 startX, endX, trebleBaseline, bassBaseline, lineSpacing,
-                isLeftHandHidden, isRightHandHidden, enabledTrackIndices
+                isLeftHandHidden, isRightHandHidden, enabledTrackIndices,
+                transposition
             )
         }
     }
@@ -371,14 +373,16 @@ internal class MeasureLayoutCache {
         capo: Int,
         isLeftHandHidden: Boolean = false,
         isRightHandHidden: Boolean = false,
-        enabledTrackIndices: Map<Int, Boolean> = emptyMap()
+        enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
+        transposition: Int = 0
     ): PrecomputedTabLayout {
         val tracksKey = enabledTrackIndices.entries.sortedBy { it.key }.joinToString(",") { "${it.key}:${it.value}" }
-        val key = "${measure.measureIndex}_${drawClefHeader}_${drawTimeHeader}_${startX.toInt()}_${endX.toInt()}_${tBase.toInt()}_${lineSpacing.toInt()}_${isLeftHandHidden}_${isRightHandHidden}_${measure.notes.size}_${capo}_$tracksKey"
+        val key = "${measure.measureIndex}_${drawClefHeader}_${drawTimeHeader}_${startX.toInt()}_${endX.toInt()}_${tBase.toInt()}_${lineSpacing.toInt()}_${isLeftHandHidden}_${isRightHandHidden}_${measure.notes.size}_${capo}_${transposition}_$tracksKey"
         return tabCache.getOrPut(key) {
             computeTabLayout(
                 measure, drawClefHeader, drawTimeHeader, startX, endX, tBase, lineSpacing,
-                tuning, capo, isLeftHandHidden, isRightHandHidden, enabledTrackIndices
+                tuning, capo, isLeftHandHidden, isRightHandHidden, enabledTrackIndices,
+                transposition
             )
         }
     }
@@ -414,7 +418,8 @@ private fun computeStaffLayout(
     lineSpacing: Float,
     isLeftHandHidden: Boolean,
     isRightHandHidden: Boolean,
-    enabledTrackIndices: Map<Int, Boolean> = emptyMap()
+    enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
+    transposition: Int = 0
 ): PrecomputedStaffLayout {
     val ksCount = measure.keySignature.accidentalsCount
     val clefW = if (drawClefHeader) 42f else 0f
@@ -434,7 +439,7 @@ private fun computeStaffLayout(
         .filter { note -> enabledTrackIndices[note.voice] ?: true }
         .distinctBy { "${it.position}_${it.midiNote}_${it.voice}_${it.grace}" }
         .mapNotNull { note ->
-            val midiNote = note.midiNote
+            val midiNote = note.midiNote + transposition
             val isTrebleClef = if (hasDifferentiatedVoices && !note.crossStaff) {
                 note.voice == 0
             } else if (note.crossStaff) {
@@ -852,7 +857,8 @@ private fun computeTabLayout(
     capo: Int,
     isLeftHandHidden: Boolean = false,
     isRightHandHidden: Boolean = false,
-    enabledTrackIndices: Map<Int, Boolean> = emptyMap()
+    enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
+    transposition: Int = 0
 ): PrecomputedTabLayout {
     val tabHeaderWidth = (if (drawClefHeader) 46f else 0f) + (if (drawTimeHeader) 34f else 0f)
     val systemContentStartX = startX + tabHeaderWidth
@@ -870,7 +876,8 @@ private fun computeTabLayout(
     val validNotes = measure.notes.filter { !it.isRest }
         .filter { note -> enabledTrackIndices[note.voice] ?: true }
         .filter { note ->
-            val isTreble = if (hasDifferentiatedVoices) note.voice == 0 else note.midiNote >= 60
+            val noteMidi = note.midiNote + transposition
+            val isTreble = if (hasDifferentiatedVoices) note.voice == 0 else noteMidi >= 60
             if (isTreble && isRightHandHidden) false
             else if (!isTreble && isLeftHandHidden) false
             else true
@@ -919,17 +926,19 @@ private fun computeTabLayout(
         val sample = notesAtPos.first()
         val baseNx = computedXByPosition[sample.position] ?: snap(systemContentStartX + 14f + ((usableMeasureWidth - 28f) * (sample.position / beatsPerMeasure)))
         val nx = if (sample.grace) (baseNx - 12f).coerceAtLeast(systemContentStartX + 6f) else baseNx
-        val sortedDescMidi = notesAtPos.sortedByDescending { it.midiNote }
+        val sortedDescMidi = notesAtPos.sortedByDescending { it.midiNote + transposition }
         val usedStrings = mutableSetOf<Int>()
 
         val candidateFrets = sortedDescMidi.mapNotNull { n ->
-            (0..5).map { s -> n.midiNote - guitarOpenStringsMidi[s] }.filter { it in 1..22 }.minOrNull()
+            val effectivePitch = n.midiNote + transposition
+            (0..5).map { s -> effectivePitch - guitarOpenStringsMidi[s] }.filter { it in 1..22 }.minOrNull()
         }
         val targetFretAnchor = if (candidateFrets.isNotEmpty()) candidateFrets.average().toInt().coerceIn(1, 15) else 0
 
         sortedDescMidi.forEach { note ->
+            val effectivePitch = note.midiNote + transposition
             val normalizedExplicitString = note.string?.let { s ->
-                if (s in 1..6 && note.fret != null && (note.midiNote - guitarOpenStringsMidi.getOrElse(s - 1) { 0 }) == note.fret) s - 1
+                if (s in 1..6 && note.fret != null && (effectivePitch - guitarOpenStringsMidi.getOrElse(s - 1) { 0 }) == (note.fret + transposition)) s - 1
                 else s.coerceIn(0, 5)
             }
             val stringIdx = if (normalizedExplicitString != null && normalizedExplicitString in 0..5 && normalizedExplicitString !in usedStrings) {
@@ -937,7 +946,7 @@ private fun computeTabLayout(
             } else {
                 var bestStr = (0..5).filter { it !in usedStrings }.minByOrNull { sIdx ->
                     val openPitch = guitarOpenStringsMidi[sIdx]
-                    val fret = note.midiNote - openPitch
+                    val fret = effectivePitch - openPitch
                     when {
                         fret == 0 -> 0
                         fret in 1..24 -> {
@@ -954,7 +963,11 @@ private fun computeTabLayout(
             }
             usedStrings.add(stringIdx)
 
-            val fretValue = note.fret ?: (note.midiNote - guitarOpenStringsMidi[stringIdx]).coerceIn(0, 24)
+            val fretValue = if (transposition != 0) {
+                (effectivePitch - guitarOpenStringsMidi[stringIdx]).coerceIn(0, 24)
+            } else {
+                note.fret ?: (effectivePitch - guitarOpenStringsMidi[stringIdx]).coerceIn(0, 24)
+            }
             val ny = tBase + (stringIdx * lineSpacing)
             val fretText = when {
                 note.articulation == TabArticulation.DEAD_NOTE -> "X"
@@ -970,7 +983,7 @@ private fun computeTabLayout(
             tabNotes.add(
                 PrecomputedTabNote(
                     note = note,
-                    midiNote = note.midiNote,
+                    midiNote = effectivePitch,
                     stringIdx = stringIdx,
                     fretValue = fretValue,
                     nx = nx,
@@ -1199,6 +1212,7 @@ fun StaffAndTabNotationViewer(
     isPedalPressed: Boolean = false,
     showScoreHeader: Boolean = true,
     compactStaffMode: Boolean = false,
+    transposition: Int = 0,
     modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState()
 ) {
@@ -1241,7 +1255,7 @@ fun StaffAndTabNotationViewer(
             )
         }
     }
-    val layoutCache = remember(score) { MeasureLayoutCache() }
+    val layoutCache = remember(score, transposition) { MeasureLayoutCache() }
 
     Box(
         modifier = modifier
@@ -1594,7 +1608,8 @@ fun StaffAndTabNotationViewer(
                                                         lineSpacing = staffLineSpacing,
                                                         isLeftHandHidden = effectiveLeftHandHidden,
                                                         isRightHandHidden = isRightHandHidden,
-                                                        enabledTrackIndices = enabledTrackIndices
+                                                        enabledTrackIndices = enabledTrackIndices,
+                                                        transposition = transposition
                                                     )
 
                                                     drawStaffMeasureContent(
@@ -1641,7 +1656,8 @@ fun StaffAndTabNotationViewer(
                                                         capo = score.capo,
                                                         isLeftHandHidden = effectiveLeftHandHidden,
                                                         isRightHandHidden = isRightHandHidden,
-                                                        enabledTrackIndices = enabledTrackIndices
+                                                        enabledTrackIndices = enabledTrackIndices,
+                                                        transposition = transposition
                                                     )
 
                                                     drawTabMeasureContent(
@@ -1813,7 +1829,8 @@ fun StaffAndTabNotationViewer(
                                                     lineSpacing = staffLineSpacing,
                                                     isLeftHandHidden = effectiveLeftHandHidden,
                                                     isRightHandHidden = isRightHandHidden,
-                                                    enabledTrackIndices = enabledTrackIndices
+                                                    enabledTrackIndices = enabledTrackIndices,
+                                                    transposition = transposition
                                                 )
 
                                                 drawStaffMeasureContent(
@@ -1860,7 +1877,8 @@ fun StaffAndTabNotationViewer(
                                                     capo = score.capo,
                                                     isLeftHandHidden = effectiveLeftHandHidden,
                                                     isRightHandHidden = isRightHandHidden,
-                                                    enabledTrackIndices = enabledTrackIndices
+                                                    enabledTrackIndices = enabledTrackIndices,
+                                                    transposition = transposition
                                                 )
 
                                                 drawTabMeasureContent(
@@ -2847,8 +2865,12 @@ private fun drawStaffMeasureContent(
                 }
 
                 // Composite & Standard Dynamics (pp, p, mp, mf, f, ff, sfz, rfz)
+                // Placed safely below the active staff (or between treble & bass in grand staff) with proper clearance to prevent clipping
                 if (note.dynamic.isNotEmpty()) {
-                    val dynY = bassBaseline + 4.3f * config.lineSpacing
+                    val staffTopY = if (isTrebleClef) trebleBaseline else bassBaseline
+                    val staffBottomY = staffTopY + 4 * config.lineSpacing
+                    val lowestNoteYInCluster = visibleNotes.filter { it.isTrebleClef == isTrebleClef && abs(it.note.position - note.position) <= 0.25f }.maxOfOrNull { it.ny } ?: ny
+                    val dynY = maxOf(staffBottomY + 14f, lowestNoteYInCluster + 16f)
                     val dynLower = note.dynamic.lowercase().trim()
                     when (dynLower) {
                         "p" -> drawDynamic("dynamicPiano", clefTextColor.copy(alpha = 0.85f), Size(12f, 14f), Offset(nx - 6f, dynY))
@@ -3119,6 +3141,7 @@ private fun drawStaffMeasureContent(
         }
 
         // 5. Draw Tuplet Numbers & Brackets (e.g. Triplets "3")
+        // Positioned cleanly above the beam group (or above stems/noteheads) outside staff lines
         val tupletNotes = visibleNotes.filter { it.note.tuplet > 0 }
         if (tupletNotes.isNotEmpty()) {
             val tupletBeats = tupletNotes.groupBy { "${it.isTrebleClef}_${it.beatIndex}_${it.note.tuplet}" }
@@ -3126,19 +3149,32 @@ private fun drawStaffMeasureContent(
                 val tupletVal = tGroup.first().note.tuplet
                 val minX = tGroup.minOf { it.nx }
                 val maxX = tGroup.maxOf { it.nx }
-                val minY = tGroup.minOf { it.ny }
+                val tSample = tGroup.first()
+                val staffTopY = if (tSample.isTrebleClef) config.trebleBaseline else config.bassBaseline
+
+                // Find highest element in the tuplet (beam, stem top, or notehead)
+                val highestBeamY = tGroup.mapNotNull { noteBeamMap[it.note] }.minOfOrNull { minOf(it.startY, it.endY) }
+                val highestNoteY = tGroup.minOf { it.ny }
+                val referenceTopY = highestBeamY ?: (highestNoteY - 22f)
+
+                // Ensure bracket sits strictly above the beam or staff lines with safe clearance
+                val bracketY = minOf(referenceTopY - 10f, staffTopY - 12f)
+
                 val tLayout = textMeasurer.measure(
                     text = tupletVal.toString(),
-                    style = TextStyle(color = clefTextColor, fontSize = 9.sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = clefTextColor, fontSize = 9.5.sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Bold)
                 )
                 val midX = (minX + maxX) / 2f
-                val bracketY = (minY - 26f).coerceAtMost(tGroup.first().topY - 10f)
                 drawText(tLayout, topLeft = Offset(midX - tLayout.size.width / 2f, bracketY - 6f))
-                if (maxX - minX > 20f) {
-                    drawLine(clefTextColor.copy(alpha = 0.7f), Offset(minX - 3f, bracketY), Offset(midX - 8f, bracketY), strokeWidth = 1.1f)
-                    drawLine(clefTextColor.copy(alpha = 0.7f), Offset(midX + 8f, bracketY), Offset(maxX + 3f, bracketY), strokeWidth = 1.1f)
-                    drawLine(clefTextColor.copy(alpha = 0.7f), Offset(minX - 3f, bracketY), Offset(minX - 3f, bracketY + 4f), strokeWidth = 1.1f)
-                    drawLine(clefTextColor.copy(alpha = 0.7f), Offset(maxX + 3f, bracketY), Offset(maxX + 3f, bracketY + 4f), strokeWidth = 1.1f)
+
+                // Standard engraving: only draw bracket wings if there is no continuous beam covering the tuplet
+                val hasContinuousBeam = tGroup.all { noteBeamMap[it.note] != null } && (tGroup.map { noteBeamMap[it.note] }.distinct().size == 1)
+                if (!hasContinuousBeam && maxX - minX > 18f) {
+                    val hookLen = 5f
+                    drawLine(clefTextColor.copy(alpha = 0.75f), Offset(minX - 3f, bracketY), Offset(midX - 7f, bracketY), strokeWidth = 1.2f)
+                    drawLine(clefTextColor.copy(alpha = 0.75f), Offset(midX + 7f, bracketY), Offset(maxX + 3f, bracketY), strokeWidth = 1.2f)
+                    drawLine(clefTextColor.copy(alpha = 0.75f), Offset(minX - 3f, bracketY), Offset(minX - 3f, bracketY + hookLen), strokeWidth = 1.2f)
+                    drawLine(clefTextColor.copy(alpha = 0.75f), Offset(maxX + 3f, bracketY), Offset(maxX + 3f, bracketY + hookLen), strokeWidth = 1.2f)
                 }
             }
         }

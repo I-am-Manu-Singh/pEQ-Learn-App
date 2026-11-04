@@ -420,6 +420,7 @@ Row(
                             isLeftHandHidden = viewModel.isLeftHandHidden.value,
                             isRightHandHidden = viewModel.isRightHandHidden.value,
                             enabledTrackIndices = viewModel.enabledTrackIndices,
+                            transposition = viewModel.transposition.intValue,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -891,8 +892,10 @@ Row(
                 modifier = Modifier.fillMaxSize(),
                 color = Color(0xFF0E0B1A)
             ) {
-                var practiceStudioTab by remember { mutableIntStateOf(0) } // 0 = Masterworks Tutorials, 1 = Scales, Chords & Exercises
+                var practiceStudioTab by remember { mutableIntStateOf(0) } // 0 = Masterworks Tutorials, 1 = Score Measure-by-Measure Tutorial, 2 = Scales & Chords
                 var selectedTrainingMode by remember { mutableStateOf("FULL") } // "FULL", "RH_ONLY", "LH_ONLY", "SLOW_TEMPO"
+                var selectedMeasureNumber by remember(viewModel.scorePlayheadMeasure.value) { mutableIntStateOf(viewModel.scorePlayheadMeasure.value + 1) }
+                val currentLoadedScore = viewModel.currentScore.value as? Score
 
                 Column(
                     modifier = Modifier
@@ -915,7 +918,7 @@ Row(
                         }
                     }
 
-                // Tab Switcher: Inbuilt Masterworks vs Scales/Chords
+                // Tab Switcher: Inbuilt Masterworks vs Current Score Measure Tutorial vs Scales/Chords
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -935,13 +938,13 @@ Row(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
-                            Text("Masterworks Tutorials (${PracticeLibrary.builtInTutorials.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Masterworks (${PracticeLibrary.builtInTutorials.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
 
                     Box(
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(1.2f)
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (practiceStudioTab == 1) Color(0xFF5C6BC0) else Color.Transparent)
                             .clickable { practiceStudioTab = 1 }
@@ -949,8 +952,23 @@ Row(
                         contentAlignment = Alignment.Center
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Text("Score Tutorial (${currentLoadedScore?.measures?.size ?: 0} Bars)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (practiceStudioTab == 2) Color(0xFF5C6BC0) else Color.Transparent)
+                            .clickable { practiceStudioTab = 2 }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Default.School, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
-                            Text("Scales & Chords (${PracticeLibrary.items.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Scales & Chords", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
@@ -1106,6 +1124,144 @@ Row(
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                             ) {
                                                 Text(focus, fontSize = 9.sp, color = Color(0xFFCE93D8))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (practiceStudioTab == 1) {
+                    // Measure-by-Measure Interactive Tutorial of the CURRENT Loaded Score
+                    if (currentLoadedScore == null || currentLoadedScore.measures.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color.White.copy(0.4f), modifier = Modifier.size(48.dp))
+                                Text("No Score Loaded Yet", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("Load any MIDI file or score to practice it measure-by-measure with hand separation & loop controls.", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                            }
+                        }
+                    } else {
+                        val totalMeasures = currentLoadedScore.measures.size
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Top Controls: Hand Selection (Both, RH, LH) & Loop Measure Toggle
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFF19132E),
+                                border = BorderStroke(1.dp, Color(0xFF2C2250)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Hand Isolation Toggle
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text("HAND ISOLATION:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                                        listOf(
+                                            "BOTH" to "Both Hands",
+                                            "RIGHT" to "RH Only",
+                                            "LEFT" to "LH Only"
+                                        ).forEach { (hKey, hLabel) ->
+                                            val isSelected = viewModel.activeHandMode.value == hKey
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(if (isSelected) Color(0xFF6C63FF) else Color(0xFF251A42))
+                                                    .clickable { viewModel.setHandPracticeMode(hKey) }
+                                                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                                            ) {
+                                                Text(hLabel, fontSize = 10.sp, color = if (isSelected) Color.White else Color.White.copy(0.6f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                            }
+                                        }
+                                    }
+
+                                    // Infinite Loop Measure Button
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("LOOP BAR:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                                        Switch(
+                                            checked = viewModel.isPracticeLoopEnabled.value,
+                                            onCheckedChange = { isEnabled ->
+                                                viewModel.isPracticeLoopEnabled.value = isEnabled
+                                                if (isEnabled) {
+                                                    val m = (selectedMeasureNumber - 1).coerceIn(0, totalMeasures - 1)
+                                                    viewModel.practiceMeasureRange.value = m to m
+                                                } else {
+                                                    viewModel.practiceMeasureRange.value = null
+                                                }
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color(0xFFFFD700),
+                                                checkedTrackColor = Color(0xFF6C63FF)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Measure Grid Picker
+                            Text("SELECT MEASURE TO DRILL:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(0.85f))
+                            LazyColumn(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val measureRows = (1..totalMeasures).chunked(4)
+                                items(measureRows) { rowIndices ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        rowIndices.forEach { barNum ->
+                                            val isCurrentBar = selectedMeasureNumber == barNum
+                                            val measureObj = currentLoadedScore.measures.getOrNull(barNum - 1)
+                                            val noteCount = measureObj?.notes?.size ?: 0
+                                            val rhCount = measureObj?.notes?.count { it.voice == 0 || it.midiNote >= 60 } ?: 0
+                                            val lhCount = measureObj?.notes?.count { it.voice == 1 || it.midiNote < 60 } ?: 0
+
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isCurrentBar) Color(0xFF6C63FF) else Color(0xFF19132E),
+                                                border = BorderStroke(1.dp, if (isCurrentBar) Color(0xFFFFD700) else Color(0xFF2C2250)),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clickable {
+                                                        selectedMeasureNumber = barNum
+                                                        viewModel.seekToPosition(barNum - 1, 0f)
+                                                        if (viewModel.isPracticeLoopEnabled.value) {
+                                                            viewModel.practiceMeasureRange.value = (barNum - 1) to (barNum - 1)
+                                                        }
+                                                        viewModel.startScorePlayback()
+                                                        showLearnModeDialog = false
+                                                    }
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                        Text("Bar $barNum", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                                                        Text("$noteCount notes", color = if (isCurrentBar) Color.White.copy(0.9f) else Color(0xFF81D4FA), fontSize = 10.sp)
+                                                    }
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        Text("RH: $rhCount", fontSize = 9.sp, color = if (isCurrentBar) Color.White else Color(0xFF81D4FA))
+                                                        Text("LH: $lhCount", fontSize = 9.sp, color = if (isCurrentBar) Color.White else Color(0xFFCE93D8))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (rowIndices.size < 4) {
+                                            repeat(4 - rowIndices.size) {
+                                                Spacer(Modifier.weight(1f))
                                             }
                                         }
                                     }
@@ -1940,6 +2096,7 @@ Box {
                                             enabledTrackIndices = viewModel.enabledTrackIndices,
                                             showScoreHeader = false,
                                             compactStaffMode = true,
+                                            transposition = viewModel.transposition.intValue,
                                             modifier = Modifier.fillMaxSize()
                                         )
 
@@ -2201,6 +2358,7 @@ Box {
                                                         enabledTrackIndices = viewModel.enabledTrackIndices,
                                                         showScoreHeader = false,
                                                         compactStaffMode = true,
+                                                        transposition = viewModel.transposition.intValue,
                                                         modifier = Modifier.fillMaxSize()
                                                     )
                                                 }

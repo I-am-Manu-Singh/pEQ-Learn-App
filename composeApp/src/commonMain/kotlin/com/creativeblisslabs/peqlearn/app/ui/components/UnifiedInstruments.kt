@@ -165,6 +165,8 @@ fun UnifiedGuitarFretboard(
     }
 
     // Exact frets matching currently playing / active notes (for single note melody / scale sequences)
+    // Intelligent position solver: resolves pitches to an ergonomic guitar hand box (preferring standard frets 0..9)
+    // to prevent impossible finger leaps and scattered dots across all 6 strings
     val activeFretPoints = remember(allUniquePitches, effectiveResolvedChordFrets, defaultOpenStringsMidi, isScaleMode, fretMinConstrain, fretMaxConstrain) {
         if (effectiveResolvedChordFrets != null) {
             emptySet<Pair<Int, Int>>() // Driven by chord shape
@@ -178,15 +180,29 @@ fun UnifiedGuitarFretboard(
                         candidates.add(sIdx to fret)
                     }
                 }
-                // Filter to constrained fret window (default open pos frets 0..5 or user box)
-                val inBox = candidates.filter { it.second in fretMinConstrain..fretMaxConstrain }
-                val chosen = if (inBox.isNotEmpty()) {
-                    inBox.minByOrNull { it.second } // Most ergonomic fret
-                } else {
-                    candidates.minByOrNull { kotlin.math.abs(it.second - 2) }
-                }
-                if (chosen != null) {
-                    set.add(chosen)
+                if (candidates.isNotEmpty()) {
+                    // Check if candidate exists within user-specified constraint box
+                    val inUserBox = candidates.filter { it.second in fretMinConstrain..fretMaxConstrain }
+                    val searchPool = if (inUserBox.isNotEmpty()) inUserBox else candidates
+
+                    // Ergonomic hand scoring:
+                    // 1. Natural guitar melody playing comfortably sits in the lower/middle neck (frets 0..9).
+                    // 2. High frets (> 12) on low wound strings (E2, A2, D3) are unergonomic for fast melodies like Turkish March.
+                    // 3. Score minimizes unergonomic stretch: prefer lower frets (0..7) and strings matching melodic register.
+                    val chosen = searchPool.minByOrNull { (sIdx, fret) ->
+                        val fretPenalty = when {
+                            fret in 0..5 -> fret * 2 // Ideal open/first position
+                            fret in 6..9 -> 12 + (fret - 5) * 3 // Comfortable second/third position
+                            fret in 10..14 -> 30 + (fret - 9) * 5
+                            else -> 70 + fret * 10 // Avoid extreme upper neck unless no alternative
+                        }
+                        // Penalize playing high notes on low thick wound strings (strings 4, 5)
+                        val stringRegisterPenalty = if (sIdx >= 4 && fret > 7) 40 else 0
+                        fretPenalty + stringRegisterPenalty
+                    }
+                    if (chosen != null) {
+                        set.add(chosen)
+                    }
                 }
             }
             set
@@ -566,8 +582,7 @@ fun UnifiedGuitarFretboard(
                     val openMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
                     val openOct = (openMidi / 12) - 1
                     val isExactOpenActive = (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == 0) ||
-                        activeFretPoints.contains(s to 0) ||
-                        (effectiveActiveMidiNote != null && effectiveActiveMidiNote == openMidi)
+                        activeFretPoints.contains(s to 0)
                     val isScaleOpen = isScaleMode && normalizedActiveNotes.contains(openSemi)
 
                     if (isExactOpenActive || isScaleOpen) {
@@ -618,7 +633,7 @@ fun UnifiedGuitarFretboard(
                         )
                     val isExactMidiPlaying = effectiveActiveMidiNote != null && fullMidiNote == effectiveActiveMidiNote
                     val isFretPointActive = activeChordFrets == null && activeFretPoints.contains(s to absoluteFret)
-                    val isCurrentlyPlaying = matchesCoord || (if (activeChordFrets != null) isChordFret && isExactMidiPlaying else isExactMidiPlaying || isFretPointActive)
+                    val isCurrentlyPlaying = matchesCoord || (if (activeChordFrets != null) isChordFret && isExactMidiPlaying else isFretPointActive)
 
                     // In Scale Mode: highlight valid notes of the scale within the constrained fret window
                     val isScaleFret = isScaleMode && normalizedActiveNotes.contains(fretSemi) && (absoluteFret in fretMinConstrain..fretMaxConstrain)
