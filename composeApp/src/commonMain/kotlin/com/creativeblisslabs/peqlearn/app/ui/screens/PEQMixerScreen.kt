@@ -269,11 +269,6 @@ fun pEQMixerScreen(
                     }
                 }
 
-                // Songwriting Timeline Scrubber & Active Track Player
-                SongWritingTimelineScrubber(
-                    viewModel = viewModel,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                )
 
                 // Songwriting Timeline Scrubber & Active Track Player
                 SongWritingTimelineScrubber(
@@ -292,6 +287,7 @@ fun pEQMixerScreen(
                         Column(
                             modifier = Modifier
                                 .width(300.dp)
+                                .height(1000.dp)
                                 .fillMaxHeight()
                                 .verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(14.dp)

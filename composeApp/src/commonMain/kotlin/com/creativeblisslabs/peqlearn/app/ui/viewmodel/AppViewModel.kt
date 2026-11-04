@@ -1588,20 +1588,36 @@ fun scrubSongPlayhead(targetProgress: Float) {
                     currentMeasureIdx++
                 }
 
-                // End of score reached or loop boundary reached in measure-by-measure practice mode
+                // End of score reached or loop boundary reached in measure-by-measure practice mode or A-B repeat
                 val loopRange = practiceMeasureRange.value
-                val isLoopActive = isPracticeLoopEnabled.value && loopRange != null
-                val targetEndMeasure = if (isLoopActive) loopRange!!.second else numMeasures - 1
+                val isMeasureLoopActive = isPracticeLoopEnabled.value && loopRange != null
+                val isAbLoopActive = abRepeatActive.value && abRepeatPointA.value != -1L && abRepeatPointB.value != -1L && abRepeatPointB.value > abRepeatPointA.value
+                val isLoopActive = isMeasureLoopActive || isAbLoopActive
 
-                if (currentMeasureIdx > targetEndMeasure || currentMeasureIdx >= numMeasures) {
+                val targetEndMeasure = if (isMeasureLoopActive) loopRange!!.second else numMeasures - 1
+                val isAbRepeatBoundaryReached = isAbLoopActive && totalElapsedMs >= abRepeatPointB.value
+
+                if (currentMeasureIdx > targetEndMeasure || currentMeasureIdx >= numMeasures || isAbRepeatBoundaryReached) {
                     if (isLoopActive) {
-                        // Loop seamlessly back to start of practice measure
-                        val loopStartMeasure = loopRange!!.first.coerceIn(0, numMeasures - 1)
-                        currentMeasureIdx = loopStartMeasure
-                        scoreElapsedSec = measureStartsSec[loopStartMeasure]
+                        if (isAbLoopActive && !isMeasureLoopActive) {
+                            // Seamless A-B repeat loop for active score
+                            val loopStartMs = abRepeatPointA.value
+                            scoreElapsedSec = (loopStartMs / 1000f).coerceAtLeast(0f)
+                            currentMeasureIdx = 0
+                            while (currentMeasureIdx < numMeasures - 1 &&
+                                scoreElapsedSec >= measureStartsSec[currentMeasureIdx] + measureDurationsSec[currentMeasureIdx]
+                            ) {
+                                currentMeasureIdx++
+                            }
+                        } else {
+                            // Loop seamlessly back to start of practice measure
+                            val loopStartMeasure = loopRange!!.first.coerceIn(0, numMeasures - 1)
+                            currentMeasureIdx = loopStartMeasure
+                            scoreElapsedSec = measureStartsSec[loopStartMeasure]
+                        }
                         firedNotesMap.clear()
                         firedPedalsMap.clear()
-                        lastTrackedMeasure = loopStartMeasure
+                        lastTrackedMeasure = currentMeasureIdx
                         scheduledNoteReleases.forEach { (p, _) -> audioEngine.noteOff(p) }
                         scheduledNoteReleases.clear()
                         pitchesToActivate.clear()

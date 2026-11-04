@@ -125,6 +125,8 @@ fun NowPlayingBar(
     val isPlaying by viewModel.isPlaying
     val speed = viewModel.playbackSpeed.value
     val abActive = viewModel.abRepeatActive.value
+    val pointA = viewModel.abRepeatPointA.value
+    val pointB = viewModel.abRepeatPointB.value
 
     Surface(
         onClick = {
@@ -211,17 +213,74 @@ fun NowPlayingBar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // A-B Repeat Button
-                        IconButton(
-                            onClick = { viewModel.toggleAbRepeat() },
-                            modifier = Modifier.size(if (isLandscape) 26.dp else 32.dp)
+                        // Two A-B Repeat Buttons with Cross Button to remove loop
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.padding(end = 4.dp)
                         ) {
-                            Icon(
-                                Icons.Default.Repeat,
-                                contentDescription = "A-B Repeat",
-                                tint = if (abActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                                modifier = Modifier.size(if (isLandscape) 14.dp else 18.dp)
-                            )
+                            // Point A Button
+                            Surface(
+                                onClick = { viewModel.setABPoint('A') },
+                                shape = RoundedCornerShape(if (isLandscape) 4.dp else 6.dp),
+                                color = if (pointA != -1L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                border = BorderStroke(
+                                    0.5.dp,
+                                    if (pointA != -1L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                                ),
+                                modifier = Modifier.size(
+                                    width = if (isLandscape) 20.dp else 24.dp,
+                                    height = if (isLandscape) 22.dp else 26.dp
+                                )
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "A",
+                                        fontSize = if (isLandscape) 11.sp else 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (pointA != -1L) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+
+                            // Cross (Clear) Button - shown when loop points exist
+                            if (pointA != -1L || pointB != -1L || abActive) {
+                                IconButton(
+                                    onClick = { viewModel.clearAbRepeat() },
+                                    modifier = Modifier.size(if (isLandscape) 16.dp else 20.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remove Loop",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(if (isLandscape) 12.dp else 14.dp)
+                                    )
+                                }
+                            }
+
+                            // Point B Button
+                            Surface(
+                                onClick = { viewModel.setABPoint('B') },
+                                shape = RoundedCornerShape(if (isLandscape) 4.dp else 6.dp),
+                                color = if (pointB != -1L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                border = BorderStroke(
+                                    0.5.dp,
+                                    if (pointB != -1L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                                ),
+                                modifier = Modifier.size(
+                                    width = if (isLandscape) 20.dp else 24.dp,
+                                    height = if (isLandscape) 22.dp else 26.dp
+                                )
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "B",
+                                        fontSize = if (isLandscape) 11.sp else 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (pointB != -1L) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
                         }
 
                         // Previous Track

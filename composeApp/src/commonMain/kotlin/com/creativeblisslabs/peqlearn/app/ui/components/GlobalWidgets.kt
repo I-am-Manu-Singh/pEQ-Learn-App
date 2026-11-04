@@ -115,6 +115,8 @@ fun ThinMiniPlayer(
     val isFavorite = viewModel.favoriteItems.any { it.id == nowPlaying.id || it.path == nowPlaying.path }
     val speed = viewModel.playbackSpeed.value
     val abActive = viewModel.abRepeatActive.value
+    val pointA = viewModel.abRepeatPointA.value
+    val pointB = viewModel.abRepeatPointB.value
 
     Surface(
         modifier = modifier
@@ -276,17 +278,68 @@ fun ThinMiniPlayer(
                         )
                     }
 
-                    // A-B Repeat Button
-                    IconButton(
-                        onClick = { viewModel.toggleAbRepeat() },
-                        modifier = Modifier.size(28.dp)
+                    // Two A-B Repeat Buttons with Cross Button to remove loop
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(1.dp),
+                        modifier = Modifier.padding(horizontal = 1.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Repeat,
-                            contentDescription = "A-B Repeat",
-                            tint = if (abActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                            modifier = Modifier.size(16.dp)
-                        )
+                        // Point A Button
+                        Surface(
+                            onClick = { viewModel.setABPoint('A') },
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (pointA != -1L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                            border = BorderStroke(
+                                0.5.dp,
+                                if (pointA != -1L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                            ),
+                            modifier = Modifier.size(width = 20.dp, height = 22.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "A",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (pointA != -1L) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                )
+                            }
+                        }
+
+                        // Cross (Clear) Button - shown when either A or B is marked
+                        if (pointA != -1L || pointB != -1L || abActive) {
+                            IconButton(
+                                onClick = { viewModel.clearAbRepeat() },
+                                modifier = Modifier.size(16.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove Loop",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+
+                        // Point B Button
+                        Surface(
+                            onClick = { viewModel.setABPoint('B') },
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (pointB != -1L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                            border = BorderStroke(
+                                0.5.dp,
+                                if (pointB != -1L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                            ),
+                            modifier = Modifier.size(width = 20.dp, height = 22.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "B",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (pointB != -1L) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                )
+                            }
+                        }
                     }
 
                     // Speed Button (clickable text badge)

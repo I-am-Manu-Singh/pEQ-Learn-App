@@ -457,18 +457,34 @@ fun AppViewModel.setABPoint(point: Char) {
     val currentPos = currentPosition.value
     if (point == 'A') {
         abRepeatPointA.value = currentPos
-    } else {
+        // If Point B is set and now less than or equal to Point A, reset Point B
+        if (abRepeatPointB.value != -1L && abRepeatPointB.value <= currentPos) {
+            abRepeatPointB.value = -1L
+            abRepeatActive.value = false
+            audioEngine.setLoopPoints(-1L, -1L)
+        }
+    } else if (point == 'B') {
         val pointA = abRepeatPointA.value
-        if (currentPos > pointA && pointA != -1L) {
+        if (pointA != -1L && currentPos > pointA) {
             abRepeatPointB.value = currentPos
+            abRepeatActive.value = true
+            audioEngine.setLoopPoints(pointA, currentPos)
         } else {
+            // If A wasn't set or B is before A, treat currentPos as new A
             abRepeatPointA.value = currentPos
             abRepeatPointB.value = -1L
+            abRepeatActive.value = false
+            audioEngine.setLoopPoints(-1L, -1L)
         }
     }
-    if (abRepeatPointA.value != -1L && abRepeatPointB.value != -1L) {
-        audioEngine.setLoopPoints(abRepeatPointA.value, abRepeatPointB.value)
-    }
+}
+
+fun AppViewModel.clearAbRepeat() {
+    abRepeatActive.value = false
+    abRepeatPointA.value = -1L
+    abRepeatPointB.value = -1L
+    audioEngine.setLoopPoints(-1L, -1L)
+    updateLoopPoints(-1L, -1L)
 }
 
 
