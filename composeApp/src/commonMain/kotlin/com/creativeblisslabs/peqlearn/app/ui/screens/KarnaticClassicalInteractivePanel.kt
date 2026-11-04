@@ -53,10 +53,11 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
 
     Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-        TabRow(
+        ScrollableTabRow(
             selectedTabIndex = selectedTab,
             containerColor = Color.Transparent,
             contentColor = accentColor,
+            edgePadding = 0.dp,
             indicator = { tabPositions ->
                 if (selectedTab < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(
@@ -90,8 +91,7 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                             text = label, 
                             fontSize = 11.sp, 
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 1
                         ) 
                     }
                 )
@@ -283,19 +283,12 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                         )
                     }
                     ChordInstrumentType.SITAR -> {
-                        UnifiedGuitarFretboard(
-                            numFrets = 16,
-                            accentColor = accentColor,
-                            rootNote = 0,
-                            showNoteNames = true,
-                            markOctaves = true,
-                            highlightOctaveC = true,
-                            baseFret = 1,
-                            stringLabels = listOf("Ma", "Sa", "Pa", "Sa", "Pa", "Sa", "Sa"),
-                            openStringsSemis = listOf(5, 0, 7, 0, 7, 0, 0),
-                            activeMidiNote = playingNote,
+                        UnifiedSitarVisualizer(
                             activeNotes = scalePitches,
-                            onFretTapped = { _, _, midiNote ->
+                            activeMidiNote = playingNote,
+                            accentColor = accentColor,
+                            showNoteNames = true,
+                            onFretTapped = { _, midiNote ->
                                 try {
                                     viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
                                     viewModel.onMidiNoteOn(midiNote, 95)
@@ -306,7 +299,7 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                                     }
                                 } catch (_: Exception) {}
                             },
-                            modifier = Modifier.fillMaxWidth().height(148.dp).clip(RoundedCornerShape(8.dp))
+                            modifier = Modifier.fillMaxWidth().height(168.dp).clip(RoundedCornerShape(8.dp))
                         )
                     }
                     ChordInstrumentType.VIOLIN -> {
@@ -379,8 +372,11 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
 }
 
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun KarnaticSolkattuPanel(accentColor: Color) {
+    val engine = getAudioEngine()
+    var lastPlayedSyllable by remember { mutableStateOf<String?>(null) }
     val solkattuList = listOf(
         Pair("Tha", "1-Akshara primary strike"),
         Pair("Dhi", "2nd syllable in Tisra / Chatusra gati"),
@@ -394,32 +390,73 @@ fun KarnaticSolkattuPanel(accentColor: Color) {
         Pair("Tha-Ka-Dhi-Mi-Tha-Ka-Tha-Ki-Ta", "Sankeerna Gati 9-beat rhythm")
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Mridangam Solkattu Rhythmic Phrasing & Konnakol", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        solkattuList.forEach { (syllable, desc) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        val engine = getAudioEngine()
-                        engine.playSample(syllable, 0, "TABLA")
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Visual Interactive Percussion visualizer
+        UnifiedTablaVisualizer(
+            activeBol = lastPlayedSyllable,
+            accentColor = accentColor,
+            onBolTapped = { syl ->
+                lastPlayedSyllable = syl
+                engine.playSample(syl, 0, "TABLA")
+            },
+            modifier = Modifier.fillMaxWidth().height(160.dp)
+        )
+
+        Text("Tap to sound Solkattu syllable:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            solkattuList.forEach { (syllable, desc) ->
+                val isCurrent = lastPlayedSyllable.equals(syllable, ignoreCase = true)
+                pEQGlassCard(
+                    modifier = Modifier
+                        .widthIn(min = 150.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            lastPlayedSyllable = syllable
+                            engine.playSample(syllable, 0, "TABLA")
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .background(if (isCurrent) accentColor.copy(alpha = 0.18f) else Color.Transparent)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isCurrent) accentColor else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = syllable.take(2).uppercase(),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isCurrent) Color.Black else accentColor
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = syllable,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCurrent) accentColor else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = desc,
+                                fontSize = 9.5.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = syllable,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.width(130.dp)
-                )
-                Text(
-                    text = desc,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                    modifier = Modifier.weight(1f)
-                )
+                }
             }
         }
     }

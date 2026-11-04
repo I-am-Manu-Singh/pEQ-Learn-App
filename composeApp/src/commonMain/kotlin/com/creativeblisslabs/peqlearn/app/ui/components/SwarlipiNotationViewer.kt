@@ -56,7 +56,7 @@ fun SwarlipiNotationViewer(
     var selectedMovement by remember { mutableStateOf("Sthai") } // "Sthai" or "Antara"
     var isPlayingBandish by remember { mutableStateOf(false) }
     var currentMatraIndex by remember { mutableIntStateOf(-1) }
-    var notationScript by remember { mutableStateOf("Ome Swarlipi") } // "Ome Swarlipi", "Devanagari", "Latin"
+    var notationScript by remember { mutableStateOf("Bhatkhande English") } // "Bhatkhande English", "Devanagari", "Latin"
     val scope = rememberCoroutineScope()
     val swarlipiFont = Font(Res.font.ome_swarlipi)
     val bhatkhandeHindiFont = Font(Res.font.ome_bhatkhande_hindi)
@@ -149,27 +149,27 @@ fun SwarlipiNotationViewer(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // Script & Font Switcher (Ome Swarlipi / Bhatkhande Hindi / Bhatkhande English / Devanagari / Latin)
+                    // Script & Font Switcher (Bhatkhande English / Devanagari / Latin / Ome Swarlipi)
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                         modifier = Modifier.clickable {
                             notationScript = when (notationScript) {
-                                "Ome Swarlipi" -> "Bhatkhande Hindi"
-                                "Bhatkhande Hindi" -> "Bhatkhande English"
                                 "Bhatkhande English" -> "Devanagari"
                                 "Devanagari" -> "Latin"
-                                else -> "Ome Swarlipi"
+                                "Latin" -> "Bhatkhande Hindi"
+                                "Bhatkhande Hindi" -> "Ome Swarlipi"
+                                else -> "Bhatkhande English"
                             }
                         }
                     ) {
                         Text(
                             text = when (notationScript) {
-                                "Ome Swarlipi" -> "🎵 Ome Swarlipi"
-                                "Bhatkhande Hindi" -> "🎼 Bhatkhande (Hindi)"
-                                "Bhatkhande English" -> "🔤 Bhatkhande (Eng)"
+                                "Bhatkhande English" -> "🔤 Bhatkhande (Standard)"
                                 "Devanagari" -> "अ Devanagari"
-                                else -> "A Latin"
+                                "Latin" -> "A Latin"
+                                "Bhatkhande Hindi" -> "🎼 Bhatkhande (Hindi)"
+                                else -> "🎵 Ome Swarlipi"
                             },
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
@@ -179,15 +179,18 @@ fun SwarlipiNotationViewer(
                     }
 
                     // Play Bandish Button
-                    FilledTonalButton(
-                        onClick = {
+                    InstrumentPlayButton(
+                        accentColor = accentColor,
+                        label = if (isPlayingBandish) "Stop" else "Sing Bandish",
+                        isPlaying = isPlayingBandish,
+                        onPlayClick = {
                             if (isPlayingBandish) {
                                 isPlayingBandish = false
                                 currentMatraIndex = -1
                             } else {
                                 isPlayingBandish = true
                                 val engine = getAudioEngine()
-                                engine.setInstrument("HARMONIUM")
+                                engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
                                 scope.launch {
                                     try {
                                         val allMatras = activeMovement.avartans.flatMap { it.vibhags.flatMap { v -> v.matras } }
@@ -211,27 +214,8 @@ fun SwarlipiNotationViewer(
                                     }
                                 }
                             }
-                        },
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (isPlayingBandish) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else accentColor.copy(alpha = 0.15f)
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(34.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isPlayingBandish) Icons.Default.Stop else Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = if (isPlayingBandish) MaterialTheme.colorScheme.error else accentColor,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = if (isPlayingBandish) "Stop" else "Sing Bandish",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isPlayingBandish) MaterialTheme.colorScheme.error else accentColor
-                        )
-                    }
+                        }
+                    )
                 }
             }
 
@@ -494,8 +478,8 @@ private fun SwaraGlyph(
     bhatkhandeHindiFontFamily: FontFamily? = null,
     bhatkhandeEnglishFontFamily: FontFamily? = null
 ) {
-    if (script == "Ome Swarlipi" || script == "Bhatkhande Hindi" || script == "Bhatkhande English") {
-        // Authentic Ome Swarlipi & Bhatkhande notation format (https://omenad.github.io/fonts/ome-swarlipi/)
+    if (script == "Ome Swarlipi") {
+        // Authentic Ome Swarlipi notation format (https://omenad.github.io/fonts/ome-swarlipi/)
         // Lowercase for Shuddha notes: s, r, g, m, p, d, n
         // Uppercase for Vikrit notes: R, G, D, N (Komal), M (Teevra)
         // Octaves: 'u' suffix for Tar Saptak, 'l' suffix for Mandra Saptak
@@ -525,12 +509,6 @@ private fun SwaraGlyph(
             else -> "${baseNote}${octaveIndicator}"
         }
 
-        val targetFontFamily = when (script) {
-            "Bhatkhande Hindi" -> bhatkhandeHindiFontFamily ?: swarlipiFontFamily
-            "Bhatkhande English" -> bhatkhandeEnglishFontFamily ?: swarlipiFontFamily
-            else -> swarlipiFontFamily
-        }
-
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -539,7 +517,7 @@ private fun SwaraGlyph(
                 text = glyphText,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = targetFontFamily ?: FontFamily.Monospace,
+                fontFamily = swarlipiFontFamily ?: FontFamily.Monospace,
                 color = accentColor,
                 textAlign = TextAlign.Center
             )
@@ -589,6 +567,7 @@ private fun SwaraGlyph(
             val displayText = when {
                 note.isKhatka -> "(${if (script == "Devanagari") (devanagariMap[note.swar] ?: note.swar) else note.swar})"
                 note.variation == SwaraVariation.TEEVRA -> if (script == "Devanagari") "म॑" else "M'"
+                note.variation == SwaraVariation.KOMAL && script != "Devanagari" -> note.swar.lowercase()
                 else -> baseLabel
             }
 

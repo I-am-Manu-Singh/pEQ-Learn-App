@@ -927,30 +927,20 @@ Row(
                     ChordInstrumentType.SITAR -> {
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            UnifiedGuitarFretboard(
-                                numFrets = 16,
-                                accentColor = partColor,
-                                rootNote = rootIdx,
-                                showNoteNames = (mode == 1),
-                                markOctaves = true,
-                                highlightOctaveC = true,
-                                baseFret = 1,
-                                stringLabels = listOf("Ma", "Sa", "Pa", "Sa", "Pa", "Sa", "Sa"),
-                                openStringsSemis = listOf(5, 0, 7, 0, 7, 0, 0),
-                                activeCoordinate = null,
-                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
+                            UnifiedSitarVisualizer(
                                 activeNotes = pianoPitches,
-                                onFretTapped = { _, _, midiNote ->
+                                activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
+                                accentColor = partColor,
+                                showNoteNames = (mode == 1),
+                                onFretTapped = { _, midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
                                         viewModel.onMidiNoteOn(midiNote, 95)
                                         viewModel.audioEngine.noteOn(midiNote, 0.85f)
                                     } catch (_: Exception) {}
                                 },
-                                modifier = Modifier.fillMaxWidth().height(155.dp).clip(RoundedCornerShape(12.dp))
+                                modifier = Modifier.fillMaxWidth().height(168.dp).clip(RoundedCornerShape(12.dp))
                             )
-                            Spacer(Modifier.height(2.dp))
-                            GuitarFingerLegend(accentColor = partColor)
                         }
                     }
                     ChordInstrumentType.VIOLIN -> {

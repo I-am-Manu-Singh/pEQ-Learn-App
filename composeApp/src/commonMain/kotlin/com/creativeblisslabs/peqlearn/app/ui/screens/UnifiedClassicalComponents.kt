@@ -25,6 +25,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.audio.getAudioEngine
@@ -585,7 +587,11 @@ fun UnifiedTaalBrowser(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     itemsIndexed(currentTaal.bolSequence) { bIdx, bol ->
                         val isCurrentBeat = currentBeatPlayhead == bIdx
                         val isSam = bIdx == 0
@@ -603,13 +609,16 @@ fun UnifiedTaalBrowser(
                         }
 
                         pEQGlassCard(
-                            modifier = Modifier.clickable {
-                                getAudioEngine().playSample(bol, bIdx, "TABLA")
-                            }
+                            modifier = Modifier
+                                .widthIn(min = 64.dp)
+                                .clickable {
+                                    getAudioEngine().playSample(bol, bIdx, "TABLA")
+                                }
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Text(
                                     text = markerText,
@@ -625,7 +634,7 @@ fun UnifiedTaalBrowser(
                                 )
                                 Text(
                                     text = bol,
-                                    fontSize = 12.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isCurrentBeat) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
                                 )
@@ -634,30 +643,173 @@ fun UnifiedTaalBrowser(
                     }
                 }
 
-                // Bhatkhande Full Notation Grid
+                // Bhatkhande Full Notation Grid rendered in authentic Swarlipi sheet music card
                 val cleanedNotation = remember(currentTaal.notationGrid) {
                     currentTaal.notationGrid.replace("\\n", "\n").trim()
                 }
                 if (cleanedNotation.isNotEmpty()) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(8.dp),
+                    val notationLines = remember(cleanedNotation) {
+                        cleanedNotation.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                    }
+                    val signsLine = notationLines.firstOrNull() ?: ""
+                    val bolsLine = notationLines.getOrNull(1) ?: ""
+
+                    val signsVibhags = remember(signsLine) {
+                        signsLine.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+                    }
+                    val bolsVibhags = remember(bolsLine) {
+                        bolsLine.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+                    }
+
+                    pEQGlassCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = "Bhatkhande Taal Notation System (भातखंडे ताल लिपि)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = cleanedNotation,
-                                fontSize = 12.sp,
-                                lineHeight = 18.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
-                            )
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "TAAL SWARLIPI NOTATION",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 1.sp,
+                                        color = accentColor
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = accentColor.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "Bhatkhande System",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = accentColor,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "${currentTaal.name} (${currentTaal.beats} Beats)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+
+                            // Visual Vibhag grid with dividing bars ('|') matching SwarlipiNotationViewer
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .background(
+                                        color = Color(0xFF14171E).copy(alpha = 0.6f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(vertical = 8.dp, horizontal = 6.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                // Left boundary bar
+                                Box(
+                                    modifier = Modifier
+                                        .width(2.5.dp)
+                                        .height(68.dp)
+                                        .background(accentColor.copy(alpha = 0.7f))
+                                )
+
+                                val maxVibhags = maxOf(signsVibhags.size, bolsVibhags.size)
+                                for (vIdx in 0 until maxVibhags) {
+                                    val signStr = signsVibhags.getOrNull(vIdx) ?: ""
+                                    val bolStr = bolsVibhags.getOrNull(vIdx) ?: ""
+                                    val bolTokens = bolStr.split(Regex("\\s+")).filter { it.isNotBlank() }
+
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    ) {
+                                        if (bolTokens.isNotEmpty()) {
+                                            bolTokens.forEachIndexed { bSubIdx, token ->
+                                                Column(
+                                                    modifier = Modifier
+                                                        .widthIn(min = 40.dp)
+                                                        .padding(vertical = 2.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    // Taal Vibhag Sign (shown on 1st matra of vibhag)
+                                                    Text(
+                                                        text = if (bSubIdx == 0) signStr else " ",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Black,
+                                                        color = if (signStr.startsWith("X") || signStr.startsWith("✕")) Color(0xFFFF5252)
+                                                        else if (signStr.startsWith("0") || signStr.startsWith("०")) Color(0xFF64B5F6)
+                                                        else Color(0xFFFFB74D),
+                                                        maxLines = 1,
+                                                        textAlign = TextAlign.Center
+                                                    )
+
+                                                    // Bol syllable
+                                                    pEQGlassCard(
+                                                        modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                                                    ) {
+                                                        Text(
+                                                            text = token,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Column(
+                                                modifier = Modifier.padding(vertical = 2.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = signStr,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color(0xFFFFB74D)
+                                                )
+                                                Text(
+                                                    text = bolStr,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Vibhag vertical division bar '|'
+                                    Box(
+                                        modifier = Modifier
+                                            .width(if (vIdx == maxVibhags - 1) 2.5.dp else 1.5.dp)
+                                            .height(68.dp)
+                                            .background(
+                                                if (vIdx == maxVibhags - 1) accentColor.copy(alpha = 0.8f)
+                                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                            )
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -798,7 +950,7 @@ fun UnifiedThaatBrowser(
                             if (!isPlaying) {
                                 isPlaying = true
                                 val engine = getAudioEngine()
-                                engine.setInstrument("HARMONIUM")
+                                engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
                                 scope.launch {
                                     try {
                                         val notes = currentThaat.semitones.ifEmpty { listOf(0, 2, 4, 5, 7, 9, 11, 12) }
@@ -819,26 +971,79 @@ fun UnifiedThaatBrowser(
                     )
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Swaras:", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                    currentThaat.swaras.forEachIndexed { sIdx, swara ->
-                        val targetNote = 60 + (currentThaat.semitones.getOrNull(sIdx) ?: 0)
-                        val isSounding = viewModel?.midiPlayingNote?.value == targetNote
-                        pEQGlassCard(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                        ) {
-                            Text(
-                                swara,
-                                fontSize = 13.sp,
-                                fontWeight = if (isSounding) FontWeight.ExtraBold else FontWeight.Bold,
-                                color = if (isSounding) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                // Swarlipi-style Swaras Grid with authentic Saptak & Komal indicators
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "THAAT SWARLIPI SCALE (भातखंडे स्वर लिपि)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .background(
+                                color = Color(0xFF14171E).copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(8.dp)
                             )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(vertical = 10.dp, horizontal = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        currentThaat.swaras.forEachIndexed { sIdx, swara ->
+                            val targetNote = 60 + (currentThaat.semitones.getOrNull(sIdx) ?: 0)
+                            val isSounding = viewModel?.midiPlayingNote?.value == targetNote
+                            val isKomal = swara.any { it.isLowerCase() } && swara.uppercase() != "MA"
+                            val isTeevra = swara.contains("Ma", ignoreCase = false) && currentThaat.semitones.getOrNull(sIdx) == 6
+
+                            Column(
+                                modifier = Modifier
+                                    .widthIn(min = 44.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (isSounding) Color(0xFFFFEB3B).copy(alpha = 0.25f)
+                                        else Color.Transparent
+                                    )
+                                    .padding(vertical = 4.dp, horizontal = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                // Pitch number
+                                Text(
+                                    text = "${sIdx + 1}",
+                                    fontSize = 8.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                                )
+
+                                // Main Swara glyph
+                                Text(
+                                    text = if (isTeevra) "M'" else swara.uppercase().take(2),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSounding) Color(0xFFFFEB3B) else accentColor
+                                )
+
+                                // Komal underline indicator or dot
+                                Box(
+                                    modifier = Modifier.height(4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isKomal) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(14.dp)
+                                                .height(2.dp)
+                                                .background(if (isSounding) Color(0xFFFFEB3B) else accentColor)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -861,10 +1066,25 @@ fun UnifiedAlankaarPanel(
     var isRunning by remember { mutableStateOf(false) }
     var activeIdx by remember { mutableIntStateOf(-1) }
     var activeNoteIndex by remember { mutableIntStateOf(-1) }
+    var selectedAlankarIdx by remember(isCarnatic) { mutableIntStateOf(0) }
+    var selectedTypeFilter by remember(isCarnatic) { mutableStateOf("All") }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val alankaarList = if (isCarnatic) CARNATIC_ALANKARAS else INDIAN_ALAANKARS
+    val fullList = if (isCarnatic) CARNATIC_ALANKARAS else INDIAN_ALAANKARS
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val availableTypes = remember(fullList) {
+        listOf("All") + fullList.map { it.type.ifEmpty { "General" } }.distinct()
+    }
+
+    val filteredList = remember(selectedTypeFilter, fullList) {
+        if (selectedTypeFilter == "All") fullList
+        else fullList.filter { (it.type.ifEmpty { "General" }) == selectedTypeFilter }
+    }
+
+    val currentAlankaram = filteredList.getOrNull(selectedAlankarIdx.coerceIn(0, (filteredList.size - 1).coerceAtLeast(0)))
+        ?: fullList.first()
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
             text = if (isCarnatic) "35 Suladi Sapta Tala Alankarams in 3 Kaalams (Speeds)"
             else "${INDIAN_ALAANKARS.size} Graded Vocal/Instrumental Exercise Sequences",
@@ -872,48 +1092,144 @@ fun UnifiedAlankaarPanel(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
 
-        alankaarList.forEachIndexed { idx, alankaram ->
-            val isThisRunning = isRunning && activeIdx == idx
-
-            // Cleanly parse phrases separated by '|' or spaces/commas, grouping them cleanly
-            val phraseGroups = remember(alankaram.pattern) {
-                alankaram.pattern.split("|").map { group ->
-                    group.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-                }.filter { it.isNotEmpty() }
-            }
-
-            // Flattened list of valid individual note tokens to map playback indices accurately
-            val flatTokens = remember(phraseGroups) { phraseGroups.flatten() }
-
-            pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+        // Dropdown Selector for selecting specific Alankaar
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { isDropdownExpanded = true },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(if (isCarnatic) "Alankaram Selection" else "Alankaar Selection", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                        Text(
+                            text = "${currentAlankaram.number}. ${currentAlankaram.name}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(
+                        imageVector = if (isDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                        contentDescription = "Select Alankaar",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = isDropdownExpanded,
+                onDismissRequest = { isDropdownExpanded = false },
+                modifier = Modifier.fillMaxWidth(0.9f).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            ) {
+                filteredList.forEachIndexed { idx, alnk ->
+                    val isSelected = idx == selectedAlankarIdx
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "${alnk.number}. ${alnk.name}",
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        onClick = {
+                            selectedAlankarIdx = idx
+                            isRunning = false
+                            activeIdx = -1
+                            activeNoteIndex = -1
+                            isDropdownExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+
+        // Filter chips row for Type / Technique
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            availableTypes.forEach { t ->
+                val isSelected = selectedTypeFilter == t
+                Surface(
+                    onClick = {
+                        selectedTypeFilter = t
+                        selectedAlankarIdx = 0
+                        isRunning = false
+                        activeIdx = -1
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) accentColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, if (isSelected) accentColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 10.dp)) {
+                        Text(
+                            text = t,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.Black else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+
+        // Selected Alankaram Display Card (Cleaned and De-cluttered)
+        val isThisRunning = isRunning && activeIdx == currentAlankaram.number
+
+        val phraseGroups = remember(currentAlankaram.pattern) {
+            currentAlankaram.pattern.split("|").map { group ->
+                group.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+            }.filter { it.isNotEmpty() }
+        }
+        val flatTokens = remember(phraseGroups) { phraseGroups.flatten() }
+
+        pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = alankaram.name,
+                                text = currentAlankaram.name,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
+                                fontSize = 14.sp,
                                 color = accentColor
                             )
-                            if (alankaram.type.isNotEmpty()) {
+                            if (currentAlankaram.type.isNotEmpty()) {
                                 Surface(
                                     color = accentColor.copy(alpha = 0.15f),
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
                                     Text(
-                                        text = alankaram.type,
+                                        text = currentAlankaram.type,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = accentColor,
@@ -921,111 +1237,38 @@ fun UnifiedAlankaarPanel(
                                     )
                                 }
                             }
-                            if (alankaram.technique.isNotEmpty() && alankaram.technique != "Sargam") {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        text = alankaram.technique,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
                         }
-
-                        // Structured visual group layout preventing notes from mixing up
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            var globalTokenCounter = 0
-                            phraseGroups.forEach { group ->
-                                pEQGlassCard(
-                                    modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        group.forEach { token ->
-                                            val currentFlatIdx = globalTokenCounter++
-                                            val isNoteSounding = isThisRunning && activeNoteIndex == currentFlatIdx
-
-                                            pEQGlassCard(
-                                                modifier = Modifier.clip(RoundedCornerShape(4.dp))
-                                            ) {
-                                                Text(
-                                                    text = token,
-                                                    fontSize = 11.sp,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontWeight = if (isNoteSounding) FontWeight.ExtraBold else FontWeight.Medium,
-                                                    color = if (isNoteSounding) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        if (currentAlankaram.technique.isNotEmpty() && currentAlankaram.technique != "Sargam") {
+                            Text(
+                                text = "Technique: ${currentAlankaram.technique}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
                         }
-
-                        if (alankaram.arohan.isNotEmpty() && alankaram.avarohan.isNotEmpty()) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = "Arohan: ${alankaram.arohan}",
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                                )
-                                Text(
-                                    text = "Avarohan: ${alankaram.avarohan}",
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = alankaram.description,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
                     }
-
-                    Spacer(modifier = Modifier.width(10.dp))
 
                     InstrumentPlayButton(
                         accentColor = accentColor,
-                        label = "Play",
+                        label = if (isThisRunning) "Stop" else "Practice",
                         isPlaying = isThisRunning,
                         onPlayClick = {
                             if (!isRunning) {
                                 isRunning = true
-                                activeIdx = idx
+                                activeIdx = currentAlankaram.number
                                 activeNoteIndex = -1
                                 val engine = getAudioEngine()
-                                engine.setInstrument("HARMONIUM")
+                                engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
                                 scope.launch {
                                     try {
-                                        val patternSemitones = alankaram.midiPattern.ifEmpty {
+                                        val patternSemitones = currentAlankaram.midiPattern.ifEmpty {
                                             if (isCarnatic) listOf(0, 1, 4, 5, 7, 8, 11, 12, 11, 8, 7, 5, 4, 1, 0)
                                             else listOf(0, 2, 4, 5, 7, 9, 11, 12, 11, 9, 7, 5, 4, 2, 0)
                                         }
-                                        
-                                        // Fix: Loop directly based on the token indices so highlighting matches 1-to-1 with UI tokens
                                         val totalSteps = maxOf(flatTokens.size, patternSemitones.size)
-                                        
                                         for (stepIdx in 0 until totalSteps) {
+                                            if (!isRunning) return@launch
                                             activeNoteIndex = stepIdx % flatTokens.size
                                             val semi = patternSemitones[stepIdx % patternSemitones.size]
-                                            
                                             val note = 60 + semi
                                             viewModel?.midiPlayingNote?.value = note
                                             engine.noteOn(note, 0.85f)
@@ -1035,11 +1278,11 @@ fun UnifiedAlankaarPanel(
                                     } finally {
                                         viewModel?.midiPlayingNote?.value = null
                                         activeNoteIndex = -1
-                                        isRunning = false
                                         activeIdx = -1
+                                        isRunning = false
                                     }
                                 }
-                            } else if (isThisRunning) {
+                            } else {
                                 isRunning = false
                                 activeIdx = -1
                                 activeNoteIndex = -1
@@ -1048,6 +1291,130 @@ fun UnifiedAlankaarPanel(
                         }
                     )
                 }
+
+                // Swarlipi-style Staff Sheet Music Layout for Pattern
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .background(
+                            color = Color(0xFF14171E).copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(vertical = 8.dp, horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    var globalTokenCounter = 0
+                    phraseGroups.forEachIndexed { gIdx, group ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            group.forEach { token ->
+                                val currentFlatIdx = globalTokenCounter++
+                                val isNoteSounding = isThisRunning && activeNoteIndex == currentFlatIdx
+                                val isTar = token.contains("'") || token.contains("*")
+                                val isMandra = token.contains(".")
+                                val isKomal = token.any { it.isLowerCase() } && !token.equals("ma", ignoreCase = true)
+                                val cleanName = token.replace("'", "").replace("*", "").replace(".", "")
+
+                                Column(
+                                    modifier = Modifier
+                                        .widthIn(min = 34.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(
+                                            if (isNoteSounding) Color(0xFFFFEB3B).copy(alpha = 0.25f)
+                                            else Color.Transparent
+                                        )
+                                        .padding(vertical = 2.dp, horizontal = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                                ) {
+                                    // Taar dot
+                                    Box(modifier = Modifier.height(4.dp), contentAlignment = Alignment.Center) {
+                                        if (isTar) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(3.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isNoteSounding) Color(0xFFFFEB3B) else accentColor)
+                                            )
+                                        }
+                                    }
+
+                                    // Swara text
+                                    Text(
+                                        text = cleanName,
+                                        fontSize = 13.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = if (isNoteSounding) FontWeight.ExtraBold else FontWeight.Bold,
+                                        color = if (isNoteSounding) Color(0xFFFFEB3B) else MaterialTheme.colorScheme.onSurface,
+                                        textAlign = TextAlign.Center
+                                    )
+
+                                    // Mandra dot or Komal line
+                                    Box(modifier = Modifier.height(4.dp), contentAlignment = Alignment.Center) {
+                                        if (isKomal) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(12.dp)
+                                                    .height(1.8.dp)
+                                                    .background(if (isNoteSounding) Color(0xFFFFEB3B) else accentColor)
+                                            )
+                                        } else if (isMandra) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(3.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isNoteSounding) Color(0xFFFFEB3B) else accentColor)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Phrase division bar '|'
+                            if (gIdx < phraseGroups.lastIndex) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.5.dp)
+                                        .height(36.dp)
+                                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (currentAlankaram.arohan.isNotEmpty() && currentAlankaram.avarohan.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "Arohan: ${currentAlankaram.arohan}",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                        )
+                        Text(
+                            text = "Avarohan: ${currentAlankaram.avarohan}",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+
+                Text(
+                    text = currentAlankaram.description,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
             }
         }
     }

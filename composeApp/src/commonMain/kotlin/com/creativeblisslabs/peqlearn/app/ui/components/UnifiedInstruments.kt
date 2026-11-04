@@ -1,5 +1,6 @@
 package com.creativeblisslabs.peqlearn.app.ui.components
 
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -274,7 +275,7 @@ fun UnifiedGuitarFretboard(
             var sum = 0f
             for (f in 1..numFrets) {
                 val absoluteFret = baseFret + f - 1
-                val lengthFraction = kotlin.math.pow((1f - r).toDouble(), absoluteFret.toDouble()).toFloat() * r
+                val lengthFraction = (1f - r).toDouble().pow(absoluteFret.toDouble()).toFloat() * r
                 sum += lengthFraction
             }
             sum.coerceAtLeast(0.001f)
@@ -286,7 +287,7 @@ fun UnifiedGuitarFretboard(
             var accumulated = 0f
             for (f in 1..numFrets) {
                 val absoluteFret = baseFret + f - 1
-                val lengthFraction = kotlin.math.pow((1f - r).toDouble(), absoluteFret.toDouble()).toFloat() * r
+                val lengthFraction = (1f - r).toDouble().pow(absoluteFret.toDouble()).toFloat() * r
                 accumulated += (lengthFraction / fretScaleFactor) * playableW
                 list.add(leftPad + accumulated)
             }
@@ -1204,13 +1205,13 @@ fun pEQInstrumentDropdown(
 }
 
 // ============================================================================
-// HARMONIUM, VIOLIN, & FLUTE UNIFIED INSTRUMENT VISUALIZERS
+// HARMONIUM, VIOLIN, FLUTE, TABLA, & SITAR UNIFIED INSTRUMENT VISUALIZERS
 // ============================================================================
 
 /**
  * UNIFIED HARMONIUM VISUALIZER
- * Features traditional pump-organ bellows texture, wooden reed casing,
- * brass stops, and responsive reed keys (C3 to C6).
+ * Features realistic 7-fold wooden/leather accordion bellows with authentic brass stops,
+ * scale stops, teakwood side handles, and keyboard keybed.
  */
 @Composable
 fun UnifiedHarmoniumVisualizer(
@@ -1222,42 +1223,76 @@ fun UnifiedHarmoniumVisualizer(
 ) {
     val startMidi = 48 // C3
     val endMidi = 84   // C6 (3 octaves)
-    val totalKeys = endMidi - startMidi + 1
 
     Column(
         modifier = modifier
-            .background(Color(0xFF261810)) // Rich rosewood harmonium body
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF381F14), Color(0xFF26150C), Color(0xFF190E08))
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(1.5.dp, Color(0xFF5D361F), RoundedCornerShape(8.dp))
             .padding(4.dp)
     ) {
-        // TOP BELLOWS & STOPS PANEL
+        // TOP BELLOWS & BRASS STOPS PANEL
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
-                .background(Color(0xFF3E2723))
-                .padding(horizontal = 12.dp),
+                .height(34.dp)
+                .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF1B0D07),
+                            Color(0xFF3E1E11),
+                            Color(0xFF2C150C),
+                            Color(0xFF3E1E11),
+                            Color(0xFF1B0D07)
+                        )
+                    )
+                )
+                .border(1.dp, Color(0xFF8D5B34), RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // Brass decorative stops
-                repeat(7) {
-                    Box(
-                        modifier = Modifier
-                            .size(12.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFFD54F))
-                            .border(1.dp, Color(0xFFB58500), CircleShape)
+            // Brass decorative stops with authentic pull knobs
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf("C", "G", "Swell", "Tremolo", "Drone 1", "Drone 2", "Main").forEachIndexed { i, stopName ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(Color(0xFFFFF176), Color(0xFFFFB300), Color(0xFF8D6E63))
+                                    )
+                                )
+                                .border(1.dp, Color(0xFFB58500), CircleShape)
+                        )
+                    }
+                }
+            }
+
+            // Central Inlay Title
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(
+                    color = Color(0xFF100905),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, Color(0xFFFFD54F).copy(alpha = 0.5f))
+                ) {
+                    Text(
+                        text = "HARMONIUM • REED BELLOWS",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFFFFD54F),
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
-            Text(
-                text = "HARMONIUM • REED BELLOWS",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                color = Color(0xFFFFD54F),
-                letterSpacing = 1.sp
-            )
         }
 
         Spacer(Modifier.height(3.dp))
@@ -1281,9 +1316,9 @@ fun UnifiedHarmoniumVisualizer(
 
 /**
  * UNIFIED VIOLIN FINGERBOARD VISUALIZER
- * Models an orchestral 4-string fretless fingerboard (G3, D4, A4, E5).
- * Renders fretless intonation markers (tape guides at 1st, 2nd, 3rd, and 4th positions)
- * and finger positions.
+ * Authentic high-detail orchestral & Carnatic violin neck visualizer.
+ * Features curly maple neck border, authentic ebony nut, realistic wound strings,
+ * bridge curvature markers, intonation tape guides, and active note glow.
  */
 @Composable
 fun UnifiedViolinFingerboard(
@@ -1296,38 +1331,44 @@ fun UnifiedViolinFingerboard(
 ) {
     // Violin open strings: G3 (55), D4 (62), A4 (69), E5 (76)
     val stringLabels = listOf("E", "A", "D", "G")
+    val stringNames = listOf("E5 (Plain Steel)", "A4 (Alum Wound)", "D4 (Silver Wound)", "G3 (Gut Wound)")
     val openStringsMidi = listOf(76, 69, 62, 55)
     val totalPositions = 14 // Half-step intonation positions along neck
 
-    LaunchedEffect(activeNotes, activeMidiNote) {
-        val allNotes = (activeNotes + listOfNotNull(activeMidiNote)).distinct()
-        if (allNotes.isNotEmpty()) {
-            val names = allNotes.joinToString { midi ->
-                val name = NOTE_NAMES[midi % 12]
-                val oct = (midi / 12) - 1
-                "$name$oct($midi)"
-            }
-            println("pEQLearn [ViolinFingerboard]: Active violin note(s): $names")
-        }
-    }
-
     BoxWithConstraints(
         modifier = modifier
-            .background(Color(0xFF1A120B)) // Deep ebony wood
-            .border(1.dp, Color(0xFF4A3423))
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .background(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF2E1708), Color(0xFF1A0E06), Color(0xFF140B05), Color(0xFF2E1708))
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(1.5.dp, Color(0xFF6A3B18), RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
-        val totalW = maxWidth
-        val totalH = maxHeight
-
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-            // Header
+            // Header with scroll/pegbox branding
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("VIOLIN (Fretless Fingerboard)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE040FB))
-                Text("G3 • D4 • A4 • E5", fontSize = 10.sp, color = Color.White.copy(0.6f))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("VIOLIN", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFE040FB))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFFE040FB).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            "Fretless Ebony Fingerboard",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE040FB),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                Text("G3 • D4 • A4 • E5 (Intonation Tapes: 1st, 3rd, 5th, 7th)", fontSize = 9.sp, color = Color.White.copy(0.6f))
             }
 
             // Fingerboard Strings & Intonation Tapes
@@ -1340,14 +1381,15 @@ fun UnifiedViolinFingerboard(
                         modifier = Modifier.fillMaxWidth().height(26.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // String Label & Peg
+                        // String Label & Peg with pearloid inlay
                         Surface(
                             shape = CircleShape,
-                            color = Color(0xFF3E2723),
+                            color = Color(0xFF23140C),
+                            border = BorderStroke(1.dp, Color(0xFF8D5B34)),
                             modifier = Modifier.size(24.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(stringLabels[sIdx], fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.White)
+                                Text(stringLabels[sIdx], fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFFFD54F))
                             }
                         }
 
@@ -1357,8 +1399,15 @@ fun UnifiedViolinFingerboard(
                         Row(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(if (sIdx == 3) 4.dp else (3 - sIdx * 0.5f).dp)
-                                .background(Color(0xFFD7CCC8)),
+                                .height(if (sIdx == 3) 4.5.dp else if (sIdx == 2) 3.5.dp else if (sIdx == 1) 2.5.dp else 1.8.dp)
+                                .background(
+                                    when (sIdx) {
+                                        0 -> Color(0xFFE0E0E0) // Plain Steel E
+                                        1 -> Color(0xFFCFD8DC) // Aluminum A
+                                        2 -> Color(0xFFB0BEC5) // Silver D
+                                        else -> Color(0xFFFFD54F).copy(alpha = 0.85f) // Gold Gut G
+                                    }
+                                ),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1368,17 +1417,26 @@ fun UnifiedViolinFingerboard(
 
                                 Box(
                                     modifier = Modifier
-                                        .size(if (isActive) 18.dp else 10.dp)
+                                        .size(if (isActive) 20.dp else 11.dp)
                                         .clip(CircleShape)
-                                        .background(if (isActive) accentColor else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.35f) else Color.Transparent)
+                                        .background(
+                                            if (isActive) accentColor
+                                            else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.4f)
+                                            else Color.Transparent
+                                        )
+                                        .border(
+                                            width = if (isActive) 1.5.dp else 0.5.dp,
+                                            color = if (isActive) Color.White else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.6f) else Color.Transparent,
+                                            shape = CircleShape
+                                        )
                                         .clickable { onPositionTapped?.invoke(sIdx, currentMidi) },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (isActive && showNoteNames) {
                                         Text(
                                             text = NOTE_NAMES[currentMidi % 12],
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 8.5.sp,
+                                            fontWeight = FontWeight.Black,
                                             color = Color.Black
                                         )
                                     }
@@ -1394,8 +1452,8 @@ fun UnifiedViolinFingerboard(
 
 /**
  * UNIFIED FLUTE / BANSURI VISUALIZER
- * Visualizes a transverse concert flute / Indian Bansuri with tone holes,
- * embouchure hole, and responsive finger coverage for active pitches.
+ * Realistic bamboo flute (Bansuri) and concert silver flute with authentic tone holes,
+ * embouchure lip plate with airflow indicator, and threaded bindings (Dhaaga).
  */
 @Composable
 fun UnifiedFluteVisualizer(
@@ -1406,50 +1464,59 @@ fun UnifiedFluteVisualizer(
     modifier: Modifier = Modifier
 ) {
     // Concert Flute standard register C4 (60) to C7 (96)
-    // 7 Main Tone Holes (Sa, Re, Ga, Ma, Pa, Dha, Ni)
+    // 8 Main Tone Holes (Sa, Re, Ga, Ma, Pa, Dha, Ni, Sa')
     val holeMidiPitches = listOf(60, 62, 64, 65, 67, 69, 71, 72) // C4, D4, E4, F4, G4, A4, B4, C5
     val holeNames = listOf("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5")
-
-    LaunchedEffect(activeNotes, activeMidiNote) {
-        val all = (activeNotes + listOfNotNull(activeMidiNote)).distinct()
-        if (all.isNotEmpty()) {
-            val names = all.joinToString { midi ->
-                val name = NOTE_NAMES[midi % 12]
-                val oct = (midi / 12) - 1
-                "$name$oct($midi)"
-            }
-            println("pEQLearn [FluteVisualizer]: Active flute pitch: $names")
-        }
-    }
+    val indianHoleNames = listOf("Sa", "Re", "Ga", "Ma", "Pa", "Dha", "Ni", "Ṡa")
 
     Column(
         modifier = modifier
-            .background(Color(0xFF0D1B2A))
-            .border(1.dp, Color(0xFF1B263B))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF2E1C0C), Color(0xFF1D1107), Color(0xFF100904))
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(1.5.dp, Color(0xFF6B4226), RoundedCornerShape(8.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("FLUTE & BANSURI", fontSize = 11.sp, fontWeight = FontWeight.Black, color = accentColor)
-            Text("Acoustic Woodwind • Chromatic Tone Holes", fontSize = 10.sp, color = Color.White.copy(0.6f))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("BANSURI / FLUTE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = accentColor)
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = accentColor.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        "Seasoned Assam Bamboo",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Text("Mouthpiece + 8 Tone Holes", fontSize = 9.sp, color = Color.White.copy(0.6f))
         }
 
-        // FLUTE BODY (Cylindrical tube with embouchure & tone holes)
+        // FLUTE BODY (Natural bamboo tube with traditional red/gold bindings & tone holes)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
-                .clip(RoundedCornerShape(27.dp))
+                .height(48.dp)
+                .clip(RoundedCornerShape(24.dp))
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color(0xFFC0C0C0), Color(0xFFE0E0E0), Color(0xFF9E9E9E), Color(0xFF757575))
+                        colors = listOf(Color(0xFFD4A373), Color(0xFFFAEDCD), Color(0xFFCCD5AE), Color(0xFFB58463))
                     )
                 )
-                .padding(horizontal = 20.dp),
+                .border(1.dp, Color(0xFF8B5A2B), RoundedCornerShape(24.dp))
+                .padding(horizontal = 16.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             Row(
@@ -1457,18 +1524,28 @@ fun UnifiedFluteVisualizer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Embouchure hole (Mouthpiece)
+                // Embouchure hole (Mouthpiece) with cork plug
                 Box(
                     modifier = Modifier
                         .size(24.dp, 16.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF212121))
-                        .border(1.dp, Color(0xFF424242), RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1B1B1B))
+                        .border(1.5.dp, Color(0xFF3E2723), RoundedCornerShape(8.dp))
                 )
 
-                Spacer(Modifier.width(16.dp))
+                // Threaded Decorative Binding Ring (Dhaaga)
+                Box(
+                    modifier = Modifier
+                        .width(6.dp)
+                        .height(36.dp)
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color(0xFFD32F2F), Color(0xFFFFD54F), Color(0xFFD32F2F))
+                            )
+                        )
+                )
 
-                // Tone Holes
+                // 8 Tone Holes
                 Row(
                     modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1479,14 +1556,14 @@ fun UnifiedFluteVisualizer(
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(22.dp)
                                     .clip(CircleShape)
-                                    .background(if (isCovered) accentColor else Color(0xFF1E1E1E))
-                                    .border(1.5.dp, if (isCovered) Color.White else Color(0xFF424242), CircleShape)
+                                    .background(if (isCovered) accentColor else Color(0xFF2B1810))
+                                    .border(1.5.dp, if (isCovered) Color.White else Color(0xFF5D4037), CircleShape)
                                     .clickable { onToneHoleTapped?.invoke(index, midi) },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -1500,14 +1577,348 @@ fun UnifiedFluteVisualizer(
                                 }
                             }
                             Text(
-                                text = holeNames[index],
+                                text = indianHoleNames[index],
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isCovered) accentColor else Color.Black
+                                color = if (isCovered) Color(0xFFB71C1C) else Color(0xFF3E2723)
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * UNIFIED TABLA VISUALIZER
+ * Interactive two-drum visualizer:
+ * - Dayan (Right Wooden Drum): Tuned to tonic Sa; features central black Syahi, Sur ring, Maidan, Kinar, and braided Gajra rim.
+ * - Bayan (Left Metal/Clay Bass Drum): Features off-center Syahi, deep resonant bass strike, and sliding modulation.
+ */
+@Composable
+fun UnifiedTablaVisualizer(
+    activeBol: String? = null,
+    accentColor: Color = Color(0xFFFF9800),
+    onBolTapped: ((String) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF2A1B12), Color(0xFF190F09), Color(0xFF0F0905))
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(1.5.dp, Color(0xFF5A3821), RoundedCornerShape(8.dp))
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // BAYAN (Left Bass Drum, Dagga)
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("BAYAN (Dagga)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+            Box(
+                modifier = Modifier
+                    .size(82.dp)
+                    .clip(CircleShape)
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFB0BEC5), Color(0xFF78909C), Color(0xFF37474F), Color(0xFF263238))
+                        )
+                    )
+                    .border(2.5.dp, Color(0xFF8D6E63), CircleShape)
+                    .clickable { onBolTapped?.invoke("GHE") },
+                contentAlignment = Alignment.TopStart
+            ) {
+                // Braided Gajra Outer Rim
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFD7CCC8))
+                        .border(1.dp, Color(0xFF8D6E63), CircleShape)
+                ) {
+                    // Off-center Syahi (Black tuning paste)
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 14.dp, top = 14.dp)
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF1A1A1A))
+                            .border(1.dp, Color(0xFF424242), CircleShape)
+                    )
+                }
+            }
+            Text("Bols: Ghe, Ge, Ka, Kat", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+        }
+
+        // DAYAN (Right Treble Drum, Tabla)
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("DAYAN (Treble)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+            Box(
+                modifier = Modifier
+                    .size(76.dp)
+                    .clip(CircleShape)
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFF8D5B34), Color(0xFF5D361F), Color(0xFF3E1E11))
+                        )
+                    )
+                    .border(2.5.dp, Color(0xFF8D6E63), CircleShape)
+                    .clickable { onBolTapped?.invoke("DHA") },
+                contentAlignment = Alignment.Center
+            ) {
+                // Outer Gajra Rim & Chanti
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFF5F5DC))
+                        .border(1.dp, Color(0xFF8D6E63), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Sur / Maidan Ring
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFEDE0D4)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Centered Syahi
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF111111))
+                                .border(1.dp, Color(0xFF424242), CircleShape)
+                        )
+                    }
+                }
+            }
+            Text("Bols: Dha, Dhin, Na, Ta, Tin", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+        }
+    }
+}
+
+/**
+ * UNIFIED SITAR VISUALIZER
+ * Authentic high-detail classical Indian Sitar visualizer.
+ * Features:
+ * - Seasoned tun/teakwood neck with natural hollow resonating chamber
+ * - Arched curved brass frets (Parda) tied with silk thread
+ * - Baj Tar (main melody string, #1), Jod, Kharaj, and Pancham strings
+ * - Elevated Chikari high drone posts and pegs
+ * - Bone bridge (Ghoraj / Javari) for the distinctive buzzing resonance
+ * - Interactive movable fret touch tracking with Meend pull simulation
+ */
+@Composable
+fun UnifiedSitarVisualizer(
+    activeNotes: List<Int> = emptyList(),
+    activeMidiNote: Int? = null,
+    accentColor: Color = Color(0xFFFFB300),
+    showNoteNames: Boolean = true,
+    onFretTapped: ((fretIndex: Int, midiNote: Int) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    // Sitar Strings (Ravi Shankar style 7-string setup):
+    // 1: Baj Tar (Melody string) -> Ma (F3 / 53 or C4 / 60)
+    // 2: Jod -> Sa (C3 / 48)
+    // 3: Kharaj -> Pa (G2 / 43)
+    // 4: Kharaj -> Sa (C2 / 36)
+    // 5: Pancham Chikari -> Pa (G3 / 55)
+    // 6: Sa Chikari -> Sa (C4 / 60)
+    // 7: Tar Sa Chikari -> Sa' (C5 / 72)
+    val sitarStrings = listOf(
+        Triple("Baj (Ma)", 53, 2.5f),
+        Triple("Jod (Sa)", 48, 2.2f),
+        Triple("Pancham (Pa)", 43, 3.0f),
+        Triple("Kharaj (Sa)", 36, 3.5f),
+        Triple("Chikari (Pa)", 55, 1.2f),
+        Triple("Chikari (Sa)", 60, 1.0f),
+        Triple("Chikari (Sa')", 72, 0.8f)
+    )
+    val numFrets = 16
+
+    BoxWithConstraints(
+        modifier = modifier
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF2C1608), Color(0xFF1E0E05), Color(0xFF130903))
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(1.5.dp, Color(0xFF6B3A19), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            // Header: Sitar title and tuning info
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("SITAR", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFFFB300))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFFFFB300).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            "Arched Curved Brass Pardas",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFFB300),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                Text("Kharaj-Pancham (Ravi Shankar Style) • Javari Bridge", fontSize = 9.sp, color = Color.White.copy(0.6f))
+            }
+
+            // Sitar Fretboard Neck with Arched Brass Frets and Strings
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF3E1F0E), Color(0xFF271308), Color(0xFF3E1F0E))
+                        )
+                    )
+            ) {
+                // Draw 16 Curved Brass Frets
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    for (fret in 1..numFrets) {
+                        // Arched brass fret column
+                        Box(
+                            modifier = Modifier
+                                .width(3.5.dp)
+                                .fillMaxHeight()
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(Color(0xFFFFD54F), Color(0xFFFFB300), Color(0xFFB58500), Color(0xFFFFD54F))
+                                    )
+                                )
+                                .border(0.5.dp, Color(0xFF6D4C41))
+                        )
+                    }
+                }
+
+                // Overlay Strings & Interactive Notes
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(vertical = 2.dp),
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    sitarStrings.forEachIndexed { sIdx, (name, baseMidi, gauge) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // String Label & Peg
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = Color(0xFF150A04),
+                                border = BorderStroke(0.5.dp, Color(0xFFFFD54F).copy(alpha = 0.4f)),
+                                modifier = Modifier.width(52.dp).height(14.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = name,
+                                        fontSize = 7.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (sIdx == 0) Color(0xFFFFD54F) else Color.White.copy(alpha = 0.7f),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.width(4.dp))
+
+                            // String wire and interactive note hits
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(gauge.dp)
+                                        .background(
+                                            if (sIdx == 0) Color(0xFFFFF9C4)
+                                            else if (sIdx in 1..3) Color(0xFFFFD54F).copy(alpha = 0.85f)
+                                            else Color(0xFFE0E0E0)
+                                        )
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    for (fret in 1..numFrets) {
+                                        val midi = baseMidi + fret
+                                        val isActive = activeNotes.contains(midi) || activeMidiNote == midi
+
+                                        Box(
+                                            modifier = Modifier
+                                                .size(if (isActive) 16.dp else 10.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    if (isActive) accentColor
+                                                    else if (fret in listOf(1, 3, 5, 7, 8, 10, 12, 13, 15)) Color.White.copy(alpha = 0.15f)
+                                                    else Color.Transparent
+                                                )
+                                                .border(
+                                                    width = if (isActive) 1.dp else 0.5.dp,
+                                                    color = if (isActive) Color.White else Color.Transparent,
+                                                    shape = CircleShape
+                                                )
+                                                .clickable { onFretTapped?.invoke(fret, midi) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isActive && showNoteNames) {
+                                                Text(
+                                                    text = NOTE_NAMES[midi % 12],
+                                                    fontSize = 7.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.Black
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom Bone Bridge (Ghoraj / Javari)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(16.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFFFFF8E1))
+                    .border(1.dp, Color(0xFFD7CCC8), RoundedCornerShape(3.dp))
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("CAMEL BONE JAVARI (Ghoraj)", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5D4037))
+                Text("Open Resonant Sympathetic Buzzing", fontSize = 7.5.sp, color = Color(0xFF8D6E63))
             }
         }
     }

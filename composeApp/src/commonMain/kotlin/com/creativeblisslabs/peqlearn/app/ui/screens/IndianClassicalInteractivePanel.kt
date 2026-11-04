@@ -59,10 +59,11 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
 
     Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         
-        TabRow(
+        ScrollableTabRow(
             selectedTabIndex = selectedTab, 
             containerColor = Color.Transparent, 
             contentColor = accentColor,
+            edgePadding = 0.dp,
             indicator = { tabPositions -> 
                 if (selectedTab < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTab]), color = accentColor) 
@@ -90,8 +91,7 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                             text = label, 
                             fontSize = 11.sp, 
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 1
                         ) 
                     }
                 ) 
@@ -279,19 +279,12 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                         )
                     }
                     ChordInstrumentType.SITAR -> {
-                        UnifiedGuitarFretboard(
-                            numFrets = 16,
-                            accentColor = accentColor,
-                            rootNote = 0,
-                            showNoteNames = true,
-                            markOctaves = true,
-                            highlightOctaveC = true,
-                            baseFret = 1,
-                            stringLabels = listOf("Ma", "Sa", "Pa", "Sa", "Pa", "Sa", "Sa"),
-                            openStringsSemis = listOf(5, 0, 7, 0, 7, 0, 0),
-                            activeMidiNote = playingNote,
+                        UnifiedSitarVisualizer(
                             activeNotes = scalePitches,
-                            onFretTapped = { _, _, midiNote ->
+                            activeMidiNote = playingNote,
+                            accentColor = accentColor,
+                            showNoteNames = true,
+                            onFretTapped = { _, midiNote ->
                                 try {
                                     viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
                                     viewModel.onMidiNoteOn(midiNote, 95)
@@ -302,7 +295,7 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                                     }
                                 } catch (_: Exception) {}
                             },
-                            modifier = Modifier.fillMaxWidth().height(148.dp).clip(RoundedCornerShape(8.dp))
+                            modifier = Modifier.fillMaxWidth().height(168.dp).clip(RoundedCornerShape(8.dp))
                         )
                     }
                     ChordInstrumentType.VIOLIN -> {
@@ -393,41 +386,124 @@ fun InfoChip(label: String, icon: androidx.compose.ui.graphics.vector.ImageVecto
 private fun Modifier.fillModifierOrWrap() = this.fillMaxWidth().wrapContentHeight()
 
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun IndianTablaBolsPanel(accentColor: Color) {
     val engine = getAudioEngine()
+    var lastPlayedBol by remember { mutableStateOf<String?>(null) }
+    var selectedCategory by remember { mutableStateOf("All") }
+    val categories = listOf("All", "Bayan (Bass)", "Dayan (Treble)", "Compound")
+
+    val filteredBols = remember(selectedCategory) {
+        when (selectedCategory) {
+            "Bayan (Bass)" -> INDIAN_TABLA_BOLS.filter { (bol, _) -> bol.uppercase() in listOf("GHE", "GE", "KA", "KE", "KAT") }
+            "Dayan (Treble)" -> INDIAN_TABLA_BOLS.filter { (bol, _) -> bol.uppercase() in listOf("NA", "TA", "TIN", "TI", "TE", "TUN", "THUN") }
+            "Compound" -> INDIAN_TABLA_BOLS.filter { (bol, _) -> bol.uppercase() in listOf("DHA", "DHIN", "TIRAKITA", "DHIRDHIR", "KREN") }
+            else -> INDIAN_TABLA_BOLS
+        }
+    }
     
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Tabla Syllables & Finger Articulations", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        INDIAN_TABLA_BOLS.forEach { (bol, desc) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { 
-                        engine.playSample(bol, 0, "TABLA")
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Visual Interactive Tabla drums
+        UnifiedTablaVisualizer(
+            activeBol = lastPlayedBol,
+            accentColor = accentColor,
+            onBolTapped = { bol ->
+                lastPlayedBol = bol
+                engine.playSample(bol, 0, "TABLA")
+            },
+            modifier = Modifier.fillMaxWidth().height(160.dp)
+        )
+
+        // Filter chips row to reduce clutter
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            categories.forEach { cat ->
+                val isSelected = selectedCategory == cat
+                Surface(
+                    onClick = { selectedCategory = cat },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) accentColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    border = BorderStroke(1.dp, if (isSelected) accentColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 10.dp)) {
+                        Text(
+                            text = cat,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.Black else MaterialTheme.colorScheme.onSurface
+                        )
                     }
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = bol,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.width(90.dp)
-                )
-                Text(
-                    text = desc,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                    modifier = Modifier.size(16.dp)
-                )
+                }
+            }
+        }
+
+        // Clean Grid of Tabla Bols Cards
+        Text(
+            text = "Tap to sound bol (${filteredBols.size} Bols):",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            filteredBols.forEach { (bol, desc) ->
+                val isCurrent = lastPlayedBol.equals(bol, ignoreCase = true)
+                pEQGlassCard(
+                    modifier = Modifier
+                        .widthIn(min = 140.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { 
+                            lastPlayedBol = bol
+                            engine.playSample(bol, 0, "TABLA")
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .background(if (isCurrent) accentColor.copy(alpha = 0.18f) else Color.Transparent)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isCurrent) accentColor else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = bol.take(2).uppercase(),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isCurrent) Color.Black else accentColor
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = bol,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCurrent) accentColor else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = desc,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
             }
         }
     }
