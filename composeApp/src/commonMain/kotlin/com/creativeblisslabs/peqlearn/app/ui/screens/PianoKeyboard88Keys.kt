@@ -101,6 +101,9 @@ import com.creativeblisslabs.peqlearn.app.ui.components.pEQOrientation
 import com.creativeblisslabs.peqlearn.app.ui.components.StaffAndTabNotationViewer
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard
+import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedHarmoniumVisualizer
+import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedViolinFingerboard
+import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedFluteVisualizer
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.playMediaItem
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.persistSession
@@ -503,6 +506,26 @@ fun PianoKeyboard88Keys(
                                 .align(Alignment.TopEnd)
                                 .padding(end = 8.dp, top = 6.dp)
                         )
+
+                        // Real-Time Floating Chord Readout Overlay (Ported from midee's ChordOverlay)
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(start = 12.dp, top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            LiveChordHud(
+                                detectedChord = liveDetectedChord,
+                                primaryColor = primaryColor
+                            )
+
+                            // 1-Button Live Looper Floating Control (midee RC-1 Looper)
+                            com.creativeblisslabs.peqlearn.app.ui.components.LiveLooperFloatingControl(
+                                looper = viewModel.liveLooper,
+                                primaryColor = primaryColor
+                            )
+                        }
                     }
                 }
             }
@@ -1278,37 +1301,185 @@ Row(
                                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                                         modifier = Modifier.weight(1f, fill = false)
                                     ) {
-                                        // Blue glowing indicator dot
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF5C6BC0))
-                                        )
-                                            val songTitle = currentScore?.title 
-                                                ?: viewModel.currentMediaItem.value?.title 
-                                                ?: viewModel.selectedMixerItem.value?.displayName 
-                                                ?: "No Score Selected"
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Text(
-                                                    songTitle,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = Color.White,
-                                                    maxLines = 1
-                                                )
-                                                // Animated equalizer icon
-                                                Icon(
-                                                    Icons.Default.GraphicEq,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFF5C6BC0),
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                            }
-                                        }
+                                       var showImportMenu by remember { mutableStateOf(false) }
+
+Row(
+    modifier = Modifier
+        .background(Color(0xFF140E26), RoundedCornerShape(16.dp))
+        .border(BorderStroke(1.dp, Color(0xFF382956)), RoundedCornerShape(16.dp))
+        .padding(horizontal = 10.dp, vertical = 6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(10.dp)
+) {
+    // 1. Open / Import Score Button with Dropdown
+    Box {
+        Button(
+            onClick = { showImportMenu = true },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E204A)),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, Color(0xFF523B7A)),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.height(28.dp)
+        ) {
+            Icon(
+                Icons.Default.FileOpen,
+                contentDescription = "Import Score",
+                tint = Color(0xFFC5CAE9),
+                modifier = Modifier.size(12.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                "Import",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFC5CAE9)
+            )
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                Icons.Default.ArrowDropDown,
+                contentDescription = null,
+                tint = Color(0xFFC5CAE9).copy(alpha = 0.7f),
+                modifier = Modifier.size(14.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = showImportMenu,
+            onDismissRequest = { showImportMenu = false },
+            modifier = Modifier
+                .widthIn(min = 260.dp, max = 320.dp)
+                .background(Color(0xFF140E26))
+                .border(BorderStroke(1.dp, Color(0xFF382956)), RoundedCornerShape(8.dp))
+        ) {
+            // Custom File Picker
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("Import Custom File...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("MIDI (.mid), MusicXML (.xml), PDF Score", fontSize = 10.sp, color = Color.White.copy(0.6f))
+                        }
+                    }
+                },
+                onClick = {
+                    showImportMenu = false
+                    viewModel.onPickScoreFileRequested?.invoke()
+                }
+            )
+
+            HorizontalDivider(color = Color(0xFF281C3F), modifier = Modifier.padding(vertical = 4.dp))
+
+            // Header for Built-in Tutorials
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color(0xFF81D4FA), modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("INBUILT MIDI TUTORIALS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81D4FA))
+            }
+
+            // List each built-in tutorial
+            PracticeLibrary.builtInTutorials.forEach { tutorial ->
+                DropdownMenuItem(
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    tutorial.title, 
+                                    fontSize = 12.sp, 
+                                    fontWeight = FontWeight.SemiBold, 
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("${tutorial.tempo} BPM", fontSize = 10.sp, color = Color(0xFFFFD700))
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(tutorial.composer, fontSize = 10.sp, color = Color(0xFF81D4FA), maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                                Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                Text(tutorial.timeSignature, fontSize = 10.sp, color = Color.White.copy(0.6f))
+                                Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                Text(tutorial.difficulty, fontSize = 10.sp, color = Color(0xFFA5D6A7))
+                            }
+                        }
+                    },
+                    onClick = {
+                        showImportMenu = false
+                        val readBytesFn: (String) -> ByteArray? = { name ->
+                            viewModel.onReadAssetBytes?.invoke(name)
+                        }
+                        val loadedScore = PracticeLibrary.loadTutorialScore(
+                            tutorial = tutorial,
+                            readBytes = readBytesFn,
+                            trainingMode = "FULL"
+                        )
+                        if (loadedScore != null) {
+                            viewModel.currentScore.value = loadedScore
+                            viewModel.resetScorePlayhead()
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    VerticalDivider(
+        modifier = Modifier
+            .height(16.dp)
+            .width(1.dp),
+        color = Color(0xFF382956)
+    )
+
+    // 2. Glowing Indicator Dot & Song Title / Active Media info
+    val songTitle = currentScore?.title 
+        ?: viewModel.currentMediaItem.value?.title 
+        ?: viewModel.selectedMixerItem.value?.displayName 
+        ?: "No Score Selected"
+
+    Row(
+        modifier = Modifier.weight(1f, fill = false),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF5C6BC0))
+        )
+        Text(
+            songTitle,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            maxLines = 1,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        Icon(
+            Icons.Default.GraphicEq,
+            contentDescription = null,
+            tint = Color(0xFF5C6BC0),
+            modifier = Modifier.size(14.dp)
+        )
+    }
+}
+}
                                     
 
                                     // Right: Clean Non-redundant Action Icons
@@ -1316,116 +1487,7 @@ Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        // Open / Import Score Button with Dropdown
-                                        var showImportMenu by remember { mutableStateOf(false) }
-                                        Box {
-                                            Button(
-                                                onClick = { showImportMenu = true },
-                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E204A)),
-                                                shape = RoundedCornerShape(16.dp),
-                                                border = BorderStroke(1.dp, Color(0xFF523B7A)),
-                                                contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
-                                                modifier = Modifier.height(30.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.FileOpen,
-                                                    contentDescription = "Import Score",
-                                                    tint = Color(0xFFC5CAE9),
-                                                    modifier = Modifier.size(13.dp)
-                                                )
-                                                Spacer(Modifier.width(4.dp))
-                                                Text(
-                                                    "Import",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = Color(0xFFC5CAE9)
-                                                )
-                                                Icon(
-                                                    Icons.Default.ArrowDropDown,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFFC5CAE9).copy(alpha = 0.7f),
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-
-                                            DropdownMenu(
-                                                expanded = showImportMenu,
-                                                onDismissRequest = { showImportMenu = false },
-                                                modifier = Modifier
-                                                    .background(Color(0xFF140E26))
-                                                    .border(BorderStroke(1.dp, Color(0xFF382956)), RoundedCornerShape(8.dp))
-                                            ) {
-                                                // 1. Custom File Picker
-                                                DropdownMenuItem(
-                                                    text = {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
-                                                            Spacer(Modifier.width(8.dp))
-                                                            Column {
-                                                                Text("Import Custom File...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                                                Text("MIDI (.mid), MusicXML (.xml), PDF Score", fontSize = 10.sp, color = Color.White.copy(0.6f))
-                                                            }
-                                                        }
-                                                    },
-                                                    onClick = {
-                                                        showImportMenu = false
-                                                        viewModel.onPickScoreFileRequested?.invoke()
-                                                    }
-                                                )
-
-                                                HorizontalDivider(color = Color(0xFF281C3F), modifier = Modifier.padding(vertical = 4.dp))
-
-                                                // 2. Header for Built-in Tutorials
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color(0xFF81D4FA), modifier = Modifier.size(13.dp))
-                                                    Spacer(Modifier.width(6.dp))
-                                                    Text("INBUILT MIDI TUTORIALS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81D4FA))
-                                                }
-
-                                                // List each built-in tutorial
-                                                PracticeLibrary.builtInTutorials.forEach { tutorial ->
-                                                    DropdownMenuItem(
-                                                        text = {
-                                                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                                                                Row(
-                                                                    modifier = Modifier.fillMaxWidth(),
-                                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                                    verticalAlignment = Alignment.CenterVertically
-                                                                ) {
-                                                                    Text(tutorial.title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                                                    Text("${tutorial.tempo} BPM", fontSize = 10.sp, color = Color(0xFFFFD700))
-                                                                }
-                                                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                                    Text(tutorial.composer, fontSize = 10.sp, color = Color(0xFF81D4FA))
-                                                                    Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
-                                                                    Text(tutorial.timeSignature, fontSize = 10.sp, color = Color.White.copy(0.6f))
-                                                                    Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
-                                                                    Text(tutorial.difficulty, fontSize = 10.sp, color = Color(0xFFA5D6A7))
-                                                                }
-                                                            }
-                                                        },
-                                                        onClick = {
-                                                            showImportMenu = false
-                                                            val readBytesFn: (String) -> ByteArray? = { name ->
-                                                                viewModel.onReadAssetBytes?.invoke(name)
-                                                            }
-                                                            val loadedScore = PracticeLibrary.loadTutorialScore(
-                                                                tutorial = tutorial,
-                                                                readBytes = readBytesFn,
-                                                                trainingMode = "FULL"
-                                                            )
-                                                            if (loadedScore != null) {
-                                                                viewModel.currentScore.value = loadedScore
-                                                                viewModel.resetScorePlayhead()
-                                                            }
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
+                                      
 
                     
 // Helper to cleanly update visualizer layout and notation format
@@ -1712,15 +1774,15 @@ Box {
                                                     )
                                                 }
 
-                                                listOf("Piano", "Violin", "Guitar", "Bass", "Flute", "Saxophone").forEach { inst ->
+                                                listOf("Piano", "Harmonium", "Guitar", "7-String Guitar", "Ukulele", "Violin", "Flute", "Bass", "Saxophone").forEach { inst ->
                                                     DropdownMenuItem(
                                                         text = { Text(inst, fontSize = 12.sp) },
                                                         onClick = {
                                                             viewModel.selectedInstrument.value = inst
-                                                            if (inst == "Guitar") {
+                                                            if (inst.contains("Guitar") || inst == "Ukulele") {
                                                                 viewModel.notationFormat.value = "Tab Only"
                                                                 notationFormat = "Tab Only"
-                                                            } else if (inst == "Piano") {
+                                                            } else if (inst == "Piano" || inst == "Harmonium") {
                                                                 viewModel.notationFormat.value = "Staff Only"
                                                                 notationFormat = "Staff Only"
                                                             }
@@ -1956,8 +2018,9 @@ Button(
                                                 )
                                             }
 
-                                            // Bottom Instrument Visualizer: UnifiedPianoKeyboard or UnifiedGuitarFretboard
-                                            val isGuitarFamily = viewModel.selectedInstrument.value == "Guitar" || viewModel.selectedInstrument.value == "Ukulele"
+                                            // Bottom Instrument Visualizer: UnifiedPianoKeyboard, UnifiedGuitarFretboard, Harmonium, Violin, Flute
+                                            val currentInst = viewModel.selectedInstrument.value
+                                            val isGuitarFamily = currentInst.contains("Guitar") || currentInst == "Ukulele"
                                             val keyboardModifier = Modifier
                                                 .fillMaxWidth()
                                                 .height(viewModel.keyboardHeightFactor.floatValue.dp)
@@ -1965,21 +2028,70 @@ Button(
 
                                             Box(modifier = keyboardModifier) {
                                                 if (isGuitarFamily) {
-                                                    val isUkulele = viewModel.selectedInstrument.value == "Ukulele"
+                                                    val isUkulele = currentInst == "Ukulele"
+                                                    val isSevenString = currentInst == "7-String Guitar"
                                                     val activeList = remember(viewModel.midiActiveNotes.keys) {
                                                         viewModel.midiActiveNotes.keys.toList()
                                                     }
                                                     UnifiedGuitarFretboard(
-                                                        numFrets = if (isUkulele) 15 else 22,
+                                                        numFrets = if (isUkulele) 15 else 24,
                                                         activeNotes = activeList,
                                                         activeMidiNote = viewModel.midiPlayingNote.value,
                                                         isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                                         isRightHandHidden = viewModel.isRightHandHidden.value,
                                                         accentColor = primaryColor,
                                                         showNoteNames = fsShowLetters,
-                                                        stringLabels = if (isUkulele) listOf("A", "E", "C", "G") else listOf("e", "B", "G", "D", "A", "E"),
-                                                        openStringsSemis = if (isUkulele) listOf(9, 4, 0, 7) else listOf(4, 11, 7, 2, 9, 4),
+                                                        stringLabels = when {
+                                                            isUkulele -> listOf("A", "E", "C", "G")
+                                                            isSevenString -> listOf("e", "B", "G", "D", "A", "E", "B")
+                                                            else -> listOf("e", "B", "G", "D", "A", "E")
+                                                        },
+                                                        openStringsSemis = when {
+                                                            isUkulele -> listOf(9, 4, 0, 7)
+                                                            isSevenString -> listOf(4, 11, 7, 2, 9, 4, 11)
+                                                            else -> listOf(4, 11, 7, 2, 9, 4)
+                                                        },
                                                         onFretTapped = { _, _, midi ->
+                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                            viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else if (currentInst == "Harmonium") {
+                                                    UnifiedHarmoniumVisualizer(
+                                                        activeMidiNotes = viewModel.midiActiveNotes,
+                                                        accentColor = Color(0xFFFFB300),
+                                                        activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        onKeyTapped = { midi ->
+                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                            viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else if (currentInst == "Violin") {
+                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                        viewModel.midiActiveNotes.keys.toList()
+                                                    }
+                                                    UnifiedViolinFingerboard(
+                                                        activeNotes = activeList,
+                                                        activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        accentColor = Color(0xFFE040FB),
+                                                        showNoteNames = fsShowLetters,
+                                                        onPositionTapped = { _, midi ->
+                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                            viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else if (currentInst == "Flute") {
+                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                        viewModel.midiActiveNotes.keys.toList()
+                                                    }
+                                                    UnifiedFluteVisualizer(
+                                                        activeNotes = activeList,
+                                                        activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        accentColor = Color(0xFF00E5FF),
+                                                        onToneHoleTapped = { _, midi ->
                                                             if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
                                                             viewModel.onMidiNoteOn(midi, 95)
                                                         },
@@ -2135,7 +2247,8 @@ Button(
 
                                         // Bottom Instrument Visualizer for Keyboard / Waterfall+Keyboard modes
                                         if (fsLayoutMode != "Notation" && fsLayoutMode != "Waterfall") {
-                                            val isGuitarFamily = viewModel.selectedInstrument.value == "Guitar" || viewModel.selectedInstrument.value == "Ukulele"
+                                            val currentInst = viewModel.selectedInstrument.value
+                                            val isGuitarFamily = currentInst.contains("Guitar") || currentInst == "Ukulele"
                                             val keyboardModifier = if (fsLayoutMode == "Keyboard") {
                                                 Modifier
                                                     .fillMaxWidth()
@@ -2150,21 +2263,70 @@ Button(
 
                                             Box(modifier = keyboardModifier) {
                                                 if (isGuitarFamily) {
-                                                    val isUkulele = viewModel.selectedInstrument.value == "Ukulele"
+                                                    val isUkulele = currentInst == "Ukulele"
+                                                    val isSevenString = currentInst == "7-String Guitar"
                                                     val activeList = remember(viewModel.midiActiveNotes.keys) {
                                                         viewModel.midiActiveNotes.keys.toList()
                                                     }
                                                     UnifiedGuitarFretboard(
-                                                        numFrets = if (isUkulele) 15 else 22,
+                                                        numFrets = if (isUkulele) 15 else 24,
                                                         activeNotes = activeList,
                                                         activeMidiNote = viewModel.midiPlayingNote.value,
                                                         isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                                         isRightHandHidden = viewModel.isRightHandHidden.value,
                                                         accentColor = primaryColor,
                                                         showNoteNames = fsShowLetters,
-                                                        stringLabels = if (isUkulele) listOf("A", "E", "C", "G") else listOf("e", "B", "G", "D", "A", "E"),
-                                                        openStringsSemis = if (isUkulele) listOf(9, 4, 0, 7) else listOf(4, 11, 7, 2, 9, 4),
+                                                        stringLabels = when {
+                                                            isUkulele -> listOf("A", "E", "C", "G")
+                                                            isSevenString -> listOf("e", "B", "G", "D", "A", "E", "B")
+                                                            else -> listOf("e", "B", "G", "D", "A", "E")
+                                                        },
+                                                        openStringsSemis = when {
+                                                            isUkulele -> listOf(9, 4, 0, 7)
+                                                            isSevenString -> listOf(4, 11, 7, 2, 9, 4, 11)
+                                                            else -> listOf(4, 11, 7, 2, 9, 4)
+                                                        },
                                                         onFretTapped = { _, _, midi ->
+                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                            viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else if (currentInst == "Harmonium") {
+                                                    UnifiedHarmoniumVisualizer(
+                                                        activeMidiNotes = viewModel.midiActiveNotes,
+                                                        accentColor = Color(0xFFFFB300),
+                                                        activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        onKeyTapped = { midi ->
+                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                            viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else if (currentInst == "Violin") {
+                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                        viewModel.midiActiveNotes.keys.toList()
+                                                    }
+                                                    UnifiedViolinFingerboard(
+                                                        activeNotes = activeList,
+                                                        activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        accentColor = Color(0xFFE040FB),
+                                                        showNoteNames = fsShowLetters,
+                                                        onPositionTapped = { _, midi ->
+                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                            viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else if (currentInst == "Flute") {
+                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                        viewModel.midiActiveNotes.keys.toList()
+                                                    }
+                                                    UnifiedFluteVisualizer(
+                                                        activeNotes = activeList,
+                                                        activeMidiNote = viewModel.midiPlayingNote.value,
+                                                        accentColor = Color(0xFF00E5FF),
+                                                        onToneHoleTapped = { _, midi ->
                                                             if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
                                                             viewModel.onMidiNoteOn(midi, 95)
                                                         },
@@ -2712,55 +2874,60 @@ Button(
         }
 }
 
-// @Composable
-// fun LiveChordHud(
-//     detectedChord: com.creativeblisslabs.peqlearn.app.util.LiveChordDetector.DetectedChord?,
-//     primaryColor: Color,
-// ) {
-//     Row(
-//         modifier = modifier
-//             .fillMaxWidth()
-//             .padding(horizontal = 2.dp, vertical = 2.dp),
-//         verticalAlignment = Alignment.CenterVertically,
-//         horizontalArrangement = Arrangement.SpaceBetween
-//     ) {
-//         if (detectedChord != null) {
-//             Surface(
-//                 shape = RoundedCornerShape(8.dp),
-//                 color = Color(0xFF14171E).copy(alpha = 0.95f),
-//                 border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.4f)),
-//                 shadowElevation = 4.dp
-//             ) {
-//                 Row(
-//                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-//                     verticalAlignment = Alignment.CenterVertically,
-//                     horizontalArrangement = Arrangement.spacedBy(6.dp)
-//                 ) {
-//                     Box(
-//                         modifier = Modifier
-//                             .size(8.dp)
-//                             .clip(RoundedCornerShape(4.dp))
-//                             .background(Color(0xFF00E676))
-//                     )
-//                     Text(
-//                         text = detectedChord.fullName,
-//                         fontSize = 13.sp,
-//                         fontWeight = FontWeight.ExtraBold,
-//                         color = Color(0xFFFFD700)
-//                     )
-//                     // Optional inversion text can be re-enabled here if needed:
-//                     // Text(
-//                     //     text = "• ${detectedChord.inversionText}",
-//                     //     fontSize = 11.sp,
-//                     //     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-//                     // )
-//                 }
-//             }
-//         } else {
-//             Spacer(Modifier.width(1.dp))
-//         }
-//     }
-// }
+@Composable
+fun LiveChordHud(
+    detectedChord: com.creativeblisslabs.peqlearn.app.util.LiveChordDetector.DetectedChord?,
+    primaryColor: Color = Color(0xFF00E676),
+    modifier: Modifier = Modifier
+) {
+    if (detectedChord != null && detectedChord.chordQuality != "Note") {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF14171E).copy(alpha = 0.90f),
+            border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.4f)),
+            shadowElevation = 6.dp,
+            modifier = modifier
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF00E676))
+                )
+                Text(
+                    text = detectedChord.rootName,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+                Text(
+                    text = detectedChord.chordQuality,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFFD700)
+                )
+                if (detectedChord.isSlashChord) {
+                    Text(
+                        text = "/${detectedChord.bassNoteName}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF80D8FF)
+                    )
+                }
+                Text(
+                    text = "• ${detectedChord.inversionText}",
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.6f)
+                )
+            }
+        }
+    }
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaybackSettingsSheet(
@@ -3097,7 +3264,7 @@ fun PlaybackSettingsSheet(
                         }
 
                         Text("Target Notation Instrument", color = MaterialTheme.colorScheme.onSurface.copy(0.8f), fontSize = 13.sp)
-                        val instruments = listOf("Piano", "Guitar", "Bass", "Drum kit", "Ukulele")
+                        val instruments = listOf("Piano", "Harmonium", "Guitar", "7-String Guitar", "Violin", "Flute", "Bass", "Drum kit", "Ukulele")
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -3113,10 +3280,10 @@ fun PlaybackSettingsSheet(
                                         .clickable {
                                             viewModel.selectedInstrument.value = inst
                                             // Piano88 Screen Rule: Guitar shows Tab, Piano shows Staff notation
-                                            if (inst == "Guitar" || inst == "Ukulele") {
+                                            if (inst.contains("Guitar") || inst == "Ukulele") {
                                                 viewModel.notationFormat.value = "Tab Only"
                                                 onFormatChange("Tab Only")
-                                            } else if (inst == "Piano") {
+                                            } else if (inst == "Piano" || inst == "Harmonium") {
                                                 viewModel.notationFormat.value = "Staff Only"
                                                 onFormatChange("Staff Only")
                                             }

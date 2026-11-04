@@ -115,7 +115,15 @@ fun AppViewModel.downloadModelFromUrl(url: String, targetFileName: String) {
                 stemSplitProgress.value = 0.85f
                 stemSplitStatusMessage.value = "Saving $targetFileName..."
             }
-            // Handled or saved into models dir
+            // Save into models dir if available
+            val modelsDir = onGetModelsDir?.invoke()
+            if (modelsDir != null) {
+                val destFile = java.io.File(modelsDir, targetFileName)
+                destFile.parentFile?.mkdirs()
+                destFile.writeBytes(bytes)
+                customOnnxModelPath.value = destFile.absolutePath
+                customOnnxModelName.value = targetFileName
+            }
             withContext(Dispatchers.Main) {
                 stemSeparationModel.value = "Downloaded: $targetFileName"
                 stemSplitProgress.value = 1f

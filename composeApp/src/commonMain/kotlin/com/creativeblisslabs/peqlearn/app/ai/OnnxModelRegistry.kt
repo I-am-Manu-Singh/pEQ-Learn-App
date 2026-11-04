@@ -57,8 +57,8 @@ object OnnxModelRegistry {
         id = "spleeter_vocals",
         name = "Spleeter Vocals Extractor",
         fileName = "spleeter_vocals.onnx",
-        downloadUrl = "https://github.com/deezer/spleeter/releases/download/v1.4.0/2stems.tar.gz",
-        sizeBytes = 19_681_017L,
+        downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems/resolve/main/vocals.onnx",
+        sizeBytes = 39_330_000L,
         description = "Deep convolutional model isolating vocal tracks with high fidelity.",
         purpose = "Stem Separation (Vocals)"
     )
@@ -67,8 +67,8 @@ object OnnxModelRegistry {
         id = "spleeter_accompaniment",
         name = "Spleeter Accompaniment Engine",
         fileName = "spleeter_accompaniment.onnx",
-        downloadUrl = "https://github.com/deezer/spleeter/releases/download/v1.4.0/2stems.tar.gz",
-        sizeBytes = 19_681_024L,
+        downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems/resolve/main/accompaniment.onnx",
+        sizeBytes = 39_330_000L,
         description = "Complementary model isolating accompaniment, backing instruments, and chords.",
         purpose = "Stem Separation (Backing Instruments)"
     )
@@ -77,8 +77,8 @@ object OnnxModelRegistry {
         id = "htdemucs_quantized_6s",
         name = "HTDemucs quantized_6s",
         fileName = "htdemucs_quantized_6s.onnx",
-        downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/blob/main/htdemucs_6s.onnx",
-        sizeBytes = 82_450_000L,
+        downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s.onnx",
+        sizeBytes = 258_000_000L,
         description = "State-of-the-art hybrid transformer separating Drums, Bass, Vocals, and Other stems.",
         purpose = "Stem Separation (4-Stem Studio Pro)"
     )
@@ -86,8 +86,8 @@ object OnnxModelRegistry {
         id = "htdemucs_quantized_fp16",
         name = "HTDemucs fp16_6s",
         fileName = "htdemucs_quantized_fp16.onnx",
-        downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/blob/main/htdemucs_6s_fp16weights.onnx",
-     sizeBytes = 82_450_000L,
+        downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx",
+     sizeBytes = 136_000_000L,
         description = "State-of-the-art hybrid transformer separating Drums, Bass, Vocals, and Other stems.",
         purpose = "Stem Separation (4-Stem Studio Pro)"
     )

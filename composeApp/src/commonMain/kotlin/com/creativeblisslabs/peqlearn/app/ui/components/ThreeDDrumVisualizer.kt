@@ -88,19 +88,20 @@ fun ThreeDDrumVisualizer(
             Drum3DPart("SNARE", "MAIN SNARE", -56f, 7f, -14f, 14f, 9f, 0, steelMetalLight, 40f),
             Drum3DPart("SNARE2", "SIDE SNARE", -86f, 9f, 14f, 11.5f, 8f, 0, mahoganyWoodDark, 40f),
             Drum3DPart("FLOOR", "FLOOR TOM", 64f, 13f, -12f, 17f, 17f, 0, mahoganyWoodDark, 40f),
-            // TIER 3: Upper Mounted Rack Toms (Mounted on Bass Drum / Hardware Rack)
-            Drum3DPart("TOM1", "TOM 1", -26f, -10f, 16f, 10.5f, 10f, 0, mahoganyWoodDark, 18f),
-            Drum3DPart("TOM2", "TOM 2", 0f, -11f, 22f, 11.5f, 10.5f, 0, mahoganyWoodDark, 18f),
-            Drum3DPart("TOM", "TOM 3", 26f, -10f, 16f, 12.5f, 11f, 0, mahoganyWoodDark, 18f),
+            // TIER 3: Upper Mounted Rack Toms & Floor Tom (Separated distinct labels)
+            Drum3DPart("TOM_HI", "HIGH TOM", -26f, -10f, 16f, 10.5f, 10f, 0, mahoganyWoodDark, 18f),
+            Drum3DPart("TOM_MID", "MID TOM", 0f, -11f, 22f, 11.5f, 10.5f, 0, mahoganyWoodDark, 18f),
+            Drum3DPart("TOM_LO", "LOW TOM", 26f, -10f, 16f, 12.5f, 11f, 0, mahoganyWoodDark, 18f),
             // TIER 4: High Elevated Cymbals (HH is stacked: bottom at Y=-5, top moving)
-            Drum3DPart("HH", "HI-HAT", -74f, -5f, -22f, 12.5f, 2f, 1, cymbalGoldMid, 40f),
+            Drum3DPart("HH_CLOSED", "CLOSED HI-HAT", -74f, -5f, -22f, 12.5f, 2f, 1, cymbalGoldMid, 40f),
+            Drum3DPart("HH_OPEN", "OPEN HI-HAT", -74f, -8f, -22f, 12.5f, 2f, 1, cymbalGoldMid, 40f),
             Drum3DPart("CRASH", "CRASH 1", -64f, -24f, 30f, 15f, 1.5f, 1, cymbalGoldMid, 40f),
             Drum3DPart("CRASH2", "CRASH 2", 8f, -26f, 34f, 14.5f, 1.5f, 1, cymbalGoldMid, 40f),
             Drum3DPart("RIDE", "RIDE CYMBAL", 74f, -18f, 28f, 19.5f, 1.5f, 1, cymbalGoldMid, 40f),
-            // TIER 5: Auxiliary Nodes
+            // TIER 5: Auxiliary Nodes (Reduced thickness on 2nd right end pad)
             Drum3DPart("CLAP", "CLAP BLOCK", -42f, 4f, -34f, 6f, 4.5f, 0, Color(0xFFE67E22), 40f),
-            Drum3DPart("PERC", "COWBELL", 32f, 0f, -32f, 5.5f, 7.5f, 0, Color(0xFF7F8C8D), 40f),
-            Drum3DPart("SHAKER", "SHAKER CHNL", 78f, 5f, -30f, 4f, 11f, 0, Color(0xFF34495E), 40f)
+            Drum3DPart("PERC", "COWBELL", 32f, 0f, -32f, 5.5f, 5.0f, 0, Color(0xFF7F8C8D), 40f), // Reduced height from 7.5 to 5.0
+            Drum3DPart("SHAKER", "SHAKER CHNL", 78f, 5f, -30f, 4f, 6.0f, 0, Color(0xFF34495E), 40f) // Reduced height from 11.0 to 6.0
         )
     }
 
@@ -434,17 +435,27 @@ fun ThreeDDrumVisualizer(
                         val isDirectActive = viewModel.sequencerTriggeredPads[part.label] == true
                         val isGeneralActive = viewModel.sequencerTriggeredPads.any { (k, v) ->
                             if (!v) return@any false
-                            val cleanKey = k.uppercase()
+                            val cleanKey = k.uppercase().substringAfter("-")
                             val cleanPart = part.label.uppercase()
 
                             when {
-                                cleanKey.contains(cleanPart) -> true
-                                cleanPart == "HH" && (cleanKey.contains("HIHAT") || cleanKey.contains("HAT")) -> true
-                                cleanPart == "CRASH" && cleanKey.contains("CRASH") -> true
+                                cleanKey == cleanPart -> true
+                                cleanPart == "HH_CLOSED" && (cleanKey == "HH" || cleanKey.contains("CLOSED") || cleanKey.contains("CHAT")) -> true
+                                cleanPart == "HH_OPEN" && (cleanKey == "OHAT" || cleanKey.contains("OPEN") || cleanKey.contains("OH")) -> true
+                                cleanPart == "CRASH" && cleanKey == "CRASH" -> true
+                                cleanPart == "CRASH2" && cleanKey == "CRASH2" -> true
                                 cleanPart == "RIDE" && cleanKey.contains("RIDE") -> true
-                                cleanPart == "FLOOR" && (cleanKey.contains("LO") || cleanKey.contains("FLOOR")) -> true
-                                cleanPart.startsWith("TOM") && cleanKey.contains("TOM") -> true
-                                cleanPart.contains("KICK") && cleanKey.contains("KICK") -> true
+                                cleanPart == "FLOOR" && (cleanKey.contains("FLOOR") || cleanKey == "TOM_LO") -> true
+                                cleanPart == "TOM_HI" && (cleanKey == "TOM_HI" || cleanKey == "TOM1") -> true
+                                cleanPart == "TOM_MID" && (cleanKey == "TOM_MID" || cleanKey == "TOM2") -> true
+                                cleanPart == "TOM_LO" && (cleanKey == "TOM_LO" || cleanKey == "TOM3") -> true
+                                cleanPart == "KICK" && (cleanKey == "KICK" || cleanKey.contains("BASS")) -> true
+                                cleanPart == "KICK2" && cleanKey == "KICK2" -> true
+                                cleanPart == "SNARE" && cleanKey == "SNARE" -> true
+                                cleanPart == "SNARE2" && cleanKey == "SNARE2" -> true
+                                cleanPart == "CLAP" && cleanKey.contains("CLAP") -> true
+                                cleanPart == "PERC" && (cleanKey.contains("PERC") || cleanKey.contains("COWBELL")) -> true
+                                cleanPart == "SHAKER" && cleanKey.contains("SHAKER") -> true
                                 else -> false
                             }
                         }
@@ -518,10 +529,13 @@ fun ThreeDDrumVisualizer(
                             // Chrome tension rods & die-cast claws
                             drawPath(headPath, brush = chromeHardwareBrush, style = Stroke(width = 2.5f))
 
-                            // Bass Drum Sound Hole / Mic Port (Off-center)
-                            val portCenter = Offset(frontCenter.x + baseRad * 0.4f, frontCenter.y + ovalHeight * 0.25f)
-                            drawCircle(Color(0xFF1A1A1A), radius = baseRad * 0.24f, center = portCenter)
-                            drawCircle(chromeHardwareBrush, radius = baseRad * 0.24f, center = portCenter, style = Stroke(1.8f))
+                            // Bass Drum Sound Hole / Mic Port (Off-center at bottom right)
+                            val portCenter = Offset(frontCenter.x + baseRad * 0.48f, frontCenter.y + ovalHeight * 0.35f)
+                            drawCircle(Color(0xFF141414), radius = baseRad * 0.16f, center = portCenter)
+                            drawCircle(chromeHardwareBrush, radius = baseRad * 0.16f, center = portCenter, style = Stroke(1.4f))
+
+                            // Studio Logo Stamp in Top Center
+                            drawCircle(Color(0xFF888888).copy(alpha = 0.4f), radius = baseRad * 0.08f, center = Offset(frontCenter.x, frontCenter.y - ovalHeight * 0.45f))
 
                             // Heavy-Duty Chrome Telescopic Bass Drum Spurs
                             val spurLeftMount = project3D(part.x - part.radius * 0.9f, part.y + part.radius * 0.6f, part.z - part.height / 4f)
@@ -536,17 +550,29 @@ fun ThreeDDrumVisualizer(
 
                         } else if (part.type == 0) {
                             // ─── CYLINDRICAL DRUM SHELLS (SNARES / TOMS WITH LUGS & DIE-CAST HOOPS) ───
-                            val shellSteps = 20
+                            val shellSteps = 32
+                            // Solid body underlay between top and bottom to ensure body is fully filled without gaps
+                            val bodyFillPath = Path().apply {
+                                moveTo(topCenter.x - baseRad, topCenter.y)
+                                lineTo(topCenter.x + baseRad, topCenter.y)
+                                lineTo(bottomCenter.x + baseRad, bottomCenter.y)
+                                lineTo(bottomCenter.x - baseRad, bottomCenter.y)
+                                close()
+                            }
+                            val shellBaseBrush = Brush.verticalGradient(
+                                colors = if (part.label.contains("SNARE")) listOf(steelMetalLight, steelMetalDark) else listOf(mahoganyWoodLight, mahoganyWoodDark)
+                            )
+                            drawPath(bodyFillPath, brush = shellBaseBrush)
                             drawOval(
-                                color = Color.Black.copy(alpha = 0.28f),
+                                brush = shellBaseBrush,
                                 topLeft = Offset(bottomCenter.x - baseRad, bottomCenter.y - ovalHeight),
                                 size = Size(baseRad * 2f, ovalHeight * 2f)
                             )
                             for (i in 0 until shellSteps) {
                                 val ratio = i / shellSteps.toFloat()
                                 val nextRatio = (i + 1) / shellSteps.toFloat()
-                                val angleCurrent = ratio * PI.toFloat() - (PI.toFloat() / 2f)
-                                val angleNext = nextRatio * PI.toFloat() - (PI.toFloat() / 2f)
+                                val angleCurrent = ratio * 2 * PI.toFloat() - (PI.toFloat() / 2f)
+                                val angleNext = nextRatio * 2 * PI.toFloat() - (PI.toFloat() / 2f)
                                 val tLeft = Offset(topCenter.x + sin(angleCurrent) * baseRad, topCenter.y + cos(angleCurrent) * ovalHeight)
                                 val tRight = Offset(topCenter.x + sin(angleNext) * baseRad, topCenter.y + cos(angleNext) * ovalHeight)
                                 val bLeft = Offset(bottomCenter.x + sin(angleCurrent) * baseRad, bottomCenter.y + cos(angleCurrent) * ovalHeight)
@@ -566,7 +592,7 @@ fun ThreeDDrumVisualizer(
                                 drawPath(path, brush = Brush.linearGradient(colors = listOf(slatColor, Color.Black.copy(0.7f))))
 
                                 // Chrome tension lugs along shell
-                                if (i % 3 == 0) {
+                                if (i % 4 == 0) {
                                     val midLugTop = Offset((tLeft.x + tRight.x) / 2f, (tLeft.y + tRight.y) / 2f + 2f)
                                     val midLugBottom = Offset((bLeft.x + bRight.x) / 2f, (bLeft.y + bRight.y) / 2f - 2f)
                                     drawLine(chromeHardwareBrush, midLugTop, midLugBottom, strokeWidth = 2.4f)
@@ -589,19 +615,26 @@ fun ThreeDDrumVisualizer(
 
                         } else {
                             // ─── HIGH-END LATHED CYMBALS (WITH DUAL STACKED HI-HAT DYNAMICS) ───
-                            val isHiHat = part.label == "HH"
+                            val isHiHat = part.label.startsWith("HH")
+                            val isHhClosed = part.label == "HH_CLOSED"
+                            val isHhOpen = part.label == "HH_OPEN"
 
                             if (isHiHat) {
                                 // ═══════════════════════════════════════════════════════════
-                                // DUAL STACKED HI-HAT CYMBALS (TOP & BOTTOM PAIR)
+                                // DUAL STACKED HI-HAT CYMBALS (TOP & BOTTOM PAIR WITH VISIBLE AIR GAP)
                                 // ═══════════════════════════════════════════════════════════
-                                // Bottom Cymbal (Fixed at base mount)
-                                val bottomY = part.y
+                                // Bottom Cymbal (Fixed at lower mount)
+                                val bottomY = part.y + 1.8f
                                 val bottomCenterHh = project3D(part.x, bottomY, part.z)
                                 val bottomOvalH = baseRad * perspectiveAspect
 
+                                val isBottomActive = isDirectActive && isHhClosed
                                 val bottomCymbalBrush = Brush.radialGradient(
-                                    colors = listOf(cymbalGoldDarkShadow, cymbalGoldEdge, Color(0xFF4E3606)),
+                                    colors = listOf(
+                                        if (isBottomActive) Color.White.copy(0.9f) else cymbalGoldDarkShadow,
+                                        cymbalGoldEdge,
+                                        Color(0xFF4E3606)
+                                    ),
                                     center = bottomCenterHh,
                                     radius = baseRad * 1.1f
                                 )
@@ -611,15 +644,16 @@ fun ThreeDDrumVisualizer(
                                     size = Size(baseRad * 2f, bottomOvalH * 2f)
                                 )
 
-                                // Top Cymbal (Moves up when Open / down tightly clamped when closed/struck)
-                                val topGapY = if (isHhActive) -0.5f else -2.6f
+                                // Top Cymbal (Floats with clear distinct gap: wider when open, clamped when closed)
+                                val topGapY = if (isHhOpen || (!isHhClosed && isHhActive)) -4.5f else -2.2f
                                 val topY = bottomY + topGapY
                                 val topCenterHh = project3D(part.x, topY, part.z)
                                 val topOvalH = baseRad * perspectiveAspect
 
+                                val isTopActive = isActive && (isHhOpen || !isHhClosed)
                                 val topHhBrush = Brush.radialGradient(
                                     colors = listOf(
-                                        if (isActive) Color.White else cymbalSpecularHighlight,
+                                        if (isTopActive) Color.White else cymbalSpecularHighlight,
                                         cymbalGoldCore,
                                         cymbalGoldMid,
                                         cymbalGoldDarkShadow

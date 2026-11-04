@@ -931,12 +931,13 @@ val client = createHttpClient()
         if (fromEngine.isNotEmpty()) return fromEngine
         return when (category.lowercase()) {
             "piano" -> listOf("198_Yamaha_SY1_piano.sf2", "Grand_Piano.sf2", "SC55_Piano_V2.sf2")
-            "guitar" -> listOf("Custom Classical Guitar.sf2", "guitar_samples_clean.sf2")
-            "drums" -> listOf("Metal_Drums.sf2", "drums_ken_ardency.sf2")
+            "guitar" -> emptyList()
+            "drums" -> listOf("Metal_Drums.sf2")
             "metronome" -> listOf("Metronom.sf2")
             "tanpura" -> listOf("Tanpura_drone.sf2")
-            "tabla" -> listOf("Indian_Ensemble.sf2", "tabla.sf2")
-            else -> listOf("default.sf2")
+            "tabla" -> listOf("tabla.sf2")
+            "harmonium" -> listOf("Wetthasinghe_Harmnium_GM_Ver.sf2")
+            else -> emptyList()
         }
     }
 
@@ -1366,6 +1367,10 @@ fun scrubSongPlayhead(targetProgress: Float) {
     val midiConnectionPrompt = mutableStateOf<MidiPromptMessage?>(null)
 
     private val notesToReleaseOnSustainUp = mutableSetOf<Int>()
+    val liveLooper = com.creativeblisslabs.peqlearn.app.midi.LiveLooper(
+        onPlaybackNoteOn = { pitch, vel -> audioEngine.noteOn(pitch, vel) },
+        onPlaybackNoteOff = { pitch -> audioEngine.noteOff(pitch) }
+    )
     val virtualMidiConnected = mutableStateOf(false)
     val midiConnectedDevices = androidx.compose.runtime.mutableStateListOf<String>()
     val midiActiveNotes = mutableStateMapOf<Int, Boolean>()
@@ -1959,7 +1964,6 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
                 }.mp4"
                 isVideoExporting.value = false
                 videoExportProgress.value = 1.0f
-
                 val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
                 if (idx != -1) {
                     videoExportHistory[idx] = videoExportHistory[idx].copy(
@@ -2055,6 +2059,7 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
         midiPlayingNote.value = note
         audioEngine.noteOn(note, velocity.toFloat() / 127f)
         notesToReleaseOnSustainUp.remove(note)
+        liveLooper.onLiveNote(note, velocity.toFloat() / 127f, true, Clock.System.now().toEpochMilliseconds())
         
         // FOLLOW MODE: Sync notation playhead to incoming MIDI notes (only when score playback is paused/interactive follow mode)
         if (!isScorePlaying.value) {
@@ -2076,6 +2081,7 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
     }
 
     fun onMidiNoteOff(note: Int) {
+        liveLooper.onLiveNote(note, 0f, false, Clock.System.now().toEpochMilliseconds())
         if (sustainActive.value) {
             notesToReleaseOnSustainUp.add(note)
         } else {

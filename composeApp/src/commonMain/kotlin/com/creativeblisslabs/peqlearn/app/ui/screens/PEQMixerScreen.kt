@@ -904,19 +904,19 @@ fun pEQMixerScreen(
 
                     val communityModels = listOf(
                         Triple(
-                            "Demucs v4 (htdemucs_quantized.onnx)",
-                            "https://github.com/deanturpin/stems/raw/main/models/htdemucs_quantized.onnx",
-                            "htdemucs_quantized.onnx"
+                            "HTDemucs 6s Quantized FP16 (htdemucs_quantized_fp16.onnx)",
+                            "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx",
+                            "htdemucs_quantized_fp16.onnx"
                         ),
                         Triple(
-                            "Sherpa Spleeter FP16 (vocals.fp16.onnx)",
-                            "https://github.com/k2-fsa/sherpa-onnx/releases/download/source-separation-models/vocals.fp16.onnx",
-                            "vocals.fp16.onnx"
+                            "Sherpa Spleeter Vocals (spleeter_vocals.onnx)",
+                            "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems/resolve/main/vocals.onnx",
+                            "spleeter_vocals.onnx"
                         ),
                         Triple(
-                            "Sherpa Spleeter FP16 (accompaniment.fp16.onnx)",
-                            "https://github.com/k2-fsa/sherpa-onnx/releases/download/source-separation-models/accompaniment.fp16.onnx",
-                            "accompaniment.fp16.onnx"
+                            "Sherpa Spleeter Accompaniment (spleeter_accompaniment.onnx)",
+                            "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems/resolve/main/accompaniment.onnx",
+                            "spleeter_accompaniment.onnx"
                         )
                     )
 

@@ -52,7 +52,7 @@
             border-radius: 3px;
         }
     </style>
-    <script src="file:///android_asset/opensheetmusicdisplay.min.js"></script>
+    <script src="./opensheetmusicdisplay.min.js"></script>
 </head>
 <body>
     <div id="statusOverlay">Loading score...</div>
@@ -273,7 +273,7 @@
         };
 
         window.loadSampleScore = function() {
-            fetch("file:///android_asset/osmd_resources/sample.musicxml")
+            fetch("./osmd_resources/sample.musicxml")
                 .then(res => res.text())
                 .then(xml => window.loadMusicXML(xml))
                 .catch(err => {

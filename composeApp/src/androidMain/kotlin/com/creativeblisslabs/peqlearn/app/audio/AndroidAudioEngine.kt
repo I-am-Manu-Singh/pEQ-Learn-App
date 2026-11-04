@@ -1798,13 +1798,13 @@ class AndroidAudioEngine(
 
                 samplePitches.forEach { (name, midi) ->
                     try {
-                        val afd: AssetFileDescriptor = context.assets.openFd("piano/salamander/salamander_ogg/$name.ogg")
-                        val soundId = salamanderSoundPool.load(afd, 1)
+                        val afdMp3: AssetFileDescriptor = context.assets.openFd("piano/salamander/salamander_mp3/$name.mp3")
+                        val soundId = salamanderSoundPool.load(afdMp3, 1)
                         salamanderSampleMap[midi] = soundId
                     } catch (e: Exception) {
                         try {
-                            val afdMp3: AssetFileDescriptor = context.assets.openFd("piano/salamander/salamander_mp3/$name.mp3")
-                            val soundId = salamanderSoundPool.load(afdMp3, 1)
+                            val afd: AssetFileDescriptor = context.assets.openFd("piano/salamander/salamander_ogg/$name.ogg")
+                            val soundId = salamanderSoundPool.load(afd, 1)
                             salamanderSampleMap[midi] = soundId
                         } catch (_: Exception) {}
                     }

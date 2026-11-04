@@ -86,10 +86,26 @@ fun UnifiedGuitarFretboard(
             else activeMidiNote
         }
     }
+
+    LaunchedEffect(filteredActiveNotes, effectiveActiveMidiNote) {
+        if (filteredActiveNotes.isNotEmpty() || effectiveActiveMidiNote != null) {
+            val allNotes = (filteredActiveNotes + listOfNotNull(effectiveActiveMidiNote)).distinct()
+            val noteLabels = allNotes.joinToString { midi ->
+                val name = NOTE_NAMES[midi % 12]
+                val oct = (midi / 12) - 1
+                "$name$oct($midi)"
+            }
+            println("pEQLearn [FretboardFlash]: Flashing ${allNotes.size} note(s) on fretboard: $noteLabels")
+        }
+    }
     val normalizedRootNote = remember(rootNote) { rootNote % 12 }
 
     val defaultOpenStringsMidi = remember(numStrings) {
-        if (numStrings == 4) listOf(69, 64, 60, 67) else listOf(64, 59, 55, 50, 45, 40)
+        when (numStrings) {
+            4 -> listOf(69, 64, 60, 67) // Ukulele A4, E4, C4, G4
+            7 -> listOf(64, 59, 55, 50, 45, 40, 35) // 7-String Guitar: e4, B3, G3, D3, A2, E2, B1 (35)
+            else -> listOf(64, 59, 55, 50, 45, 40) // 6-String Guitar: e4, B3, G3, D3, A2, E2
+        }
     }
 
     // Hoisted reusable native Paints to eliminate per-frame JNI allocations
@@ -862,6 +878,316 @@ fun InstrumentPlayButton(
                         fontWeight = FontWeight.Bold,
                         color = accentColor
                     )
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// HARMONIUM, VIOLIN, & FLUTE UNIFIED INSTRUMENT VISUALIZERS
+// ============================================================================
+
+/**
+ * UNIFIED HARMONIUM VISUALIZER
+ * Features traditional pump-organ bellows texture, wooden reed casing,
+ * brass stops, and responsive reed keys (C3 to C6).
+ */
+@Composable
+fun UnifiedHarmoniumVisualizer(
+    activeMidiNotes: Map<Int, Boolean> = emptyMap(),
+    accentColor: Color = Color(0xFFFFB300),
+    activeMidiNote: Int? = null,
+    onKeyTapped: ((midiNote: Int) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val startMidi = 48 // C3
+    val endMidi = 84   // C6 (3 octaves)
+    val totalKeys = endMidi - startMidi + 1
+
+    Column(
+        modifier = modifier
+            .background(Color(0xFF261810)) // Rich rosewood harmonium body
+            .padding(4.dp)
+    ) {
+        // TOP BELLOWS & STOPS PANEL
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(30.dp)
+                .background(Color(0xFF3E2723))
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Brass decorative stops
+                repeat(7) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFD54F))
+                            .border(1.dp, Color(0xFFB58500), CircleShape)
+                    )
+                }
+            }
+            Text(
+                text = "HARMONIUM • REED BELLOWS",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFFFFD54F),
+                letterSpacing = 1.sp
+            )
+        }
+
+        Spacer(Modifier.height(3.dp))
+
+        // HARMONIUM KEYBED (REEDS)
+        UnifiedPianoKeyboard(
+            activeMidiNotes = activeMidiNotes,
+            accentColor = accentColor,
+            activeCoordinate = activeMidiNote,
+            isPlaying = activeMidiNotes.values.any { it } || activeMidiNote != null,
+            startNote = startMidi,
+            endNote = endMidi,
+            fillWidth = true,
+            leftHandColor = Color(0xFFFF8F00),
+            rightHandColor = Color(0xFFFFD54F),
+            onKeyTapped = { onKeyTapped?.invoke(it) },
+            modifier = Modifier.fillMaxWidth().weight(1f)
+        )
+    }
+}
+
+/**
+ * UNIFIED VIOLIN FINGERBOARD VISUALIZER
+ * Models an orchestral 4-string fretless fingerboard (G3, D4, A4, E5).
+ * Renders fretless intonation markers (tape guides at 1st, 2nd, 3rd, and 4th positions)
+ * and finger positions.
+ */
+@Composable
+fun UnifiedViolinFingerboard(
+    activeNotes: List<Int> = emptyList(),
+    activeMidiNote: Int? = null,
+    accentColor: Color = Color(0xFFE040FB),
+    showNoteNames: Boolean = true,
+    onPositionTapped: ((stringIndex: Int, midiNote: Int) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    // Violin open strings: G3 (55), D4 (62), A4 (69), E5 (76)
+    val stringLabels = listOf("E", "A", "D", "G")
+    val openStringsMidi = listOf(76, 69, 62, 55)
+    val totalPositions = 14 // Half-step intonation positions along neck
+
+    LaunchedEffect(activeNotes, activeMidiNote) {
+        val allNotes = (activeNotes + listOfNotNull(activeMidiNote)).distinct()
+        if (allNotes.isNotEmpty()) {
+            val names = allNotes.joinToString { midi ->
+                val name = NOTE_NAMES[midi % 12]
+                val oct = (midi / 12) - 1
+                "$name$oct($midi)"
+            }
+            println("pEQLearn [ViolinFingerboard]: Active violin note(s): $names")
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .background(Color(0xFF1A120B)) // Deep ebony wood
+            .border(1.dp, Color(0xFF4A3423))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        val totalW = maxWidth
+        val totalH = maxHeight
+
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("VIOLIN (Fretless Fingerboard)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE040FB))
+                Text("G3 • D4 • A4 • E5", fontSize = 10.sp, color = Color.White.copy(0.6f))
+            }
+
+            // Fingerboard Strings & Intonation Tapes
+            Column(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.SpaceEvenly
+            ) {
+                openStringsMidi.forEachIndexed { sIdx, openMidi ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(26.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // String Label & Peg
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF3E2723),
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(stringLabels[sIdx], fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.White)
+                            }
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        // String Length with chromatic pitch markers
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(if (sIdx == 3) 4.dp else (3 - sIdx * 0.5f).dp)
+                                .background(Color(0xFFD7CCC8)),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            for (pos in 0..totalPositions) {
+                                val currentMidi = openMidi + pos
+                                val isActive = activeNotes.contains(currentMidi) || activeMidiNote == currentMidi
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (isActive) 18.dp else 10.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isActive) accentColor else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.35f) else Color.Transparent)
+                                        .clickable { onPositionTapped?.invoke(sIdx, currentMidi) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isActive && showNoteNames) {
+                                        Text(
+                                            text = NOTE_NAMES[currentMidi % 12],
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.Black
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * UNIFIED FLUTE / BANSURI VISUALIZER
+ * Visualizes a transverse concert flute / Indian Bansuri with tone holes,
+ * embouchure hole, and responsive finger coverage for active pitches.
+ */
+@Composable
+fun UnifiedFluteVisualizer(
+    activeNotes: List<Int> = emptyList(),
+    activeMidiNote: Int? = null,
+    accentColor: Color = Color(0xFF00E5FF),
+    onToneHoleTapped: ((holeIndex: Int, midiNote: Int) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    // Concert Flute standard register C4 (60) to C7 (96)
+    // 7 Main Tone Holes (Sa, Re, Ga, Ma, Pa, Dha, Ni)
+    val holeMidiPitches = listOf(60, 62, 64, 65, 67, 69, 71, 72) // C4, D4, E4, F4, G4, A4, B4, C5
+    val holeNames = listOf("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5")
+
+    LaunchedEffect(activeNotes, activeMidiNote) {
+        val all = (activeNotes + listOfNotNull(activeMidiNote)).distinct()
+        if (all.isNotEmpty()) {
+            val names = all.joinToString { midi ->
+                val name = NOTE_NAMES[midi % 12]
+                val oct = (midi / 12) - 1
+                "$name$oct($midi)"
+            }
+            println("pEQLearn [FluteVisualizer]: Active flute pitch: $names")
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .background(Color(0xFF0D1B2A))
+            .border(1.dp, Color(0xFF1B263B))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("FLUTE & BANSURI", fontSize = 11.sp, fontWeight = FontWeight.Black, color = accentColor)
+            Text("Acoustic Woodwind • Chromatic Tone Holes", fontSize = 10.sp, color = Color.White.copy(0.6f))
+        }
+
+        // FLUTE BODY (Cylindrical tube with embouchure & tone holes)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clip(RoundedCornerShape(27.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFFC0C0C0), Color(0xFFE0E0E0), Color(0xFF9E9E9E), Color(0xFF757575))
+                    )
+                )
+                .padding(horizontal = 20.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Embouchure hole (Mouthpiece)
+                Box(
+                    modifier = Modifier
+                        .size(24.dp, 16.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF212121))
+                        .border(1.dp, Color(0xFF424242), RoundedCornerShape(8.dp))
+                )
+
+                Spacer(Modifier.width(16.dp))
+
+                // Tone Holes
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    holeMidiPitches.forEachIndexed { index, midi ->
+                        val isCovered = activeNotes.contains(midi) || activeMidiNote == midi
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isCovered) accentColor else Color(0xFF1E1E1E))
+                                    .border(1.5.dp, if (isCovered) Color.White else Color(0xFF424242), CircleShape)
+                                    .clickable { onToneHoleTapped?.invoke(index, midi) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isCovered) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = holeNames[index],
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCovered) accentColor else Color.Black
+                            )
+                        }
+                    }
                 }
             }
         }

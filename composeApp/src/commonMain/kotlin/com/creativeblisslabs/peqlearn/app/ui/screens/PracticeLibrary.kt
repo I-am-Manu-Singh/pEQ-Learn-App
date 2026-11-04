@@ -243,6 +243,19 @@ object PracticeLibrary {
             totalMeasures = 138,
             description = "Famous for its cross-rhythm: 4 sixteenth notes in the right hand against 3 triplet eighth notes in the left hand (4 against 3 polyrhythm).",
             focusAreas = listOf("4:3 Polyrhythm", "Speed & Velocity", "LH Arpeggio Stamina", "Cantabile Trio")
+        ),
+        BuiltinTutorialMidi(
+            id = "mozart_rondo_alla_turca",
+            fileName = "marche-turque.mid",
+            title = "Rondo alla Turca (Turkish March)",
+            composer = "Wolfgang Amadeus Mozart",
+            era = "Classical",
+            difficulty = "Intermediate - Advanced",
+            timeSignature = "2/4",
+            tempo = 120,
+            totalMeasures = 126,
+            description = "The vibrant 3rd movement of Mozart's Piano Sonata No. 11 in A Major (K. 331). Features energetic 16th-note runs and iconic Alla Turca percussion imitation.",
+            focusAreas = listOf("Rapid 16th Runs", "Staccato Articulation", "Octave Jumps", "Rhythmic Precision")
         )
     )
 

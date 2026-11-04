@@ -311,7 +311,12 @@ class MainActivity : ComponentActivity() {
                     try {
                         val dest = File(onnxModelsDir, fileName)
                         if (!dest.exists()) {
-                            assets.open(fileName).use { input ->
+                            val inputStream = try {
+                                assets.open("models/$fileName")
+                            } catch (_: Exception) {
+                                assets.open(fileName)
+                            }
+                            inputStream.use { input ->
                                 dest.outputStream().use { output -> input.copyTo(output) }
                             }
                         }
@@ -326,12 +331,16 @@ class MainActivity : ComponentActivity() {
                 assets.open(assetName).use { it.readBytes() }
             } catch (_: Exception) {
                 try {
-                    assets.open("tutorials/$assetName").use { it.readBytes() }
+                    assets.open("midi/$assetName").use { it.readBytes() }
                 } catch (_: Exception) {
                     try {
-                        javaClass.classLoader?.getResourceAsStream(assetName)?.use { it.readBytes() }
+                        assets.open("tutorials/$assetName").use { it.readBytes() }
                     } catch (_: Exception) {
-                        null
+                        try {
+                            javaClass.classLoader?.getResourceAsStream(assetName)?.use { it.readBytes() }
+                        } catch (_: Exception) {
+                            null
+                        }
                     }
                 }
             }

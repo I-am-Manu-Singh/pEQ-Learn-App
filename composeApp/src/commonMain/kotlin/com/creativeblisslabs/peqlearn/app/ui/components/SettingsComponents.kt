@@ -1256,24 +1256,6 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                 samplePitchRange = "MIDI 21..108"
             ),
             Sf2InspectionItem(
-                category = "GUITAR",
-                fileName = "Custom Classical Guitar.sf2",
-                sizeMb = "15.35 MB",
-                presets = listOf("Classical Guitar (Bank 0, Patch 0)"),
-                instruments = listOf("Classical Guitar"),
-                samples = listOf("Guitar E2", "Guitar D3", "Guitar A3", "Guitar D4", "Guitar G4", "Guitar B4", "Guitar E5", "Guitar A5", "Guitar D#6", "Guitar E6", "Guitar A6"),
-                samplePitchRange = "MIDI 40..93 (E2..A6)"
-            ),
-            Sf2InspectionItem(
-                category = "GUITAR",
-                fileName = "guitar_samples_clean.sf2",
-                sizeMb = "17.76 MB",
-                presets = listOf("guitar_samples_clean (Bank 0, Patch 0)", "guitar_samples_jazz (Bank 0, Patch 1)"),
-                instruments = listOf("Clean Guitar", "Jazz Guitar"),
-                samples = listOf("F2_s1_01", "G3_s4_01", "E4_s6_01", "G4_s6_01", "G#5_s6_03"),
-                samplePitchRange = "MIDI 36..85 (C2..C#6)"
-            ),
-            Sf2InspectionItem(
                 category = "DRUMS",
                 fileName = "Metal_Drums.sf2",
                 sizeMb = "2.01 MB",
@@ -1281,15 +1263,6 @@ fun SoundFontManagerTabContent(viewModel: AppViewModel) {
                 instruments = listOf("Metal Drum Kit"),
                 samples = listOf("Metal Kick 1-3", "Metal Snare 1-2", "Metal HiHat Cl/Op", "Metal Crash 1-3", "Metal China Crsh", "Metal Splash"),
                 samplePitchRange = "GM Drum Keys (MIDI 35..81)"
-            ),
-            Sf2InspectionItem(
-                category = "DRUMS",
-                fileName = "drums_ken_ardency.sf2",
-                sizeMb = "11.48 MB",
-                presets = listOf("drum kit (Bank 128, Patch 0)"),
-                instruments = listOf("Ken Ardency Drum Kit"),
-                samples = listOf("WRM KIK1H", "MEDSNR3Q", "HI-HAT CL", "HI-HAT OP", "RIDE AC", "CRASH 2", "17 CHINA", "10 SPLASH"),
-                samplePitchRange = "GM Standard Kit (MIDI 36..81)"
             ),
             Sf2InspectionItem(
                 category = "METRONOME",
