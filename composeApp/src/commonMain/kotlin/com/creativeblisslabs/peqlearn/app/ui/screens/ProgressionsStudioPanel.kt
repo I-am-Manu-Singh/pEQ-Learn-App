@@ -19,6 +19,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
+import com.creativeblisslabs.peqlearn.app.ui.components.InstrumentPlayButton
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQInstrumentDropdown
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQDynamicInstrumentVisualizer
 import com.creativeblisslabs.peqlearn.app.ui.components.SvgChordBox
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
@@ -45,7 +49,14 @@ fun ProgressionsStudioPanel(
     val scope = rememberCoroutineScope()
     val roots = remember { listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B") }
     var selectedKey by remember { mutableStateOf("C") }
-    var selectedInstrument by remember { mutableStateOf("guitar") } // "guitar", "piano", "ukulele"
+    var selectedInstrumentType by remember { mutableStateOf(ChordInstrumentType.GUITAR) }
+    val selectedInstrument = remember(selectedInstrumentType) {
+        when (selectedInstrumentType) {
+            ChordInstrumentType.PIANO, ChordInstrumentType.HARMONIUM -> "piano"
+            ChordInstrumentType.UKULELE -> "ukulele"
+            else -> "guitar"
+        }
+    }
 
     val allCategories = remember {
         listOf("All") + RealProgressionsDb.list.map { it.category }.distinct()
@@ -186,61 +197,55 @@ fun ProgressionsStudioPanel(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = { playProgression() },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isPlaying) Color(0xFFE53935) else Color(0xFFAB47BC)
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = if (isPlaying) "Stop" else "Play All",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
+                InstrumentPlayButton(
+                    isPlaying = isPlaying,
+                    accentColor = Color(0xFFAB47BC),
+                    onTogglePlay = { playProgression() },
+                    text = if (isPlaying) "Stop" else "Play Progression"
+                )
             }
         }
 
-        // Instrument switch row: Guitar, Ukulele, Piano
+        // Instrument switcher dropdown
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "INSTRUMENT",
+                text = "ACTIVE INSTRUMENT",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF7E8B9B),
                 letterSpacing = 1.sp
             )
-            SingleChoiceSegmentedButtonRow {
-                listOf("guitar" to "🎸 Guitar", "ukulele" to "🪕 Ukulele", "piano" to "🎹 Piano").forEachIndexed { idx, (key, label) ->
-                    SegmentedButton(
-                        selected = selectedInstrument == key,
-                        onClick = {
-                            selectedInstrument = key
-                            try {
-                                viewModel.audioEngine.setInstrument(if (key == "piano") "PIANO" else "GUITAR")
-                            } catch (_: Exception) {}
-                        },
-                        shape = SegmentedButtonDefaults.itemShape(index = idx, count = 3)
-                    ) {
-                        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
+            pEQInstrumentDropdown(
+                selectedInstrument = selectedInstrumentType,
+                accentColor = Color(0xFFAB47BC),
+                onInstrumentChange = {
+                    selectedInstrumentType = it
+                    try {
+                        viewModel.audioEngine.setInstrument(it.soundEngineName)
+                    } catch (_: Exception) {}
+                },
+                modifier = Modifier.width(220.dp)
+            )
         }
+
+        // Live Instrument Visualizer preview for currently selected / playing chord in progression
+        val currentChordItem = progressionChords.getOrNull(if (currentPlayingChordIdx >= 0) currentPlayingChordIdx else 0)
+        val activeChordPitches = currentChordItem?.pianoMidi ?: emptyList()
+        pEQDynamicInstrumentVisualizer(
+            selectedInstrument = selectedInstrumentType,
+            activeNotes = activeChordPitches,
+            accentColor = Color(0xFFAB47BC),
+            onNoteTapped = { midi ->
+                try {
+                    viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
+                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                } catch (_: Exception) {}
+            }
+        )
 
         // Quick Tools Toolbar
         var activeProgressionTool by remember { mutableStateOf<String?>(null) }

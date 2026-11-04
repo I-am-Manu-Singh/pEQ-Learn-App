@@ -360,7 +360,7 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                 isLeftHandHidden = viewModel.isLeftHandHidden.value,
                 isRightHandHidden = viewModel.isRightHandHidden.value,
                 enabledTrackIndices = viewModel.enabledTrackIndices,
-                showScoreHeader = true,
+                showScoreHeader = false,
                 modifier = Modifier.fillMaxWidth().height(240.dp)
             )
         }

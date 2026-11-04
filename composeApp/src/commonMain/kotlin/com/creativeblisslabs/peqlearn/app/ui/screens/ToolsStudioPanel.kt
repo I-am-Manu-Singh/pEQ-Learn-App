@@ -18,6 +18,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
+import com.creativeblisslabs.peqlearn.app.ui.components.InstrumentPlayButton
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQInstrumentDropdown
+import com.creativeblisslabs.peqlearn.app.ui.components.pEQDynamicInstrumentVisualizer
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
@@ -194,7 +198,23 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
                 Text(transposedChords, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF9E1B))
 
                 if (chordList.isNotEmpty()) {
-                    Text("Select chord to view on Piano:", fontSize = 10.sp, color = Color.Gray)
+                    var selectedToolInstrument by remember { mutableStateOf(ChordInstrumentType.PIANO) }
+                    var isPlayingChord by remember { mutableStateOf(false) }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Select chord to view:", fontSize = 10.sp, color = Color.Gray)
+                        pEQInstrumentDropdown(
+                            selectedInstrument = selectedToolInstrument,
+                            accentColor = Color(0xFFFF9E1B),
+                            onInstrumentChange = { selectedToolInstrument = it },
+                            modifier = Modifier.width(180.dp)
+                        )
+                    }
+
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(chordList) { ch ->
                             val isSel = previewChord == ch
@@ -222,22 +242,55 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
                                 )
                             }
                     }
-                    if (pianoPitches.isNotEmpty()) {
-                        val activeMidi = pianoPitches.associateWith { true }
-                        com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
-                            activeMidiNotes = activeMidi,
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Audition: $previewChord",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFF9E1B)
+                        )
+                        InstrumentPlayButton(
+                            isPlaying = isPlayingChord,
                             accentColor = Color(0xFFFF9E1B),
-                            startNote = 48,
-                            endNote = 84,
-                            fillWidth = true,
-                            showNoteNames = true,
-                            onKeyTapped = { midi ->
+                            onTogglePlay = {
+                                if (isPlayingChord) {
+                                    isPlayingChord = false
+                                } else {
+                                    isPlayingChord = true
+                                    scope.launch {
+                                        try {
+                                            viewModel.audioEngine.setInstrument(selectedToolInstrument.soundEngineName)
+                                            pianoPitches.forEach { midi ->
+                                                viewModel.audioEngine.noteOn(midi, 0.85f)
+                                                delay(40L)
+                                            }
+                                            delay(500L)
+                                        } finally {
+                                            isPlayingChord = false
+                                        }
+                                    }
+                                }
+                            },
+                            text = "Play Chord"
+                        )
+                    }
+
+                    if (pianoPitches.isNotEmpty()) {
+                        pEQDynamicInstrumentVisualizer(
+                            selectedInstrument = selectedToolInstrument,
+                            activeNotes = pianoPitches,
+                            accentColor = Color(0xFFFF9E1B),
+                            onNoteTapped = { midi ->
                                 try {
-                                    viewModel.audioEngine.setInstrument("PIANO")
+                                    viewModel.audioEngine.setInstrument(selectedToolInstrument.soundEngineName)
                                     viewModel.audioEngine.noteOn(midi, 0.85f)
                                 } catch (_: Exception) {}
-                            },
-                            modifier = Modifier.fillMaxWidth().height(115.dp).clip(RoundedCornerShape(8.dp))
+                            }
                         )
                     }
                 }
