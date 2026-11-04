@@ -82,7 +82,7 @@ object OnnxModelRegistry {
         description = "State-of-the-art hybrid transformer separating Drums, Bass, Vocals, and Other stems.",
         purpose = "Stem Separation (4-Stem Studio Pro)"
     )
-  val HTDEMUCS_QUANTIZED_fp16 = OnnxModelDefinition(
+    val HTDEMUCS_QUANTIZED_fp16 = OnnxModelDefinition(
         id = "htdemucs_quantized_fp16",
         name = "HTDemucs fp16_6s",
         fileName = "htdemucs_quantized_fp16.onnx",
@@ -269,19 +269,21 @@ object OnnxModelRegistry {
             var connection: HttpURLConnection
             var redirectCount = 0
 
-            // Follow redirects (HuggingFace uses 302)
-            while (redirectCount < 5) {
+            // Follow redirects (HuggingFace uses 302/307/308 across CDN hosts)
+            while (redirectCount < 8) {
                 connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 20_000
-                connection.readTimeout = 60_000
+                connection.connectTimeout = 30_000
+                connection.readTimeout = 90_000
                 connection.instanceFollowRedirects = false
-                connection.setRequestProperty("User-Agent", "pEQ-Learn-Android/1.0")
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile; rv:120.0) Gecko/120.0 pEQ-Learn/2.0")
+                connection.setRequestProperty("Accept", "*/*")
+                connection.setRequestProperty("Accept-Encoding", "identity")
                 connection.connect()
 
                 val code = connection.responseCode
                 if (code in 301..303 || code == 307 || code == 308) {
                     val location = connection.getHeaderField("Location")
-                    if (location != null) {
+                    if (!location.isNullOrEmpty()) {
                         url = if (location.startsWith("http")) URL(location) else URL(url, location)
                         connection.disconnect()
                         redirectCount++
@@ -289,7 +291,7 @@ object OnnxModelRegistry {
                     }
                 }
 
-                if (code != HttpURLConnection.HTTP_OK) {
+                if (code !in 200..299) {
                     connection.disconnect()
                     modelStatusMap[definition.id] = "HTTP Error $code"
                     isDownloadingMap[definition.id] = false
