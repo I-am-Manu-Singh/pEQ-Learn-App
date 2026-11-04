@@ -414,7 +414,7 @@ fun UnifiedTaalBrowser(
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
             text = if (isCarnatic) "The Suladi Sapta Tala System (Dhruva, Matya, Rupaka, Jhampa, Triputa, Ata, Eka)"
-            else "The Foundational Tāla Systems of Hindustani Classical Music",
+            else "The Foundational & Advanced Tāla Systems of Hindustani Classical Music (Bhatkhande Notation)",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
@@ -460,7 +460,7 @@ fun UnifiedTaalBrowser(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = "${t.name} (${t.beats} ${if (isCarnatic) "aksharas" else "m"})",
+                                text = "${t.name} (${t.beats} ${if (isCarnatic) "aksharas" else "m"}) — ${t.origin}",
                                 fontSize = 13.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -485,7 +485,37 @@ fun UnifiedTaalBrowser(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(currentTaal.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(currentTaal.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                            if (currentTaal.jati.isNotEmpty()) {
+                                Surface(
+                                    color = accentColor.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "${currentTaal.jati} Jati",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = accentColor,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            if (currentTaal.origin.isNotEmpty()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = currentTaal.origin,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
                         Text(
                             text = "${currentTaal.beats} Beats • Vibhag: ${currentTaal.vibhags.joinToString("+")} • Tempo: ${currentTaal.tempo}",
                             fontSize = 12.sp,
@@ -528,11 +558,54 @@ fun UnifiedTaalBrowser(
                     }
                 }
 
-                Text(if (isCarnatic) "Akshara Solkattu Matrix:" else "Theka Matra Matrix:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                // Devanagari Theka Representation if available
+                if (currentTaal.devanagariTheka.isNotEmpty()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "ठेका (Devanagari Theka)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = currentTaal.devanagariTheka,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                // Interactive Bhatkhande Notation Matra Grid
+                Text(
+                    text = if (isCarnatic) "Akshara Solkattu Matrix:" else "Bhatkhande Matra Matrix (X = Sam, 0 = Khali, 2,3,4 = Taali):",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     itemsIndexed(currentTaal.bolSequence) { bIdx, bol ->
                         val isCurrentBeat = currentBeatPlayhead == bIdx
                         val isSam = bIdx == 0
+                        val isKhali = currentTaal.khaliIndices.contains(bIdx)
+                        val isTali = currentTaal.taliIndices.contains(bIdx) && !isSam
+
+                        val markerText = when {
+                            isSam -> "X (Sam)"
+                            isKhali -> "0 (Khali)"
+                            isTali -> {
+                                val taliNum = currentTaal.taliIndices.indexOf(bIdx) + 1
+                                "${taliNum} (Taali)"
+                            }
+                            else -> "${bIdx + 1}"
+                        }
+
                         pEQGlassCard(
                             modifier = Modifier.clickable {
                                 getAudioEngine().playSample(bol, bIdx, "TABLA")
@@ -543,9 +616,16 @@ fun UnifiedTaalBrowser(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "${bIdx + 1}",
+                                    text = markerText,
                                     fontSize = 9.sp,
-                                    color = if (isCurrentBeat) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                    fontWeight = if (isSam || isKhali || isTali) FontWeight.Bold else FontWeight.Normal,
+                                    color = when {
+                                        isCurrentBeat -> MaterialTheme.colorScheme.tertiary
+                                        isSam -> MaterialTheme.colorScheme.error
+                                        isKhali -> MaterialTheme.colorScheme.secondary
+                                        isTali -> MaterialTheme.colorScheme.primary
+                                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                    }
                                 )
                                 Text(
                                     text = bol,
@@ -558,7 +638,72 @@ fun UnifiedTaalBrowser(
                     }
                 }
 
+                // Bhatkhande Full Notation Grid
+                if (currentTaal.notationGrid.isNotEmpty()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "Bhatkhande Taal Notation System (भातखंडे ताल लिपि)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = currentTaal.notationGrid,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                            )
+                        }
+                    }
+                }
+
                 Text(currentTaal.description, fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f))
+
+                // Traditional Theka Variations from Prof. Sudhir K. Varma
+                if (currentTaal.variations.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Traditional Variations & Forms (घराना भेद):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        currentTaal.variations.forEach { variation ->
+                            Text(
+                                text = "• $variation",
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                            )
+                        }
+                    }
+                }
+
+                // Layakaris (Thah, Dugun, Chaugun)
+                if (currentTaal.layakaris.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Layakaris (लयकारी):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        currentTaal.layakaris.forEach { (laya, pattern) ->
+                            Text(
+                                text = "• $laya: $pattern",
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -1089,26 +1234,43 @@ fun BandishSection(
     accentColor: Color
 ) {
     var showTranslation by remember { mutableStateOf(false) }
+    var showSwarlipiViewer by remember { mutableStateOf(true) }
     val rotationState by animateFloatAsState(targetValue = if (showTranslation) 180f else 0f)
 
     fun parseSectionLines(fullText: String, prefix: String): List<String> {
         if (fullText.isEmpty()) return emptyList()
-        val section = fullText.split("Antara:").map { it.trim() }
+        val section = fullText.split("Antara:", "|").map { it.trim() }
         val targetBlock = if (prefix == "Sthai") {
-            section.firstOrNull()?.replace("Sthai:", "")?.trim() ?: ""
+            section.firstOrNull()?.replace("Sthai:", "")?.replace("Sthayi:", "")?.trim() ?: ""
         } else {
-            if (section.size > 1) section[1] else ""
+            if (section.size > 1) section[1].replace("Antara:", "").trim() else ""
         }
         return targetBlock.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
     }
 
     val sthaiLines = selectedRaga.sthai.ifEmpty { "Traditional Classical Verse\nSthai Line 2" }.split("\n")
-    val sthaiTrans = parseSectionLines(selectedRaga.transliteration, "Sthai")
-    val sthaiMean = parseSectionLines(selectedRaga.meaning, "Sthai")
+    val sthaiTrans = if (selectedRaga.sthaiTransliteration.isNotEmpty()) {
+        selectedRaga.sthaiTransliteration.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    } else {
+        parseSectionLines(selectedRaga.transliteration, "Sthai")
+    }
+    val sthaiMean = if (selectedRaga.sthaiMeaning.isNotEmpty()) {
+        selectedRaga.sthaiMeaning.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    } else {
+        parseSectionLines(selectedRaga.meaning, "Sthai")
+    }
 
     val antaraLines = selectedRaga.antara.ifEmpty { "Second Movement Verse\nAntara Line 2" }.split("\n")
-    val antaraTrans = parseSectionLines(selectedRaga.transliteration, "Antara")
-    val antaraMean = parseSectionLines(selectedRaga.meaning, "Antara")
+    val antaraTrans = if (selectedRaga.antaraTransliteration.isNotEmpty()) {
+        selectedRaga.antaraTransliteration.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    } else {
+        parseSectionLines(selectedRaga.transliteration, "Antara")
+    }
+    val antaraMean = if (selectedRaga.antaraMeaning.isNotEmpty()) {
+        selectedRaga.antaraMeaning.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    } else {
+        parseSectionLines(selectedRaga.meaning, "Antara")
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1134,28 +1296,66 @@ fun BandishSection(
                 )
             }
 
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                    .clickable { showTranslation = !showTranslation }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (showTranslation) "Hide Meaning" else "Show Meaning",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Icon(
-                    imageVector = Icons.Default.ExpandMore,
-                    contentDescription = "Toggle Translation",
-                    modifier = Modifier.size(14.dp).rotate(rotationState),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Swarlipi Notation Viewer Toggle
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (showSwarlipiViewer) accentColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    border = BorderStroke(1.dp, if (showSwarlipiViewer) accentColor else Color.Transparent),
+                    modifier = Modifier.clickable { showSwarlipiViewer = !showSwarlipiViewer }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MenuBook,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = if (showSwarlipiViewer) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (showSwarlipiViewer) "Hide Swarlipi" else "Swarlipi Notation",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (showSwarlipiViewer) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                        .clickable { showTranslation = !showTranslation }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (showTranslation) "Hide Meaning" else "Show Meaning",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = "Toggle Translation",
+                        modifier = Modifier.size(14.dp).rotate(rotationState),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+        }
+
+        // Swarlipi Notation Viewer component for Sthai and Antara Bandish notations
+        AnimatedVisibility(visible = showSwarlipiViewer) {
+            SwarlipiNotationViewer(
+                raaga = selectedRaga,
+                accentColor = accentColor,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1174,11 +1374,11 @@ fun BandishSection(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface)
-                    val lineTrans = sthaiTrans.getOrNull(index) ?: sthaiTrans.firstOrNull()
+                    val lineTrans = sthaiTrans.getOrNull(index)
                     if (!lineTrans.isNullOrEmpty()) {
                         Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
-                    val lineMean = sthaiMean.getOrNull(index) ?: sthaiMean.firstOrNull()
+                    val lineMean = sthaiMean.getOrNull(index)
                     AnimatedVisibility(visible = showTranslation && !lineMean.isNullOrEmpty()) {
                         if (lineMean != null) {
                             Text(text = lineMean, fontSize = 11.sp, color = MaterialTheme.colorScheme.tertiary)
@@ -1206,11 +1406,11 @@ fun BandishSection(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(text = line.trim(), fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface)
-                    val lineTrans = antaraTrans.getOrNull(index) ?: antaraTrans.firstOrNull()
+                    val lineTrans = antaraTrans.getOrNull(index)
                     if (!lineTrans.isNullOrEmpty()) {
                         Text(text = lineTrans, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
-                    val lineMean = antaraMean.getOrNull(index) ?: antaraMean.firstOrNull()
+                    val lineMean = antaraMean.getOrNull(index)
                     AnimatedVisibility(visible = showTranslation && !lineMean.isNullOrEmpty()) {
                         if (lineMean != null) {
                             Text(text = lineMean, fontSize = 11.sp, color = MaterialTheme.colorScheme.tertiary)

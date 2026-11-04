@@ -15,6 +15,53 @@ enum class MediaType { AUDIO, VIDEO }
 @Serializable
 enum class RepeatMode { OFF, ALL, ONE, FOLDER }
 
+data class AudioFile(
+    val id: String,
+    val name: String,
+    val title: String? = null,
+    val path: String,
+    val duration: Long,
+    val sizeBytes: Long,
+    val bitDepth: Int = 16,
+    val sampleRate: Int = 44100,
+    val format: String = "MP3",
+    val isHiRes: Boolean = false,
+    val isLossless: Boolean = false,
+    val isVideo: Boolean = false,
+    val hasLyrics: Boolean = false,
+    val artist: String? = null,
+    val albumArtist: String? = null,
+    val composer: String? = null,
+    val genre: String? = null,
+    val album: String? = null,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val year: Int? = null,
+    val bitrate: Int = 0,
+    val channels: Int = 2,
+    val dateAdded: Long = 0,
+    val dateModified: Long = 0,
+    val thumbnail: String? = null,
+    val lyrics: String? = null
+)
+data class VideoFile(
+    val id: String,
+    val name: String,
+    val title: String? = null,
+    val path: String,
+    val duration: Long,
+    val sizeBytes: Long,
+    val resolution: String = "1080p",
+    val codec: String = "AVC",
+    val fps: Int = 0,
+    val bitrate: Int = 0,
+    val dateAdded: Long = 0,
+    val dateModified: Long = 0,
+    val hasSubtitles: Boolean = false,
+    val hasMultiAudio: Boolean = false,
+    val hasChapters: Boolean = false,
+    val thumbnail: String? = null
+)
 @Serializable
 data class pEQMediaItem(
     val id: String,

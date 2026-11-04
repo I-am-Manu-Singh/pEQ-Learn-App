@@ -2055,6 +2055,10 @@ Button(
                                                             if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
                                                             viewModel.onMidiNoteOn(midi, 95)
                                                         },
+                                                        onFretReleased = { _, _, midi ->
+                                                            fsManualPressedKeys.remove(midi)
+                                                            viewModel.onMidiNoteOff(midi)
+                                                        },
                                                         modifier = Modifier.fillMaxSize()
                                                     )
                                                 } else if (currentInst == "Harmonium") {
@@ -2289,6 +2293,10 @@ Button(
                                                         onFretTapped = { _, _, midi ->
                                                             if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
                                                             viewModel.onMidiNoteOn(midi, 95)
+                                                        },
+                                                        onFretReleased = { _, _, midi ->
+                                                            fsManualPressedKeys.remove(midi)
+                                                            viewModel.onMidiNoteOff(midi)
                                                         },
                                                         modifier = Modifier.fillMaxSize()
                                                     )

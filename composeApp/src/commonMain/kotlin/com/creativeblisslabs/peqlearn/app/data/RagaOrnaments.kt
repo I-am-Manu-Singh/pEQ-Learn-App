@@ -20,3 +20,44 @@ data class RagaOrnament(
     val durationMs: Long = 200,
     val description: String = ""
 )
+data class Alankaar(
+    val number: Int,
+    val name: String,
+    val pattern: String,
+    val midiPattern: List<Int>,
+    val description: String
+)
+data class Thaat(
+    val name: String,
+    val semitones: List<Int>,
+    val description: String
+) {
+    val swaras: List<String>
+        get() = description.substringBefore("—").trim().split(" ")
+}
+/**
+ * Taal (rhythmic cycle) data class.
+ * Matches the original Java Taal constructor signature:
+ * Taal(name, beats, vibhags, bolSequence, khali, tempo, description)
+ */
+data class Taal(
+    val name: String,
+    val beats: Int,
+    val vibhags: List<Int>,
+    val bolSequence: List<String>,
+    val khali: Int,
+    val tempo: String,
+    val description: String,
+    val taliIndices: List<Int> = emptyList(),
+    val khaliIndices: List<Int> = emptyList(),
+    val jati: String = "",
+    val devanagariTheka: String = "",
+    val notationGrid: String = "",
+    val variations: List<String> = emptyList(),
+    val origin: String = "Tabla", // "Tabla" | "Pakhawaj" | "Carnatic"
+    val layakaris: Map<String, String> = emptyMap()
+) {
+    val khaliBeat: Int get() = khali
+    val tempoRange: String get() = tempo
+}
+

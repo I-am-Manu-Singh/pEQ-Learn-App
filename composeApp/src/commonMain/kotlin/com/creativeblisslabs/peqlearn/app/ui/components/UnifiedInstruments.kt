@@ -61,7 +61,11 @@ fun UnifiedGuitarFretboard(
     activeMidiNote: Int? = null,
     isLeftHandHidden: Boolean = false,
     isRightHandHidden: Boolean = false,
+    cagedMode: String = "AUTO", // "AUTO", "C", "A", "G", "E", "D", or "ALL"
+    fretMinConstrain: Int = 0,
+    fretMaxConstrain: Int = 24,
     onFretTapped: ((stringIndex: Int, fret: Int, midiNote: Int) -> Unit)? = null,
+    onFretReleased: ((stringIndex: Int, fret: Int, midiNote: Int) -> Unit)? = null,
     fretboardBrush: Brush? = null,
     showInlayDots: Boolean = true,
     modifier: Modifier = Modifier
@@ -87,26 +91,122 @@ fun UnifiedGuitarFretboard(
         }
     }
 
-    LaunchedEffect(filteredActiveNotes, effectiveActiveMidiNote) {
-        if (filteredActiveNotes.isNotEmpty() || effectiveActiveMidiNote != null) {
-            val allNotes = (filteredActiveNotes + listOfNotNull(effectiveActiveMidiNote)).distinct()
-            val noteLabels = allNotes.joinToString { midi ->
-                val name = NOTE_NAMES[midi % 12]
-                val oct = (midi / 12) - 1
-                "$name$oct($midi)"
-            }
-            println("pEQLearn [FretboardFlash]: Flashing ${allNotes.size} note(s) on fretboard: $noteLabels")
-        }
-    }
-    val normalizedRootNote = remember(rootNote) { rootNote % 12 }
-
     val defaultOpenStringsMidi = remember(numStrings) {
         when (numStrings) {
             4 -> listOf(69, 64, 60, 67) // Ukulele A4, E4, C4, G4
-            7 -> listOf(64, 59, 55, 50, 45, 40, 35) // 7-String Guitar: e4, B3, G3, D3, A2, E2, B1 (35)
+            7 -> listOf(64, 59, 55, 50, 45, 40, 35) // 7-String Guitar: e4, B3, G3, D3, A2, E2, B1
             else -> listOf(64, 59, 55, 50, 45, 40) // 6-String Guitar: e4, B3, G3, D3, A2, E2
         }
     }
+
+    // --- CHORD VS SCALE DISTINCTION & LOGICAL TRUTH RESOLVER ---
+    // A chord has 2 to 5 distinct pitch classes. A 6+ note collection (like a diatonic scale with 7 notes)
+    // is a SCALE / MELODY RUN, not a single chord shape.
+    val allUniquePitches = remember(filteredActiveNotes, effectiveActiveMidiNote) {
+        (filteredActiveNotes + listOfNotNull(effectiveActiveMidiNote)).distinct()
+    }
+    val distinctPitchClasses = remember(allUniquePitches) {
+        allUniquePitches.map { (it % 12 + 12) % 12 }.toSet()
+    }
+    val isScaleMode = remember(distinctPitchClasses) {
+        distinctPitchClasses.size >= 6 // 6 or 7 distinct semitones = scale run!
+    }
+
+    val effectiveResolvedChordFrets = remember(chordFrets, allUniquePitches, distinctPitchClasses, isScaleMode, cagedMode, numStrings) {
+        if (chordFrets != null) {
+            chordFrets
+        } else if (isScaleMode) {
+            null // Scales should NOT be collapsed into a chord shape!
+        } else if (allUniquePitches.size in 2..5 && numStrings >= 6) {
+            // Authentic Chord Shape from RealChordsDb
+            val detected = com.creativeblisslabs.peqlearn.app.util.LiveChordDetector.detect(allUniquePitches)
+            if (detected != null && detected.chordQuality != "Note") {
+                val root = detected.rootName.replace("♯", "#").replace("♭", "b")
+                val quality = when (detected.chordQuality) {
+                    "Major", "" -> "major"
+                    "Minor", "m" -> "minor"
+                    "7", "Dominant 7th" -> "7"
+                    "maj7", "Major 7th" -> "maj7"
+                    "m7", "Minor 7th" -> "m7"
+                    "dim", "Diminished" -> "dim"
+                    "dim7" -> "dim7"
+                    "sus4", "Suspended 4th" -> "sus4"
+                    "sus2", "Suspended 2nd" -> "sus2"
+                    "5", "Power Chord" -> "5"
+                    else -> detected.chordQuality.lowercase()
+                }
+                val dbPositions = com.creativeblisslabs.peqlearn.app.util.RealChordsDb.getGuitarPositions(root, quality)
+                val filteredByCaged = if (cagedMode != "AUTO" && cagedMode != "ALL") {
+                    dbPositions.filter { pos ->
+                        when (cagedMode) {
+                            "C" -> (pos.frets.getOrNull(1) ?: -1) > 0 && (pos.frets.getOrNull(0) ?: -1) <= 0
+                            "A" -> (pos.frets.getOrNull(1) ?: -1) >= 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
+                            "G" -> (pos.frets.getOrNull(0) ?: -1) > 0 && (pos.frets.getOrNull(5) ?: -1) > 0
+                            "E" -> (pos.frets.getOrNull(0) ?: -1) >= 0 && (pos.frets.getOrNull(1) ?: -1) >= 0
+                            "D" -> (pos.frets.getOrNull(0) ?: -1) < 0 && (pos.frets.getOrNull(1) ?: -1) < 0
+                            else -> true
+                        }
+                    }
+                } else dbPositions
+
+                val bestPos = filteredByCaged.firstOrNull() ?: dbPositions.firstOrNull()
+                if (bestPos != null) {
+                    val base6 = bestPos.frets.reversed() // RealChordsDb is low-to-high, reverse to e4..E2
+                    if (numStrings == 7) {
+                        base6 + listOf(-1)
+                    } else {
+                        base6
+                    }
+                } else null
+            } else null
+        } else null
+    }
+
+    // Exact frets matching currently playing / active notes (for single note melody / scale sequences)
+    val activeFretPoints = remember(allUniquePitches, effectiveResolvedChordFrets, defaultOpenStringsMidi, isScaleMode, fretMinConstrain, fretMaxConstrain) {
+        if (effectiveResolvedChordFrets != null) {
+            emptySet<Pair<Int, Int>>() // Driven by chord shape
+        } else {
+            val set = mutableSetOf<Pair<Int, Int>>() // Set of (stringIdx, fret)
+            allUniquePitches.forEach { midi ->
+                val candidates = mutableListOf<Pair<Int, Int>>()
+                defaultOpenStringsMidi.forEachIndexed { sIdx, openMidi ->
+                    val fret = midi - openMidi
+                    if (fret in 0..numFrets) {
+                        candidates.add(sIdx to fret)
+                    }
+                }
+                // Filter to constrained fret window (default open pos frets 0..5 or user box)
+                val inBox = candidates.filter { it.second in fretMinConstrain..fretMaxConstrain }
+                val chosen = if (inBox.isNotEmpty()) {
+                    inBox.minByOrNull { it.second } // Most ergonomic fret
+                } else {
+                    candidates.minByOrNull { kotlin.math.abs(it.second - 2) }
+                }
+                if (chosen != null) {
+                    set.add(chosen)
+                }
+            }
+            set
+        }
+    }
+
+    LaunchedEffect(allUniquePitches, effectiveResolvedChordFrets, activeFretPoints, isScaleMode) {
+        if (allUniquePitches.isNotEmpty()) {
+            val noteLabels = allUniquePitches.joinToString { midi ->
+                val name = NOTE_NAMES[(midi % 12 + 12) % 12]
+                val oct = (midi / 12) - 1
+                "$name$oct($midi)"
+            }
+            val desc = when {
+                effectiveResolvedChordFrets != null -> "Chord Shape: $effectiveResolvedChordFrets"
+                isScaleMode -> "Scale Mode: ${allUniquePitches.size} notes"
+                else -> "Active Frets: $activeFretPoints"
+            }
+            println("pEQLearn [FretboardFlash]: Flashing ${allUniquePitches.size} note(s): $noteLabels | $desc")
+        }
+    }
+    val normalizedRootNote = remember(rootNote) { (rootNote % 12 + 12) % 12 }
 
     // Hoisted reusable native Paints to eliminate per-frame JNI allocations
     val stringLabelPaint = remember {
@@ -137,6 +237,14 @@ fun UnifiedGuitarFretboard(
             color = android.graphics.Color.argb(200, 180, 186, 198)
             textAlign = android.graphics.Paint.Align.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val permanentOctavePaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(120, 160, 168, 185)
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
             isAntiAlias = true
         }
     }
@@ -185,20 +293,21 @@ fun UnifiedGuitarFretboard(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(numFrets, numStrings, baseFret) {
-                    detectTapGestures { tapOffset ->
-                        if (onFretTapped == null) return@detectTapGestures
-                        val tappedFret = if (tapOffset.x < leftPad) {
+                    val activeFretPointers = mutableMapOf<Long, Triple<Int, Int, Int>>() // pointerId -> (string, fret, midi)
+
+                    fun resolveFretAt(offset: Offset): Triple<Int, Int, Int> {
+                        val tappedFret = if (offset.x < leftPad) {
                             0
                         } else {
-                            val relFret = ((tapOffset.x - leftPad) / fretW).toInt() + 1
+                            val relFret = ((offset.x - leftPad) / fretW).toInt() + 1
                             (baseFret + relFret - 1).coerceIn(0, 24)
                         }
 
                         var closestString = 0
                         var minDistance = Float.MAX_VALUE
                         for (s in 0 until numStrings) {
-                            val strY = getYForStringAtX(s, tapOffset.x)
-                            val dist = kotlin.math.abs(tapOffset.y - strY)
+                            val strY = getYForStringAtX(s, offset.x)
+                            val dist = kotlin.math.abs(offset.y - strY)
                             if (dist < minDistance) {
                                 minDistance = dist
                                 closestString = s
@@ -207,7 +316,32 @@ fun UnifiedGuitarFretboard(
 
                         val baseMidi = defaultOpenStringsMidi.getOrNull(closestString) ?: (openStringsSemis.getOrElse(closestString) { 0 } + 40)
                         val noteMidi = baseMidi + tappedFret
-                        onFretTapped(closestString, tappedFret, noteMidi)
+                        return Triple(closestString, tappedFret, noteMidi)
+                    }
+
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                val id = change.id.value
+                                if (change.pressed) {
+                                    val item = resolveFretAt(change.position)
+                                    val prev = activeFretPointers[id]
+                                    if (prev == null) {
+                                        activeFretPointers[id] = item
+                                        onFretTapped?.invoke(item.first, item.second, item.third)
+                                    } else if (prev != item) {
+                                        onFretReleased?.invoke(prev.first, prev.second, prev.third)
+                                        activeFretPointers[id] = item
+                                        onFretTapped?.invoke(item.first, item.second, item.third)
+                                    }
+                                } else {
+                                    activeFretPointers.remove(id)?.let { released ->
+                                        onFretReleased?.invoke(released.first, released.second, released.third)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
         ) {
@@ -299,91 +433,145 @@ fun UnifiedGuitarFretboard(
                 }
             }
 
+            // Permanent C Octave Markers (like Piano Keyboard C1, C2, C3, C4, C5)
+            permanentOctavePaint.textSize = 8.5f.dp.toPx()
+            for (s in 0 until numStrings) {
+                val openSemi = openStringsSemis.getOrNull(s) ?: 0
+                val baseStringMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
+                for (f in 1..numFrets) {
+                    val absoluteFret = baseFret + f - 1
+                    val fretSemi = (openSemi + absoluteFret) % 12
+                    if (fretSemi == 0) {
+                        val fullMidiNote = baseStringMidi + absoluteFret
+                        val octaveNum = (fullMidiNote / 12) - 1
+                        val cx = leftPad + (f - 0.5f) * fretW
+                        val cy = getYForStringAtX(s, cx)
+                        // Draw subtle permanent octave label right under the string on the fret
+                        drawContext.canvas.nativeCanvas.drawText(
+                            "C$octaveNum",
+                            cx,
+                            cy + 8.5f.dp.toPx(),
+                            permanentOctavePaint
+                        )
+                    }
+                }
+            }
+
             // Open string indicators
+            val textOffsetY = 4.dp.toPx()
             nutMutedPaint.textSize = 13.dp.toPx()
-            if (chordFrets != null) {
+            val activeChordFrets = effectiveResolvedChordFrets
+            if (activeChordFrets != null) {
                 for (s in 0 until numStrings) {
-                    val f = chordFrets.getOrNull(s) ?: -1
+                    val f = activeChordFrets.getOrNull(s) ?: -1
                     val y = getYForStringAtX(s, leftPad)
-                    val nutIndicatorX = leftPad - 12f
-                    val isOpenPlaying = (f == 0 && (
+                    val nutIndicatorX = leftPad - 14f
+                    val openSemi = (openStringsSemis.getOrNull(s) ?: 0) % 12
+                    val openMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
+                    val openOct = (openMidi / 12) - 1
+                    val isOpenPlaying = f == 0 && (
                         (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == 0) ||
-                            (activeMidiNote != null && ((defaultOpenStringsMidi.getOrNull(s) ?: (openStringsSemis.getOrElse(s) { 0 } + 40)) % 12 == (activeMidiNote % 12)))
-                        ))
+                            (effectiveActiveMidiNote != null && openMidi == effectiveActiveMidiNote)
+                        )
 
                     if (f == -1) {
                         drawContext.canvas.nativeCanvas.drawText("✕", nutIndicatorX, y + labelYOff, nutMutedPaint)
                     } else if (f == 0) {
-                        if (isOpenPlaying) {
-                            drawCircle(color = Color(0xFFFFEB3B).copy(alpha = 0.5f), radius = 9.dp.toPx(), center = Offset(nutIndicatorX, y))
-                            drawCircle(color = Color(0xFFFFEB3B), radius = 6.dp.toPx(), center = Offset(nutIndicatorX, y))
-                            drawCircle(color = Color.White, radius = 6.dp.toPx(), center = Offset(nutIndicatorX, y), style = Stroke(width = 2.dp.toPx()))
-                        } else {
-                            drawCircle(color = Color.White, radius = 4.5.dp.toPx(), center = Offset(nutIndicatorX, y), style = Stroke(width = 1.8.dp.toPx()))
-                        }
+                        val nutRad = if (isOpenPlaying) 9.5f.dp.toPx() else 8.dp.toPx()
+                        drawCircle(
+                            color = if (isOpenPlaying) Color(0xFFFFEB3B) else Color(0xFF1E222B).copy(alpha = 0.9f),
+                            radius = nutRad,
+                            center = Offset(nutIndicatorX, y)
+                        )
+                        drawCircle(
+                            color = if (isOpenPlaying) Color.White else Color(0xFF9E9E9E),
+                            radius = nutRad,
+                            center = Offset(nutIndicatorX, y),
+                            style = Stroke(width = if (isOpenPlaying) 2.dp.toPx() else 1.2.dp.toPx())
+                        )
+                        val nutText = NOTE_NAMES[openSemi]
+                        notePillTextPaint.color = if (isOpenPlaying) android.graphics.Color.rgb(180, 40, 0) else android.graphics.Color.WHITE
+                        notePillTextPaint.textSize = 8.5f.dp.toPx()
+                        drawContext.canvas.nativeCanvas.drawText(nutText, nutIndicatorX, y + textOffsetY, notePillTextPaint)
                     }
                 }
-            } else if (normalizedActiveNotes.isNotEmpty()) {
+            } else {
+                // Scale / Melody note mode: check open strings against active or scale notes
                 for (s in 0 until numStrings) {
                     val openSemi = (openStringsSemis.getOrNull(s) ?: 0) % 12
-                    if (normalizedActiveNotes.contains(openSemi)) {
+                    val openMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
+                    val openOct = (openMidi / 12) - 1
+                    val isExactOpenActive = (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == 0) ||
+                        activeFretPoints.contains(s to 0) ||
+                        (effectiveActiveMidiNote != null && effectiveActiveMidiNote == openMidi)
+                    val isScaleOpen = isScaleMode && normalizedActiveNotes.contains(openSemi)
+
+                    if (isExactOpenActive || isScaleOpen) {
                         val y = getYForStringAtX(s, leftPad)
                         val nutIndicatorX = leftPad - 14f
                         val isRoot = openSemi == normalizedRootNote
-                        val isOpenPlaying = (
-                            (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == 0) ||
-                                (effectiveActiveMidiNote != null && (openSemi == (effectiveActiveMidiNote % 12)))
-                            )
+                        val nutRad = if (isExactOpenActive) 10.dp.toPx() else 8.dp.toPx()
 
-                        if (isOpenPlaying) {
-                            drawCircle(color = Color(0xFFFFEB3B).copy(alpha = 0.6f), radius = 10.dp.toPx(), center = Offset(nutIndicatorX, y))
-                            drawCircle(color = Color(0xFFFFEB3B), radius = 6.5.dp.toPx(), center = Offset(nutIndicatorX, y))
-                            drawCircle(color = Color.White, radius = 6.5.dp.toPx(), center = Offset(nutIndicatorX, y), style = Stroke(width = 2.dp.toPx()))
-                        } else {
-                            drawCircle(color = if (isRoot) Color(0xFFFF5252) else accentColor, radius = 5.dp.toPx(), center = Offset(nutIndicatorX, y))
-                            drawCircle(color = Color.White, radius = 5.dp.toPx(), center = Offset(nutIndicatorX, y), style = Stroke(width = 1.2.dp.toPx()))
-                        }
+                        drawCircle(
+                            color = when {
+                                isExactOpenActive -> Color(0xFFFFEB3B)
+                                isRoot -> Color(0xFFFF5252)
+                                else -> accentColor
+                            },
+                            radius = nutRad,
+                            center = Offset(nutIndicatorX, y)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = nutRad,
+                            center = Offset(nutIndicatorX, y),
+                            style = Stroke(width = if (isExactOpenActive) 2.2.dp.toPx() else 1.2.dp.toPx())
+                        )
+                        val nutText = NOTE_NAMES[openSemi]
+                        notePillTextPaint.color = if (isExactOpenActive) android.graphics.Color.rgb(180, 40, 0) else android.graphics.Color.WHITE
+                        notePillTextPaint.textSize = 8.5f.dp.toPx()
+                        drawContext.canvas.nativeCanvas.drawText(nutText, nutIndicatorX, y + textOffsetY, notePillTextPaint)
                     }
                 }
             }
 
             // Active Fretted Notes
-            val textOffsetY = 4.dp.toPx()
             for (s in 0 until numStrings) {
                 val openSemi = openStringsSemis.getOrNull(s) ?: 0
-                val stringChordFret = chordFrets?.getOrNull(s) ?: -1
+                val stringChordFret = activeChordFrets?.getOrNull(s) ?: -1
                 val baseStringMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
 
                 for (f in 1..numFrets) {
                     val absoluteFret = baseFret + f - 1
                     val fretSemi = (openSemi + absoluteFret) % 12
                     val fullMidiNote = baseStringMidi + absoluteFret
-                    val isChordFret = chordFrets != null && stringChordFret > 0 && (
+
+                    val isChordFret = activeChordFrets != null && stringChordFret > 0 && (
                         stringChordFret == absoluteFret || (baseFret > 1 && stringChordFret == f)
                         )
                     val matchesCoord = activeCoordinate != null && activeCoordinate.first == s && (
                         activeCoordinate.second == absoluteFret || activeCoordinate.second == f
                         )
-                    val matchesMidi = effectiveActiveMidiNote != null && (
-                        (chordFrets != null && isChordFret && (fullMidiNote % 12 == effectiveActiveMidiNote % 12)) ||
-                            (chordFrets == null && fullMidiNote == effectiveActiveMidiNote)
-                        )
-                    val isCurrentlyPlaying = matchesCoord || matchesMidi
-                    val isScaleNote = chordFrets == null && normalizedActiveNotes.contains(fretSemi)
+                    val isExactMidiPlaying = effectiveActiveMidiNote != null && fullMidiNote == effectiveActiveMidiNote
+                    val isFretPointActive = activeChordFrets == null && activeFretPoints.contains(s to absoluteFret)
+                    val isCurrentlyPlaying = matchesCoord || (if (activeChordFrets != null) isChordFret && isExactMidiPlaying else isExactMidiPlaying || isFretPointActive)
+
+                    // In Scale Mode: highlight valid notes of the scale within the constrained fret window
+                    val isScaleFret = isScaleMode && normalizedActiveNotes.contains(fretSemi) && (absoluteFret in fretMinConstrain..fretMaxConstrain)
                     val isRoot = fretSemi == normalizedRootNote
 
-                    if (isChordFret || isCurrentlyPlaying || isScaleNote) {
+                    if (isChordFret || isCurrentlyPlaying || isScaleFret) {
                         val cx = leftPad + (f - 0.5f) * fretW
                         val cy = getYForStringAtX(s, cx)
                         val dotRadius = when {
                             isCurrentlyPlaying -> 13.dp.toPx()
-                            isScaleNote -> 10.dp.toPx()
+                            isScaleFret -> 10.dp.toPx()
                             else -> 11.5.dp.toPx()
                         }
 
                         val primaryDotColor = when {
                             isCurrentlyPlaying -> Color(0xFFFFEB3B)
-                            isRoot && isScaleNote -> Color(0xFFFF5252)
+                            isRoot && isScaleFret -> Color(0xFFFF5252)
                             else -> pillColor
                         }
 
@@ -398,7 +586,7 @@ fun UnifiedGuitarFretboard(
                             center = Offset(cx, cy)
                         )
 
-                        if (isCurrentlyPlaying || (isRoot && isScaleNote)) {
+                        if (isCurrentlyPlaying || (isRoot && isScaleFret)) {
                             drawCircle(
                                 color = Color.White,
                                 radius = dotRadius,
@@ -408,21 +596,15 @@ fun UnifiedGuitarFretboard(
                         }
 
                         val fingerNum = if (isChordFret) chordFingers?.getOrNull(s) else null
-                        val octaveNumber = (fullMidiNote / 12) - 1
-                        val isNoteC = fretSemi == 0
 
                         val displayText = if (fingerNum != null && fingerNum > 0) {
                             "$fingerNum"
-                        } else if (isNoteC && markOctaves) {
-                            "C$octaveNumber"
-                        } else if (markOctaves && (isRoot || showNoteNames)) {
-                            "${NOTE_NAMES[fretSemi]}$octaveNumber"
                         } else {
                             NOTE_NAMES[fretSemi]
                         }
 
                         notePillTextPaint.color = if (isCurrentlyPlaying) android.graphics.Color.rgb(180, 40, 0) else android.graphics.Color.WHITE
-                        notePillTextPaint.textSize = (if (displayText.length > 2) 9.dp else if (isScaleNote) 10.dp else 11.dp).toPx()
+                        notePillTextPaint.textSize = (if (displayText.length > 2) 9.dp else if (isScaleFret) 10.dp else 11.dp).toPx()
                         drawContext.canvas.nativeCanvas.drawText(displayText, cx, cy + textOffsetY, notePillTextPaint)
                     }
                 }

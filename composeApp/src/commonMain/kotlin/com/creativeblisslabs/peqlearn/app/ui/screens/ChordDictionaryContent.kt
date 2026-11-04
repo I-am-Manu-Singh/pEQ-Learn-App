@@ -192,6 +192,42 @@ fun ChordDictionaryPanel(
         ChordVoicingEngine.getCadenceProgressions(rootIdx = rootIdx, rootNames = roots)
     }
 
+    // Comprehensive selection debug logger for issue auditing
+    LaunchedEffect(
+        mode,
+        rootIdx,
+        chordTypeIdx,
+        selectedScaleIdx,
+        selectedInstrument,
+        selectedDiff,
+        selectedVoicingType,
+        selectedVoicingIdx,
+        selectedStartFret,
+        selectedCagedFilter,
+        selectedFretRange,
+        selectedOctaveSpan
+    ) {
+        val rootStr = roots.getOrNull(rootIdx) ?: "C"
+        val modeStr = if (mode == 0) "CHORD" else "SCALE"
+        val itemStr = if (mode == 0) chordName else scalePair.first
+        val instStr = selectedInstrument.name
+        val diffStr = selectedDiff.label
+        val rangeStr = selectedFretRange
+        val cagedStr = selectedCagedFilter
+        val startFretStr = "Fret $selectedStartFret"
+        val voicingStr = if (selectedInstrument == ChordInstrumentType.PIANO) {
+            voicingOptions.getOrNull(selectedVoicingIdx) ?: "Default"
+        } else {
+            selectedVoicingType
+        }
+        val octaveStr = octaveOptions.getOrNull(selectedOctaveSpan) ?: "Default"
+
+        println(
+            "pEQLearn [StudioSelection]: Mode=$modeStr | Root=$rootStr | Selection=\"$itemStr\" | Inst=$instStr | " +
+                "Voicing=$voicingStr | FretDiff=$diffStr | StartFret=$startFretStr | CAGED=$cagedStr | FretRange=$rangeStr | Octaves=$octaveStr | Pitches=$pianoPitches"
+        )
+    }
+
     LaunchedEffect(activeMidiMap, isArpeggioRunning) {
         if (!isArpeggioRunning) {
             viewModel.midiActiveNotes.clear()
@@ -637,24 +673,54 @@ Row(
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         // Strings top to bottom: e4 (64), B3 (59), G3 (55), D3 (50), A2 (45), E2 (40)
                         val openGuitarStrings = listOf(64, 59, 55, 50, 45, 40)
-                        val highlightedGuitarCoordinate = remember(activeMidiToken, guitarShape.frets, isArpeggioRunning, mode) {
+                        val (fretMin, fretMax) = remember(selectedFretRange) {
+                            when (selectedFretRange) {
+                                "Open (0-3)" -> 0 to 3
+                                "Low (1-5)" -> 1 to 5
+                                "Mid (5-9)" -> 5 to 9
+                                "High (9-14)" -> 9 to 14
+                                "12+ Frets" -> 12 to 24
+                                else -> 0 to 24
+                            }
+                        }
+
+                        val highlightedGuitarCoordinate = remember(activeMidiToken, guitarShape.frets, isArpeggioRunning, mode, fretMin, fretMax) {
                             if (isArpeggioRunning && activeMidiToken != null) {
                                 var targetMatch: Pair<Int, Int>? = null
                                 if (mode == 0) {
                                     for (s in guitarShape.frets.indices) {
                                         val fret = guitarShape.frets[s]
-                                        if (fret != -1 && (openGuitarStrings[s] + fret) % 12 == activeMidiToken % 12) {
+                                        if (fret != -1 && (openGuitarStrings[s] + fret) == activeMidiToken) {
                                             targetMatch = s to fret
                                             break
                                         }
                                     }
+                                    // Fallback to pitch class if octave didn't match directly
+                                    if (targetMatch == null) {
+                                        for (s in guitarShape.frets.indices) {
+                                            val fret = guitarShape.frets[s]
+                                            if (fret != -1 && (openGuitarStrings[s] + fret) % 12 == activeMidiToken % 12) {
+                                                targetMatch = s to fret
+                                                break
+                                            }
+                                        }
+                                    }
                                 } else {
-                                    // Scale mode: find first matching fret on the fretboard
+                                    // Scale mode: find matching fret within the selected fret constraints
                                     for (s in openGuitarStrings.indices) {
                                         val fret = (activeMidiToken % 12 - openGuitarStrings[s] % 12 + 12) % 12
-                                        if (fret in 0..15) {
+                                        if (fret in fretMin..fretMax) {
                                             targetMatch = s to fret
                                             break
+                                        }
+                                    }
+                                    if (targetMatch == null) {
+                                        for (s in openGuitarStrings.indices) {
+                                            val fret = (activeMidiToken % 12 - openGuitarStrings[s] % 12 + 12) % 12
+                                            if (fret in 0..15) {
+                                                targetMatch = s to fret
+                                                break
+                                            }
                                         }
                                     }
                                 }
@@ -662,9 +728,16 @@ Row(
                             } else null
                         }
 
-                        val fretboardBaseFret = if (mode == 0) guitarShape.baseFret else 1
-                        val fretboardChordFrets = if (mode == 0) guitarShape.frets else null
-                        val fretboardChordFingers = if (mode == 0) guitarShape.fingers else null
+                        val resolvedCaged = remember(selectedCagedFilter) {
+                            when (selectedCagedFilter) {
+                                "C-Shape" -> "C"
+                                "A-Shape" -> "A"
+                                "G-Shape" -> "G"
+                                "E-Shape" -> "E"
+                                "D-Shape" -> "D"
+                                else -> "AUTO"
+                            }
+                        }
 
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             UnifiedGuitarFretboard(
@@ -674,6 +747,9 @@ Row(
                                 showNoteNames = (mode == 1),
                                 markOctaves = true,
                                 highlightOctaveC = true,
+                                cagedMode = resolvedCaged,
+                                fretMinConstrain = fretMin,
+                                fretMaxConstrain = fretMax,
                                 chordFrets = fretboardChordFrets,
                                 chordFingers = fretboardChordFingers,
                                 baseFret = fretboardBaseFret,
