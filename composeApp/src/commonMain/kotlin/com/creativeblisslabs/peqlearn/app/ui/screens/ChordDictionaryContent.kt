@@ -145,34 +145,43 @@ fun ChordDictionaryPanel(
         )
     }
 
-    val pianoPitches = remember(activeMidiMap) { activeMidiMap.keys.toList().sorted() }
-    val noteNames = remember(pianoPitches, mode) { pianoPitches.map { roots[it % 12] } }
+val sortedMidi = remember(activeMidiMap) { activeMidiMap.keys.sorted() }
+val noteNames = remember(sortedMidi, mode) { sortedMidi.map { roots[it % 12] } }
 
-    val pianoFingering = remember(pianoPitches, typeDef.suffix, mode, selectedVoicingIdx) {
-        ChordVoicingEngine.computePianoFingering(
-            pitches = pianoPitches,
-            chordSuffix = typeDef.suffix,
-            isScale = (mode != 0),
-            voicingIdx = selectedVoicingIdx
-        )
-    }
+// Bridge the reference gap: pianoPitches is just your sorted collection of active MIDI keys
+val pianoPitches = sortedMidi
 
+// Now your fingering evaluator can safely execute without losing parameter types
+val pianoFingering = remember(pianoPitches, typeDef.suffix, mode, selectedVoicingIdx) {
+    ChordVoicingEngine.computePianoFingering(
+        pitches = pianoPitches,
+        chordSuffix = typeDef.suffix,
+        isScale = (mode != 0),
+        voicingIdx = selectedVoicingIdx
+    )
+}
     val currentRootName = roots[rootIdx]
     val currentSuffix = typeDef.suffix
 
-    val guitarShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode, selectedCagedFilter, selectedFretRange) {
-        ChordVoicingEngine.getDictionaryGuitarShape(
-            rootName = currentRootName,
-            suffix = currentSuffix,
-            diff = selectedDiff,
-            capoFret = capoFret,
-            startFret = selectedStartFret,
-            voicingType = selectedVoicingType,
-            cagedFilter = selectedCagedFilter,
-            fretRangeFilter = selectedFretRange,
-            fallbackIntervals = typeDef.intervals
-        )
-    }
+   val guitarShape = remember(
+    rootIdx, chordTypeIdx, selectedDiff, capoFret,
+    selectedStartFret, selectedVoicingType, mode,
+    selectedCagedFilter, selectedFretRange
+) {
+    ChordVoicingEngine.getDictionaryGuitarShape(
+        rootName = currentRootName,
+        suffix = currentSuffix,
+        diff = selectedDiff,
+        capoFret = capoFret,
+        startFret = selectedStartFret,
+        voicingType = selectedVoicingType,
+        cagedFilter = if (selectedCagedFilter == "All CAGED") "AUTO" else selectedCagedFilter,
+        fretRangeFilter = selectedFretRange,
+        fretMinConstrain = selectedStartFret,
+        fretMaxConstrain = selectedStartFret + 4,   // simple 4‑fret window; can be tweaked
+        fallbackIntervals = typeDef.intervals
+    )
+}
 
     val ukuShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode) {
         ChordVoicingEngine.getDictionaryUkuShape(

@@ -17,6 +17,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FolderOpen
@@ -117,6 +124,14 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
 
+data class ExportTimelineNote(
+    val midiNote: Int,
+    val startSec: Float,
+    val endSec: Float,
+    val voice: Int,
+    val isRightHand: Boolean
+)
+
 data class FingeringData(
     val notes: List<Int> = emptyList(),
     val fingers: List<Int> = emptyList()
@@ -128,7 +143,69 @@ enum class PianoKeyboardMode(val label: String) {
     STUDIO_49("49 Keys"),
     COMPACT_25("25 Keys")
 }
+class VisualizerStageCaptureController {
+    var isExportingVideo by mutableStateOf(false)
+    var exportProgress by mutableFloatStateOf(0f)
+    var exportTimeSec by mutableStateOf<Float?>(null)
+    var graphicsLayer: GraphicsLayer? = null
 
+    suspend fun stepAndCaptureFrame(
+        viewModel: AppViewModel,
+        timeSec: Float,
+        measureStartTimes: FloatArray,
+        measureDurations: FloatArray,
+        flatNotes: List<ExportTimelineNote>
+    ): android.graphics.Bitmap? = withContext(Dispatchers.Main) {
+        // 1. Step playhead to exact measure and beat offset for this video frame
+        var mIdx = 0
+        for (i in measureStartTimes.indices) {
+            if (timeSec >= measureStartTimes[i]) mIdx = i else break
+        }
+        val mStart = measureStartTimes[mIdx]
+        val mDur = measureDurations[mIdx].coerceAtLeast(0.001f)
+        val offsetInMeasure = ((timeSec - mStart) / mDur).coerceIn(0f, 1f)
+
+        viewModel.scorePlayheadMeasure.value = mIdx
+        viewModel.scorePlayheadOffset.value = offsetInMeasure
+
+        // 2. Highlight active MIDI keys / frets / notation notes for this frame
+        val activeNow = HashMap<Int, Boolean>()
+        var leadPlayingNote: Int? = null
+        var sustainDown = false
+        for (fn in flatNotes) {
+            if (fn.startSec > timeSec + 0.015f) break
+            if (timeSec >= fn.startSec - 0.005f && timeSec <= fn.endSec) {
+                activeNow[fn.midiNote] = true
+                if (leadPlayingNote == null || fn.midiNote > leadPlayingNote) {
+                    leadPlayingNote = fn.midiNote
+                }
+                sustainDown = true
+            }
+        }
+        viewModel.midiActiveNotes.clear()
+        viewModel.midiActiveNotes.putAll(activeNow)
+        viewModel.midiPlayingNote.value = leadPlayingNote
+        viewModel.sustainPedalActive.value = sustainDown
+
+        // 3. Advance deterministic waterfall particle/flash clock
+        exportTimeSec = timeSec
+
+        // 4. Wait two frame pulses so Compose recomposes and draws into stageGraphicsLayer
+        withFrameNanos { }
+        withFrameNanos { }
+
+        val layer = graphicsLayer ?: return@withContext null
+        return@withContext runCatching {
+            val rawBmp = layer.toImageBitmap().asAndroidBitmap()
+            // Convert hardware bitmap to software ARGB_8888 if needed so Canvas drawing never crashes
+            if (rawBmp.config == android.graphics.Bitmap.Config.HARDWARE) {
+                rawBmp.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+            } else {
+                rawBmp
+            }
+        }.getOrNull()
+    }
+}
 private class PianoFallingNoteBlock(
     val midiNote: Int,
     var startY: Float = 0f,
@@ -1341,9 +1418,33 @@ Row(
             }
         }
     }
-    if (viewModel.isFullscreenKeyboard.value) {
+   // Open Fullscreen Stage when either user opens Fullscreen OR Video Export is running!
+    val shouldMountFullscreenStage = viewModel.isFullscreenKeyboard.value || viewModel.isVideoExporting.value
+
+    if (shouldMountFullscreenStage) {
+        val stageCaptureController = remember { VisualizerStageCaptureController() }
+        val stageGraphicsLayer = rememberGraphicsLayer()
+
+        SideEffect {
+            stageCaptureController.graphicsLayer = stageGraphicsLayer
+            viewModel.visualizerStageCaptureController = stageCaptureController
+        }
+
+        DisposableEffect(stageCaptureController) {
+            viewModel.visualizerStageCaptureController = stageCaptureController
+            onDispose {
+                if (viewModel.visualizerStageCaptureController === stageCaptureController) {
+                    viewModel.visualizerStageCaptureController = null
+                }
+            }
+        }
+
         FullscreenDialog(
-            onDismissRequest = { viewModel.isFullscreenKeyboard.value = false },
+            onDismissRequest = {
+                if (!viewModel.isVideoExporting.value) {
+                    viewModel.isFullscreenKeyboard.value = false
+                }
+            },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
                 decorFitsSystemWindows = false
@@ -1445,8 +1546,7 @@ Row(
 
                     // // --- TOP BAR: Floats at TopCenter without shifting content ---
                     AnimatedVisibility(
-                        visible = areControlsVisible,
-                        enter = fadeIn(tween(250)),
+                        visible = areControlsVisible && !stageCaptureController.isExportingVideo && !viewModel.isVideoExporting.value, enter = fadeIn(tween(250)),
                         exit = fadeOut(tween(300)),
                         modifier = Modifier
                             .zIndex(20f)
@@ -2038,13 +2138,24 @@ pEQInstrumentDropdown(
                         }
                     }
                     
-                        // Fullscreen Interactive Piano Area with Synchronized Waterfall & Keyboard (Floats behind top & bottom overlay controls)
-                        BoxWithConstraints(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer(scaleX = fsZoomFactor, scaleY = fsZoomFactor, translationX = panOffset.x, translationY = panOffset.y)
-                                .background(Color.Black)
-                        ) {
+                      val isExportingNow = stageCaptureController.isExportingVideo || viewModel.isVideoExporting.value
+BoxWithConstraints(
+    modifier = Modifier
+        .fillMaxSize()
+        .graphicsLayer(
+            scaleX = if (isExportingNow) 1f else fsZoomFactor,
+            scaleY = if (isExportingNow) 1f else fsZoomFactor,
+            translationX = if (isExportingNow) 0f else panOffset.x,
+            translationY = if (isExportingNow) 0f else panOffset.y
+        )
+        .drawWithContent {
+            stageGraphicsLayer.record {
+                this@drawWithContent.drawContent()
+            }
+            drawLayer(stageGraphicsLayer)
+        }
+        .background(Color.Black)
+) {
                             val availableW = maxWidth
                             val isNotationOnly = fsLayoutMode == "Notation"
                             val isLandscapeWide = availableW >= 600.dp
@@ -2587,8 +2698,7 @@ pEQInstrumentDropdown(
                     // --- FLOATING BOTTOM PLAYBACK BAR: Styled exactly like reference image 1 ---
                     val controlsBottomPadding = if (fsLayoutMode == "Notation") 18.dp else 155.dp
                     AnimatedVisibility(
-                        visible = areControlsVisible,
-                        enter = fadeIn(tween(250)),
+visible = areControlsVisible && !stageCaptureController.isExportingVideo && !viewModel.isVideoExporting.value,                        enter = fadeIn(tween(250)),
                         exit = fadeOut(tween(300)),
                         modifier = Modifier
                             .zIndex(20f)
@@ -2895,7 +3005,38 @@ pEQInstrumentDropdown(
                             }
                         }
                     }
-
+                    
+                    //export dialog progress
+                    if (viewModel.isVideoExporting.value) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color(0xFF0F0B18).copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.7f)),
+        modifier = Modifier
+            .zIndex(30f)
+            .align(Alignment.TopEnd)
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            CircularProgressIndicator(
+                progress = { viewModel.videoExportProgress.floatValue },
+                modifier = Modifier.size(18.dp),
+                color = Color(0xFFFFD700),
+                strokeWidth = 2.5.dp
+            )
+            Text(
+                text = "Rendering UI Video: ${(viewModel.videoExportProgress.floatValue * 100).toInt()}%",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
                     // Speed Optimization Alert Dialog when frames / audio lag or drops are detected
                     if (showSpeedOptimizationDialog) {
                         AlertDialog(
@@ -3048,11 +3189,21 @@ Button(
                         }
                     }
 
-                    if (exportStudioTab == 0) {
-                        VideoExportStudioSection(viewModel = viewModel)
-                    } else {
-                        PdfExportStudioSection(viewModel = viewModel)
-                    }
+                   if (exportStudioTab == 0) {
+    VideoExportStudioSection(
+        viewModel = viewModel,
+        onExportStarted = {
+            showExportDialog = false
+        }
+    )
+} else {
+    PdfExportStudioSection(
+        viewModel = viewModel,
+        onExportStarted = {
+            showExportDialog = false
+        }
+    )
+}
 
                     Spacer(Modifier.height(16.dp))
                 }
@@ -4209,7 +4360,8 @@ fun SynthesiaWaterfallOverlay(
     isRightHandHidden: Boolean = false,
     enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
     playbackSpeed: Float = 1.0f,
-    onFpsDropDetected: () -> Unit = {}
+    onFpsDropDetected: () -> Unit = {},
+    exportTimeSec: Float? = null
 ) {
     val fallingBlocks = remember { ArrayList<PianoWaterfallBlock>() }
     val particles = remember { ArrayList<PianoSpark>() }
@@ -4453,7 +4605,104 @@ fun SynthesiaWaterfallOverlay(
             }
         }
     }
+    var prevExportTimeSec by remember { mutableStateOf<Float?>(null) }
+var prevExportActiveNotes by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
+LaunchedEffect(exportTimeSec) {
+    val curT = exportTimeSec ?: run {
+        prevExportTimeSec = null
+        prevExportActiveNotes = emptySet()
+        return@LaunchedEffect
+    }
+    val prevT = prevExportTimeSec
+    val dtSec = if (prevT != null && curT >= prevT) (curT - prevT).coerceIn(0.001f, 0.1f) else (1f / 60f)
+    val dtScale = (dtSec * 60f).coerceIn(0.25f, 3.0f)
+    prevExportTimeSec = curT
+
+    val currentCanvasH = canvasHeightPx
+    val currentCanvasW = canvasWidthPx
+    val contactY = if (currentCanvasH > 50f) currentCanvasH else 320f
+    val whiteKeyW = currentCanvasW / whiteKeyCount.toFloat()
+
+    // Spawn flashes & particles only for newly struck notes at this exact frame
+    val newlyStruck = activeMidiNotes - prevExportActiveNotes
+    prevExportActiveNotes = activeMidiNotes.toSet()
+
+    if (newlyStruck.isNotEmpty()) {
+        val isChordStrike = activeMidiNotes.size >= 2
+        for (midi in newlyStruck) {
+            if (midi !in 0..127) continue
+            val geom = WaterfallKeyGeometryLookup.keyGeometries[midi]
+            val baseBlockW = if (geom.isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
+            val xOff = (whiteKeyW - baseBlockW) / 2f
+            val strikeX = (geom.whiteKeyIndex * whiteKeyW) + xOff + baseBlockW / 2f
+            val baseColor = if (midi >= 60) rightHandColor else leftHandColor
+            val chordColor = if (isChordStrike) Color(0xFFFFD700) else baseColor
+            val baseRad = if (geom.isBlack) 28f else 38f
+
+            flashes.add(
+                PianoKeyFlash(
+                    midiNote = midi,
+                    centerX = strikeX,
+                    centerY = contactY,
+                    color = chordColor,
+                    velocity = 95,
+                    alpha = 0.95f * flashHaloIntensity.coerceIn(0.2f, 1.0f),
+                    radius = (if (isChordStrike) baseRad * 1.35f else baseRad) * flashSize.coerceIn(0.2f, 2.5f),
+                    isChordStrike = isChordStrike
+                )
+            )
+
+            if (particlesEnabled && particles.size < 96) {
+                val sparkBase = if (geom.isBlack) (particleCount * 0.4f).toInt() else (particleCount * 0.6f).toInt()
+                val count = sparkBase.coerceIn(2, 16)
+                val pColor = if (lockParticleColor) baseColor else particleCustomColor
+                for (i in 0 until count) {
+                    val angleRad = (-(30f + Random.nextFloat() * 120f) * (Math.PI / 180f)).toFloat()
+                    val speed = (Random.nextFloat() * 4.5f + 2.0f) * (particleSpeed / 4.5f).coerceIn(0.2f, 3.0f)
+                    val life = Random.nextFloat() * 18f + 14f
+                    particles.add(
+                        PianoSpark(
+                            x = strikeX + (Random.nextFloat() - 0.5f) * (8f * particleExpansion.coerceIn(0.2f, 4f)),
+                            y = contactY,
+                            vx = cos(angleRad) * speed * particleExpansion.coerceIn(0.5f, 2.5f),
+                            vy = sin(angleRad) * speed,
+                            alpha = 1.0f,
+                            size = (Random.nextFloat() * 2.2f + 1.6f) * particleScale.coerceIn(0.3f, 3.0f),
+                            maxLife = life,
+                            currentLife = life,
+                            color = pColor
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    // Step existing particles & flashes deterministically by dtScale
+    val gravity = 0.28f
+    val pIter = particles.listIterator()
+    while (pIter.hasNext()) {
+        val p = pIter.next()
+        p.x += p.vx * dtScale
+        p.y += p.vy * dtScale
+        p.vy += gravity * dtScale
+        p.vx *= 0.985f
+        p.currentLife -= dtScale
+        p.alpha = (p.currentLife / p.maxLife).coerceIn(0f, 1f)
+        if (p.currentLife <= 0f || p.alpha <= 0f) pIter.remove()
+    }
+
+    val fIter = flashes.listIterator()
+    while (fIter.hasNext()) {
+        val f = fIter.next()
+        f.radius += 1.8f * flashSize.coerceIn(0.5f, 2.0f) * dtScale
+        f.alpha *= 0.88f
+        if (f.alpha < 0.03f) fIter.remove()
+    }
+
+    fsFrameTicker++
+}
     Canvas(modifier = modifier.fillMaxSize()) {
         val _fsTick = fsFrameTicker
         val whiteKeyWidthPx = size.width / whiteKeyCount.toFloat()

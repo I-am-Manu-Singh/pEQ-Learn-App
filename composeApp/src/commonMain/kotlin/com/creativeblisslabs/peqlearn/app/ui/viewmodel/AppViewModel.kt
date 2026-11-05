@@ -1,7 +1,8 @@
 package com.creativeblisslabs.peqlearn.app.ui.viewmodel
 
 import kotlin.math.*
-
+import com.creativeblisslabs.peqlearn.app.ui.screens.Score
+import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import androidx.compose.runtime.*
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.snapshotFlow
@@ -33,7 +34,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withTimeoutOrNull
-
 import com.creativeblisslabs.peqlearn.app.data.normalizePath
 import com.creativeblisslabs.peqlearn.app.video.VideoExportConfig
 import com.creativeblisslabs.peqlearn.app.video.compilePdfPlatformSpecific
@@ -1344,7 +1344,7 @@ fun scrubSongPlayhead(targetProgress: Float) {
     val currentScore = mutableStateOf<Score?>(null)
 
 // var currentScore = mutableStateOf<com.creativeblisslabs.peqlearn.app.ui.screens.Score?>(null)
-   
+var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.screens.VisualizerStageCaptureController? = null
     val scorePlayheadMeasure = mutableIntStateOf(0)
 
     val scorePlayheadOffset = mutableFloatStateOf(0f)
@@ -1936,87 +1936,110 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
     }
 
     fun exportVideoToFile(onComplete: (String) -> Unit) {
-        val score = currentScore.value ?: Score(
-            title = currentMediaItem.value?.title ?: "pEQ Performance",
-            tempo = metronomeBpm.value.toFloat(),
-            timeSignature = "4/4"
-        )
-        val res = videoExportResolution.value
-        val fpsInt = videoExportFps.value.filter { it.isDigit() }.toIntOrNull() ?: 60
+    val score = currentScore.value ?: Score(
+        title = currentMediaItem.value?.title ?: "pEQ Performance",
+        tempo = metronomeBpm.value.toFloat(),
+        timeSignature = "4/4"
+    )
+    val res = videoExportResolution.value
+    val fpsInt = videoExportFps.value.filter { it.isDigit() }.toIntOrNull() ?: 60
 
-        val effectsMap = mapOf(
-            "Notation" to (videoExportLayoutMode.value != "Waterfall"),
-            "Visualizer" to (videoExportLayoutMode.value != "Notation"),
-            "Glow" to (videoExportPeakSensitivity.floatValue > 30f),
-            "Particles" to showWaterfallParticles.value,
-            "RenderPedals" to videoExportRenderPedals.value,
-            "Theme" to (videoExportTheme.value == "Cyberpunk"),
-            "AudioSource" to (videoExportAudioSource.value == "MidiScore")
-        )
+    val effectsMap = mapOf(
+        "Notation" to (videoExportLayoutMode.value != "Waterfall"),
+        "Visualizer" to (videoExportLayoutMode.value != "Notation"),
+        "Glow" to (videoExportPeakSensitivity.floatValue > 30f),
+        "Particles" to showWaterfallParticles.value,
+        "RenderPedals" to videoExportRenderPedals.value,
+        "Theme" to (videoExportTheme.value == "Cyberpunk"),
+        "AudioSource" to (videoExportAudioSource.value == "MidiScore")
+    )
 
-        val queueItem = VideoExportHistoryItem(
-            title = score.title.ifBlank { "pEQ Composition" },
-            resolution = res,
-            fps = videoExportFps.value,
-            audioSource = if (videoExportAudioSource.value == "AudioFile") videoExportExternalAudioName.value
-                ?: "Custom Audio File" else "MIDI Score Synth",
-            status = "Rendering",
-            progress = 0.01f
-        )
-        videoExportHistory.add(0, queueItem)
+    val queueItem = com.creativeblisslabs.peqlearn.app.ui.viewmodel.VideoExportHistoryItem(
+        title = score.title.ifBlank { "pEQ Composition" },
+        resolution = res,
+        fps = videoExportFps.value,
+        audioSource = if (videoExportAudioSource.value == "AudioFile") videoExportExternalAudioName.value
+            ?: "Custom Audio File" else "MIDI Score Synth",
+        status = "Rendering",
+        progress = 0.01f
+    )
+    videoExportHistory.add(0, queueItem)
 
-        isVideoExporting.value = true
-        videoExportProgress.value = 0.01f
+    isVideoExporting.value = true
+    videoExportProgress.value = 0.01f
 
-        val config = VideoExportConfig(
-            score = score,
-            resolution = res,
-            fps = fpsInt,
-            effects = effectsMap,
-            layoutMode = videoExportLayoutMode.value,
-            notationFormat = notationFormat.value,
-            visualTheme = videoExportTheme.value,
-            bitrateMbps = videoExportBitrate.value.filter { it.isDigit() }.toIntOrNull() ?: 12,
-            sampleRateHz = if (videoExportSampleRate.value.contains("48")) 48000 else 44100,
-            cameraYawDeg = videoExportCameraYaw.floatValue,
-            cameraPitchDeg = videoExportCameraPitch.floatValue,
-            eqBarsCount = videoExportEqBars.intValue,
-            peakSensitivity = videoExportPeakSensitivity.floatValue,
-            rightHandColorInt = rightHandColor.value.hashCode(),
-            leftHandColorInt = leftHandColor.value.hashCode(),
-            isRightHandHidden = isRightHandHidden.value,
-            isLeftHandHidden = isLeftHandHidden.value,
-            enabledTrackIndices = enabledTrackIndices.toMap(),
-            externalAudioUri = videoExportExternalAudioUri.value
-        )
+    val config = VideoExportConfig(
+        score = score,
+        resolution = res,
+        fps = fpsInt,
+        effects = effectsMap,
+        layoutMode = videoExportLayoutMode.value,
+        notationFormat = notationFormat.value,
+        visualTheme = videoExportTheme.value,
+        bitrateMbps = videoExportBitrate.value.filter { it.isDigit() }.toIntOrNull() ?: 12,
+        sampleRateHz = if (videoExportSampleRate.value.contains("48")) 48000 else 44100,
+        cameraYawDeg = videoExportCameraYaw.floatValue,
+        cameraPitchDeg = videoExportCameraPitch.floatValue,
+        eqBarsCount = videoExportEqBars.intValue,
+        peakSensitivity = videoExportPeakSensitivity.floatValue,
+        rightHandColorInt = rightHandColor.value.hashCode(),
+        leftHandColorInt = leftHandColor.value.hashCode(),
+        isRightHandHidden = isRightHandHidden.value,
+        isLeftHandHidden = isLeftHandHidden.value,
+        enabledTrackIndices = enabledTrackIndices.toMap(),
+        externalAudioUri = videoExportExternalAudioUri.value
+    )
 
-        exportVideoPlatformSpecific(
-            config = config,
-            onProgress = { progress: Float ->
-                videoExportProgress.value = progress
-                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
-                if (idx != -1) {
-                    videoExportHistory[idx] = videoExportHistory[idx].copy(progress = progress)
-                }
-            },
-            onComplete = { filePath: String? ->
-                val finalPath = filePath ?: "/sdcard/Movies/pEQ_Visualizer_${
-                    kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
-                }.mp4"
-                isVideoExporting.value = false
-                videoExportProgress.value = 1.0f
-                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
-                if (idx != -1) {
-                    videoExportHistory[idx] = videoExportHistory[idx].copy(
-                        status = "Completed",
-                        progress = 1.0f,
-                        filePath = finalPath
+    exportVideoPlatformSpecific(
+    viewModel = this,
+    config = config,
+    onProgress = { progress: Float ->
+        videoExportProgress.value = progress
+
+        val idx = videoExportHistory.indexOfFirst {
+            it.id == queueItem.id
+        }
+
+        if (idx != -1) {
+            videoExportHistory[idx] =
+                videoExportHistory[idx].copy(progress = progress)
+        }
+    },
+    onComplete = { filePath: String? ->
+        isVideoExporting.value = false
+
+        val idx = videoExportHistory.indexOfFirst {
+            it.id == queueItem.id
+        }
+
+        if (filePath == null) {
+            videoExportProgress.value = 0f
+
+            if (idx != -1) {
+                videoExportHistory[idx] =
+                    videoExportHistory[idx].copy(
+                        status = "Failed",
+                        progress = 0f,
+                        filePath = null
                     )
-                }
-                onComplete(finalPath)
             }
-        )
+        } else {
+            videoExportProgress.value = 1f
+
+            if (idx != -1) {
+                videoExportHistory[idx] =
+                    videoExportHistory[idx].copy(
+                        status = "Completed",
+                        progress = 1f,
+                        filePath = filePath
+                    )
+            }
+
+            onComplete(filePath)
+        }
     }
+)
+}
 
     fun playPattern(pattern: GroovePattern) {
         val kit = drumKits.firstOrNull() ?: return

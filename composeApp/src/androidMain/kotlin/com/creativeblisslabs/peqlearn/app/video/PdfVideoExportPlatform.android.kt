@@ -4,20 +4,38 @@ import android.content.Context
 import com.creativeblisslabs.peqlearn.app.pdf.AndroidPdfExporter
 import com.creativeblisslabs.peqlearn.app.ui.screens.PdfExportOptions
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
+import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-lateinit var applicationContext: Context
+/**
+ * Resolves the Android application context.
+ */
+private fun resolveApplicationContext(): Context {
+    return runCatching {
+        val activityThreadClass = Class.forName("android.app.ActivityThread")
+        val method = activityThreadClass.getMethod("currentApplication")
+
+        method.invoke(null) as? Context
+    }.getOrNull() ?: throw IllegalStateException(
+        "Unable to obtain Android application context."
+    )
+}
+
+/**
+ * Android implementation of MIDI video export.
+ */
 actual fun exportVideoPlatformSpecific(
     config: VideoExportConfig,
+    viewModel: AppViewModel,
     onProgress: (Float) -> Unit,
     onComplete: (String?) -> Unit
 ) {
     CoroutineScope(Dispatchers.Main).launch {
         try {
             AndroidVideoExporter.exportMidiVideo(
-                context = applicationContext,
+                context = resolveApplicationContext(),
                 score = config.score,
                 resolution = config.resolution,
                 fps = config.fps,
@@ -37,9 +55,14 @@ actual fun exportVideoPlatformSpecific(
                 isLeftHandHidden = config.isLeftHandHidden,
                 enabledTrackIndices = config.enabledTrackIndices,
                 externalAudioUri = config.externalAudioUri,
-                onProgress = onProgress,
-                onComplete = { filePath ->
-                    onComplete(filePath)
+                viewModel = viewModel,
+                stageCaptureController =
+                    viewModel.visualizerStageCaptureController,
+                onProgress = { progress ->
+                    onProgress(progress)
+                },
+                onComplete = { savedPath ->
+                    onComplete(savedPath)
                 }
             )
         } catch (e: Exception) {
@@ -49,6 +72,9 @@ actual fun exportVideoPlatformSpecific(
     }
 }
 
+/**
+ * Android implementation of PDF export.
+ */
 actual fun compilePdfPlatformSpecific(
     score: Score,
     options: PdfExportOptions,
@@ -57,12 +83,18 @@ actual fun compilePdfPlatformSpecific(
 ) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
+            val context = resolveApplicationContext()
+
             AndroidPdfExporter.exportScoreToPdf(
-                context = applicationContext,
+                context = context,
                 score = score,
                 options = options,
-                onProgress = onProgress,
-                onComplete = onComplete
+                onProgress = { progress ->
+                    onProgress(progress)
+                },
+                onComplete = { path ->
+                    onComplete(path)
+                }
             )
         } catch (e: Exception) {
             e.printStackTrace()

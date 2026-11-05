@@ -567,9 +567,11 @@ fun ExportTabContent(viewModel: AppViewModel) {
     // High-Resolution Sheet Music PDF Export Section
     PdfExportStudioSection(viewModel)
 }
-
 @Composable
-fun VideoExportStudioSection(viewModel: AppViewModel) {
+fun VideoExportStudioSection(
+    viewModel: AppViewModel,
+    onExportStarted: (() -> Unit)? = null
+) {
     // 1. Layout Mode (Score + Waterfall / Waterfall / Notation)
     SettingsSection("Export Composition Mode", icon = Icons.Default.Dashboard) {
         Row(
@@ -872,8 +874,11 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
     }
 
     // Export Button
-    Button(
-        onClick = { viewModel.exportVideoToFile { } },
+   Button(
+    onClick = {
+        onExportStarted?.invoke()
+        viewModel.exportVideoToFile { }
+    },
         enabled = !viewModel.isVideoExporting.value,
         modifier = Modifier.fillMaxWidth().height(52.dp),
         shape = MaterialTheme.shapes.medium,
@@ -980,7 +985,10 @@ fun VideoExportStudioSection(viewModel: AppViewModel) {
 }
 
 @Composable
-fun PdfExportStudioSection(viewModel: AppViewModel) {
+fun PdfExportStudioSection(
+    viewModel: AppViewModel,
+    onExportStarted: (() -> Unit)? = null
+) {
     val pdfOpts = viewModel.pdfExportOptions.value
 
     SectionHeader("HIGH-RESOLUTION SHEET MUSIC PDF EXPORT")
@@ -1152,8 +1160,11 @@ fun PdfExportStudioSection(viewModel: AppViewModel) {
     }
 
     // Compile & Export PDF Button
-    Button(
-        onClick = { viewModel.compileCurrentNotationToPDF() },
+   Button(
+    onClick = {
+        onExportStarted?.invoke()
+        viewModel.compileCurrentNotationToPDF()
+    },
         enabled = !viewModel.isExportingPDF.value,
         modifier = Modifier.fillMaxWidth().height(52.dp),
         shape = MaterialTheme.shapes.medium,

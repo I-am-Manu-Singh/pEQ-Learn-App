@@ -487,19 +487,22 @@ private fun scoreShapeMechanics(frets: List<Int>, root: Int, tuning: List<Int>, 
     /**
      * Resolves guitar chord shape from RealChordsDb with CAGED / fret-range filters and fallback.
      */
-    fun getDictionaryGuitarShape(
+     fun getDictionaryGuitarShape(
         rootName: String,
         suffix: String,
         diff: ChordDiff = ChordDiff.EASY,
         capoFret: Int = 0,
         startFret: Int = 1,
         voicingType: String = "Open",
-        cagedFilter: String = "All CAGED",
+        cagedFilter: String = "AUTO",
         fretRangeFilter: String = "All Frets",
+        fretMinConstrain: Int = 0,
+        fretMaxConstrain: Int = 24,
         fallbackIntervals: List<Int> = listOf(0, 4, 7)
     ): GuitarShape {
         val allRealPositions = RealChordsDb.getGuitarPositions(rootName, suffix)
         val filteredPositions = allRealPositions.filter { pos ->
+            // 1. Matches targeted static category fret range
             val matchesFretRange = when (fretRangeFilter) {
                 "Open (0-3)" -> pos.baseFret in 0..3
                 "Low (1-5)" -> pos.baseFret in 1..5
@@ -508,15 +511,22 @@ private fun scoreShapeMechanics(frets: List<Int>, root: Int, tuning: List<Int>, 
                 "12+ Frets" -> pos.baseFret >= 12
                 else -> true
             }
+            
+            // 2. Matches dynamic step/window constraints passed from the UI
+            val matchesWindow = pos.baseFret in fretMinConstrain..fretMaxConstrain
+
+            // 3. Matches CAGED shape filters (updated to handle "AUTO")
             val matchesCaged = when (cagedFilter) {
                 "C-Shape" -> (pos.frets.getOrNull(1) ?: -1) > 0 && (pos.frets.getOrNull(0) ?: -1) <= 0
                 "A-Shape" -> (pos.frets.getOrNull(1) ?: -1) >= 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
                 "G-Shape" -> (pos.frets.getOrNull(0) ?: -1) > 0 && (pos.frets.getOrNull(5) ?: -1) > 0
                 "E-Shape" -> (pos.frets.getOrNull(0) ?: -1) >= 0 && (pos.frets.getOrNull(1) ?: -1) >= 0
                 "D-Shape" -> (pos.frets.getOrNull(0) ?: -1) < 0 && (pos.frets.getOrNull(1) ?: -1) < 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
+                "AUTO", "All CAGED" -> true
                 else -> true
             }
-            matchesFretRange && matchesCaged
+            
+            matchesFretRange && matchesWindow && matchesCaged
         }
 
         val pool = if (filteredPositions.isNotEmpty()) filteredPositions else allRealPositions

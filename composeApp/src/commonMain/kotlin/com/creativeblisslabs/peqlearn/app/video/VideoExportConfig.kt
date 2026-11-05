@@ -2,7 +2,7 @@ package com.creativeblisslabs.peqlearn.app.video
 
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 
-data class VideoExportConfig(
+    data class VideoExportConfig(
     val score: Score,
     val resolution: String,
     val fps: Int,
