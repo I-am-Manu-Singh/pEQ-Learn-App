@@ -24,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.ui.components.SvgChordBox
+import com.creativeblisslabs.peqlearn.app.ui.components.SvgPianoChordBox
+import com.creativeblisslabs.peqlearn.app.ui.components.M3DropdownMenu
 import com.creativeblisslabs.peqlearn.app.ui.components.UnifiedGuitarFretboard
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQFilterChip
 import com.creativeblisslabs.peqlearn.app.ui.components.InstrumentPlayButton
@@ -32,6 +34,7 @@ import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.RealChordPosition
 import com.creativeblisslabs.peqlearn.app.util.RealChordsDb
 import com.creativeblisslabs.peqlearn.app.util.RealPianoChordsDb
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -141,22 +144,38 @@ fun ChordDisplayGalleryScreen(
 
     val currentPosition = chordPositions.getOrNull(selectedPositionIndex) ?: chordPositions.firstOrNull()
     var gallerySoundStyle by remember { mutableStateOf(InstrumentSoundStyle.SEQUENTIAL) }
+    var isGalleryPlaying by remember { mutableStateOf(false) }
+    var galleryActiveMidi by remember { mutableStateOf<Int?>(null) }
+    var galleryActiveCoord by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var galleryJob by remember { mutableStateOf<Job?>(null) }
 
-    fun playMidiNotes(notes: List<Int>, instrument: String) {
+    fun playMidiNotes(notes: List<Int>, instrument: String, noteCoords: List<Pair<Int, Int>?> = emptyList()) {
         if (notes.isEmpty()) return
-        scope.launch {
+        galleryJob?.cancel()
+        galleryJob = scope.launch {
+            isGalleryPlaying = true
             try {
                 viewModel.audioEngine.setInstrument(instrument)
                 when (gallerySoundStyle) {
                     InstrumentSoundStyle.SEQUENTIAL -> {
-                        notes.forEach { midiNote ->
+                        notes.forEachIndexed { idx, midiNote ->
+                            galleryActiveMidi = midiNote
+                            galleryActiveCoord = noteCoords.getOrNull(idx)
+                            viewModel.midiPlayingNote.value = midiNote
                             viewModel.audioEngine.noteOn(midiNote, 0.85f)
-                            delay(45L)
+                            delay(260L)
+                            viewModel.audioEngine.noteOff(midiNote)
                         }
                     }
                     InstrumentSoundStyle.ALL_AT_ONCE -> {
+                        galleryActiveCoord = null
+                        galleryActiveMidi = null
                         notes.forEach { midiNote ->
                             viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                        }
+                        delay(1200L)
+                        notes.forEach { midiNote ->
+                            try { viewModel.audioEngine.noteOff(midiNote) } catch (_: Exception) {}
                         }
                     }
                     InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> {
@@ -167,18 +186,62 @@ fun ChordDisplayGalleryScreen(
                         } else {
                             notes
                         }
-                        roundTripNotes.forEach { midiNote ->
+                        val roundTripCoords = if (noteCoords.size > 2) {
+                            noteCoords + noteCoords.subList(0, noteCoords.size - 1).reversed()
+                        } else if (noteCoords.size == 2) {
+                            listOf(noteCoords[0], noteCoords[1], noteCoords[0])
+                        } else {
+                            noteCoords
+                        }
+                        roundTripNotes.forEachIndexed { idx, midiNote ->
+                            galleryActiveMidi = midiNote
+                            galleryActiveCoord = roundTripCoords.getOrNull(idx)
+                            viewModel.midiPlayingNote.value = midiNote
                             viewModel.audioEngine.noteOn(midiNote, 0.85f)
-                            delay(60L)
+                            delay(300L)
+                            viewModel.audioEngine.noteOff(midiNote)
                         }
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            } finally {
+                notes.forEach { midi ->
+                    try { viewModel.audioEngine.noteOff(midi) } catch (_: Exception) {}
+                }
+                isGalleryPlaying = false
+                galleryActiveMidi = null
+                galleryActiveCoord = null
+                viewModel.midiPlayingNote.value = null
+            }
         }
     }
 
     fun playPosition(pos: RealChordPosition) {
-        playMidiNotes(pos.midi, if (selectedInstrument == "ukulele") "GUITAR" else "GUITAR")
+        if (isGalleryPlaying) {
+            galleryJob?.cancel()
+            pos.midi.forEach { try { viewModel.audioEngine.noteOff(it) } catch (_: Exception) {} }
+            isGalleryPlaying = false
+            galleryActiveMidi = null
+            galleryActiveCoord = null
+            viewModel.midiPlayingNote.value = null
+            return
+        }
+        val isUke = selectedInstrument == "ukulele"
+        val openSemis = if (isUke) listOf(9, 4, 0, 7) else listOf(4, 11, 7, 2, 9, 4)
+        val defaultOpenMidi = if (isUke) listOf(69, 64, 60, 67) else listOf(64, 59, 55, 50, 45, 40)
+        val reversedFrets = pos.frets.reversed() // string 0 is top
+        // Strum order: lowest string to highest string
+        val stringOrder = if (isUke) listOf(3, 2, 1, 0) else listOf(5, 4, 3, 2, 1, 0)
+        val soundingList = stringOrder.mapNotNull { s ->
+            val f = reversedFrets.getOrNull(s) ?: -1
+            if (f != -1) {
+                val m = defaultOpenMidi[s] + f
+                Triple(s, f, m)
+            } else null
+        }
+        val notes = soundingList.map { it.third }
+        val coords = soundingList.map { it.first to it.second }
+        playMidiNotes(notes, "GUITAR", coords)
     }
 
     val screenScrollState = rememberScrollState()
@@ -251,166 +314,96 @@ fun ChordDisplayGalleryScreen(
             }
         }
 
-        // 1. Root Keys Selector (Horizontal Row)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = "ROOT NOTE",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF7E8B9B),
-                letterSpacing = 1.sp
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(roots) { r ->
-                    val isSelected = selectedRoot == r
-                    pEQFilterChip(
-                        selected = isSelected,
-                        onClick = { 
-                            selectedRoot = r
-                            selectedPositionIndex = 0
-                        },
-                        label = { Text(r, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
-                    )
-                }
+        // 1. Sleek Dropdown Configuration Row (Root Note, Quality / Suffix, and Category)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                M3DropdownMenu(
+                    label = "Root Note",
+                    selectedText = selectedRoot,
+                    items = roots,
+                    onItemSelect = {
+                        selectedRoot = roots[it]
+                        selectedPositionIndex = 0
+                    }
+                )
+            }
+            Box(modifier = Modifier.weight(1.5f)) {
+                val suffixOptions = if (filteredSuffixes.isNotEmpty()) filteredSuffixes else allSuffixes
+                M3DropdownMenu(
+                    label = "Chord Suffix",
+                    selectedText = selectedSuffix,
+                    items = suffixOptions,
+                    onItemSelect = {
+                        selectedSuffix = suffixOptions[it]
+                        selectedPositionIndex = 0
+                    }
+                )
+            }
+            Box(modifier = Modifier.weight(1.2f)) {
+                M3DropdownMenu(
+                    label = "Category",
+                    selectedText = selectedQualityCategory,
+                    items = qualityCategories,
+                    onItemSelect = {
+                        selectedQualityCategory = qualityCategories[it]
+                    }
+                )
             }
         }
 
-        // 2. Search & Quality Category Filters
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // 2. Instrument Specific Neck & Position Filters
+        if (selectedInstrument == "guitar") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search chords (e.g. 7#9, m7b5, sus4)...", fontSize = 12.sp, color = Color(0xFF6C788A)) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFFFF9E1B), modifier = Modifier.size(18.dp)) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color.Gray, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF161A22),
-                        unfocusedContainerColor = Color(0xFF13161C),
-                        focusedBorderColor = Color(0xFFFF9E1B),
-                        unfocusedBorderColor = Color(0xFF262D3D),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    modifier = Modifier.weight(1f).height(48.dp)
-                )
-            }
-
-            // Quality Categories row (All, Major, Minor, 7th, Extended, Dim/Aug, Sus)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(qualityCategories) { cat ->
-                    val isSel = selectedQualityCategory == cat
-                    Surface(
-                        onClick = { selectedQualityCategory = cat },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSel) Color(0xFFFF9E1B).copy(alpha = 0.22f) else Color(0xFF161A22),
-                        border = BorderStroke(1.dp, if (isSel) Color(0xFFFF9E1B) else Color(0xFF262D3D))
-                    ) {
-                        Text(
-                            text = cat,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSel) Color(0xFFFFB347) else Color(0xFF9EABB8),
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                        )
-                    }
+                Box(modifier = Modifier.weight(1f)) {
+                    M3DropdownMenu(
+                        label = "CAGED Shape",
+                        selectedText = selectedCagedFilter,
+                        items = cagedFilterOptions,
+                        onItemSelect = { selectedCagedFilter = cagedFilterOptions[it] }
+                    )
                 }
-            }
-
-            if (selectedInstrument == "guitar") {
-                // CAGED & Fret Range Filters Row
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(cagedFilterOptions) { caged ->
-                        val isSel = selectedCagedFilter == caged
-                        Surface(
-                            onClick = { selectedCagedFilter = caged },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSel) Color(0xFF4CAF50).copy(alpha = 0.22f) else Color(0xFF161A22),
-                            border = BorderStroke(1.dp, if (isSel) Color(0xFF4CAF50) else Color(0xFF262D3D))
-                        ) {
-                            Text(
-                                text = caged,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSel) Color(0xFF81C784) else Color(0xFF9EABB8),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                    items(fretRangeFilterOptions) { fretR ->
-                        val isSel = selectedFretRange == fretR
-                        Surface(
-                            onClick = { selectedFretRange = fretR },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSel) Color(0xFF29B6F6).copy(alpha = 0.22f) else Color(0xFF161A22),
-                            border = BorderStroke(1.dp, if (isSel) Color(0xFF29B6F6) else Color(0xFF262D3D))
-                        ) {
-                            Text(
-                                text = fretR,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSel) Color(0xFF4FC3F7) else Color(0xFF9EABB8),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Chord Suffix / Quality Selector (Filtered)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "CHORD QUALITY / SUFFIX (${filteredSuffixes.size} of ${allSuffixes.size} types)",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF7E8B9B),
-                    letterSpacing = 1.sp
-                )
-                if (searchQuery.isNotEmpty() || selectedQualityCategory != "All") {
-                    Text(
-                        text = "Filtered",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF9E1B)
+                Box(modifier = Modifier.weight(1f)) {
+                    M3DropdownMenu(
+                        label = "Fret Window",
+                        selectedText = selectedFretRange,
+                        items = fretRangeFilterOptions,
+                        onItemSelect = { selectedFretRange = fretRangeFilterOptions[it] }
                     )
                 }
             }
-            if (filteredSuffixes.isEmpty()) {
-                Text("No qualities match '$searchQuery'", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 4.dp))
-            } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(filteredSuffixes) { s ->
-                        val isSelected = selectedSuffix == s
-                        pEQFilterChip(
-                            selected = isSelected,
-                            onClick = { 
-                                selectedSuffix = s
-                                selectedPositionIndex = 0
-                            },
-                            label = { Text(s, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
-                        )
+        }
+
+        // 3. Search Bar for direct suffix typing
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search chords (e.g. 7#9, m7b5, sus4)...", fontSize = 12.sp, color = Color(0xFF6C788A)) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFFFF9E1B), modifier = Modifier.size(18.dp)) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color.Gray, modifier = Modifier.size(16.dp))
                     }
                 }
-            }
-        }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color(0xFF161A22),
+                unfocusedContainerColor = Color(0xFF13161C),
+                focusedBorderColor = Color(0xFFFF9E1B),
+                unfocusedBorderColor = Color(0xFF262D3D),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        )
 
         // 3. Main Display: Hero Fretboard or Piano Keyboard with interactive notes + playback button
         if (selectedInstrument == "piano") {
@@ -426,25 +419,27 @@ fun ChordDisplayGalleryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val isHeaderFlashing = isGalleryPlaying
                         Column {
                             Text(
                                 text = "$selectedRoot $selectedSuffix (Piano)",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFFFB347)
+                                color = if (isHeaderFlashing) Color(0xFFFFD54F) else Color(0xFFFFB347)
                             )
                             val notesText = pianoChord?.notes?.joinToString(" - ") ?: "Notes not available"
                             val intText = pianoChord?.intervals?.joinToString(", ") ?: ""
                             Text(
                                 text = "Notes: $notesText • Intervals: $intText",
                                 fontSize = 12.sp,
-                                color = Color(0xFF9EABB8)
+                                color = if (isHeaderFlashing) Color(0xFFFFE082) else Color(0xFF9EABB8)
                             )
                         }
 
                         InstrumentPlayButton(
                             accentColor = Color(0xFFFF9E1B),
                             label = "Play",
+                            isPlaying = isGalleryPlaying,
                             soundStyle = gallerySoundStyle,
                             onSoundStyleToggle = {
                                 gallerySoundStyle = when (gallerySoundStyle) {
@@ -454,7 +449,15 @@ fun ChordDisplayGalleryScreen(
                                 }
                             },
                             onPlayClick = {
-                                pianoChord?.midi?.let { playMidiNotes(it, "PIANO") }
+                                if (isGalleryPlaying) {
+                                    galleryJob?.cancel()
+                                    pianoChord?.midi?.forEach { try { viewModel.audioEngine.noteOff(it) } catch (_: Exception) {} }
+                                    isGalleryPlaying = false
+                                    galleryActiveMidi = null
+                                    viewModel.midiPlayingNote.value = null
+                                } else {
+                                    pianoChord?.midi?.let { playMidiNotes(it, "PIANO") }
+                                }
                             }
                         )
                     }
@@ -466,6 +469,8 @@ fun ChordDisplayGalleryScreen(
                     com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
                         activeMidiNotes = activePianoNotes,
                         accentColor = Color(0xFFFF9E1B),
+                        activeCoordinate = galleryActiveMidi,
+                        isPlaying = isGalleryPlaying,
                         startNote = 48, // C3
                         endNote = 84,   // C6
                         fillWidth = true,
@@ -493,23 +498,25 @@ fun ChordDisplayGalleryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val isHeaderFlashing = isGalleryPlaying
                         Column {
                             Text(
                                 text = "$selectedRoot $selectedSuffix",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFFFB347)
+                                color = if (isHeaderFlashing) Color(0xFFFFD54F) else Color(0xFFFFB347)
                             )
                             Text(
                                 text = "Variation ${selectedPositionIndex + 1} of ${chordPositions.size} • Base Fret ${currentPosition.baseFret}",
                                 fontSize = 12.sp,
-                                color = Color(0xFF9EABB8)
+                                color = if (isHeaderFlashing) Color(0xFFFFE082) else Color(0xFF9EABB8)
                             )
                         }
 
                         InstrumentPlayButton(
                             accentColor = Color(0xFFFF9E1B),
                             label = "Play",
+                            isPlaying = isGalleryPlaying,
                             soundStyle = gallerySoundStyle,
                             onSoundStyleToggle = {
                                 gallerySoundStyle = when (gallerySoundStyle) {
@@ -540,6 +547,8 @@ fun ChordDisplayGalleryScreen(
                         barreFret = currentPosition.barres.firstOrNull() ?: -1,
                         stringLabels = stringLabels,
                         openStringsSemis = openSemis,
+                        activeCoordinate = galleryActiveCoord,
+                        activeMidiNote = galleryActiveMidi,
                         markOctaves = true,
                         highlightOctaveC = true,
                         onFretTapped = { _, _, midiNote ->
@@ -575,6 +584,59 @@ fun ChordDisplayGalleryScreen(
                         Text("No piano chord data found for $selectedRoot $selectedSuffix", color = Color.Gray)
                     }
                 } else {
+                    val baseMidiList = pianoChord.midi
+                    // Generate inversions/variations: Root position, 1st Inversion, 2nd Inversion, 3rd Inversion (if 4+ notes)
+                    val pianoVariations = remember(baseMidiList) {
+                        val variations = mutableListOf<Pair<String, List<Int>>>()
+                        if (baseMidiList.isNotEmpty()) {
+                            variations.add("Root Position" to baseMidiList)
+                            if (baseMidiList.size >= 2) {
+                                // 1st inversion: bottom note up an octave (+12)
+                                val inv1 = (baseMidiList.drop(1) + (baseMidiList.first() + 12)).sorted()
+                                variations.add("1st Inversion" to inv1)
+                            }
+                            if (baseMidiList.size >= 3) {
+                                // 2nd inversion: bottom 2 notes up an octave
+                                val inv2 = (baseMidiList.drop(2) + baseMidiList.take(2).map { it + 12 }).sorted()
+                                variations.add("2nd Inversion" to inv2)
+                            }
+                            if (baseMidiList.size >= 4) {
+                                // 3rd inversion: bottom 3 notes up an octave
+                                val inv3 = (baseMidiList.drop(3) + baseMidiList.take(3).map { it + 12 }).sorted()
+                                variations.add("3rd Inversion" to inv3)
+                            }
+                            // Drop 2 voicing if 4 notes
+                            if (baseMidiList.size == 4) {
+                                val drop2 = listOf(baseMidiList[1] - 12, baseMidiList[0], baseMidiList[2], baseMidiList[3]).sorted()
+                                variations.add("Drop 2" to drop2)
+                            }
+                        }
+                        variations
+                    }
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        items(pianoVariations.indices.toList()) { idx ->
+                            val (invLabel, notes) = pianoVariations[idx]
+                            val isSelected = selectedPositionIndex == idx
+                            com.creativeblisslabs.peqlearn.app.ui.components.SvgPianoChordBox(
+                                midiNotes = notes,
+                                chordName = "$selectedRoot$selectedSuffix",
+                                inversionLabel = invLabel,
+                                accentColor = if (isSelected) Color(0xFFFF9E1B) else Color(0xFF81C784),
+                                cardBackground = if (isSelected) Color(0xFF222938) else Color(0xFF161A22),
+                                onClick = {
+                                    selectedPositionIndex = idx
+                                    playMidiNotes(notes, "PIANO")
+                                }
+                            )
+                        }
+                    }
+
+                    // Tonal structure tags below cards
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -597,7 +659,7 @@ fun ChordDisplayGalleryScreen(
                                 border = BorderStroke(1.dp, Color(0xFF262D3D))
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(vertical = 16.dp, horizontal = 8.dp),
+                                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {

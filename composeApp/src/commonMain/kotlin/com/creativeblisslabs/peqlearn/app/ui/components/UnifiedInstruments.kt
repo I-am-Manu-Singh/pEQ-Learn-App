@@ -1,13 +1,17 @@
 package com.creativeblisslabs.peqlearn.app.ui.components
 
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.sin
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,12 +25,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
@@ -36,14 +43,67 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData
-import com.creativeblisslabs.peqlearn.app.ui.screens.PianoKeyboard88Keys
 import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
-import com.creativeblisslabs.peqlearn.app.util.GuitarShape
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-
 private val NOTE_NAMES = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+private val SARGAM_NAMES = listOf("Sa", "re", "Re", "ga", "Ga", "Ma", "ma", "Pa", "dha", "Dha", "ni", "Ni")
+
+/**
+ * Helper to compute aspect-ratio-safe viewport bounds inside any arbitrary Canvas size.
+ * Guarantees that instruments never stretch into distorted proportions or clip vertically/horizontally
+ * when resized via external Modifiers.
+ */
+private data class ViewportFrame(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+    val scale: Float
+) {
+    val right: Float get() = left + width
+    val bottom: Float get() = top + height
+    val centerX: Float get() = left + width * 0.5f
+    val centerY: Float get() = top + height * 0.5f
+}
+
+private fun computeAspectSafeViewport(
+    canvasWidth: Float,
+    canvasHeight: Float,
+    minAspect: Float,
+    maxAspect: Float,
+    referenceHeight: Float = 160f,
+    horizontalPaddingFrac: Float = 0.015f,
+    verticalPaddingFrac: Float = 0.03f
+): ViewportFrame {
+    val safeW = (canvasWidth * (1f - horizontalPaddingFrac * 2f)).coerceAtLeast(1f)
+    val safeH = (canvasHeight * (1f - verticalPaddingFrac * 2f)).coerceAtLeast(1f)
+    val currentAspect = safeW / safeH
+
+    val fittedW: Float
+    val fittedH: Float
+    when {
+        currentAspect > maxAspect -> {
+            fittedH = safeH
+            fittedW = (safeH * maxAspect).coerceAtMost(safeW)
+        }
+        currentAspect < minAspect -> {
+            fittedW = safeW
+            fittedH = (safeW / minAspect).coerceAtMost(safeH)
+        }
+        else -> {
+            fittedW = safeW
+            fittedH = safeH
+        }
+    }
+
+    val left = (canvasWidth - fittedW) * 0.5f
+    val top = (canvasHeight - fittedH) * 0.5f
+    val scale = (fittedH / referenceHeight).coerceIn(0.42f, 2.5f)
+    return ViewportFrame(left, top, fittedW, fittedH, scale)
+}
+
 @Composable
 fun UnifiedGuitarFretboard(
     numFrets: Int,
@@ -72,7 +132,9 @@ fun UnifiedGuitarFretboard(
     showInlayDots: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val numStrings = stringLabels.size
+    val numStrings = stringLabels.size.coerceAtLeast(1)
+    val safeNumFrets = numFrets.coerceIn(4, 24)
+    val safeBaseFret = baseFret.coerceIn(1, 24)
 
     val filteredActiveNotes = remember(activeNotes, isLeftHandHidden, isRightHandHidden) {
         activeNotes.filter { midi ->
@@ -82,7 +144,7 @@ fun UnifiedGuitarFretboard(
             else true
         }
     }
-    val normalizedActiveNotes = remember(filteredActiveNotes) { filteredActiveNotes.map { it % 12 }.toSet() }
+    val normalizedActiveNotes = remember(filteredActiveNotes) { filteredActiveNotes.map { (it % 12 + 12) % 12 }.toSet() }
     val effectiveActiveMidiNote = remember(activeMidiNote, isLeftHandHidden, isRightHandHidden) {
         if (activeMidiNote == null) null
         else {
@@ -101,9 +163,6 @@ fun UnifiedGuitarFretboard(
         }
     }
 
-    // --- CHORD VS SCALE DISTINCTION & LOGICAL TRUTH RESOLVER ---
-    // A chord has 2 to 5 distinct pitch classes. A 6+ note collection (like a diatonic scale with 7 notes)
-    // is a SCALE / MELODY RUN, not a single chord shape.
     val allUniquePitches = remember(filteredActiveNotes, effectiveActiveMidiNote) {
         (filteredActiveNotes + listOfNotNull(effectiveActiveMidiNote)).distinct()
     }
@@ -111,16 +170,15 @@ fun UnifiedGuitarFretboard(
         allUniquePitches.map { (it % 12 + 12) % 12 }.toSet()
     }
     val isScaleMode = remember(distinctPitchClasses) {
-        distinctPitchClasses.size >= 6 // 6 or 7 distinct semitones = scale run!
+        distinctPitchClasses.size >= 6
     }
 
     val effectiveResolvedChordFrets = remember(chordFrets, allUniquePitches, distinctPitchClasses, isScaleMode, cagedMode, numStrings) {
         if (chordFrets != null) {
             chordFrets
         } else if (isScaleMode) {
-            null // Scales should NOT be collapsed into a chord shape!
+            null
         } else if (allUniquePitches.size in 2..5 && numStrings >= 6) {
-            // Authentic Chord Shape from RealChordsDb
             val detected = com.creativeblisslabs.peqlearn.app.util.LiveChordDetector.detect(allUniquePitches)
             if (detected != null && detected.chordQuality != "Note") {
                 val root = detected.rootName.replace("♯", "#").replace("♭", "b")
@@ -153,80 +211,48 @@ fun UnifiedGuitarFretboard(
 
                 val bestPos = filteredByCaged.firstOrNull() ?: dbPositions.firstOrNull()
                 if (bestPos != null) {
-                    val base6 = bestPos.frets.reversed() // RealChordsDb is low-to-high, reverse to e4..E2
-                    if (numStrings == 7) {
-                        base6 + listOf(-1)
-                    } else {
-                        base6
-                    }
+                    val base6 = bestPos.frets.reversed()
+                    if (numStrings == 7) base6 + listOf(-1) else base6
                 } else null
             } else null
         } else null
     }
 
-    // Exact frets matching currently playing / active notes (for single note melody / scale sequences)
-    // Intelligent position solver: resolves pitches to an ergonomic guitar hand box (preferring standard frets 0..9)
-    // to prevent impossible finger leaps and scattered dots across all 6 strings
-    val activeFretPoints = remember(allUniquePitches, effectiveResolvedChordFrets, defaultOpenStringsMidi, isScaleMode, fretMinConstrain, fretMaxConstrain) {
+    val activeFretPoints = remember(allUniquePitches, effectiveResolvedChordFrets, defaultOpenStringsMidi, isScaleMode, fretMinConstrain, fretMaxConstrain, safeNumFrets) {
         if (effectiveResolvedChordFrets != null) {
-            emptySet<Pair<Int, Int>>() // Driven by chord shape
+            emptySet()
         } else {
-            val set = mutableSetOf<Pair<Int, Int>>() // Set of (stringIdx, fret)
+            val set = mutableSetOf<Pair<Int, Int>>()
             allUniquePitches.forEach { midi ->
                 val candidates = mutableListOf<Pair<Int, Int>>()
                 defaultOpenStringsMidi.forEachIndexed { sIdx, openMidi ->
                     val fret = midi - openMidi
-                    if (fret in 0..numFrets) {
+                    if (fret in 0..(safeBaseFret + safeNumFrets - 1)) {
                         candidates.add(sIdx to fret)
                     }
                 }
                 if (candidates.isNotEmpty()) {
-                    // Check if candidate exists within user-specified constraint box
                     val inUserBox = candidates.filter { it.second in fretMinConstrain..fretMaxConstrain }
                     val searchPool = if (inUserBox.isNotEmpty()) inUserBox else candidates
-
-                    // Ergonomic hand scoring:
-                    // 1. Natural guitar melody playing comfortably sits in the lower/middle neck (frets 0..9).
-                    // 2. High frets (> 12) on low wound strings (E2, A2, D3) are unergonomic for fast melodies like Turkish March.
-                    // 3. Score minimizes unergonomic stretch: prefer lower frets (0..7) and strings matching melodic register.
                     val chosen = searchPool.minByOrNull { (sIdx, fret) ->
                         val fretPenalty = when {
-                            fret in 0..5 -> fret * 2 // Ideal open/first position
-                            fret in 6..9 -> 12 + (fret - 5) * 3 // Comfortable second/third position
+                            fret in 0..5 -> fret * 2
+                            fret in 6..9 -> 12 + (fret - 5) * 3
                             fret in 10..14 -> 30 + (fret - 9) * 5
-                            else -> 70 + fret * 10 // Avoid extreme upper neck unless no alternative
+                            else -> 70 + fret * 10
                         }
-                        // Penalize playing high notes on low thick wound strings (strings 4, 5)
                         val stringRegisterPenalty = if (sIdx >= 4 && fret > 7) 40 else 0
                         fretPenalty + stringRegisterPenalty
                     }
-                    if (chosen != null) {
-                        set.add(chosen)
-                    }
+                    if (chosen != null) set.add(chosen)
                 }
             }
             set
         }
     }
 
-    LaunchedEffect(allUniquePitches, effectiveResolvedChordFrets, activeFretPoints, isScaleMode) {
-        if (allUniquePitches.isNotEmpty()) {
-            val noteLabels = allUniquePitches.joinToString { midi ->
-                val name = NOTE_NAMES[(midi % 12 + 12) % 12]
-                val oct = (midi / 12) - 1
-                "$name$oct($midi)"
-            }
-            val desc = when {
-                effectiveResolvedChordFrets != null -> "Chord Shape: $effectiveResolvedChordFrets"
-                isScaleMode -> "Scale Mode: ${allUniquePitches.size} notes"
-                else -> "Active Frets: $activeFretPoints"
-            }
-            println("pEQLearn [FretboardFlash]: Flashing ${allUniquePitches.size} note(s): $noteLabels | $desc")
-        }
-    }
     val normalizedRootNote = remember(rootNote) { (rootNote % 12 + 12) % 12 }
 
-    // Hoisted reusable native Paints to eliminate per-frame JNI allocations
     val stringLabelPaint = remember {
         android.graphics.Paint().apply {
             color = android.graphics.Color.WHITE
@@ -270,39 +296,51 @@ fun UnifiedGuitarFretboard(
         Brush.verticalGradient(colors = listOf(Color(0xFF2B303C), Color(0xFF20242E), Color(0xFF1B1E26)))
     }
 
+    val r = 0.056125687f
+    val fretScaleFactor = remember(safeNumFrets, safeBaseFret) {
+        var sum = 0f
+        for (f in 1..safeNumFrets) {
+            val absoluteFret = safeBaseFret + f - 1
+            val lengthFraction = (1f - r).toDouble().pow(absoluteFret.toDouble()).toFloat() * r
+            sum += lengthFraction
+        }
+        sum.coerceAtLeast(0.001f)
+    }
+
     BoxWithConstraints(
         modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF0F1218).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
             .border(1.dp, Color(0xFF2E3544).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
     ) {
-        val totalWidth = constraints.maxWidth.toFloat()
-        val totalHeight = constraints.maxHeight.toFloat()
-        val leftPad = 46f
-        val topPad = 16f
-        val rightPad = 20f
-        val bottomPad = 26f
-        val playableW = (totalWidth - leftPad - rightPad).coerceAtLeast(1f)
-        val playableH = totalHeight - topPad - bottomPad
-
-        // Rule of 17.817 fret progression ratio (realistic decreasing fret width towards bridge)
-        // Ratio r = 1 - 2^(-1/12) ≈ 0.056125687
-        val r = 0.056125687f
-        val fretScaleFactor = remember(numFrets, baseFret) {
-            var sum = 0f
-            for (f in 1..numFrets) {
-                val absoluteFret = baseFret + f - 1
-                val lengthFraction = (1f - r).toDouble().pow(absoluteFret.toDouble()).toFloat() * r
-                sum += lengthFraction
-            }
-            sum.coerceAtLeast(0.001f)
+        val totalWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val totalHeight = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+        val vp = remember(totalWidth, totalHeight) {
+            computeAspectSafeViewport(
+                canvasWidth = totalWidth,
+                canvasHeight = totalHeight,
+                minAspect = 2.0f,
+                maxAspect = 11.5f,
+                referenceHeight = 165f,
+                horizontalPaddingFrac = 0.01f,
+                verticalPaddingFrac = 0.02f
+            )
         }
 
-        // Compute exact non-linear fret boundaries
-        val fretXPositions = remember(playableW, numFrets, baseFret, fretScaleFactor) {
+        val s = vp.scale
+        val leftPad = vp.left + (44f * s).coerceIn(28f, vp.width * 0.16f)
+        val rightPad = (totalWidth - vp.right) + (16f * s).coerceIn(10f, vp.width * 0.06f)
+        val topPad = vp.top + (12f * s).coerceAtLeast(6f)
+        val bottomPad = (totalHeight - vp.bottom) + (22f * s).coerceAtLeast(14f)
+
+        val playableW = (totalWidth - leftPad - rightPad).coerceAtLeast(1f)
+        val playableH = (totalHeight - topPad - bottomPad).coerceAtLeast(1f)
+
+        val fretXPositions = remember(playableW, leftPad, safeNumFrets, safeBaseFret, fretScaleFactor) {
             val list = mutableListOf<Float>()
             var accumulated = 0f
-            for (f in 1..numFrets) {
-                val absoluteFret = baseFret + f - 1
+            for (f in 1..safeNumFrets) {
+                val absoluteFret = safeBaseFret + f - 1
                 val lengthFraction = (1f - r).toDouble().pow(absoluteFret.toDouble()).toFloat() * r
                 accumulated += (lengthFraction / fretScaleFactor) * playableW
                 list.add(leftPad + accumulated)
@@ -310,7 +348,6 @@ fun UnifiedGuitarFretboard(
             list
         }
 
-        fun getFretStartX(f: Int): Float = if (f <= 0) leftPad else fretXPositions.getOrElse(f - 1) { totalWidth - rightPad }
         fun getFretCenterX(f: Int): Float {
             val start = if (f <= 1) leftPad else fretXPositions[f - 2]
             val end = fretXPositions.getOrElse(f - 1) { totalWidth - rightPad }
@@ -319,22 +356,21 @@ fun UnifiedGuitarFretboard(
 
         val nutH = playableH * 0.88f
         val bridgeH = playableH * 0.98f
-
         val midY = topPad + playableH / 2f
         val nutTop = midY - nutH / 2f
         val nutBottom = midY + nutH / 2f
         val bridgeTop = midY - bridgeH / 2f
         val bridgeBottom = midY + bridgeH / 2f
 
-        fun getYForStringAtX(s: Int, x: Float): Float {
+        fun getYForStringAtX(strIdx: Int, x: Float): Float {
             val t = ((x - leftPad) / playableW).coerceIn(0f, 1f)
             val currentH = nutH + (bridgeH - nutH) * t
             val currentTop = midY - currentH / 2f
             val curStringH = currentH / (numStrings - 1).coerceAtLeast(1).toFloat()
-            return currentTop + s * curStringH
+            return if (numStrings == 1) midY else currentTop + strIdx * curStringH
         }
 
-        val fretboardPath = remember(totalWidth, totalHeight, nutTop, nutBottom, bridgeTop, bridgeBottom) {
+        val fretboardPath = remember(leftPad, rightPad, totalWidth, nutTop, nutBottom, bridgeTop, bridgeBottom) {
             Path().apply {
                 moveTo(leftPad, nutTop)
                 lineTo(totalWidth - rightPad, bridgeTop)
@@ -347,36 +383,37 @@ fun UnifiedGuitarFretboard(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(numFrets, numStrings, baseFret) {
-                    val activeFretPointers = mutableMapOf<Long, Triple<Int, Int, Int>>() // pointerId -> (string, fret, midi)
+                .pointerInput(safeNumFrets, numStrings, safeBaseFret, leftPad, rightPad, playableW, nutH, bridgeH, midY) {
+                    val activeFretPointers = mutableMapOf<Long, Triple<Int, Int, Int>>()
 
                     fun resolveFretAt(offset: Offset): Triple<Int, Int, Int> {
                         val tappedFret = if (offset.x < leftPad) {
                             0
                         } else {
-                            var matchedFret = numFrets
-                            for (f in 1..numFrets) {
+                            var matchedFret = safeNumFrets
+                            for (f in 1..safeNumFrets) {
                                 val wireX = fretXPositions.getOrElse(f - 1) { totalWidth - rightPad }
                                 if (offset.x <= wireX) {
                                     matchedFret = f
                                     break
                                 }
                             }
-                            (baseFret + matchedFret - 1).coerceIn(0, 24)
+                            (safeBaseFret + matchedFret - 1).coerceIn(0, 24)
                         }
 
                         var closestString = 0
                         var minDistance = Float.MAX_VALUE
-                        for (s in 0 until numStrings) {
-                            val strY = getYForStringAtX(s, offset.x)
-                            val dist = kotlin.math.abs(offset.y - strY)
+                        for (strIdx in 0 until numStrings) {
+                            val strY = getYForStringAtX(strIdx, offset.x)
+                            val dist = abs(offset.y - strY)
                             if (dist < minDistance) {
                                 minDistance = dist
-                                closestString = s
+                                closestString = strIdx
                             }
                         }
 
-                        val baseMidi = defaultOpenStringsMidi.getOrNull(closestString) ?: (openStringsSemis.getOrElse(closestString) { 0 } + 40)
+                        val baseMidi = defaultOpenStringsMidi.getOrNull(closestString)
+                            ?: (openStringsSemis.getOrElse(closestString) { 0 } + 40)
                         val noteMidi = baseMidi + tappedFret
                         return Triple(closestString, tappedFret, noteMidi)
                     }
@@ -409,17 +446,17 @@ fun UnifiedGuitarFretboard(
         ) {
             val w = size.width
             val pillColor = Color(0xFFFF9E1B)
+            val stringSpacingAtNut = (nutH / (numStrings - 1).coerceAtLeast(1)).coerceAtLeast(8f)
 
-            // Realistic deep drop shadow behind the wooden fretboard neck
             drawPath(
                 path = fretboardPath,
                 color = Color.Black.copy(alpha = 0.55f),
-                style = Stroke(width = 8.dp.toPx())
+                style = Stroke(width = (6f * s).coerceAtLeast(2f))
             )
             drawPath(
                 path = fretboardPath,
                 color = Color.Black.copy(alpha = 0.35f),
-                style = Stroke(width = 4.dp.toPx())
+                style = Stroke(width = (3f * s).coerceAtLeast(1.5f))
             )
 
             drawPath(path = fretboardPath, brush = fretboardBrush ?: defaultNeckBrush)
@@ -430,18 +467,18 @@ fun UnifiedGuitarFretboard(
                 color = Color(0xFFE8E8E8),
                 start = Offset(leftPad, nutTop),
                 end = Offset(leftPad, nutBottom),
-                strokeWidth = 4.dp.toPx()
+                strokeWidth = (4f * s).coerceIn(2f, 6f)
             )
 
             // Inlays
             if (showInlayDots) {
                 val inlayColor = Color(0xFF8A7E72).copy(alpha = 0.65f)
-                val dotRad = 3.5f.dp.toPx()
+                val dotRad = (stringSpacingAtNut * 0.18f).coerceIn(2f, 5.5f.dp.toPx())
                 for (markerFret in intArrayOf(3, 5, 7, 9, 12, 15, 17, 19, 21, 24)) {
-                    if (markerFret in baseFret..(baseFret + numFrets - 1)) {
-                        val relFret = markerFret - baseFret + 1
+                    if (markerFret in safeBaseFret..(safeBaseFret + safeNumFrets - 1)) {
+                        val relFret = markerFret - safeBaseFret + 1
                         val inlayX = getFretCenterX(relFret)
-                        val t = ((inlayX - leftPad) / (w - leftPad - rightPad)).coerceIn(0f, 1f)
+                        val t = ((inlayX - leftPad) / playableW).coerceIn(0f, 1f)
                         val currentH = nutH + (bridgeH - nutH) * t
                         val curStringH = currentH / (numStrings - 1).coerceAtLeast(1).toFloat()
                         if (markerFret == 12 || markerFret == 24) {
@@ -454,14 +491,13 @@ fun UnifiedGuitarFretboard(
                 }
             }
 
-            // Fret wires with nickel-silver sheen
-            val fretStroke = 1.6.dp.toPx()
-            for (f in 1..numFrets) {
-                val x = fretXPositions.getOrElse(f - 1) { totalWidth - rightPad }
-                val t = ((x - leftPad) / (w - leftPad - rightPad)).coerceIn(0f, 1f)
+            // Fret wires
+            val fretStroke = (1.6f * s).coerceIn(1f, 3f)
+            for (f in 1..safeNumFrets) {
+                val x = fretXPositions.getOrElse(f - 1) { w - rightPad }
+                val t = ((x - leftPad) / playableW).coerceIn(0f, 1f)
                 val curTop = nutTop + (bridgeTop - nutTop) * t
                 val curBottom = nutBottom + (bridgeBottom - nutBottom) * t
-                // Subtle fret shadow
                 drawLine(
                     color = Color.Black.copy(alpha = 0.45f),
                     start = Offset(x + 1f, curTop),
@@ -477,12 +513,15 @@ fun UnifiedGuitarFretboard(
             }
 
             // Strings
-            stringLabelPaint.textSize = 12.dp.toPx()
-            val labelYOff = 4.5f.dp.toPx()
-            for (s in 0 until numStrings) {
-                val startY = getYForStringAtX(s, leftPad)
-                val endY = getYForStringAtX(s, w - rightPad)
-                val gauge = (1.0f + s * 0.45f).dp.toPx()
+            stringLabelPaint.textSize = (stringSpacingAtNut * 0.55f).coerceIn(8.dp.toPx(), 13.dp.toPx())
+            val labelYOff = stringLabelPaint.textSize * 0.36f
+            val nutIndicatorX = leftPad - (12f * s).coerceIn(8f, 18f)
+            val labelX = nutIndicatorX - (11f * s).coerceIn(7f, 16f)
+
+            for (strIdx in 0 until numStrings) {
+                val startY = getYForStringAtX(strIdx, leftPad)
+                val endY = getYForStringAtX(strIdx, w - rightPad)
+                val gauge = ((1.0f + strIdx * 0.42f) * s).coerceIn(0.8f, 4.5f)
                 drawLine(
                     color = Color(0xFFC0C4CC),
                     start = Offset(leftPad, startY),
@@ -490,8 +529,8 @@ fun UnifiedGuitarFretboard(
                     strokeWidth = gauge
                 )
                 drawContext.canvas.nativeCanvas.drawText(
-                    stringLabels.getOrElse(s) { "" },
-                    leftPad - 24f,
+                    stringLabels.getOrElse(strIdx) { "" },
+                    labelX,
                     startY + labelYOff,
                     stringLabelPaint
                 )
@@ -499,65 +538,67 @@ fun UnifiedGuitarFretboard(
 
             // Barre
             if (barreFret != null && barreFret > 0) {
-                val relFret = if (barreFret >= baseFret) barreFret - baseFret + 1 else barreFret
-                if (relFret in 1..numFrets) {
+                val relFret = if (barreFret >= safeBaseFret) barreFret - safeBaseFret + 1 else barreFret
+                if (relFret in 1..safeNumFrets) {
                     val barreX = getFretCenterX(relFret)
-                    val t = ((barreX - leftPad) / (w - leftPad - rightPad)).coerceIn(0f, 1f)
+                    val t = ((barreX - leftPad) / playableW).coerceIn(0f, 1f)
                     val curTop = nutTop + (bridgeTop - nutTop) * t
                     val curH = (nutBottom + (bridgeBottom - nutBottom) * t) - curTop
+                    val barreW = (stringSpacingAtNut * 0.95f).coerceIn(10f, 24.dp.toPx())
                     drawRoundRect(
                         color = pillColor.copy(alpha = 0.85f),
-                        topLeft = Offset(barreX - 12.dp.toPx(), curTop - 2f),
-                        size = Size(24.dp.toPx(), curH + 4f),
-                        cornerRadius = CornerRadius(12.dp.toPx())
+                        topLeft = Offset(barreX - barreW * 0.5f, curTop - 2f),
+                        size = Size(barreW, curH + 4f),
+                        cornerRadius = CornerRadius(barreW * 0.5f)
                     )
                 }
             }
 
-            // Permanent C Octave Markers (like Piano Keyboard C1, C2, C3, C4, C5)
-            permanentOctavePaint.textSize = 8.5f.dp.toPx()
-            for (s in 0 until numStrings) {
-                val openSemi = openStringsSemis.getOrNull(s) ?: 0
-                val baseStringMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
-                for (f in 1..numFrets) {
-                    val absoluteFret = baseFret + f - 1
-                    val fretSemi = (openSemi + absoluteFret) % 12
-                    if (fretSemi == 0) {
-                        val fullMidiNote = baseStringMidi + absoluteFret
-                        val octaveNum = (fullMidiNote / 12) - 1
-                        val cx = getFretCenterX(f)
-                        val cy = getYForStringAtX(s, cx)
-                        drawContext.canvas.nativeCanvas.drawText(
-                            "C$octaveNum",
-                            cx,
-                            cy + 8.5f.dp.toPx(),
-                            permanentOctavePaint
-                        )
+            // Permanent C Octave Markers
+            if (markOctaves || highlightOctaveC) {
+                permanentOctavePaint.textSize = (stringSpacingAtNut * 0.38f).coerceIn(6.5f.dp.toPx(), 9.5f.dp.toPx())
+                for (strIdx in 0 until numStrings) {
+                    val openSemi = openStringsSemis.getOrNull(strIdx) ?: 0
+                    val baseStringMidi = defaultOpenStringsMidi.getOrNull(strIdx) ?: (openSemi + 40)
+                    for (f in 1..safeNumFrets) {
+                        val absoluteFret = safeBaseFret + f - 1
+                        val fretSemi = (openSemi + absoluteFret) % 12
+                        if (fretSemi == 0) {
+                            val fullMidiNote = baseStringMidi + absoluteFret
+                            val octaveNum = (fullMidiNote / 12) - 1
+                            val cx = getFretCenterX(f)
+                            val cy = getYForStringAtX(strIdx, cx)
+                            drawContext.canvas.nativeCanvas.drawText(
+                                "C$octaveNum",
+                                cx,
+                                cy + permanentOctavePaint.textSize * 0.95f,
+                                permanentOctavePaint
+                            )
+                        }
                     }
                 }
             }
 
             // Open string indicators
-            val textOffsetY = 4.dp.toPx()
-            nutMutedPaint.textSize = 13.dp.toPx()
+            val maxBadgeRad = (stringSpacingAtNut * 0.44f).coerceIn(5.dp.toPx(), 13.dp.toPx())
+            nutMutedPaint.textSize = (maxBadgeRad * 1.3f).coerceIn(8.dp.toPx(), 14.dp.toPx())
             val activeChordFrets = effectiveResolvedChordFrets
+
             if (activeChordFrets != null) {
-                for (s in 0 until numStrings) {
-                    val f = activeChordFrets.getOrNull(s) ?: -1
-                    val y = getYForStringAtX(s, leftPad)
-                    val nutIndicatorX = leftPad - 14f
-                    val openSemi = (openStringsSemis.getOrNull(s) ?: 0) % 12
-                    val openMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
-                    val openOct = (openMidi / 12) - 1
+                for (strIdx in 0 until numStrings) {
+                    val f = activeChordFrets.getOrNull(strIdx) ?: -1
+                    val y = getYForStringAtX(strIdx, leftPad)
+                    val openSemi = ((openStringsSemis.getOrNull(strIdx) ?: 0) % 12 + 12) % 12
+                    val openMidi = defaultOpenStringsMidi.getOrNull(strIdx) ?: (openSemi + 40)
                     val isOpenPlaying = f == 0 && (
-                        (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == 0) ||
+                        (activeCoordinate != null && activeCoordinate.first == strIdx && activeCoordinate.second == 0) ||
                             (effectiveActiveMidiNote != null && openMidi == effectiveActiveMidiNote)
                         )
 
                     if (f == -1) {
                         drawContext.canvas.nativeCanvas.drawText("✕", nutIndicatorX, y + labelYOff, nutMutedPaint)
                     } else if (f == 0) {
-                        val nutRad = if (isOpenPlaying) 9.5f.dp.toPx() else 8.dp.toPx()
+                        val nutRad = if (isOpenPlaying) maxBadgeRad * 0.85f else maxBadgeRad * 0.72f
                         drawCircle(
                             color = if (isOpenPlaying) Color(0xFFFFEB3B) else Color(0xFF1E222B).copy(alpha = 0.9f),
                             radius = nutRad,
@@ -571,25 +612,21 @@ fun UnifiedGuitarFretboard(
                         )
                         val nutText = NOTE_NAMES[openSemi]
                         notePillTextPaint.color = if (isOpenPlaying) android.graphics.Color.rgb(180, 40, 0) else android.graphics.Color.WHITE
-                        notePillTextPaint.textSize = 8.5f.dp.toPx()
-                        drawContext.canvas.nativeCanvas.drawText(nutText, nutIndicatorX, y + textOffsetY, notePillTextPaint)
+                        notePillTextPaint.textSize = (nutRad * 1.05f).coerceIn(6.dp.toPx(), 10.dp.toPx())
+                        drawContext.canvas.nativeCanvas.drawText(nutText, nutIndicatorX, y + notePillTextPaint.textSize * 0.36f, notePillTextPaint)
                     }
                 }
             } else {
-                // Scale / Melody note mode: check open strings against active or scale notes
-                for (s in 0 until numStrings) {
-                    val openSemi = (openStringsSemis.getOrNull(s) ?: 0) % 12
-                    val openMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
-                    val openOct = (openMidi / 12) - 1
-                    val isExactOpenActive = (activeCoordinate != null && activeCoordinate.first == s && activeCoordinate.second == 0) ||
-                        activeFretPoints.contains(s to 0)
+                for (strIdx in 0 until numStrings) {
+                    val openSemi = ((openStringsSemis.getOrNull(strIdx) ?: 0) % 12 + 12) % 12
+                    val isExactOpenActive = (activeCoordinate != null && activeCoordinate.first == strIdx && activeCoordinate.second == 0) ||
+                        activeFretPoints.contains(strIdx to 0)
                     val isScaleOpen = isScaleMode && normalizedActiveNotes.contains(openSemi)
 
                     if (isExactOpenActive || isScaleOpen) {
-                        val y = getYForStringAtX(s, leftPad)
-                        val nutIndicatorX = leftPad - 14f
+                        val y = getYForStringAtX(strIdx, leftPad)
                         val isRoot = openSemi == normalizedRootNote
-                        val nutRad = if (isExactOpenActive) 10.dp.toPx() else 8.dp.toPx()
+                        val nutRad = if (isExactOpenActive) maxBadgeRad * 0.88f else maxBadgeRad * 0.72f
 
                         drawCircle(
                             color = when {
@@ -604,48 +641,49 @@ fun UnifiedGuitarFretboard(
                             color = Color.White,
                             radius = nutRad,
                             center = Offset(nutIndicatorX, y),
-                            style = Stroke(width = if (isExactOpenActive) 2.2.dp.toPx() else 1.2.dp.toPx())
+                            style = Stroke(width = if (isExactOpenActive) 2.dp.toPx() else 1.2.dp.toPx())
                         )
                         val nutText = NOTE_NAMES[openSemi]
                         notePillTextPaint.color = if (isExactOpenActive) android.graphics.Color.rgb(180, 40, 0) else android.graphics.Color.WHITE
-                        notePillTextPaint.textSize = 8.5f.dp.toPx()
-                        drawContext.canvas.nativeCanvas.drawText(nutText, nutIndicatorX, y + textOffsetY, notePillTextPaint)
+                        notePillTextPaint.textSize = (nutRad * 1.05f).coerceIn(6.dp.toPx(), 10.dp.toPx())
+                        drawContext.canvas.nativeCanvas.drawText(nutText, nutIndicatorX, y + notePillTextPaint.textSize * 0.36f, notePillTextPaint)
                     }
                 }
             }
 
             // Active Fretted Notes
-            for (s in 0 until numStrings) {
-                val openSemi = openStringsSemis.getOrNull(s) ?: 0
-                val stringChordFret = activeChordFrets?.getOrNull(s) ?: -1
-                val baseStringMidi = defaultOpenStringsMidi.getOrNull(s) ?: (openSemi + 40)
+            for (strIdx in 0 until numStrings) {
+                val openSemi = openStringsSemis.getOrNull(strIdx) ?: 0
+                val stringChordFret = activeChordFrets?.getOrNull(strIdx) ?: -1
+                val baseStringMidi = defaultOpenStringsMidi.getOrNull(strIdx) ?: (openSemi + 40)
 
-                for (f in 1..numFrets) {
-                    val absoluteFret = baseFret + f - 1
-                    val fretSemi = (openSemi + absoluteFret) % 12
+                for (f in 1..safeNumFrets) {
+                    val absoluteFret = safeBaseFret + f - 1
+                    val fretSemi = ((openSemi + absoluteFret) % 12 + 12) % 12
                     val fullMidiNote = baseStringMidi + absoluteFret
+                    val fretWidth = (fretXPositions.getOrElse(f - 1) { w - rightPad }) - (if (f <= 1) leftPad else fretXPositions[f - 2])
 
                     val isChordFret = activeChordFrets != null && stringChordFret > 0 && (
-                        stringChordFret == absoluteFret || (baseFret > 1 && stringChordFret == f)
+                        stringChordFret == absoluteFret || (safeBaseFret > 1 && stringChordFret == f)
                         )
-                    val matchesCoord = activeCoordinate != null && activeCoordinate.first == s && (
+                    val matchesCoord = activeCoordinate != null && activeCoordinate.first == strIdx && (
                         activeCoordinate.second == absoluteFret || activeCoordinate.second == f
                         )
                     val isExactMidiPlaying = effectiveActiveMidiNote != null && fullMidiNote == effectiveActiveMidiNote
-                    val isFretPointActive = activeChordFrets == null && activeFretPoints.contains(s to absoluteFret)
+                    val isFretPointActive = activeChordFrets == null && activeFretPoints.contains(strIdx to absoluteFret)
                     val isCurrentlyPlaying = matchesCoord || (if (activeChordFrets != null) isChordFret && isExactMidiPlaying else isFretPointActive)
 
-                    // In Scale Mode: highlight valid notes of the scale within the constrained fret window
                     val isScaleFret = isScaleMode && normalizedActiveNotes.contains(fretSemi) && (absoluteFret in fretMinConstrain..fretMaxConstrain)
                     val isRoot = fretSemi == normalizedRootNote
 
                     if (isChordFret || isCurrentlyPlaying || isScaleFret) {
                         val cx = getFretCenterX(f)
-                        val cy = getYForStringAtX(s, cx)
+                        val cy = getYForStringAtX(strIdx, cx)
+                        val cellMaxRad = min(maxBadgeRad, (fretWidth * 0.44f).coerceAtLeast(4.dp.toPx()))
                         val dotRadius = when {
-                            isCurrentlyPlaying -> 13.dp.toPx()
-                            isScaleFret -> 10.dp.toPx()
-                            else -> 11.5.dp.toPx()
+                            isCurrentlyPlaying -> cellMaxRad
+                            isScaleFret -> cellMaxRad * 0.82f
+                            else -> cellMaxRad * 0.90f
                         }
 
                         val primaryDotColor = when {
@@ -656,7 +694,7 @@ fun UnifiedGuitarFretboard(
 
                         drawCircle(
                             color = if (isCurrentlyPlaying) Color(0xFFFFEB3B).copy(alpha = 0.55f) else primaryDotColor.copy(alpha = 0.30f),
-                            radius = dotRadius + (if (isCurrentlyPlaying) 4.dp.toPx() else 2.5f.dp.toPx()),
+                            radius = dotRadius * 1.28f,
                             center = Offset(cx, cy)
                         )
                         drawCircle(
@@ -670,32 +708,32 @@ fun UnifiedGuitarFretboard(
                                 color = Color.White,
                                 radius = dotRadius,
                                 center = Offset(cx, cy),
-                                style = Stroke(width = if (isCurrentlyPlaying) 2.2.dp.toPx() else 1.6.dp.toPx())
+                                style = Stroke(width = (dotRadius * 0.18f).coerceAtLeast(1f))
                             )
                         }
 
-                        val fingerNum = if (isChordFret) chordFingers?.getOrNull(s) else null
-
-                        val displayText = if (fingerNum != null && fingerNum > 0) {
+                        val fingerNum = if (isChordFret) chordFingers?.getOrNull(strIdx) else null
+                        val displayText = if (fingerNum != null && fingerNum > 0 && !showNoteNames) {
                             "$fingerNum"
                         } else {
                             NOTE_NAMES[fretSemi]
                         }
 
                         notePillTextPaint.color = if (isCurrentlyPlaying) android.graphics.Color.rgb(180, 40, 0) else android.graphics.Color.WHITE
-                        notePillTextPaint.textSize = (if (displayText.length > 2) 9.dp else if (isScaleFret) 10.dp else 11.dp).toPx()
-                        drawContext.canvas.nativeCanvas.drawText(displayText, cx, cy + textOffsetY, notePillTextPaint)
+                        notePillTextPaint.textSize = (dotRadius * (if (displayText.length > 1) 0.92f else 1.08f)).coerceIn(6.dp.toPx(), 12.dp.toPx())
+                        drawContext.canvas.nativeCanvas.drawText(displayText, cx, cy + notePillTextPaint.textSize * 0.36f, notePillTextPaint)
                     }
                 }
             }
 
             // Bottom Fret Numbers
-            fretNumPaint.textSize = 11.dp.toPx()
+            fretNumPaint.textSize = (10.5f * s).coerceIn(7.dp.toPx(), 11.5f.dp.toPx())
+            val fretNumY = (nutBottom.coerceAtLeast(bridgeBottom) + fretNumPaint.textSize + 2f * s).coerceAtMost(size.height - 3f)
             for (f in intArrayOf(3, 5, 7, 9, 12, 15, 17, 19, 21, 24)) {
-                if (f in baseFret..(baseFret + numFrets - 1)) {
-                    val relF = f - baseFret + 1
+                if (f in safeBaseFret..(safeBaseFret + safeNumFrets - 1)) {
+                    val relF = f - safeBaseFret + 1
                     val x = getFretCenterX(relF)
-                    drawContext.canvas.nativeCanvas.drawText("$f", x, size.height - 6f, fretNumPaint)
+                    drawContext.canvas.nativeCanvas.drawText("$f", x, fretNumY, fretNumPaint)
                 }
             }
         }
@@ -724,14 +762,15 @@ fun UnifiedPianoKeyboard(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
+    val safeStart = min(startNote, endNote).coerceIn(0, 127)
+    val safeEnd = kotlin.math.max(startNote, endNote).coerceIn(0, 127)
 
-    val whiteMidiNotes = remember(startNote, endNote) {
-        (startNote..endNote).filter { n -> (n % 12) !in listOf(1, 3, 6, 8, 10) }
+    val whiteMidiNotes = remember(safeStart, safeEnd) {
+        (safeStart..safeEnd).filter { n -> (n % 12) !in listOf(1, 3, 6, 8, 10) }
     }
 
     val maxWhiteKeyWidthPx = with(density) { 42.dp.toPx() }
 
-    // Hoisted reusable Paint objects to prevent 88 allocations per frame
     val octaveTextPaint = remember {
         android.graphics.Paint().apply {
             color = android.graphics.Color.argb(170, 120, 125, 135)
@@ -748,33 +787,41 @@ fun UnifiedPianoKeyboard(
         }
     }
 
-    BoxWithConstraints(modifier = modifier) {
-        val availableWidth = constraints.maxWidth.toFloat()
+    BoxWithConstraints(modifier = modifier.clip(RoundedCornerShape(6.dp))) {
+        val availableWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val availableHeight = constraints.maxHeight.toFloat().coerceAtLeast(1f)
         val calculatedKeyWidth = availableWidth / whiteMidiNotes.size.coerceAtLeast(1)
         val finalWhiteKeyWidthPx = if (fillWidth) {
             calculatedKeyWidth
         } else {
-            if (calculatedKeyWidth > maxWhiteKeyWidthPx) maxWhiteKeyWidthPx else calculatedKeyWidth
+            calculatedKeyWidth.coerceAtMost(maxWhiteKeyWidthPx)
         }
         val totalKeyboardWidthPx = finalWhiteKeyWidthPx * whiteMidiNotes.size
+        // Aspect-ratio guard: prevent vertical over-stretching if placed in a very tall container
+        val maxReasonableKeyHeight = (finalWhiteKeyWidthPx * 6.2f).coerceAtLeast(48f)
+        val renderedHeight = availableHeight.coerceAtMost(maxReasonableKeyHeight)
+        val topPaddingOffset = (availableHeight - renderedHeight) * 0.5f
         val startPaddingOffset = if (fillWidth) 0f else (availableWidth - totalKeyboardWidthPx) / 2f
 
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(startNote, endNote, whiteMidiNotes, finalWhiteKeyWidthPx, startPaddingOffset) {
+                .pointerInput(safeStart, safeEnd, whiteMidiNotes, finalWhiteKeyWidthPx, startPaddingOffset, renderedHeight, topPaddingOffset) {
                     val activePointers = mutableMapOf<Long, Int>()
                     fun resolveMidiAt(offset: Offset): Int? {
                         val adjustedX = offset.x - startPaddingOffset
+                        val adjustedY = (offset.y - topPaddingOffset).coerceIn(0f, renderedHeight)
+                        if (adjustedX < 0f || adjustedX > totalKeyboardWidthPx) return null
+
                         val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
-                        val blackKeyHeightPx = size.height * 0.62f
-                        if (offset.y < blackKeyHeightPx) {
+                        val blackKeyHeightPx = renderedHeight * 0.62f
+                        if (adjustedY < blackKeyHeightPx) {
                             for (i in whiteMidiNotes.indices) {
                                 val midiNote = whiteMidiNotes[i]
-                                val semitone = (midiNote % 12).let { if (it < 0) it + 12 else it }
+                                val semitone = (midiNote % 12 + 12) % 12
                                 if (semitone in listOf(0, 2, 5, 7, 9)) {
                                     val blackMidi = midiNote + 1
-                                    if (blackMidi <= endNote) {
+                                    if (blackMidi <= safeEnd) {
                                         val blackX = i * finalWhiteKeyWidthPx + finalWhiteKeyWidthPx - (blackKeyWidthPx / 2f)
                                         if (adjustedX >= blackX && adjustedX <= (blackX + blackKeyWidthPx)) {
                                             return blackMidi
@@ -813,19 +860,19 @@ fun UnifiedPianoKeyboard(
                     }
                 }
         ) {
-            val totalHeight = size.height
+            val totalHeight = renderedHeight
             val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
             val blackKeyHeightPx = totalHeight * 0.62f
-            val cornerRadiusPx = 4.dp.toPx()
+            val cornerRadiusPx = (finalWhiteKeyWidthPx * 0.14f).coerceIn(2f, 5.dp.toPx())
             val keyCorner = CornerRadius(cornerRadiusPx, cornerRadiusPx)
             val borderStroke = Stroke(width = 1.dp.toPx())
-            val frontFaceH = totalHeight * 0.12f
+            val frontFaceH = totalHeight * 0.11f
             val topSurfaceH = totalHeight - frontFaceH
 
-            octaveTextPaint.textSize = 9.dp.toPx()
+            octaveTextPaint.textSize = (finalWhiteKeyWidthPx * 0.34f).coerceIn(6.dp.toPx(), 9.5f.dp.toPx())
 
-            translate(left = startPaddingOffset) {
-                // 1. Draw White Keys (Zero per-key Brush allocations)
+            translate(left = startPaddingOffset, top = topPaddingOffset) {
+                // 1. White Keys
                 whiteMidiNotes.forEachIndexed { index, midiNote ->
                     val isHandHidden = if (midiNote >= 60) isRightHandHidden else isLeftHandHidden
                     val isCurrentlyPlaying = !isHandHidden && activeCoordinate != null && (midiNote == activeCoordinate || (activeCoordinate < 12 && (midiNote % 12) == activeCoordinate))
@@ -850,39 +897,34 @@ fun UnifiedPianoKeyboard(
                         else -> Color(0xFFD4C9B8)
                     }
 
-                    // Top Surface
                     drawRoundRect(
                         color = topKeyColor,
-                        topLeft = Offset(x + 1f, 0f),
-                        size = Size(finalWhiteKeyWidthPx - 2f, topSurfaceH),
+                        topLeft = Offset(x + 0.8f, 0f),
+                        size = Size((finalWhiteKeyWidthPx - 1.6f).coerceAtLeast(1f), topSurfaceH),
                         cornerRadius = keyCorner
                     )
-
-                    // Front Lip
                     drawRoundRect(
                         color = frontLipColor,
-                        topLeft = Offset(x + 1f, topSurfaceH - 1f),
-                        size = Size(finalWhiteKeyWidthPx - 2f, frontFaceH + 1f),
+                        topLeft = Offset(x + 0.8f, topSurfaceH - 1f),
+                        size = Size((finalWhiteKeyWidthPx - 1.6f).coerceAtLeast(1f), frontFaceH + 1f),
                         cornerRadius = keyCorner
                     )
-
-                    // Border
                     drawRoundRect(
                         color = Color(0xFF1E222B).copy(alpha = 0.45f),
-                        topLeft = Offset(x + 1f, 0f),
-                        size = Size(finalWhiteKeyWidthPx - 2f, totalHeight),
+                        topLeft = Offset(x + 0.8f, 0f),
+                        size = Size((finalWhiteKeyWidthPx - 1.6f).coerceAtLeast(1f), totalHeight),
                         cornerRadius = keyCorner,
                         style = borderStroke
                     )
 
                     val centerX = x + finalWhiteKeyWidthPx / 2f
 
-                    if (midiNote % 12 == 0) {
+                    if (midiNote % 12 == 0 && finalWhiteKeyWidthPx >= 10f) {
                         val octaveNumber = (midiNote / 12) - 1
                         drawContext.canvas.nativeCanvas.drawText(
                             "C$octaveNumber",
                             centerX,
-                            totalHeight - 8.dp.toPx(),
+                            totalHeight - (totalHeight * 0.045f).coerceAtLeast(4f),
                             octaveTextPaint
                         )
                     }
@@ -890,8 +932,9 @@ fun UnifiedPianoKeyboard(
                     if (isExplicitActive || showNoteNames) {
                         val fingerIndex = fingering?.notes?.indexOf(midiNote) ?: -1
                         val fingerNum = if (fingerIndex != -1) fingering?.fingers?.getOrNull(fingerIndex) else null
-                        val badgeY = totalHeight - 20.dp.toPx()
-                        val badgeRadius = if (isCurrentlyPlaying) 12.dp.toPx() else if (isExplicitActive) 10.5.dp.toPx() else 8.5.dp.toPx()
+                        val maxRad = (finalWhiteKeyWidthPx * 0.42f).coerceIn(4f, 12.dp.toPx())
+                        val badgeRadius = if (isCurrentlyPlaying) maxRad else if (isExplicitActive) maxRad * 0.9f else maxRad * 0.78f
+                        val badgeY = (totalHeight - frontFaceH - badgeRadius - 4f).coerceAtLeast(blackKeyHeightPx + badgeRadius + 2f)
 
                         drawCircle(
                             color = when {
@@ -906,24 +949,24 @@ fun UnifiedPianoKeyboard(
                         val displayNum = if (isExplicitActive && fingerNum != null && fingerNum > 0) {
                             fingerNum.toString()
                         } else {
-                            NOTE_NAMES[midiNote % 12]
+                            NOTE_NAMES[(midiNote % 12 + 12) % 12]
                         }
                         keyBadgeTextPaint.color = when {
                             isCurrentlyPlaying -> android.graphics.Color.rgb(190, 40, 0)
                             isExplicitActive -> android.graphics.Color.rgb(230, 110, 0)
                             else -> android.graphics.Color.WHITE
                         }
-                        keyBadgeTextPaint.textSize = if (isExplicitActive) 10.5.dp.toPx() else 8.5.dp.toPx()
-                        drawContext.canvas.nativeCanvas.drawText(displayNum, centerX, badgeY + 3.5.dp.toPx(), keyBadgeTextPaint)
+                        keyBadgeTextPaint.textSize = (badgeRadius * 1.05f).coerceIn(5.5f.dp.toPx(), 10.5f.dp.toPx())
+                        drawContext.canvas.nativeCanvas.drawText(displayNum, centerX, badgeY + keyBadgeTextPaint.textSize * 0.35f, keyBadgeTextPaint)
                     }
                 }
 
-                // 2. Draw Black Keys
+                // 2. Black Keys
                 whiteMidiNotes.forEachIndexed { index, midiNote ->
-                    val semitone = (midiNote % 12).let { if (it < 0) it + 12 else it }
+                    val semitone = (midiNote % 12 + 12) % 12
                     if (semitone in listOf(0, 2, 5, 7, 9)) {
                         val blackMidiNote = midiNote + 1
-                        if (blackMidiNote <= endNote) {
+                        if (blackMidiNote <= safeEnd) {
                             val isHandHidden = if (blackMidiNote >= 60) isRightHandHidden else isLeftHandHidden
                             val isCurrentlyPlaying = !isHandHidden && activeCoordinate != null && (blackMidiNote == activeCoordinate || (activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate))
                             val isExplicitActive = !isHandHidden && (
@@ -937,7 +980,6 @@ fun UnifiedPianoKeyboard(
                             val blackHandColor = if (blackMidiNote >= 60) rightHandColor else leftHandColor
                             val customBlackColor = customKeyColors[blackMidiNote]
 
-                            // Shadow
                             drawRoundRect(
                                 color = Color.Black.copy(alpha = 0.45f),
                                 topLeft = Offset(blackX + 1.5f, 2f),
@@ -945,7 +987,6 @@ fun UnifiedPianoKeyboard(
                                 cornerRadius = keyCorner
                             )
 
-                            // Body
                             val bodyColor = when {
                                 customBlackColor != null -> customBlackColor
                                 isCurrentlyPlaying || isExplicitActive -> blackHandColor
@@ -962,8 +1003,9 @@ fun UnifiedPianoKeyboard(
                             if (isExplicitActive || showNoteNames) {
                                 val fingerIndex = fingering?.notes?.indexOf(blackMidiNote) ?: -1
                                 val fingerNum = if (fingerIndex != -1) fingering?.fingers?.getOrNull(fingerIndex) else null
-                                val badgeY = blackKeyHeightPx - 16.dp.toPx()
-                                val badgeRadius = if (isCurrentlyPlaying) 10.dp.toPx() else if (isExplicitActive) 8.5.dp.toPx() else 7.5.dp.toPx()
+                                val maxRad = (blackKeyWidthPx * 0.44f).coerceIn(3.5f, 10.dp.toPx())
+                                val badgeRadius = if (isCurrentlyPlaying) maxRad else if (isExplicitActive) maxRad * 0.9f else maxRad * 0.8f
+                                val badgeY = (blackKeyHeightPx - badgeRadius - 5f).coerceAtLeast(badgeRadius + 2f)
 
                                 drawCircle(
                                     color = when {
@@ -978,15 +1020,15 @@ fun UnifiedPianoKeyboard(
                                 val displayNum = if (isExplicitActive && fingerNum != null && fingerNum > 0) {
                                     fingerNum.toString()
                                 } else {
-                                    NOTE_NAMES[blackMidiNote % 12]
+                                    NOTE_NAMES[(blackMidiNote % 12 + 12) % 12]
                                 }
                                 keyBadgeTextPaint.color = when {
                                     isCurrentlyPlaying -> android.graphics.Color.rgb(190, 40, 0)
                                     isExplicitActive -> android.graphics.Color.rgb(230, 110, 0)
                                     else -> android.graphics.Color.WHITE
                                 }
-                                keyBadgeTextPaint.textSize = if (isExplicitActive) 9.dp.toPx() else 7.5.dp.toPx()
-                                drawContext.canvas.nativeCanvas.drawText(displayNum, centerX, badgeY + 3.dp.toPx(), keyBadgeTextPaint)
+                                keyBadgeTextPaint.textSize = (badgeRadius * 0.96f).coerceIn(5f.dp.toPx(), 9.dp.toPx())
+                                drawContext.canvas.nativeCanvas.drawText(displayNum, centerX, badgeY + keyBadgeTextPaint.textSize * 0.35f, keyBadgeTextPaint)
                             }
                         }
                     }
@@ -995,6 +1037,7 @@ fun UnifiedPianoKeyboard(
         }
     }
 }
+
 enum class InstrumentSoundStyle(val displayName: String, val iconDesc: String) {
     SEQUENTIAL("Sequential Strum", "Plays notes in sequence low to high"),
     ALL_AT_ONCE("All Notes at Once", "Sounds full chord block simultaneously"),
@@ -1225,8 +1268,12 @@ fun pEQInstrumentDropdown(
 
 /**
  * UNIFIED HARMONIUM VISUALIZER
- * Features realistic 7-fold wooden/leather accordion bellows with authentic brass stops,
- * scale stops, teakwood side handles, and keyboard keybed.
+ * High-detail Indian Classical Teakwood Harmonium with:
+ * - Aspect-ratio-safe responsive scaling (never clips keys or stretches bellows out of proportion)
+ * - 7-fold accordion leather bellows with reactive breathing expansion when notes are played
+ * - Brass air stops (Kharij, Bass, Male, Female, Tremolo, Drone) & Scale-Changer coupler rail
+ * - Custom warm cream/ebony reed keybed with red velvet cloth backing, Sargam + Western note badges,
+ *   and full multi-touch glissando tracking.
  */
 @Composable
 fun UnifiedHarmoniumVisualizer(
@@ -1245,86 +1292,431 @@ fun UnifiedHarmoniumVisualizer(
     onKeyReleased: ((midiNote: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    val safeStart = min(startNote, endNote).coerceIn(21, 108)
+    val safeEnd = kotlin.math.max(startNote, endNote).coerceIn(21, 108)
+    val normalizedRoot = remember(rootNote) { (rootNote % 12 + 12) % 12 }
+
+    val whiteMidiNotes = remember(safeStart, safeEnd) {
+        (safeStart..safeEnd).filter { n -> (n % 12) !in listOf(1, 3, 6, 8, 10) }
+    }
+
+    val isAnyNotePlaying = remember(activeMidiNotes, activeMidiNote) {
+        activeMidiNote != null || activeMidiNotes.values.any { it }
+    }
+    val bellowsExpansion by animateFloatAsState(
+        targetValue = if (isAnyNotePlaying) 1f else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+        label = "harmonium_bellows"
+    )
+
+    val labelPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val sargamPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD)
+            isAntiAlias = true
+        }
+    }
+
+    val cabinetBrush = remember {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF4A2511), Color(0xFF2E160A), Color(0xFF1D0D05))
+        )
+    }
+
+    BoxWithConstraints(
         modifier = modifier
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF381F14), Color(0xFF26150C), Color(0xFF190E08))
-                ),
-                shape = RoundedCornerShape(8.dp)
-            )
-            .border(1.5.dp, Color(0xFF5D361F), RoundedCornerShape(8.dp))
-            .padding(4.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(cabinetBrush, RoundedCornerShape(10.dp))
+            .border(1.5.dp, Color(0xFF8D5B34), RoundedCornerShape(10.dp))
     ) {
-        // TOP BELLOWS & BRASS STOPS PANEL (Clean decorative bellows fold)
-        Row(
+        val canvasW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val canvasH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+
+        val vp = remember(canvasW, canvasH, whiteMidiNotes.size) {
+            computeAspectSafeViewport(
+                canvasWidth = canvasW,
+                canvasHeight = canvasH,
+                minAspect = 1.8f,
+                maxAspect = 9.5f,
+                referenceHeight = 160f,
+                horizontalPaddingFrac = 0.012f,
+                verticalPaddingFrac = 0.025f
+            )
+        }
+
+        val framePad = (5f * vp.scale).coerceIn(3f, 10f)
+        val innerLeft = vp.left + framePad
+        val innerTop = vp.top + framePad
+        val innerW = (vp.width - framePad * 2f).coerceAtLeast(1f)
+        val innerH = (vp.height - framePad * 2f).coerceAtLeast(1f)
+
+        // Top Bellows + Stop Knob Panel occupies 24% of height (when space allows), Keybed 76%
+        val showHeaderPanel = innerH >= 56f
+        val headerH = if (showHeaderPanel) (innerH * 0.25f).coerceIn(18f, 44f) else 0f
+        val velvetStripH = (3.5f * vp.scale).coerceIn(2f, 6f)
+        val keybedTop = innerTop + headerH + velvetStripH
+        val keybedH = (innerH - headerH - velvetStripH).coerceAtLeast(24f)
+        val whiteKeyW = innerW / whiteMidiNotes.size.coerceAtLeast(1)
+
+        Canvas(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(20.dp)
-                .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                .background(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFF1B0D07),
-                            Color(0xFF3E1E11),
-                            Color(0xFF2C150C),
-                            Color(0xFF3E1E11),
-                            Color(0xFF1B0D07)
-                        )
-                    )
-                )
-                .border(1.dp, Color(0xFF8D5B34), RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+                .fillMaxSize()
+                .pointerInput(safeStart, safeEnd, whiteMidiNotes, innerLeft, keybedTop, innerW, keybedH, whiteKeyW) {
+                    val activePointers = mutableMapOf<Long, Int>()
+
+                    fun resolveMidiAt(offset: Offset): Int? {
+                        val relX = offset.x - innerLeft
+                        val relY = offset.y - keybedTop
+                        if (relX < 0f || relX > innerW || relY < -8f || relY > keybedH + 8f) return null
+
+                        val clampedY = relY.coerceIn(0f, keybedH)
+                        val blackKeyW = whiteKeyW * 0.58f
+                        val blackKeyH = keybedH * 0.60f
+
+                        if (clampedY < blackKeyH) {
+                            for (i in whiteMidiNotes.indices) {
+                                val midiNote = whiteMidiNotes[i]
+                                val semitone = (midiNote % 12 + 12) % 12
+                                if (semitone in listOf(0, 2, 5, 7, 9)) {
+                                    val blackMidi = midiNote + 1
+                                    if (blackMidi <= safeEnd) {
+                                        val blackX = i * whiteKeyW + whiteKeyW - (blackKeyW / 2f)
+                                        if (relX >= blackX && relX <= blackX + blackKeyW) {
+                                            return blackMidi
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        val whiteIdx = (relX / whiteKeyW).toInt()
+                        return if (whiteIdx in whiteMidiNotes.indices) whiteMidiNotes[whiteIdx] else null
+                    }
+
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                val id = change.id.value
+                                if (change.pressed) {
+                                    val midi = resolveMidiAt(change.position)
+                                    val prev = activePointers[id]
+                                    if (prev == null && midi != null) {
+                                        activePointers[id] = midi
+                                        onKeyTapped?.invoke(midi)
+                                    } else if (prev != null && midi != null && prev != midi) {
+                                        onKeyReleased?.invoke(prev)
+                                        activePointers[id] = midi
+                                        onKeyTapped?.invoke(midi)
+                                    }
+                                } else {
+                                    activePointers.remove(id)?.let { released ->
+                                        onKeyReleased?.invoke(released)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
         ) {
-            // Brass decorative stops with authentic pull knobs
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                repeat(9) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(Color(0xFFFFF176), Color(0xFFFFB300), Color(0xFF8D6E63))
-                                )
-                            )
-                            .border(0.8.dp, Color(0xFFB58500), CircleShape)
+            // Outer Teakwood Cabinet Bevel & Brass Corner Brackets
+            drawRoundRect(
+                color = Color(0xFF281309),
+                topLeft = Offset(vp.left, vp.top),
+                size = Size(vp.width, vp.height),
+                cornerRadius = CornerRadius(8.dp.toPx())
+            )
+            drawRoundRect(
+                color = Color(0xFFB58500).copy(alpha = 0.6f),
+                topLeft = Offset(vp.left, vp.top),
+                size = Size(vp.width, vp.height),
+                cornerRadius = CornerRadius(8.dp.toPx()),
+                style = Stroke(width = 1.2.dp.toPx())
+            )
+
+            // 1. TOP BELLOWS & BRASS STOPS PANEL
+            if (showHeaderPanel) {
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFF1B0C05), Color(0xFF381A0C), Color(0xFF261107), Color(0xFF381A0C), Color(0xFF1B0C05)),
+                        startX = innerLeft,
+                        endX = innerLeft + innerW
+                    ),
+                    topLeft = Offset(innerLeft, innerTop),
+                    size = Size(innerW, headerH),
+                    cornerRadius = CornerRadius(5.dp.toPx())
+                )
+
+                // Accordion Leather Pleat Lines (animate slightly with bellowsExpansion)
+                val pleatCount = 5
+                val pleatAreaH = headerH * (0.42f + 0.12f * bellowsExpansion)
+                for (p in 1..pleatCount) {
+                    val py = innerTop + (pleatAreaH / (pleatCount + 1)) * p
+                    drawLine(
+                        color = if (p % 2 == 0) Color(0xFF6D4024).copy(alpha = 0.55f) else Color(0xFF120703).copy(alpha = 0.7f),
+                        start = Offset(innerLeft + 8f, py),
+                        end = Offset(innerLeft + innerW - 8f, py),
+                        strokeWidth = 1.dp.toPx()
                     )
+                }
+
+                // Scale-Changer Brass Rail & 9 Stop Knobs (5 main stops + 4 drone stops)
+                val railY = innerTop + headerH * 0.64f
+                drawLine(
+                    color = Color(0xFFC59B27).copy(alpha = 0.65f),
+                    start = Offset(innerLeft + innerW * 0.08f, railY),
+                    end = Offset(innerLeft + innerW * 0.92f, railY),
+                    strokeWidth = (2.2f * vp.scale).coerceIn(1.2f, 4f)
+                )
+
+                val numStops = 9
+                val stopRadius = (headerH * 0.22f).coerceIn(3.5f, 8.dp.toPx())
+                val stopSpacing = (innerW * 0.76f) / (numStops - 1).coerceAtLeast(1)
+                val stopStartX = innerLeft + innerW * 0.12f
+
+                for (sIdx in 0 until numStops) {
+                    val sx = stopStartX + sIdx * stopSpacing
+                    val isLargeStop = sIdx % 2 == 0
+                    val r = if (isLargeStop) stopRadius else stopRadius * 0.78f
+                    val pulledOffset = if (isAnyNotePlaying && isLargeStop) -1.5f * vp.scale else 0f
+
+                    // Brass stem + shadow
+                    drawCircle(
+                        color = Color.Black.copy(alpha = 0.55f),
+                        radius = r + 1.2f,
+                        center = Offset(sx, railY + pulledOffset + 1.5f)
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFFFF59D), Color(0xFFFFB300), Color(0xFF795548)),
+                            center = Offset(sx - r * 0.25f, railY + pulledOffset - r * 0.25f),
+                            radius = r * 1.3f
+                        ),
+                        radius = r,
+                        center = Offset(sx, railY + pulledOffset)
+                    )
+                    // Ivory center dot on main stops
+                    if (isLargeStop) {
+                        drawCircle(
+                            color = Color(0xFFFFF8E1),
+                            radius = r * 0.35f,
+                            center = Offset(sx, railY + pulledOffset)
+                        )
+                    }
+                }
+            }
+
+            // 2. RED VELVET FELT STRIP ABOVE REED KEYS
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF5D0E11), Color(0xFFA31621), Color(0xFF5D0E11)),
+                    startX = innerLeft,
+                    endX = innerLeft + innerW
+                ),
+                topLeft = Offset(innerLeft, innerTop + headerH),
+                size = Size(innerW, velvetStripH)
+            )
+
+            // 3. HARMONIUM WHITE REED KEYS (Aged Warm Ivory with Wooden Front Lip)
+            val cornerRad = (whiteKeyW * 0.14f).coerceIn(2f, 5.dp.toPx())
+            val keyCorner = CornerRadius(cornerRad, cornerRad)
+            val frontFaceH = keybedH * 0.12f
+            val topSurfaceH = keybedH - frontFaceH
+            val blackKeyW = whiteKeyW * 0.58f
+            val blackKeyH = keybedH * 0.60f
+
+            whiteMidiNotes.forEachIndexed { index, midiNote ->
+                val isHandHidden = if (midiNote >= 60) isRightHandHidden else isLeftHandHidden
+                val isCurrentlyPlaying = !isHandHidden && activeMidiNote != null &&
+                    (midiNote == activeMidiNote || (activeMidiNote < 12 && (midiNote % 12) == activeMidiNote))
+                val isExplicitActive = !isHandHidden && (
+                    activeMidiNotes[midiNote] == true || isCurrentlyPlaying
+                    )
+                val semitone = (midiNote % 12 + 12) % 12
+                val isRoot = semitone == normalizedRoot
+
+                val x = innerLeft + index * whiteKeyW
+                val activeFill = if (midiNote >= 60) rightHandColor else leftHandColor
+
+                val topKeyColor = when {
+                    isCurrentlyPlaying -> Color(0xFFFFEB3B)
+                    isExplicitActive -> activeFill
+                    else -> Color(0xFFFFF8E7) // Warm Harmonium Ivory
+                }
+                val frontLipColor = when {
+                    isCurrentlyPlaying -> Color(0xFFFBC02D)
+                    isExplicitActive -> activeFill.copy(alpha = 0.8f)
+                    else -> Color(0xFFDCC7AA)
+                }
+
+                // Depressed key offset simulation
+                val pressOffsetY = if (isCurrentlyPlaying || isExplicitActive) (1.8f * vp.scale).coerceAtMost(frontFaceH * 0.5f) else 0f
+
+                drawRoundRect(
+                    color = topKeyColor,
+                    topLeft = Offset(x + 0.8f, keybedTop + pressOffsetY),
+                    size = Size((whiteKeyW - 1.6f).coerceAtLeast(1f), topSurfaceH),
+                    cornerRadius = keyCorner
+                )
+                drawRoundRect(
+                    color = frontLipColor,
+                    topLeft = Offset(x + 0.8f, keybedTop + topSurfaceH - 1f),
+                    size = Size((whiteKeyW - 1.6f).coerceAtLeast(1f), frontFaceH + 1f),
+                    cornerRadius = keyCorner
+                )
+                drawRoundRect(
+                    color = Color(0xFF2B1508).copy(alpha = 0.55f),
+                    topLeft = Offset(x + 0.8f, keybedTop),
+                    size = Size((whiteKeyW - 1.6f).coerceAtLeast(1f), keybedH),
+                    cornerRadius = keyCorner,
+                    style = Stroke(width = 1.dp.toPx())
+                )
+
+                val centerX = x + whiteKeyW * 0.5f
+
+                // Sargam + Western Note Badge
+                if (isExplicitActive || showNoteNames || isRoot) {
+                    val maxRad = (whiteKeyW * 0.42f).coerceIn(4f, 12.dp.toPx())
+                    val badgeRadius = if (isCurrentlyPlaying) maxRad else if (isExplicitActive) maxRad * 0.92f else maxRad * 0.78f
+                    val badgeY = (keybedTop + topSurfaceH - badgeRadius - 4f).coerceAtLeast(keybedTop + blackKeyH + badgeRadius + 2f)
+
+                    if (isExplicitActive || isRoot) {
+                        drawCircle(
+                            color = when {
+                                isCurrentlyPlaying -> Color(0xFFD84315)
+                                isExplicitActive -> Color(0xFF3E1E04)
+                                else -> Color(0xFFB71C1C).copy(alpha = 0.22f)
+                            },
+                            radius = badgeRadius,
+                            center = Offset(centerX, badgeY)
+                        )
+                    }
+
+                    val relSemi = ((semitone - normalizedRoot) % 12 + 12) % 12
+                    val sargamLabel = SARGAM_NAMES[relSemi]
+                    val westernLabel = NOTE_NAMES[semitone]
+
+                    // Draw Sargam label on top of badge and Western note on front lip if wide enough
+                    labelPaint.color = when {
+                        isCurrentlyPlaying || isExplicitActive -> android.graphics.Color.WHITE
+                        isRoot -> android.graphics.Color.rgb(183, 28, 28)
+                        else -> android.graphics.Color.rgb(93, 64, 55)
+                    }
+                    labelPaint.textSize = (badgeRadius * 0.98f).coerceIn(5.5f.dp.toPx(), 10.dp.toPx())
+                    drawContext.canvas.nativeCanvas.drawText(
+                        if (isExplicitActive) sargamLabel else westernLabel,
+                        centerX,
+                        badgeY + labelPaint.textSize * 0.35f,
+                        labelPaint
+                    )
+
+                    if (whiteKeyW >= 14f && frontFaceH >= 8f) {
+                        sargamPaint.color = android.graphics.Color.argb(190, 80, 50, 30)
+                        sargamPaint.textSize = (whiteKeyW * 0.30f).coerceIn(5.dp.toPx(), 8.dp.toPx())
+                        drawContext.canvas.nativeCanvas.drawText(
+                            if (isExplicitActive) westernLabel else sargamLabel,
+                            centerX,
+                            keybedTop + keybedH - (frontFaceH * 0.22f),
+                            sargamPaint
+                        )
+                    }
+                }
+            }
+
+            // 4. HARMONIUM BLACK REED KEYS (Polished Ebony with Gold Bevel)
+            whiteMidiNotes.forEachIndexed { index, midiNote ->
+                val semitone = (midiNote % 12 + 12) % 12
+                if (semitone in listOf(0, 2, 5, 7, 9)) {
+                    val blackMidiNote = midiNote + 1
+                    if (blackMidiNote <= safeEnd) {
+                        val isHandHidden = if (blackMidiNote >= 60) isRightHandHidden else isLeftHandHidden
+                        val isCurrentlyPlaying = !isHandHidden && activeMidiNote != null &&
+                            (blackMidiNote == activeMidiNote || (activeMidiNote < 12 && (blackMidiNote % 12) == activeMidiNote))
+                        val isExplicitActive = !isHandHidden && (
+                            activeMidiNotes[blackMidiNote] == true || isCurrentlyPlaying
+                            )
+
+                        val blackX = innerLeft + (index * whiteKeyW) + (whiteKeyW - blackKeyW * 0.5f)
+                        val activeFill = if (blackMidiNote >= 60) rightHandColor else leftHandColor
+
+                        drawRoundRect(
+                            color = Color.Black.copy(alpha = 0.5f),
+                            topLeft = Offset(blackX + 1.5f, keybedTop + 2f),
+                            size = Size(blackKeyW, blackKeyH + 2f),
+                            cornerRadius = keyCorner
+                        )
+
+                        val bodyColor = when {
+                            isCurrentlyPlaying -> Color(0xFFFFEB3B)
+                            isExplicitActive -> activeFill
+                            else -> Color(0xFF221610)
+                        }
+                        drawRoundRect(
+                            color = bodyColor,
+                            topLeft = Offset(blackX, keybedTop),
+                            size = Size(blackKeyW, blackKeyH),
+                            cornerRadius = keyCorner
+                        )
+                        drawRoundRect(
+                            color = if (isExplicitActive) Color.White else Color(0xFF8D6E63).copy(alpha = 0.45f),
+                            topLeft = Offset(blackX, keybedTop),
+                            size = Size(blackKeyW, blackKeyH),
+                            cornerRadius = keyCorner,
+                            style = Stroke(width = 0.8.dp.toPx())
+                        )
+
+                        val centerX = blackX + blackKeyW * 0.5f
+                        if (isExplicitActive || showNoteNames) {
+                            val maxRad = (blackKeyW * 0.44f).coerceIn(3.5f, 9.5f.dp.toPx())
+                            val badgeRadius = if (isCurrentlyPlaying) maxRad else if (isExplicitActive) maxRad * 0.9f else maxRad * 0.78f
+                            val badgeY = (keybedTop + blackKeyH - badgeRadius - 4f).coerceAtLeast(keybedTop + badgeRadius + 2f)
+
+                            drawCircle(
+                                color = when {
+                                    isCurrentlyPlaying -> Color(0xFFD84315)
+                                    isExplicitActive -> Color.White
+                                    else -> Color(0xFF140B07).copy(alpha = 0.9f)
+                                },
+                                radius = badgeRadius,
+                                center = Offset(centerX, badgeY)
+                            )
+
+                            val displayLabel = NOTE_NAMES[(blackMidiNote % 12 + 12) % 12]
+                            labelPaint.color = when {
+                                isCurrentlyPlaying -> android.graphics.Color.WHITE
+                                isExplicitActive -> android.graphics.Color.rgb(180, 50, 0)
+                                else -> android.graphics.Color.rgb(255, 224, 130)
+                            }
+                            labelPaint.textSize = (badgeRadius * 0.95f).coerceIn(5.dp.toPx(), 8.5f.dp.toPx())
+                            drawContext.canvas.nativeCanvas.drawText(
+                                displayLabel,
+                                centerX,
+                                badgeY + labelPaint.textSize * 0.35f,
+                                labelPaint
+                            )
+                        }
+                    }
                 }
             }
         }
-
-        Spacer(Modifier.height(2.dp))
-
-        // HARMONIUM KEYBED (REEDS)
-        UnifiedPianoKeyboard(
-            activeMidiNotes = activeMidiNotes,
-            accentColor = accentColor,
-            rootNote = rootNote,
-            activeCoordinate = activeMidiNote,
-            showNoteNames = showNoteNames,
-            isPlaying = activeMidiNotes.values.any { it } || activeMidiNote != null,
-            startNote = startNote,
-            endNote = endNote,
-            fillWidth = true,
-            leftHandColor = leftHandColor,
-            rightHandColor = rightHandColor,
-            isLeftHandHidden = isLeftHandHidden,
-            isRightHandHidden = isRightHandHidden,
-            onKeyTapped = { onKeyTapped?.invoke(it) },
-            onKeyReleased = { onKeyReleased?.invoke(it) },
-            modifier = Modifier.fillMaxWidth().weight(1f)
-        )
     }
 }
 
 /**
  * UNIFIED VIOLIN FINGERBOARD VISUALIZER
- * Authentic high-detail orchestral & Carnatic violin neck visualizer.
- * Features curly maple neck border, authentic ebony nut, realistic wound strings,
- * bridge curvature markers, intonation tape guides, and active note glow.
+ * High-precision Canvas Orchestral & Carnatic Violin Fingerboard:
+ * - Preserves aspect ratio so finger markers are never squashed or clipped
+ * - Logarithmic acoustic spacing (Rule of 17.817) along a tapered ebony fingerboard over a curly maple neck
+ * - Ergonomic position solver: resolves single-note melodies to natural 1st/3rd position hand boxes
+ *   instead of lighting up duplicate pitches simultaneously on multiple strings
+ * - Full multi-touch glissando & vibrato slide tracking (`awaitPointerEventScope`)
+ * - Authentic wound strings (Gold G, Silver D, Aluminum A, Steel E) + 1st/3rd position intonation guide tapes.
  */
 @Composable
 fun UnifiedViolinFingerboard(
@@ -1343,6 +1735,9 @@ fun UnifiedViolinFingerboard(
     modifier: Modifier = Modifier
 ) {
     val totalPositions = numPositions.coerceIn(7, 24)
+    val numStrings = openStringsMidi.size.coerceAtLeast(1)
+    val normalizedRoot = remember(rootNote) { (rootNote % 12 + 12) % 12 }
+
     val filteredActiveNotes = remember(activeNotes, isLeftHandHidden, isRightHandHidden) {
         activeNotes.filter { midi ->
             val isTreble = midi >= 65
@@ -1351,128 +1746,413 @@ fun UnifiedViolinFingerboard(
             else true
         }
     }
+    val effectiveActiveMidi = remember(activeMidiNote, isLeftHandHidden, isRightHandHidden) {
+        if (activeMidiNote == null) null
+        else {
+            val isTreble = activeMidiNote >= 65
+            if (isTreble && isRightHandHidden) null
+            else if (!isTreble && isLeftHandHidden) null
+            else activeMidiNote
+        }
+    }
+
+    val allUniquePitches = remember(filteredActiveNotes, effectiveActiveMidi) {
+        (filteredActiveNotes + listOfNotNull(effectiveActiveMidi)).distinct()
+    }
+    val distinctPitchClasses = remember(allUniquePitches) {
+        allUniquePitches.map { (it % 12 + 12) % 12 }.toSet()
+    }
+    val isScaleMode = remember(distinctPitchClasses) {
+        distinctPitchClasses.size >= 6
+    }
+
+    // Ergonomic Violin Position Solver: prefers 1st position (semitones 0..5) and 3rd position (6..9)
+    // and avoids playing high-register notes on low G/D strings when A/E strings are available.
+    val resolvedPoints = remember(allUniquePitches, openStringsMidi, totalPositions, isScaleMode) {
+        val points = mutableSetOf<Pair<Int, Int>>() // (stringIdx, semitonePos)
+        if (isScaleMode) {
+            for (sIdx in openStringsMidi.indices) {
+                val openMidi = openStringsMidi[sIdx]
+                for (pos in 0..min(totalPositions, 7)) {
+                    val semi = ((openMidi + pos) % 12 + 12) % 12
+                    if (distinctPitchClasses.contains(semi)) {
+                        points.add(sIdx to pos)
+                    }
+                }
+            }
+        } else {
+            allUniquePitches.forEach { midi ->
+                val candidates = mutableListOf<Pair<Int, Int>>()
+                openStringsMidi.forEachIndexed { sIdx, openMidi ->
+                    val pos = midi - openMidi
+                    if (pos in 0..totalPositions) {
+                        candidates.add(sIdx to pos)
+                    }
+                }
+                val best = candidates.minByOrNull { (sIdx, pos) ->
+                    val posPenalty = when {
+                        pos == 0 -> 1 // Open string
+                        pos in 1..5 -> pos * 2 // 1st position (most natural)
+                        pos in 6..9 -> 14 + (pos - 5) * 4 // 3rd position
+                        else -> 35 + pos * 7 // High shifts
+                    }
+                    val registerPenalty = if (sIdx >= 2 && pos > 6) 25 else 0
+                    posPenalty + registerPenalty
+                }
+                if (best != null) points.add(best)
+            }
+        }
+        points
+    }
+
+    // Logarithmic intonation position ratios along the fingerboard
+    val r = 0.056125687f
+    val posScaleFactor = remember(totalPositions) {
+        var sum = 0f
+        for (p in 1..totalPositions) {
+            sum += (1f - r).toDouble().pow(p.toDouble()).toFloat() * r
+        }
+        sum.coerceAtLeast(0.001f)
+    }
+
+    val stringLabelPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(255, 213, 79)
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val noteTextPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val tapeLabelPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(165, 210, 180, 140)
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
             .background(
-                brush = Brush.horizontalGradient(
-                    colors = listOf(Color(0xFF2E1708), Color(0xFF1A0E06), Color(0xFF140B05), Color(0xFF2E1708))
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF281307), Color(0xFF170B04), Color(0xFF281307))
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(10.dp)
             )
-            .border(1.5.dp, Color(0xFF6A3B18), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .border(1.5.dp, Color(0xFF7A441E), RoundedCornerShape(10.dp))
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceEvenly
-        ) {
-            openStringsMidi.forEachIndexed { sIdx, openMidi ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // String Label & Peg with pearloid inlay (clear, unclipt)
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFF23140C),
-                        border = BorderStroke(1.2.dp, Color(0xFFFFD54F)),
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = stringLabels.getOrElse(sIdx) { "S" },
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFFFFD54F)
-                            )
+        val totalWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val totalHeight = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+
+        val vp = remember(totalWidth, totalHeight) {
+            computeAspectSafeViewport(
+                canvasWidth = totalWidth,
+                canvasHeight = totalHeight,
+                minAspect = 2.0f,
+                maxAspect = 11.0f,
+                referenceHeight = 140f,
+                horizontalPaddingFrac = 0.012f,
+                verticalPaddingFrac = 0.025f
+            )
+        }
+
+        val s = vp.scale
+        val pegBoxW = (44f * s).coerceIn(28f, vp.width * 0.16f)
+        val rightBridgeW = (24f * s).coerceIn(14f, vp.width * 0.08f)
+        val nutX = vp.left + pegBoxW
+        val bridgeX = vp.right - rightBridgeW
+        val playableW = (bridgeX - nutX).coerceAtLeast(1f)
+
+        val topPad = vp.top + (10f * s).coerceAtLeast(4f)
+        val bottomPad = (totalHeight - vp.bottom) + (18f * s).coerceAtLeast(10f)
+        val playableH = (totalHeight - topPad - bottomPad).coerceAtLeast(1f)
+
+        val nutH = playableH * 0.84f
+        val bridgeH = playableH * 0.96f
+        val midY = topPad + playableH * 0.5f
+        val nutTop = midY - nutH * 0.5f
+        val nutBottom = midY + nutH * 0.5f
+        val bridgeTop = midY - bridgeH * 0.5f
+        val bridgeBottom = midY + bridgeH * 0.5f
+
+        val posXCenters = remember(nutX, playableW, totalPositions, posScaleFactor) {
+            val centers = FloatArray(totalPositions + 1)
+            centers[0] = nutX - (10f * s).coerceIn(6f, 14f) // Open string position just left of nut
+            var prevEdge = nutX
+            var acc = 0f
+            for (p in 1..totalPositions) {
+                val frac = (1f - r).toDouble().pow(p.toDouble()).toFloat() * r
+                acc += (frac / posScaleFactor) * playableW
+                val curEdge = nutX + acc
+                centers[p] = (prevEdge + curEdge) * 0.5f
+                prevEdge = curEdge
+            }
+            centers
+        }
+
+        fun getYForStringAtX(sIdx: Int, x: Float): Float {
+            val t = ((x - nutX) / playableW).coerceIn(0f, 1f)
+            val curH = nutH + (bridgeH - nutH) * t
+            val curTop = midY - curH * 0.5f
+            val spacing = curH / (numStrings - 1).coerceAtLeast(1)
+            return if (numStrings == 1) midY else curTop + sIdx * spacing
+        }
+
+        val fingerboardPath = remember(nutX, bridgeX, nutTop, nutBottom, bridgeTop, bridgeBottom) {
+            Path().apply {
+                moveTo(nutX, nutTop)
+                lineTo(bridgeX, bridgeTop)
+                lineTo(bridgeX, bridgeBottom)
+                lineTo(nutX, nutBottom)
+                close()
+            }
+        }
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(totalPositions, numStrings, nutX, bridgeX, playableW, posXCenters) {
+                    val activePointers = mutableMapOf<Long, Pair<Int, Int>>() // pointerId -> (stringIdx, midi)
+
+                    fun resolveAt(offset: Offset): Pair<Int, Int> {
+                        var closestPos = 0
+                        var minPosDist = Float.MAX_VALUE
+                        for (p in 0..totalPositions) {
+                            val d = abs(offset.x - posXCenters[p])
+                            if (d < minPosDist) {
+                                minPosDist = d
+                                closestPos = p
+                            }
                         }
+
+                        var closestString = 0
+                        var minStrDist = Float.MAX_VALUE
+                        for (sIdx in 0 until numStrings) {
+                            val sy = getYForStringAtX(sIdx, offset.x)
+                            val d = abs(offset.y - sy)
+                            if (d < minStrDist) {
+                                minStrDist = d
+                                closestString = sIdx
+                            }
+                        }
+                        val midi = (openStringsMidi.getOrElse(closestString) { 60 }) + closestPos
+                        return closestString to midi
                     }
 
-                    Spacer(Modifier.width(8.dp))
-
-                    // String wire with intonation position markers and glowing active notes
-                    Box(
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        // String wire
-                        val wireHeight = if (sIdx == 3) 3.5.dp else if (sIdx == 2) 2.8.dp else if (sIdx == 1) 2.2.dp else 1.5.dp
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(wireHeight)
-                                .background(
-                                    when (sIdx % 4) {
-                                        0 -> Color(0xFFE0E0E0) // Plain Steel E
-                                        1 -> Color(0xFFCFD8DC) // Aluminum A
-                                        2 -> Color(0xFFB0BEC5) // Silver D
-                                        else -> Color(0xFFFFD54F).copy(alpha = 0.85f) // Gold Gut G
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                val id = change.id.value
+                                if (change.pressed) {
+                                    val resolved = resolveAt(change.position)
+                                    val prev = activePointers[id]
+                                    if (prev == null) {
+                                        activePointers[id] = resolved
+                                        onPositionTapped?.invoke(resolved.first, resolved.second)
+                                    } else if (prev != resolved) {
+                                        onPositionReleased?.invoke(prev.first, prev.second)
+                                        activePointers[id] = resolved
+                                        onPositionTapped?.invoke(resolved.first, resolved.second)
                                     }
-                                )
-                        )
-
-                        // Chromatic note positions along the fingerboard
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            for (pos in 0..totalPositions) {
-                                val currentMidi = openMidi + pos
-                                val isActive = filteredActiveNotes.contains(currentMidi) || activeMidiNote == currentMidi
-                                val isRoot = (currentMidi % 12) == (rootNote % 12)
-
-                                val dotSize by animateFloatAsState(
-                                    targetValue = if (isActive) 22f else 10f,
-                                    animationSpec = spring(stiffness = Spring.StiffnessMedium)
-                                )
-
-                                Box(
-                                    modifier = Modifier
-                                        .size(dotSize.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (isActive) (if (isRoot) Color(0xFFFF5252) else accentColor)
-                                            else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.35f)
-                                            else Color.Transparent
-                                        )
-                                        .border(
-                                            width = if (isActive) 1.5.dp else 0.5.dp,
-                                            color = if (isActive) Color.White else if (pos in listOf(2, 4, 5, 7, 9, 12)) Color.White.copy(0.5f) else Color.Transparent,
-                                            shape = CircleShape
-                                        )
-                                        .pointerInput(sIdx, currentMidi) {
-                                            detectTapGestures(
-                                                onPress = {
-                                                    onPositionTapped?.invoke(sIdx, currentMidi)
-                                                    tryAwaitRelease()
-                                                    onPositionReleased?.invoke(sIdx, currentMidi)
-                                                }
-                                            )
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isActive) {
-                                        // Inner glowing core
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .clip(CircleShape)
-                                                .background(Color.White)
-                                        )
-                                    }
-                                    if (isActive && showNoteNames) {
-                                        Text(
-                                            text = NOTE_NAMES[currentMidi % 12],
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color.Black
-                                        )
+                                } else {
+                                    activePointers.remove(id)?.let { released ->
+                                        onPositionReleased?.invoke(released.first, released.second)
                                     }
                                 }
                             }
                         }
+                    }
+                }
+        ) {
+            val stringSpacingAtNut = (nutH / (numStrings - 1).coerceAtLeast(1)).coerceAtLeast(8f)
+
+            // Curly Maple Neck Rim Shadow & Ebony Fingerboard
+            drawPath(
+                path = fingerboardPath,
+                color = Color(0xFF9E5A28).copy(alpha = 0.65f),
+                style = Stroke(width = (5f * s).coerceIn(2f, 8f))
+            )
+            drawPath(
+                path = fingerboardPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF1F1D20), Color(0xFF121113), Color(0xFF1D1B1E)),
+                    startY = bridgeTop,
+                    endY = bridgeBottom
+                )
+            )
+
+            // Ebony Nut & Carved Maple Bridge
+            drawLine(
+                color = Color(0xFF3E2723),
+                start = Offset(nutX, nutTop),
+                end = Offset(nutX, nutBottom),
+                strokeWidth = (4.5f * s).coerceIn(2.5f, 7f),
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFFD7CCC8).copy(alpha = 0.85f),
+                start = Offset(nutX, nutTop),
+                end = Offset(nutX, nutBottom),
+                strokeWidth = (2f * s).coerceIn(1f, 3f),
+                cap = StrokeCap.Round
+            )
+
+            // Maple Bridge on right
+            drawRoundRect(
+                color = Color(0xFFD4A373),
+                topLeft = Offset(bridgeX - 2.dp.toPx(), bridgeTop - 2.dp.toPx()),
+                size = Size(4.dp.toPx(), (bridgeBottom - bridgeTop) + 4.dp.toPx()),
+                cornerRadius = CornerRadius(2.dp.toPx())
+            )
+
+            // Intonation Tape Markers (Standard Violin 1st, High 2nd, 3rd, 4th Finger Tapes: semitones 2, 4, 5, 7, 9, 12)
+            val tapePositions = intArrayOf(2, 4, 5, 7, 9, 12)
+            tapeLabelPaint.textSize = (9.5f * s).coerceIn(6.5f.dp.toPx(), 10.5f.dp.toPx())
+            val tapeLabelY = (bridgeBottom + tapeLabelPaint.textSize + 2f * s).coerceAtMost(size.height - 2f)
+
+            for (pos in tapePositions) {
+                if (pos <= totalPositions) {
+                    val tx = posXCenters[pos]
+                    val t = ((tx - nutX) / playableW).coerceIn(0f, 1f)
+                    val curTop = nutTop + (bridgeTop - nutTop) * t
+                    val curBottom = nutBottom + (bridgeBottom - nutBottom) * t
+                    val isOctave = pos == 12
+
+                    drawLine(
+                        color = if (isOctave) Color(0xFFFFD54F).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.22f),
+                        start = Offset(tx, curTop + 2f),
+                        end = Offset(tx, curBottom - 2f),
+                        strokeWidth = if (isOctave) 2.dp.toPx() else 1.2.dp.toPx()
+                    )
+
+                    val posName = when (pos) {
+                        2 -> "1st"
+                        4 -> "2nd"
+                        5 -> "3rd"
+                        7 -> "4th"
+                        9 -> "III"
+                        12 -> "Oct"
+                        else -> "$pos"
+                    }
+                    drawContext.canvas.nativeCanvas.drawText(posName, tx, tapeLabelY, tapeLabelPaint)
+                }
+            }
+
+            // Violin Strings & Peg Badges
+            val pegCenterX = vp.left + pegBoxW * 0.42f
+            val pegRad = (stringSpacingAtNut * 0.38f).coerceIn(6.dp.toPx(), 11.dp.toPx())
+            stringLabelPaint.textSize = (pegRad * 1.05f).coerceIn(7.dp.toPx(), 11.dp.toPx())
+
+            for (sIdx in 0 until numStrings) {
+                val startY = getYForStringAtX(sIdx, nutX)
+                val endY = getYForStringAtX(sIdx, bridgeX)
+                val wireColor = when (sIdx % 4) {
+                    0 -> Color(0xFFF5F5F5) // E4 Plain Steel
+                    1 -> Color(0xFFCFD8DC) // A4 Aluminum wound
+                    2 -> Color(0xFFB0BEC5) // D4 Silver wound
+                    else -> Color(0xFFFFD54F) // G3 Gold/Gut wound
+                }
+                val gauge = ((1.2f + sIdx * 0.55f) * s).coerceIn(1f, 4.2f)
+
+                // String shadow + metallic wire
+                drawLine(
+                    color = Color.Black.copy(alpha = 0.5f),
+                    start = Offset(nutX, startY + 1.5f),
+                    end = Offset(bridgeX, endY + 1.5f),
+                    strokeWidth = gauge
+                )
+                drawLine(
+                    color = wireColor,
+                    start = Offset(nutX, startY),
+                    end = Offset(bridgeX, endY),
+                    strokeWidth = gauge
+                )
+
+                // Ebony/Gold Peg Badge on left
+                drawCircle(
+                    color = Color(0xFF1F1209),
+                    radius = pegRad,
+                    center = Offset(pegCenterX, startY)
+                )
+                drawCircle(
+                    color = Color(0xFFFFD54F).copy(alpha = 0.85f),
+                    radius = pegRad,
+                    center = Offset(pegCenterX, startY),
+                    style = Stroke(width = 1.2.dp.toPx())
+                )
+                drawContext.canvas.nativeCanvas.drawText(
+                    stringLabels.getOrElse(sIdx) { "S" },
+                    pegCenterX,
+                    startY + stringLabelPaint.textSize * 0.36f,
+                    stringLabelPaint
+                )
+            }
+
+            // Chromatic Intonation Dots & Active Glowing Notes
+            val maxDotRad = (stringSpacingAtNut * 0.44f).coerceIn(5.dp.toPx(), 12.5f.dp.toPx())
+
+            for (sIdx in 0 until numStrings) {
+                val openMidi = openStringsMidi.getOrElse(sIdx) { 60 }
+                for (pos in 0..totalPositions) {
+                    val currentMidi = openMidi + pos
+                    val cx = posXCenters[pos]
+                    val cy = getYForStringAtX(sIdx, cx)
+                    val isResolvedActive = resolvedPoints.contains(sIdx to pos)
+                    val isExactPlaying = effectiveActiveMidi != null && currentMidi == effectiveActiveMidi && isResolvedActive
+                    val isRoot = ((currentMidi % 12 + 12) % 12) == normalizedRoot
+                    val isGuidePos = pos in tapePositions
+
+                    if (isResolvedActive) {
+                        val neighborDist = if (pos < totalPositions) abs(posXCenters[pos + 1] - cx) else abs(cx - posXCenters[(pos - 1).coerceAtLeast(0)])
+                        val radius = min(maxDotRad, (neighborDist * 0.46f).coerceAtLeast(4.5f.dp.toPx())) *
+                            (if (isExactPlaying) 1.06f else if (isScaleMode) 0.84f else 0.94f)
+
+                        val fill = when {
+                            isExactPlaying -> Color(0xFFFFEB3B)
+                            isRoot -> Color(0xFFFF5252)
+                            else -> accentColor
+                        }
+
+                        drawCircle(
+                            color = fill.copy(alpha = 0.38f),
+                            radius = radius * 1.32f,
+                            center = Offset(cx, cy)
+                        )
+                        drawCircle(
+                            color = fill,
+                            radius = radius,
+                            center = Offset(cx, cy)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = radius,
+                            center = Offset(cx, cy),
+                            style = Stroke(width = (radius * 0.18f).coerceAtLeast(1f))
+                        )
+
+                        if (showNoteNames) {
+                            val label = NOTE_NAMES[(currentMidi % 12 + 12) % 12]
+                            noteTextPaint.color = if (isExactPlaying) android.graphics.Color.rgb(170, 35, 0) else android.graphics.Color.WHITE
+                            noteTextPaint.textSize = (radius * (if (label.length > 1) 0.90f else 1.05f)).coerceIn(5.5f.dp.toPx(), 11.dp.toPx())
+                            drawContext.canvas.nativeCanvas.drawText(label, cx, cy + noteTextPaint.textSize * 0.36f, noteTextPaint)
+                        }
+                    } else if (isGuidePos && pos > 0) {
+                        val guideRad = (stringSpacingAtNut * 0.14f).coerceIn(2f, 4.dp.toPx())
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.35f),
+                            radius = guideRad,
+                            center = Offset(cx, cy)
+                        )
                     }
                 }
             }
@@ -1482,8 +2162,12 @@ fun UnifiedViolinFingerboard(
 
 /**
  * UNIFIED FLUTE / BANSURI VISUALIZER
- * Realistic bamboo flute (Bansuri) and concert silver flute with authentic tone holes,
- * embouchure lip plate with airflow indicator, and threaded bindings (Dhaaga).
+ * High-detail Indian Classical Bamboo Bansuri & Concert Flute Visualizer:
+ * - Strictly preserves cylindrical flute tube and circular tone-hole aspect ratio at any Modifier size
+ * - Features natural seasoned bamboo shading, node rings, red/gold woven silk bindings (Dhaaga),
+ *   and an embouchure blowing hole with reactive airflow shimmer
+ * - Cumulative acoustic finger-hole shading + glowing active tone holes with both Sargam & Western pitch labels
+ * - Full multi-touch slide/trill support across tone holes.
  */
 @Composable
 fun UnifiedFluteVisualizer(
@@ -1498,117 +2182,265 @@ fun UnifiedFluteVisualizer(
     onToneHoleReleased: ((holeIndex: Int, midiNote: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    val numHoles = holeMidiPitches.size.coerceAtLeast(1)
+    val normalizedRoot = remember(rootNote) { (rootNote % 12 + 12) % 12 }
+    val activePitchClasses = remember(activeNotes, activeMidiNote) {
+        (activeNotes + listOfNotNull(activeMidiNote)).map { (it % 12 + 12) % 12 }.toSet()
+    }
+    val isAnyPlaying = activeNotes.isNotEmpty() || activeMidiNote != null
+
+    val holeLabelPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val subLabelPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+
+    BoxWithConstraints(
         modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF2E1C0C), Color(0xFF1D1107), Color(0xFF100904))
+                    colors = listOf(Color(0xFF28180B), Color(0xFF170D06), Color(0xFF0F0803))
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(10.dp)
             )
-            .border(1.5.dp, Color(0xFF6B4226), RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
+            .border(1.5.dp, Color(0xFF6B4226), RoundedCornerShape(10.dp))
     ) {
-        // FLUTE BODY (Natural bamboo tube with traditional red/gold bindings & tone holes)
-        Box(
+        val canvasW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val canvasH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+
+        val vp = remember(canvasW, canvasH) {
+            computeAspectSafeViewport(
+                canvasWidth = canvasW,
+                canvasHeight = canvasH,
+                minAspect = 2.4f,
+                maxAspect = 12.0f,
+                referenceHeight = 110f,
+                horizontalPaddingFrac = 0.02f,
+                verticalPaddingFrac = 0.04f
+            )
+        }
+
+        val tubeHeight = (vp.height * 0.56f).coerceIn(24f, vp.width * 0.22f)
+        val tubeTop = vp.centerY - tubeHeight * 0.5f
+        val tubeLeft = vp.left + vp.width * 0.02f
+        val tubeWidth = vp.width * 0.96f
+        val tubeRight = tubeLeft + tubeWidth
+
+        // Embouchure at 11% of tube length, tone holes distributed across 26%..93%
+        val embouchureX = tubeLeft + tubeWidth * 0.10f
+        val holesStartX = tubeLeft + tubeWidth * 0.27f
+        val holesEndX = tubeLeft + tubeWidth * 0.92f
+        val holeSpacing = (holesEndX - holesStartX) / (numHoles - 1).coerceAtLeast(1)
+
+        Canvas(
             modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(16.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0xFFD4A373), Color(0xFFFAEDCD), Color(0xFFCCD5AE), Color(0xFFB58463))
-                    )
-                )
-                .border(1.dp, Color(0xFF8B5A2B), RoundedCornerShape(16.dp))
-                .padding(horizontal = 14.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Embouchure hole (Mouthpiece) with cork plug
-                Box(
-                    modifier = Modifier
-                        .size(22.dp, 16.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF1B1B1B))
-                        .border(1.5.dp, Color(0xFF3E2723), RoundedCornerShape(8.dp))
-                )
+                .fillMaxSize()
+                .pointerInput(numHoles, holesStartX, holeSpacing, holeMidiPitches) {
+                    val activePointers = mutableMapOf<Long, Pair<Int, Int>>()
 
-                // Threaded Decorative Binding Ring (Dhaaga)
-                Box(
-                    modifier = Modifier
-                        .width(6.dp)
-                        .height(34.dp)
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(Color(0xFFD32F2F), Color(0xFFFFD54F), Color(0xFFD32F2F))
-                            )
-                        )
-                )
+                    fun resolveHoleAt(offset: Offset): Pair<Int, Int> {
+                        var bestIdx = 0
+                        var minDist = Float.MAX_VALUE
+                        for (i in 0 until numHoles) {
+                            val hx = holesStartX + i * holeSpacing
+                            val d = abs(offset.x - hx)
+                            if (d < minDist) {
+                                minDist = d
+                                bestIdx = i
+                            }
+                        }
+                        return bestIdx to holeMidiPitches[bestIdx]
+                    }
 
-                // Tone Holes with glowing active states
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    holeMidiPitches.forEachIndexed { index, midi ->
-                        val isCovered = activeNotes.contains(midi) || activeMidiNote == midi
-                        val isRoot = (midi % 12) == (rootNote % 12)
-
-                        val holeSize by animateFloatAsState(
-                            targetValue = if (isCovered) 24f else 18f,
-                            animationSpec = spring(stiffness = Spring.StiffnessMedium)
-                        )
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(holeSize.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isCovered) (if (isRoot) Color(0xFFFF5252) else accentColor) else Color(0xFF2B1810))
-                                    .border(
-                                        width = if (isCovered) 2.dp else 1.2.dp,
-                                        color = if (isCovered) Color.White else Color(0xFF5D4037),
-                                        shape = CircleShape
-                                    )
-                                    .pointerInput(index, midi) {
-                                        detectTapGestures(
-                                            onPress = {
-                                                onToneHoleTapped?.invoke(index, midi)
-                                                tryAwaitRelease()
-                                                onToneHoleReleased?.invoke(index, midi)
-                                            }
-                                        )
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (isCovered) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(7.dp)
-                                            .clip(CircleShape)
-                                            .background(Color.White)
-                                    )
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                val id = change.id.value
+                                if (change.pressed) {
+                                    val resolved = resolveHoleAt(change.position)
+                                    val prev = activePointers[id]
+                                    if (prev == null) {
+                                        activePointers[id] = resolved
+                                        onToneHoleTapped?.invoke(resolved.first, resolved.second)
+                                    } else if (prev != resolved) {
+                                        onToneHoleReleased?.invoke(prev.first, prev.second)
+                                        activePointers[id] = resolved
+                                        onToneHoleTapped?.invoke(resolved.first, resolved.second)
+                                    }
+                                } else {
+                                    activePointers.remove(id)?.let { released ->
+                                        onToneHoleReleased?.invoke(released.first, released.second)
+                                    }
                                 }
                             }
-                            Text(
-                                text = holeNames.getOrElse(index) { NOTE_NAMES[midi % 12] },
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isCovered) Color(0xFFB71C1C) else Color(0xFF3E2723)
-                            )
                         }
                     }
                 }
+        ) {
+            val tubeCorner = CornerRadius(tubeHeight * 0.5f, tubeHeight * 0.5f)
+
+            // Drop shadow under Bamboo Tube
+            drawRoundRect(
+                color = Color.Black.copy(alpha = 0.55f),
+                topLeft = Offset(tubeLeft + 2f, tubeTop + 4f),
+                size = Size(tubeWidth, tubeHeight),
+                cornerRadius = tubeCorner
+            )
+
+            // 3D Cylindrical Bamboo Body
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFA47148),
+                        Color(0xFFE6C280),
+                        Color(0xFFFAEDCD),
+                        Color(0xFFD4A373),
+                        Color(0xFF7F4F24)
+                    ),
+                    startY = tubeTop,
+                    endY = tubeTop + tubeHeight
+                ),
+                topLeft = Offset(tubeLeft, tubeTop),
+                size = Size(tubeWidth, tubeHeight),
+                cornerRadius = tubeCorner
+            )
+            drawRoundRect(
+                color = Color(0xFF582F0E),
+                topLeft = Offset(tubeLeft, tubeTop),
+                size = Size(tubeWidth, tubeHeight),
+                cornerRadius = tubeCorner,
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+
+            // Silk Thread Bindings (Dhaaga) at Headjoint, Middle, and Footjoint
+            val bindingPositions = floatArrayOf(0.035f, 0.175f, 0.205f, 0.955f)
+            val bindingW = (tubeWidth * 0.016f).coerceIn(4f, 12f)
+            for (bFrac in bindingPositions) {
+                val bx = tubeLeft + tubeWidth * bFrac
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFF8E0000), Color(0xFFD32F2F), Color(0xFFFFD54F), Color(0xFFD32F2F), Color(0xFF8E0000)),
+                        startY = tubeTop,
+                        endY = tubeTop + tubeHeight
+                    ),
+                    topLeft = Offset(bx, tubeTop + 1f),
+                    size = Size(bindingW, tubeHeight - 2f)
+                )
+            }
+
+            // Embouchure Hole (Mukharandhra) with Airflow Aura when playing
+            val embRadX = (tubeHeight * 0.25f).coerceIn(5f, 14.dp.toPx())
+            val embRadY = embRadX * 0.78f
+            if (isAnyPlaying) {
+                drawCircle(
+                    color = accentColor.copy(alpha = 0.35f),
+                    radius = embRadX * 1.55f,
+                    center = Offset(embouchureX, vp.centerY)
+                )
+            }
+            drawOval(
+                color = Color(0xFF1A0F0A),
+                topLeft = Offset(embouchureX - embRadX, vp.centerY - embRadY),
+                size = Size(embRadX * 2f, embRadY * 2f)
+            )
+            drawOval(
+                color = if (isAnyPlaying) accentColor else Color(0xFF5D4037),
+                topLeft = Offset(embouchureX - embRadX, vp.centerY - embRadY),
+                size = Size(embRadX * 2f, embRadY * 2f),
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+
+            // Tone Holes (Circular & Aspect-Safe)
+            val maxHoleRad = min(tubeHeight * 0.32f, holeSpacing * 0.36f).coerceIn(5.dp.toPx(), 15.dp.toPx())
+            holeLabelPaint.textSize = (maxHoleRad * 0.85f).coerceIn(6.5f.dp.toPx(), 11.dp.toPx())
+            subLabelPaint.textSize = (maxHoleRad * 0.72f).coerceIn(6.dp.toPx(), 9.5f.dp.toPx())
+
+            for (index in 0 until numHoles) {
+                val midi = holeMidiPitches[index]
+                val semi = (midi % 12 + 12) % 12
+                val hx = holesStartX + index * holeSpacing
+                val hy = vp.centerY
+
+                val isExactActive = activeNotes.contains(midi) || activeMidiNote == midi || activePitchClasses.contains(semi)
+                val isPlayingNow = activeMidiNote != null && (activeMidiNote == midi || (activeMidiNote % 12 + 12) % 12 == semi)
+                val isRoot = semi == normalizedRoot
+
+                val holeRad = if (isExactActive) maxHoleRad * 1.08f else maxHoleRad * 0.88f
+
+                if (isExactActive) {
+                    val glowColor = when {
+                        isPlayingNow -> Color(0xFFFFEB3B)
+                        isRoot -> Color(0xFFFF5252)
+                        else -> accentColor
+                    }
+                    drawCircle(
+                        color = glowColor.copy(alpha = 0.38f),
+                        radius = holeRad * 1.38f,
+                        center = Offset(hx, hy)
+                    )
+                    drawCircle(
+                        color = glowColor,
+                        radius = holeRad,
+                        center = Offset(hx, hy)
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = holeRad,
+                        center = Offset(hx, hy),
+                        style = Stroke(width = (holeRad * 0.18f).coerceAtLeast(1.2f))
+                    )
+                } else {
+                    // Recessed dark bamboo bore hole with wooden bevel rim
+                    drawCircle(
+                        color = Color(0xFF221208),
+                        radius = holeRad,
+                        center = Offset(hx, hy)
+                    )
+                    drawCircle(
+                        color = Color(0xFF6D4C41),
+                        radius = holeRad,
+                        center = Offset(hx, hy),
+                        style = Stroke(width = 1.2.dp.toPx())
+                    )
+                }
+
+                // Inside-hole Western Note & Below-tube Sargam Label
+                val westernName = NOTE_NAMES[semi]
+                val sargamName = holeNames.getOrElse(index) { SARGAM_NAMES[((semi - normalizedRoot) % 12 + 12) % 12] }
+
+                if (showNoteNames || isExactActive) {
+                    holeLabelPaint.color = when {
+                        isPlayingNow -> android.graphics.Color.rgb(165, 35, 0)
+                        isExactActive -> android.graphics.Color.WHITE
+                        else -> android.graphics.Color.argb(200, 235, 215, 190)
+                    }
+                    drawContext.canvas.nativeCanvas.drawText(
+                        westernName,
+                        hx,
+                        hy + holeLabelPaint.textSize * 0.36f,
+                        holeLabelPaint
+                    )
+                }
+
+                // Sargam label cleanly positioned either below the tube (if space exists) or along the lower rim
+                val sargamY = if (vp.bottom - (tubeTop + tubeHeight) >= subLabelPaint.textSize + 3f) {
+                    tubeTop + tubeHeight + subLabelPaint.textSize + 2f
+                } else {
+                    tubeTop + tubeHeight - 3f
+                }
+                subLabelPaint.color = if (isExactActive) android.graphics.Color.rgb(255, 213, 79) else android.graphics.Color.argb(190, 220, 195, 165)
+                drawContext.canvas.nativeCanvas.drawText(sargamName, hx, sargamY, subLabelPaint)
             }
         }
     }
@@ -1616,9 +2448,13 @@ fun UnifiedFluteVisualizer(
 
 /**
  * UNIFIED TABLA VISUALIZER
- * Interactive two-drum visualizer:
- * - Dayan (Right Wooden Drum): Tuned to tonic Sa; features central black Syahi, Sur ring, Maidan, Kinar, and braided Gajra rim.
- * - Bayan (Left Metal/Clay Bass Drum): Features off-center Syahi, deep resonant bass strike, and sliding modulation.
+ * Interactive Two-Drum Indian Classical Percussion Visualizer:
+ * - Strictly 1:1 circular geometry for both Bayan (Left Copper/Clay Dagga) and Dayan (Right Sheesham Wood Tabla)
+ *   regardless of how the parent Modifier resizes the composable
+ * - Multi-zone concentric stroke detection:
+ *   * Bayan Syahi/Center -> "GHE", Bayan Maidan -> "GE", Bayan Kinar/Rim -> "KA" / "KAT"
+ *   * Dayan Syahi/Center -> "TI" / "TE", Dayan Maidan -> "TIN" / "DHIN", Dayan Kinar/Chanti -> "NA" / "TA" / "DHA"
+ * - Braided Gajra outer leather rings, 16 Baddhi strap pegs, cushioned Chutta rings, and active Bol badge.
  */
 @Composable
 fun UnifiedTablaVisualizer(
@@ -1631,132 +2467,285 @@ fun UnifiedTablaVisualizer(
     onBolReleased: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val isBayanActive = activeBol != null && activeBol in listOf("GHE", "GE", "KA", "KAT", "DHA", "DHIN")
-    val isDayanActive = activeBol != null && activeBol in listOf("DHA", "DHIN", "NA", "TA", "TIN", "TI", "TE", "RE")
+    var localPressedBol by remember { mutableStateOf<String?>(null) }
+    val effectiveBol = (activeBol ?: localPressedBol)?.uppercase()
 
-    Row(
+    val isBayanActive = effectiveBol != null && effectiveBol in setOf("GHE", "GE", "KA", "KAT", "DHA", "DHIN", "DHIR")
+    val isDayanActive = effectiveBol != null && effectiveBol in setOf("DHA", "DHIN", "NA", "TA", "TIN", "TI", "TE", "RE", "TIT", "TUN")
+
+    val bayanScale by animateFloatAsState(
+        targetValue = if (isBayanActive) 1.045f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "bayan_pulse"
+    )
+    val dayanScale by animateFloatAsState(
+        targetValue = if (isDayanActive) 1.045f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "dayan_pulse"
+    )
+
+    val titlePaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(255, 213, 79)
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val zoneLabelPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val subPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(180, 220, 210, 200)
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+
+    BoxWithConstraints(
         modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(Color(0xFF2A1B12), Color(0xFF190F09), Color(0xFF0F0905))
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(10.dp)
             )
-            .border(1.5.dp, Color(0xFF5A3821), RoundedCornerShape(8.dp))
-            .padding(10.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+            .border(1.5.dp, Color(0xFF5A3821), RoundedCornerShape(10.dp))
     ) {
-        // BAYAN (Left Bass Drum, Dagga)
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (showLabels) {
-                Text("BAYAN ($bayanBassName)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
-            }
-            Box(
-                modifier = Modifier
-                    .size(82.dp)
-                    .clip(CircleShape)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = if (isBayanActive) listOf(Color(0xFFFFD54F), accentColor, Color(0xFF37474F))
-                            else listOf(Color(0xFFB0BEC5), Color(0xFF78909C), Color(0xFF37474F), Color(0xFF263238))
-                        )
-                    )
-                    .border(if (isBayanActive) 3.dp else 2.5.dp, if (isBayanActive) Color.White else Color(0xFF8D6E63), CircleShape)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                onBolTapped?.invoke("GHE")
-                                tryAwaitRelease()
-                                onBolReleased?.invoke("GHE")
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.TopStart
-            ) {
-                // Braided Gajra Outer Rim
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFD7CCC8))
-                        .border(1.dp, Color(0xFF8D6E63), CircleShape)
-                ) {
-                    // Off-center Syahi (Black tuning paste)
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 14.dp, top = 14.dp)
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(if (isBayanActive) accentColor else Color(0xFF1A1A1A))
-                            .border(1.dp, Color(0xFF424242), CircleShape)
-                    )
-                }
-            }
-            if (showLabels) {
-                Text("Bols: Ghe, Ge, Ka, Kat", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
-            }
+        val canvasW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val canvasH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+
+        val vp = remember(canvasW, canvasH) {
+            computeAspectSafeViewport(
+                canvasWidth = canvasW,
+                canvasHeight = canvasH,
+                minAspect = 1.6f,
+                maxAspect = 6.5f,
+                referenceHeight = 145f,
+                horizontalPaddingFrac = 0.02f,
+                verticalPaddingFrac = 0.03f
+            )
         }
 
-        // DAYAN (Right Treble Drum, Tabla)
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (showLabels) {
-                Text("DAYAN ($dayanTonicName)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
-            }
-            Box(
-                modifier = Modifier
-                    .size(76.dp)
-                    .clip(CircleShape)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = if (isDayanActive) listOf(Color(0xFFFFD54F), accentColor, Color(0xFF3E1E11))
-                            else listOf(Color(0xFF8D5B34), Color(0xFF5D361F), Color(0xFF3E1E11))
-                        )
-                    )
-                    .border(if (isDayanActive) 3.dp else 2.5.dp, if (isDayanActive) Color.White else Color(0xFF8D6E63), CircleShape)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                onBolTapped?.invoke("DHA")
-                                tryAwaitRelease()
-                                onBolReleased?.invoke("DHA")
+        val showTopBottomText = showLabels && vp.height >= 64f
+        val topLabelSpace = if (showTopBottomText) (vp.height * 0.14f).coerceIn(10f, 20f) else 2f
+        val bottomLabelSpace = if (showTopBottomText) (vp.height * 0.13f).coerceIn(9f, 18f) else 2f
+        val availDrumH = (vp.height - topLabelSpace - bottomLabelSpace).coerceAtLeast(24f)
+
+        // Bayan is slightly larger in diameter than Dayan (authentic 1.08 : 0.95 ratio)
+        val maxRadius = min(availDrumH * 0.48f, vp.width * 0.21f).coerceAtLeast(12f)
+        val bayanRad = maxRadius
+        val dayanRad = maxRadius * 0.90f
+
+        val centerY = vp.top + topLabelSpace + availDrumH * 0.5f
+        val bayanCenter = Offset(vp.centerX - maxRadius * 1.28f, centerY)
+        val dayanCenter = Offset(vp.centerX + maxRadius * 1.28f, centerY)
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(bayanCenter, dayanCenter, bayanRad, dayanRad) {
+                    val activePointers = mutableMapOf<Long, String>()
+
+                    fun resolveBolAt(pos: Offset): String? {
+                        val distBayan = hypot(pos.x - bayanCenter.x, pos.y - bayanCenter.y)
+                        if (distBayan <= bayanRad * 1.12f) {
+                            val syahiCenter = Offset(bayanCenter.x + bayanRad * 0.16f, bayanCenter.y - bayanRad * 0.12f)
+                            val distSyahi = hypot(pos.x - syahiCenter.x, pos.y - syahiCenter.y)
+                            return when {
+                                distSyahi <= bayanRad * 0.40f -> "GHE"
+                                distBayan <= bayanRad * 0.76f -> "GE"
+                                else -> "KA"
                             }
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                // Outer Gajra Rim & Chanti
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFF5F5DC))
-                        .border(1.dp, Color(0xFF8D6E63), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Sur / Maidan Ring
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFEDE0D4)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // Centered Syahi
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(if (isDayanActive) accentColor else Color(0xFF111111))
-                                .border(1.dp, Color(0xFF424242), CircleShape)
-                        )
+                        }
+
+                        val distDayan = hypot(pos.x - dayanCenter.x, pos.y - dayanCenter.y)
+                        if (distDayan <= dayanRad * 1.12f) {
+                            return when {
+                                distDayan <= dayanRad * 0.42f -> "TI"
+                                distDayan <= dayanRad * 0.74f -> "TIN"
+                                else -> "NA"
+                            }
+                        }
+                        return null
+                    }
+
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                val id = change.id.value
+                                if (change.pressed) {
+                                    val bol = resolveBolAt(change.position)
+                                    val prev = activePointers[id]
+                                    if (prev == null && bol != null) {
+                                        activePointers[id] = bol
+                                        localPressedBol = bol
+                                        onBolTapped?.invoke(bol)
+                                    } else if (prev != null && bol != null && prev != bol) {
+                                        onBolReleased?.invoke(prev)
+                                        activePointers[id] = bol
+                                        localPressedBol = bol
+                                        onBolTapped?.invoke(bol)
+                                    }
+                                } else {
+                                    activePointers.remove(id)?.let { released ->
+                                        if (localPressedBol == released) localPressedBol = null
+                                        onBolReleased?.invoke(released)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+        ) {
+            fun drawTablaDrum(
+                center: Offset,
+                baseRadius: Float,
+                scaleFactor: Float,
+                isBayan: Boolean,
+                isActive: Boolean
+            ) {
+                val r = baseRadius * scaleFactor
+
+                // 1. Cushioned Chutta Ring & Deep Shadow
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.55f),
+                    radius = r * 1.07f,
+                    center = Offset(center.x + 2f, center.y + 3f)
+                )
+                drawCircle(
+                    color = if (isActive) accentColor.copy(alpha = 0.35f) else Color(0xFF4A2511),
+                    radius = r * 1.05f,
+                    center = center
+                )
+
+                // 2. Braided Gajra Outer Leather Rim with 16 Baddhi Peg Notches
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFD7CCC8), Color(0xFFA1887F), Color(0xFF5D4037)),
+                        center = center,
+                        radius = r
+                    ),
+                    radius = r,
+                    center = center
+                )
+                for (peg in 0 until 16) {
+                    val angle = (peg * 22.5) * (Math.PI / 180.0)
+                    val pStart = Offset(
+                        center.x + (r * 0.88f * cos(angle)).toFloat(),
+                        center.y + (r * 0.88f * sin(angle)).toFloat()
+                    )
+                    val pEnd = Offset(
+                        center.x + (r * 1.01f * cos(angle)).toFloat(),
+                        center.y + (r * 1.01f * sin(angle)).toFloat()
+                    )
+                    drawLine(
+                        color = Color(0xFF3E2723),
+                        start = pStart,
+                        end = pEnd,
+                        strokeWidth = (r * 0.06f).coerceIn(1f, 3.5f),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                // 3. Kinar / Chanti (Outer Goat-Skin Ring)
+                val kinarR = r * 0.86f
+                val isKinarHit = isActive && effectiveBol in setOf("KA", "KAT", "NA", "TA", "DHA")
+                drawCircle(
+                    color = if (isKinarHit) Color(0xFFFFF59D) else Color(0xFFF5EFE6),
+                    radius = kinarR,
+                    center = center
+                )
+                drawCircle(
+                    color = Color(0xFF8D6E63),
+                    radius = kinarR,
+                    center = center,
+                    style = Stroke(width = 1.dp.toPx())
+                )
+
+                // 4. Maidan / Sur (Resonant Middle Membrane)
+                val maidanR = r * 0.68f
+                val isMaidanHit = isActive && effectiveBol in setOf("GE", "TIN", "DHIN", "TUN")
+                drawCircle(
+                    color = if (isMaidanHit) Color(0xFFFFE082) else Color(0xFFEDE0D4),
+                    radius = maidanR,
+                    center = center
+                )
+                drawCircle(
+                    color = Color(0xFFB09B88),
+                    radius = maidanR,
+                    center = center,
+                    style = Stroke(width = 0.8.dp.toPx())
+                )
+
+                // 5. Syahi (Black Iron-Paste Tuning Circle: Off-Center on Bayan, Centered on Dayan)
+                val syahiCenter = if (isBayan) {
+                    Offset(center.x + r * 0.15f, center.y - r * 0.11f)
+                } else {
+                    center
+                }
+                val syahiR = if (isBayan) r * 0.36f else r * 0.38f
+                val isSyahiHit = isActive && effectiveBol in setOf("GHE", "DHA", "DHIN", "TI", "TE", "RE", "TIT")
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = if (isSyahiHit || isActive) {
+                            listOf(Color(0xFFFFEB3B), accentColor, Color(0xFF1C1C1C))
+                        } else {
+                            listOf(Color(0xFF383838), Color(0xFF1A1A1A), Color(0xFF0A0A0A))
+                        },
+                        center = syahiCenter,
+                        radius = syahiR
+                    ),
+                    radius = syahiR,
+                    center = syahiCenter
+                )
+                // Concentric Syahi polishing rings
+                drawCircle(
+                    color = Color.White.copy(alpha = if (isActive) 0.7f else 0.18f),
+                    radius = syahiR * 0.72f,
+                    center = syahiCenter,
+                    style = Stroke(width = 0.9.dp.toPx())
+                )
+
+                // Bol Text inside Syahi
+                zoneLabelPaint.textSize = (syahiR * 0.54f).coerceIn(7.dp.toPx(), 12.dp.toPx())
+                zoneLabelPaint.color = if (isSyahiHit || isActive) android.graphics.Color.WHITE else android.graphics.Color.argb(210, 230, 230, 230)
+                val centerBolLabel = when {
+                    isActive && effectiveBol != null -> effectiveBol
+                    isBayan -> "GHE"
+                    else -> "DHA"
+                }
+                drawContext.canvas.nativeCanvas.drawText(
+                    centerBolLabel,
+                    syahiCenter.x,
+                    syahiCenter.y + zoneLabelPaint.textSize * 0.35f,
+                    zoneLabelPaint
+                )
             }
-            if (showLabels) {
-                Text("Bols: Dha, Dhin, Na, Ta, Tin", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f))
+
+            drawTablaDrum(bayanCenter, bayanRad, bayanScale, isBayan = true, isActive = isBayanActive)
+            drawTablaDrum(dayanCenter, dayanRad, dayanScale, isBayan = false, isActive = isDayanActive)
+
+            if (showTopBottomText) {
+                titlePaint.textSize = (topLabelSpace * 0.65f).coerceIn(7.5f.dp.toPx(), 11.dp.toPx())
+                subPaint.textSize = (bottomLabelSpace * 0.58f).coerceIn(6.5f.dp.toPx(), 9.5f.dp.toPx())
+
+                val topY = vp.top + titlePaint.textSize
+                drawContext.canvas.nativeCanvas.drawText("BAYAN ($bayanBassName)", bayanCenter.x, topY, titlePaint)
+                drawContext.canvas.nativeCanvas.drawText("DAYAN ($dayanTonicName)", dayanCenter.x, topY, titlePaint)
+
+                val botY = vp.bottom - 2f
+                drawContext.canvas.nativeCanvas.drawText("Ghe • Ge • Ka", bayanCenter.x, botY, subPaint)
+                drawContext.canvas.nativeCanvas.drawText("Dha • Dhin • Na • Tin", dayanCenter.x, botY, subPaint)
             }
         }
     }
@@ -1764,14 +2753,14 @@ fun UnifiedTablaVisualizer(
 
 /**
  * UNIFIED SITAR VISUALIZER
- * Authentic high-detail classical Indian Sitar visualizer.
- * Features:
- * - Seasoned tun/teakwood neck with natural hollow resonating chamber
- * - Arched curved brass frets (Parda) tied with silk thread
- * - Baj Tar (main melody string, #1), Jod, Kharaj, and Pancham strings
- * - Elevated Chikari high drone posts and pegs
- * - Bone bridge (Ghoraj / Javari) for the distinctive buzzing resonance
- * - Interactive movable fret touch tracking with Meend pull simulation
+ * Authentic Classical Indian Sitar Visualizer (Ravi Shankar / Vilayat Khan Dand Layout):
+ * - Preserves aspect ratio across all screen and Modifier sizes without vertical or horizontal clipping
+ * - Logarithmic Rule of 17.817 arched brass frets (Parda) tied with crimson silk cords
+ * - 13 shimmering sympathetic Taraf strings with ivory eyelets running beneath the main frets
+ * - Carved bone Ghoraj (Jawari bridge) on the right & ivory nut (Targahan) on the left
+ * - Intelligent Sitar Ergonomic Solver: resolves melody notes onto the primary Baj Tar (String 1 - Ma)
+ *   and Jod (String 2 - Sa) strings so scales/melodies don't scatter randomly across drone strings
+ * - Full multi-touch Meend/glissando tracking (`awaitPointerEventScope`).
  */
 @Composable
 fun UnifiedSitarVisualizer(
@@ -1797,6 +2786,10 @@ fun UnifiedSitarVisualizer(
     modifier: Modifier = Modifier
 ) {
     val sitarStrings = stringSetup
+    val numStrings = sitarStrings.size.coerceAtLeast(1)
+    val safeNumFrets = numFrets.coerceIn(7, 22)
+    val normalizedRoot = remember(rootNote) { (rootNote % 12 + 12) % 12 }
+
     val filteredActiveNotes = remember(activeNotes, isLeftHandHidden, isRightHandHidden) {
         activeNotes.filter { midi ->
             val isTreble = midi >= 60
@@ -1805,158 +2798,439 @@ fun UnifiedSitarVisualizer(
             else true
         }
     }
+    val effectiveActiveMidi = remember(activeMidiNote, isLeftHandHidden, isRightHandHidden) {
+        if (activeMidiNote == null) null
+        else {
+            val isTreble = activeMidiNote >= 60
+            if (isTreble && isRightHandHidden) null
+            else if (!isTreble && isLeftHandHidden) null
+            else activeMidiNote
+        }
+    }
+
+    val allUniquePitches = remember(filteredActiveNotes, effectiveActiveMidi) {
+        (filteredActiveNotes + listOfNotNull(effectiveActiveMidi)).distinct()
+    }
+    val distinctPitchClasses = remember(allUniquePitches) {
+        allUniquePitches.map { (it % 12 + 12) % 12 }.toSet()
+    }
+    val isScaleMode = remember(distinctPitchClasses) {
+        distinctPitchClasses.size >= 6
+    }
+
+    // Authentic Sitar Position Solver:
+    // On a Sitar, 90% of melody (Alap/Gat/Taan) is played on String 0 (Baj Tar - Ma) and String 1 (Jod - Sa),
+    // while strings 4, 5, 6 are open Chikari drone strings.
+    val resolvedSitarPoints = remember(allUniquePitches, sitarStrings, safeNumFrets, isScaleMode) {
+        val points = mutableSetOf<Pair<Int, Int>>() // (stringIdx, fret)
+        if (isScaleMode) {
+            // In scale mode, display the scale clearly along the primary Baj Tar (0) and Jod (1) strings
+            for (sIdx in 0..min(1, sitarStrings.lastIndex)) {
+                val baseMidi = sitarStrings[sIdx].second
+                for (fret in 0..safeNumFrets) {
+                    val semi = ((baseMidi + fret) % 12 + 12) % 12
+                    if (distinctPitchClasses.contains(semi)) {
+                        points.add(sIdx to fret)
+                    }
+                }
+            }
+        } else {
+            allUniquePitches.forEach { midi ->
+                val candidates = mutableListOf<Pair<Int, Int>>()
+                sitarStrings.forEachIndexed { sIdx, (_, baseMidi, _) ->
+                    val fret = midi - baseMidi
+                    if (fret in 0..safeNumFrets) {
+                        candidates.add(sIdx to fret)
+                    }
+                }
+                val best = candidates.minByOrNull { (sIdx, fret) ->
+                    when {
+                        sIdx == 0 -> fret * 2 // Strongly prefer Baj Tar (main melody string)
+                        sIdx == 1 -> 8 + fret * 3 // Secondary Jod string
+                        fret == 0 && sIdx >= 4 -> 4 // Open Chikari drone hit
+                        sIdx in 2..3 -> 22 + fret * 4 // Low Kharaj/Laraj bass strings
+                        else -> 60 + fret * 8 // Avoid fretting Chikari drone strings
+                    }
+                }
+                if (best != null) points.add(best)
+            }
+        }
+        points
+    }
+
+    val r = 0.056125687f
+    val fretScaleFactor = remember(safeNumFrets) {
+        var sum = 0f
+        for (f in 1..safeNumFrets) {
+            sum += (1f - r).toDouble().pow(f.toDouble()).toFloat() * r
+        }
+        sum.coerceAtLeast(0.001f)
+    }
+
+    val pegTextPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val beadTextPaint = remember {
+        android.graphics.Paint().apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
+    val fretNumPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(175, 225, 195, 145)
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            isAntiAlias = true
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF2C1608), Color(0xFF1E0E05), Color(0xFF130903))
+                    colors = listOf(Color(0xFF2C1608), Color(0xFF1A0C04), Color(0xFF120802))
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(10.dp)
             )
-            .border(1.5.dp, Color(0xFF6B3A19), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .border(1.5.dp, Color(0xFF8D5B34), RoundedCornerShape(10.dp))
     ) {
-        // Sitar Fretboard Neck with Arched Brass Frets and Strings
-        Box(
+        val totalWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val totalHeight = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+
+        val vp = remember(totalWidth, totalHeight) {
+            computeAspectSafeViewport(
+                canvasWidth = totalWidth,
+                canvasHeight = totalHeight,
+                minAspect = 2.0f,
+                maxAspect = 11.5f,
+                referenceHeight = 165f,
+                horizontalPaddingFrac = 0.012f,
+                verticalPaddingFrac = 0.025f
+            )
+        }
+
+        val s = vp.scale
+        val leftPad = vp.left + (46f * s).coerceIn(30f, vp.width * 0.16f)
+        val rightPad = (totalWidth - vp.right) + (24f * s).coerceIn(14f, vp.width * 0.08f)
+        val topPad = vp.top + (10f * s).coerceAtLeast(4f)
+        val bottomPad = (totalHeight - vp.bottom) + (18f * s).coerceAtLeast(10f)
+
+        val playableW = (totalWidth - leftPad - rightPad).coerceAtLeast(1f)
+        val playableH = (totalHeight - topPad - bottomPad).coerceAtLeast(1f)
+
+        val fretXPositions = remember(leftPad, playableW, safeNumFrets, fretScaleFactor) {
+            val list = FloatArray(safeNumFrets + 1)
+            list[0] = leftPad
+            var acc = 0f
+            for (f in 1..safeNumFrets) {
+                val frac = (1f - r).toDouble().pow(f.toDouble()).toFloat() * r
+                acc += (frac / fretScaleFactor) * playableW
+                list[f] = leftPad + acc
+            }
+            list
+        }
+
+        fun getFretCenterX(f: Int): Float {
+            if (f <= 0) return leftPad - (10f * s).coerceIn(6f, 14f)
+            val start = fretXPositions[(f - 1).coerceIn(0, safeNumFrets)]
+            val end = fretXPositions[f.coerceIn(0, safeNumFrets)]
+            return (start + end) * 0.5f
+        }
+
+        fun getYForString(sIdx: Int): Float {
+            val spacing = playableH / (numStrings - 1).coerceAtLeast(1)
+            return if (numStrings == 1) topPad + playableH * 0.5f else topPad + sIdx * spacing
+        }
+
+        Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(6.dp))
-                .background(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFF3E1F0E), Color(0xFF271308), Color(0xFF3E1F0E))
-                    )
-                )
-        ) {
-            // Draw 16 Curved Brass Frets
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                for (fret in 1..numFrets) {
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .fillMaxHeight()
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(Color(0xFFFFD54F), Color(0xFFFFB300), Color(0xFFB58500), Color(0xFFFFD54F))
-                                )
-                            )
-                            .border(0.5.dp, Color(0xFF6D4C41))
-                    )
-                }
-            }
+                .pointerInput(safeNumFrets, numStrings, leftPad, playableW, fretXPositions) {
+                    val activePointers = mutableMapOf<Long, Pair<Int, Int>>() // pointerId -> (fret, midi)
 
-            // Overlay Strings & Interactive Notes
-            Column(
-                modifier = Modifier.fillMaxSize().padding(vertical = 2.dp),
-                verticalArrangement = Arrangement.SpaceEvenly
-            ) {
-                sitarStrings.forEachIndexed { sIdx, (name, baseMidi, gauge) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // String Label & Peg with clear padding and no clipping
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFF150A04),
-                            border = BorderStroke(1.2.dp, Color(0xFFFFD54F)),
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = name,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = if (sIdx == 0) Color(0xFFFFD54F) else Color.White.copy(alpha = 0.9f),
-                                    maxLines = 1
-                                )
+                    fun resolveAt(offset: Offset): Pair<Int, Int> {
+                        val tappedFret = if (offset.x < leftPad) {
+                            0
+                        } else {
+                            var matched = safeNumFrets
+                            for (f in 1..safeNumFrets) {
+                                if (offset.x <= fretXPositions[f]) {
+                                    matched = f
+                                    break
+                                }
+                            }
+                            matched
+                        }
+
+                        var closestString = 0
+                        var minDist = Float.MAX_VALUE
+                        for (sIdx in 0 until numStrings) {
+                            val sy = getYForString(sIdx)
+                            val d = abs(offset.y - sy)
+                            if (d < minDist) {
+                                minDist = d
+                                closestString = sIdx
                             }
                         }
 
-                        Spacer(Modifier.width(6.dp))
+                        val baseMidi = sitarStrings.getOrNull(closestString)?.second ?: 48
+                        return tappedFret to (baseMidi + tappedFret)
+                    }
 
-                        // String wire and interactive note hits
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(gauge.dp)
-                                    .background(
-                                        if (sIdx == 0) Color(0xFFFFF9C4)
-                                        else if (sIdx in 1..3) Color(0xFFFFD54F).copy(alpha = 0.85f)
-                                        else Color(0xFFE0E0E0)
-                                    )
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxSize(),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                for (fret in 1..numFrets) {
-                                    val midi = baseMidi + fret
-                                    val isActive = filteredActiveNotes.contains(midi) || activeMidiNote == midi
-                                    val isRoot = (midi % 12) == (rootNote % 12)
-
-                                    val beadSize by animateFloatAsState(
-                                        targetValue = if (isActive) 20f else 9f,
-                                        animationSpec = spring(stiffness = Spring.StiffnessMedium)
-                                    )
-
-                                    Box(
-                                        modifier = Modifier
-                                            .size(beadSize.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (isActive) (if (isRoot) Color(0xFFFF5252) else accentColor)
-                                                else if (fret in listOf(1, 3, 5, 7, 8, 10, 12, 13, 15)) Color.White.copy(alpha = 0.25f)
-                                                else Color.Transparent
-                                            )
-                                            .border(
-                                                width = if (isActive) 1.5.dp else 0.5.dp,
-                                                color = if (isActive) Color.White else if (fret in listOf(1, 3, 5, 7, 8, 10, 12, 13, 15)) Color.White.copy(alpha = 0.4f) else Color.Transparent,
-                                                shape = CircleShape
-                                            )
-                                            .pointerInput(fret, midi) {
-                                                detectTapGestures(
-                                                    onPress = {
-                                                        onFretTapped?.invoke(fret, midi)
-                                                        tryAwaitRelease()
-                                                        onFretReleased?.invoke(fret, midi)
-                                                    }
-                                                )
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (isActive) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(6.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color.White)
-                                            )
-                                        }
-                                        if (isActive && showNoteNames) {
-                                            Text(
-                                                text = NOTE_NAMES[midi % 12],
-                                                fontSize = 7.5.sp,
-                                                fontWeight = FontWeight.Black,
-                                                color = Color.Black
-                                            )
-                                        }
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                val id = change.id.value
+                                if (change.pressed) {
+                                    val resolved = resolveAt(change.position)
+                                    val prev = activePointers[id]
+                                    if (prev == null) {
+                                        activePointers[id] = resolved
+                                        onFretTapped?.invoke(resolved.first, resolved.second)
+                                    } else if (prev != resolved) {
+                                        onFretReleased?.invoke(prev.first, prev.second)
+                                        activePointers[id] = resolved
+                                        onFretTapped?.invoke(resolved.first, resolved.second)
+                                    }
+                                } else {
+                                    activePointers.remove(id)?.let { released ->
+                                        onFretReleased?.invoke(released.first, released.second)
                                     }
                                 }
                             }
                         }
+                    }
+                }
+        ) {
+            val stringSpacing = (playableH / (numStrings - 1).coerceAtLeast(1)).coerceAtLeast(6f)
+            val neckTop = topPad - stringSpacing * 0.35f
+            val neckBottom = topPad + playableH + stringSpacing * 0.35f
+            val neckRight = totalWidth - rightPad + (6f * s)
+
+            // 1. Seasoned Tun/Teakwood Hollow Dand (Neck)
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF43210E), Color(0xFF261207), Color(0xFF1B0C04), Color(0xFF3B1D0C)),
+                    startY = neckTop,
+                    endY = neckBottom
+                ),
+                topLeft = Offset(leftPad - 4f, neckTop),
+                size = Size(neckRight - leftPad + 4f, neckBottom - neckTop),
+                cornerRadius = CornerRadius(6.dp.toPx())
+            )
+            // Decorative Ivory Inlay Borders along top & bottom edges of the Dand
+            drawLine(
+                color = Color(0xFFFFF8E1).copy(alpha = 0.35f),
+                start = Offset(leftPad, neckTop + 2f),
+                end = Offset(neckRight - 4f, neckTop + 2f),
+                strokeWidth = 1.dp.toPx()
+            )
+            drawLine(
+                color = Color(0xFFFFF8E1).copy(alpha = 0.35f),
+                start = Offset(leftPad, neckBottom - 2f),
+                end = Offset(neckRight - 4f, neckBottom - 2f),
+                strokeWidth = 1.dp.toPx()
+            )
+
+            // 2. Sympathetic Taraf Strings & Ivory Eyelets (underneath main frets)
+            val numTaraf = 13
+            for (tIdx in 0 until numTaraf) {
+                val ty = neckTop + (neckBottom - neckTop) * (0.18f + 0.64f * (tIdx / (numTaraf - 1f)))
+                val eyeletX = leftPad + playableW * (0.08f + 0.78f * (tIdx / (numTaraf - 1f)))
+                drawLine(
+                    color = Color(0xFFFFECB3).copy(alpha = 0.14f),
+                    start = Offset(eyeletX, ty),
+                    end = Offset(neckRight - 4f, ty),
+                    strokeWidth = 0.7.dp.toPx()
+                )
+                drawCircle(
+                    color = Color(0xFFFFF8E1).copy(alpha = 0.32f),
+                    radius = (1.6f * s).coerceIn(1f, 2.5f),
+                    center = Offset(eyeletX, ty)
+                )
+            }
+
+            // 3. Ivory Targahan (Nut) & Carved Bone Ghoraj (Jawari Bridge)
+            drawLine(
+                color = Color(0xFFFFF8E1),
+                start = Offset(leftPad, neckTop + 2f),
+                end = Offset(leftPad, neckBottom - 2f),
+                strokeWidth = (4.2f * s).coerceIn(2.5f, 6.5f),
+                cap = StrokeCap.Round
+            )
+
+            val bridgeW = (10f * s).coerceIn(6f, 16f)
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFFF5EFE6), Color(0xFFD7CCC8), Color(0xFF8D6E63)),
+                    startY = neckTop + 4f,
+                    endY = neckBottom - 4f
+                ),
+                topLeft = Offset(neckRight - bridgeW, neckTop + 4f),
+                size = Size(bridgeW, (neckBottom - neckTop) - 8f),
+                cornerRadius = CornerRadius(3.dp.toPx())
+            )
+
+            // 4. Curved Brass Frets (Parda) with Silk Thread Knots
+            val fretStroke = (2.6f * s).coerceIn(1.5f, 4.2f)
+            fretNumPaint.textSize = (9.5f * s).coerceIn(6.5f.dp.toPx(), 10.5f.dp.toPx())
+            val fretLabelY = (neckBottom + fretNumPaint.textSize + 2f * s).coerceAtMost(size.height - 2f)
+
+            for (f in 1..safeNumFrets) {
+                val fx = fretXPositions[f]
+                val cx = getFretCenterX(f)
+                // Shadow
+                drawLine(
+                    color = Color.Black.copy(alpha = 0.5f),
+                    start = Offset(fx + 1.5f, neckTop + 2f),
+                    end = Offset(fx + 1.5f, neckBottom - 2f),
+                    strokeWidth = fretStroke
+                )
+                // Arched Brass Wire
+                drawLine(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFFB58500), Color(0xFFFFE082), Color(0xFFFFB300), Color(0xFFB58500)),
+                        startY = neckTop,
+                        endY = neckBottom
+                    ),
+                    start = Offset(fx, neckTop + 2f),
+                    end = Offset(fx, neckBottom - 2f),
+                    strokeWidth = fretStroke,
+                    cap = StrokeCap.Round
+                )
+                // Crimson Silk Tie Cords at top & bottom of each Parda
+                drawCircle(
+                    color = Color(0xFFC62828),
+                    radius = fretStroke * 0.75f,
+                    center = Offset(fx, neckTop + 2.5f)
+                )
+                drawCircle(
+                    color = Color(0xFFC62828),
+                    radius = fretStroke * 0.75f,
+                    center = Offset(fx, neckBottom - 2.5f)
+                )
+
+                if (f in intArrayOf(1, 3, 5, 7, 8, 10, 12, 15)) {
+                    drawContext.canvas.nativeCanvas.drawText("$f", cx, fretLabelY, fretNumPaint)
+                }
+            }
+
+            // 5. Main Playing & Chikari Strings + Peg Labels
+            val pegCenterX = vp.left + (leftPad - vp.left) * 0.42f
+            val pegRad = (stringSpacing * 0.40f).coerceIn(5.dp.toPx(), 10.5f.dp.toPx())
+            pegTextPaint.textSize = (pegRad * 0.92f).coerceIn(6.dp.toPx(), 9.5f.dp.toPx())
+
+            sitarStrings.forEachIndexed { sIdx, (name, _, gauge) ->
+                val sy = getYForString(sIdx)
+                val scaledGauge = (gauge * 0.65f * s).coerceIn(0.8f, 3.2f)
+                val wireColor = when (sIdx) {
+                    0 -> Color(0xFFFFF9C4) // Baj Tar (Steel melody string)
+                    1, 2, 3 -> Color(0xFFFFD54F) // Phosphor-bronze/Brass Jod & Kharaj
+                    else -> Color(0xFFE0E0E0) // High Steel Chikari drones
+                }
+
+                drawLine(
+                    color = Color.Black.copy(alpha = 0.45f),
+                    start = Offset(leftPad, sy + 1.2f),
+                    end = Offset(neckRight, sy + 1.2f),
+                    strokeWidth = scaledGauge
+                )
+                drawLine(
+                    color = wireColor,
+                    start = Offset(leftPad, sy),
+                    end = Offset(neckRight, sy),
+                    strokeWidth = scaledGauge
+                )
+
+                // Carved Khunti (Tuning Peg Badge)
+                drawCircle(
+                    color = if (sIdx == 0) Color(0xFF3E1F0D) else Color(0xFF1B0C05),
+                    radius = pegRad,
+                    center = Offset(pegCenterX, sy)
+                )
+                drawCircle(
+                    color = if (sIdx == 0) Color(0xFFFFD54F) else Color(0xFFBCAAA4).copy(alpha = 0.75f),
+                    radius = pegRad,
+                    center = Offset(pegCenterX, sy),
+                    style = Stroke(width = 1.1.dp.toPx())
+                )
+                pegTextPaint.color = if (sIdx == 0) android.graphics.Color.rgb(255, 213, 79) else android.graphics.Color.WHITE
+                drawContext.canvas.nativeCanvas.drawText(
+                    name,
+                    pegCenterX,
+                    sy + pegTextPaint.textSize * 0.36f,
+                    pegTextPaint
+                )
+            }
+
+            // 6. Active Note Beads & Sargam/Western Labels
+            val maxBeadRad = (stringSpacing * 0.45f).coerceIn(4.5f.dp.toPx(), 11.5f.dp.toPx())
+
+            sitarStrings.forEachIndexed { sIdx, (_, baseMidi, _) ->
+                val sy = getYForString(sIdx)
+                for (fret in 0..safeNumFrets) {
+                    val midi = baseMidi + fret
+                    val semi = (midi % 12 + 12) % 12
+                    val isResolvedActive = resolvedSitarPoints.contains(sIdx to fret)
+                    val isExactPlaying = effectiveActiveMidi != null && midi == effectiveActiveMidi && isResolvedActive
+                    val isRoot = semi == normalizedRoot
+
+                    if (isResolvedActive) {
+                        val cx = getFretCenterX(fret)
+                        val fretW = if (fret == 0) 20f * s else (fretXPositions[fret] - fretXPositions[fret - 1])
+                        val beadRad = min(maxBeadRad, (fretW * 0.45f).coerceAtLeast(4.dp.toPx())) *
+                            (if (isExactPlaying) 1.08f else if (isScaleMode) 0.84f else 0.95f)
+
+                        val fill = when {
+                            isExactPlaying -> Color(0xFFFFEB3B)
+                            isRoot -> Color(0xFFFF5252)
+                            else -> accentColor
+                        }
+
+                        drawCircle(
+                            color = fill.copy(alpha = 0.40f),
+                            radius = beadRad * 1.32f,
+                            center = Offset(cx, sy)
+                        )
+                        drawCircle(
+                            color = fill,
+                            radius = beadRad,
+                            center = Offset(cx, sy)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = beadRad,
+                            center = Offset(cx, sy),
+                            style = Stroke(width = (beadRad * 0.18f).coerceAtLeast(1f))
+                        )
+
+                        if (showNoteNames) {
+                            val label = NOTE_NAMES[semi]
+                            beadTextPaint.color = if (isExactPlaying) android.graphics.Color.rgb(165, 35, 0) else android.graphics.Color.BLACK
+                            beadTextPaint.textSize = (beadRad * (if (label.length > 1) 0.90f else 1.05f)).coerceIn(5.5f.dp.toPx(), 10.5f.dp.toPx())
+                            drawContext.canvas.nativeCanvas.drawText(
+                                label,
+                                cx,
+                                sy + beadTextPaint.textSize * 0.36f,
+                                beadTextPaint
+                            )
+                        }
+                    } else if (sIdx == 0 && fret in intArrayOf(2, 4, 5, 7, 9, 11, 12)) {
+                        // Subtle Bilawal Thaat guide pearls along the main Baj Tar string
+                        val cx = getFretCenterX(fret)
+                        drawCircle(
+                            color = Color(0xFFFFF8E1).copy(alpha = 0.32f),
+                            radius = (stringSpacing * 0.14f).coerceIn(1.8f, 3.5f.dp.toPx()),
+                            center = Offset(cx, sy)
+                        )
                     }
                 }
             }

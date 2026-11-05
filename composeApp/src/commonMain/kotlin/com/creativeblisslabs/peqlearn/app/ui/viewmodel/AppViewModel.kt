@@ -1341,9 +1341,12 @@ fun scrubSongPlayhead(targetProgress: Float) {
 }
     val ragaList = mutableStateOf<List<Raaga>>(emptyList())
     val isFetchingRagas = mutableStateOf(false)
-
     val currentScore = mutableStateOf<Score?>(null)
+
+// var currentScore = mutableStateOf<com.creativeblisslabs.peqlearn.app.ui.screens.Score?>(null)
+   
     val scorePlayheadMeasure = mutableIntStateOf(0)
+
     val scorePlayheadOffset = mutableFloatStateOf(0f)
     val isScorePlaying = mutableStateOf(false)
     val practiceMeasureRange = mutableStateOf<Pair<Int, Int>?>(null) // Optional (startMeasureIdx, endMeasureIdx) for measure-by-measure looping

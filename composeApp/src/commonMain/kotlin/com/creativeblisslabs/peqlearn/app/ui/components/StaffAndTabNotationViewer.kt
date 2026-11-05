@@ -2500,9 +2500,7 @@ internal fun drawPlayheadTabLine(
             }
         } else null
 
-        val targetPlayheadX = if (temporallyMatchedNote != null && abs(currentBeat - temporallyMatchedNote.note.position) <= 0.12f) {
-            temporallyMatchedNote.nx
-        } else if (computedXByPosition.isNotEmpty()) {
+        val targetPlayheadX = if (computedXByPosition.isNotEmpty()) {
             interpolatePlayheadX(computedXByPosition, currentBeat, systemContentStartX, usableMeasureWidth, playheadOffset)
         } else {
             systemContentStartX + (usableMeasureWidth * playheadOffset)
@@ -2524,31 +2522,40 @@ private fun interpolatePlayheadX(
     usableWidth: Float,
     playheadOffset: Float
 ): Float {
-    var exactOrLowerPos = -1f
-    var exactOrLowerX = -1f
-    var higherPos = Float.MAX_VALUE
-    var higherX = -1f
+    if (computedXByPosition.isEmpty()) {
+        return startX + (usableWidth * playheadOffset)
+    }
 
-    for ((pos, x) in computedXByPosition) {
-        if (pos <= targetPos && pos > exactOrLowerPos) {
-            exactOrLowerPos = pos
-            exactOrLowerX = x
-        }
-        if (pos > targetPos && pos < higherPos) {
-            higherPos = pos
-            higherX = x
+    val sortedEntries = computedXByPosition.entries.sortedBy { it.key }
+    val firstEntry = sortedEntries.first()
+    val lastEntry = sortedEntries.last()
+
+    // 1. Before first note: smoothly interpolate from startX up to first note X
+    if (targetPos <= firstEntry.key) {
+        val frac = if (firstEntry.key > 0f) (targetPos / firstEntry.key).coerceIn(0f, 1f) else 1f
+        return startX + (firstEntry.value - startX) * frac
+    }
+
+    // 2. Beyond last note: smoothly interpolate from last note X to measure end
+    val endX = startX + usableWidth
+    if (targetPos >= lastEntry.key) {
+        val remainingBeats = (4f - lastEntry.key).coerceAtLeast(1f) // approximate 4/4 if not bounded
+        val frac = ((targetPos - lastEntry.key) / remainingBeats).coerceIn(0f, 1f)
+        return lastEntry.value + (endX - lastEntry.value) * frac
+    }
+
+    // 3. Between two notes: smoothly interpolate between adjacent note X positions
+    for (i in 0 until sortedEntries.size - 1) {
+        val lower = sortedEntries[i]
+        val upper = sortedEntries[i + 1]
+        if (targetPos >= lower.key && targetPos <= upper.key) {
+            val span = upper.key - lower.key
+            val frac = if (span > 0.001f) (targetPos - lower.key) / span else 0f
+            return lower.value + (upper.value - lower.value) * frac
         }
     }
 
-    return when {
-        exactOrLowerX != -1f && higherX != -1f -> {
-            val fraction = if (higherPos > exactOrLowerPos) (targetPos - exactOrLowerPos) / (higherPos - exactOrLowerPos) else 0f
-            exactOrLowerX + (higherX - exactOrLowerX) * fraction
-        }
-        exactOrLowerX != -1f -> exactOrLowerX
-        higherX != -1f -> higherX
-        else -> startX + (usableWidth * playheadOffset)
-    }
+    return startX + (usableWidth * playheadOffset)
 }
 private fun drawStaffMeasureContent(
     drawScope: DrawScope, startX: Float, endX: Float, h: Float,
@@ -3340,9 +3347,7 @@ internal fun drawPlayheadStaffLine(
             }
         } else null
 
-        val targetPlayheadX = if (matchingActiveNote != null && abs(currentBeat - matchingActiveNote.note.position) <= 0.12f) {
-            matchingActiveNote.anchorX
-        } else if (computedXByPosition.isNotEmpty()) {
+        val targetPlayheadX = if (computedXByPosition.isNotEmpty()) {
             interpolatePlayheadX(computedXByPosition, currentBeat, notesStartX, usableMeasureWidth, playheadOffset)
         } else {
             notesStartX + (usableMeasureWidth * playheadOffset)

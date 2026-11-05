@@ -275,3 +275,161 @@ fun SvgChordBox(
         }
     }
 }
+
+/**
+ * High-fidelity SVG-style Piano Chord Diagram.
+ * Renders miniature two-octave (C4-B5) or dynamic keyboard keys with authentic ivory/ebony rendering,
+ * highlighted chord tones, and inversion labels.
+ */
+@Composable
+fun SvgPianoChordBox(
+    midiNotes: List<Int>,
+    chordName: String = "",
+    inversionLabel: String = "Root Pos",
+    accentColor: Color = Color(0xFFFF9E1B),
+    cardBackground: Color = Color(0xFF1E222D),
+    width: Dp = 145.dp,
+    height: Dp = 160.dp,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val activeMidiSet = remember(midiNotes) { midiNotes.toSet() }
+    val minNote = remember(midiNotes) { midiNotes.minOrNull() ?: 60 }
+
+    // Align start note to the closest C below minNote, span 14 white keys (~2 octaves)
+    val startC = remember(minNote) { ((minNote / 12) * 12).coerceAtLeast(36) }
+    val totalWhiteKeys = 14
+    val whiteNotes = remember(startC) {
+        val list = mutableListOf<Int>()
+        var n = startC
+        while (list.size < totalWhiteKeys) {
+            if ((n % 12) !in listOf(1, 3, 6, 8, 10)) {
+                list.add(n)
+            }
+            n++
+        }
+        list
+    }
+
+    Surface(
+        modifier = modifier
+            .width(width)
+            .height(height)
+            .clip(RoundedCornerShape(12.dp))
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        shape = RoundedCornerShape(12.dp),
+        color = cardBackground,
+        border = BorderStroke(1.dp, Color(0xFF2C3242))
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (chordName.isNotBlank()) {
+                Text(
+                    text = chordName,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
+            if (inversionLabel.isNotBlank()) {
+                Text(
+                    text = inversionLabel,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF9EABB8),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            Canvas(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                val canvasW = size.width
+                val canvasH = size.height
+
+                val leftPad = 4f
+                val rightPad = 4f
+                val topPad = 8f
+                val bottomPad = 12f
+
+                val usableW = canvasW - leftPad - rightPad
+                val usableH = canvasH - topPad - bottomPad
+
+                val whiteKeyW = usableW / totalWhiteKeys.toFloat()
+                val whiteKeyH = usableH
+                val blackKeyW = whiteKeyW * 0.65f
+                val blackKeyH = whiteKeyH * 0.60f
+
+                // 1. Draw White Keys
+                whiteNotes.forEachIndexed { idx, whiteMidi ->
+                    val x = leftPad + idx * whiteKeyW
+                    val isActive = whiteMidi in activeMidiSet
+
+                    // White key background
+                    drawRoundRect(
+                        color = if (isActive) accentColor.copy(alpha = 0.25f) else Color(0xFFECEFF4),
+                        topLeft = Offset(x + 1f, topPad),
+                        size = Size(whiteKeyW - 2f, whiteKeyH),
+                        cornerRadius = CornerRadius(3.dp.toPx())
+                    )
+
+                    // Border
+                    drawRoundRect(
+                        color = if (isActive) accentColor else Color(0xFF2B303C),
+                        topLeft = Offset(x + 1f, topPad),
+                        size = Size(whiteKeyW - 2f, whiteKeyH),
+                        cornerRadius = CornerRadius(3.dp.toPx()),
+                        style = Stroke(width = if (isActive) 1.5.dp.toPx() else 1.dp.toPx())
+                    )
+
+                    // Active dot on White key
+                    if (isActive) {
+                        val dotY = topPad + whiteKeyH - 12.dp.toPx()
+                        drawCircle(
+                            color = accentColor,
+                            radius = 4.5.dp.toPx(),
+                            center = Offset(x + whiteKeyW / 2f, dotY)
+                        )
+                    }
+                }
+
+                // 2. Draw Black Keys
+                whiteNotes.forEachIndexed { idx, whiteMidi ->
+                    val semi = whiteMidi % 12
+                    // Black keys appear after C, D, F, G, A
+                    if (semi in listOf(0, 2, 5, 7, 9) && idx < totalWhiteKeys - 1) {
+                        val blackMidi = whiteMidi + 1
+                        val isActive = blackMidi in activeMidiSet
+                        val x = leftPad + (idx + 1) * whiteKeyW - (blackKeyW / 2f)
+
+                        drawRoundRect(
+                            color = if (isActive) accentColor else Color(0xFF1E222B),
+                            topLeft = Offset(x, topPad),
+                            size = Size(blackKeyW, blackKeyH),
+                            cornerRadius = CornerRadius(2.dp.toPx())
+                        )
+                        drawRoundRect(
+                            color = if (isActive) Color.White else Color(0xFF0F1218),
+                            topLeft = Offset(x, topPad),
+                            size = Size(blackKeyW, blackKeyH),
+                            cornerRadius = CornerRadius(2.dp.toPx()),
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+
+                        // Active dot on Black key
+                        if (isActive) {
+                            drawCircle(
+                                color = Color.White,
+                                radius = 3.dp.toPx(),
+                                center = Offset(x + blackKeyW / 2f, topPad + blackKeyH - 7.dp.toPx())
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

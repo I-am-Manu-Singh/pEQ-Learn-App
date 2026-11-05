@@ -86,40 +86,53 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
             tunerEngine.stopListening()
             isListening = false
         } else {
-            tunerEngine.startListening { freq, note, cents, amp ->
-                detectedFreq = freq
-                detectedNote = note
-                centsDeviation = cents
-                micAmplitude = amp
+           tunerEngine.startListening { freq, note, cents, amp ->
 
-                // In Auto mode: find closest string in selected tuning
-                if (isAutoMode && !isChromaticMode && selectedTuning.stringNotes.isNotEmpty()) {
-                    val targetIdx = selectedTuning.stringNotes.indexOfFirst { it.dropLast(1) == note.dropLast(1) }
-                    if (targetIdx != -1) {
-                        selectedStringIdx = targetIdx
-                    }
-                }
-            }
+    if (!freq.isFinite() || freq <= 0f) {
+        detectedFreq = 0f
+        detectedNote = "--"
+        centsDeviation = 0
+        micAmplitude = 0f
+        return@startListening
+    }
+
+    detectedFreq = freq
+    detectedNote = note.ifBlank { "--" }
+    centsDeviation = cents.coerceIn(-100, 100)
+    micAmplitude = amp.takeIf { it.isFinite() } ?: 0f
+
+    if (
+        isAutoMode &&
+        !isChromaticMode &&
+        selectedTuning.stringNotes.isNotEmpty() &&
+        detectedNote != "--"
+    ) {
+        val targetIdx = selectedTuning.stringNotes.indexOfFirst {
+            it.dropLastWhile(Char::isDigit) ==
+                detectedNote.dropLastWhile(Char::isDigit)
+        }
+
+        if (targetIdx >= 0) {
+            selectedStringIdx = targetIdx
+        }
+    }
+}
             isListening = true
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            if (tunerEngine.isListening()) {
-                tunerEngine.stopListening()
-            }
-        }
+  DisposableEffect(tunerEngine) {
+    onDispose {
+        tunerEngine.stopListening()
     }
+}
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val inTuneColor = Color(0xFF00E676)
     val tuneUpColor = Color(0xFFFF9100) // Need to tighten string
     val tuneDownColor = Color(0xFF29B6F6) // Need to loosen string
 
-    val currentTargetNote = if (isChromaticMode) detectedNote else {
-        selectedTuning.stringNotes.getOrNull(selectedStringIdx) ?: "--"
-    }
+
 
     val isInTune = abs(centsDeviation) <= 3 && detectedFreq > 0f
 
@@ -137,17 +150,29 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
         else -> "Tune Down"
     }
 
+val safeSelectedStringIdx = selectedStringIdx.coerceIn(
+    0,
+    (selectedTuning.stringNotes.size - 1).coerceAtLeast(0)
+)
+
+val currentTargetNote = when {
+    isChromaticMode -> detectedNote
+    selectedTuning.stringNotes.isEmpty() -> "--"
+    else -> selectedTuning.stringNotes[safeSelectedStringIdx]
+}
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         shape = RoundedCornerShape(24.dp),
         color = Color(0xFF0F1710), // Deep emerald/forest dark theme matching chroma
         border = BorderStroke(1.dp, Color(0xFF1E3824))
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
+      Column(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 14.dp, vertical = 16.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(16.dp)
+) {
             // TOP BAR: Tuner Title + Quick Actions (Chromatic toggle, Settings)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -156,7 +181,7 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Chrome Tuner",
+                        text = "Chromatic Tuner",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = inTuneColor
@@ -192,71 +217,54 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
                 }
             }
 
-            // GAUGE ARC DISPLAY
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(130.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-                    val w = size.width
-                    val h = size.height
-                    val center = androidx.compose.ui.geometry.Offset(w / 2f, h * 0.95f)
-                    val radius = w * 0.42f
+          Box(
+    modifier = Modifier
+        .fillMaxWidth()
+        .heightIn(min = 140.dp, max = 160.dp),
+    contentAlignment = Alignment.Center
+) {
+    TunerArcGauge(
+        centsDeviation = centsDeviation,
+        gaugeColor = gaugeColor
+    )
 
-                    // Draw Background Arc (-150 deg to -30 deg = 120 deg arc)
-                    drawArc(
-                        color = Color(0xFF1E3824),
-                        startAngle = 190f,
-                        sweepAngle = 160f,
-                        useCenter = false,
-                        topLeft = androidx.compose.ui.geometry.Offset(center.x - radius, center.y - radius),
-                        size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
-                        style = Stroke(width = 14f, cap = StrokeCap.Round)
-                    )
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        val deviationText = when {
+            centsDeviation > 0 -> "+$centsDeviation"
+            else -> "$centsDeviation"
+        }
 
-                    // Draw Colored Offset Indicator Needle/Dot
-                    val fraction = ((centsDeviation + 50) / 100f).coerceIn(0f, 1f)
-                    val angleDeg = 190f + fraction * 160f
-                    val angleRad = kotlin.math.PI * (angleDeg / 180.0)
-                    val dotX = (center.x + radius * kotlin.math.cos(angleRad)).toFloat()
-                    val dotY = (center.y + radius * kotlin.math.sin(angleRad)).toFloat()
+        Text(
+            text = if (tuningDisplayType == "Simple")
+                currentTargetNote
+            else deviationText,
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Black,
+            color = gaugeColor
+        )
 
-                    drawCircle(
-                        color = gaugeColor,
-                        radius = 12f,
-                        center = androidx.compose.ui.geometry.Offset(dotX, dotY)
-                    )
-                }
+        Text(
+            text = tuningGuidanceText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White.copy(alpha = 0.8f)
+        )
 
-                // Cents / Note Overlay in Center of Arc
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    val deviationText = if (centsDeviation >= 0) "+$centsDeviation" else "$centsDeviation"
-                    Text(
-                        text = if (tuningDisplayType == "Simple") currentTargetNote else deviationText,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Black,
-                        color = gaugeColor
-                    )
-                    Text(
-                        text = tuningGuidanceText,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(0.7f)
-                    )
-                    if (detectedFreq > 0f) {
-                        Text(
-                            text = "${(detectedFreq * 10f).toInt() / 10f} Hz",
-                            fontSize = 11.sp,
-                            color = Color.White.copy(0.4f)
-                        )
-                    }
-                }
-            }
+        if (detectedFreq.isFinite() && detectedFreq > 0f) {
+            Text(
+                text = "%.1f Hz".format(detectedFreq),
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.55f)
+            )
+        }
+    }
+}
 
             // AUTO TOGGLE ROW
             Row(
@@ -289,6 +297,8 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    if (!isChromaticMode && selectedTuning.stringNotes.isNotEmpty()) {
+
                     selectedTuning.stringNotes.forEachIndexed { idx, stringNote ->
                         val isSelected = selectedStringIdx == idx
                         val isCurrentStringInTune = isSelected && isInTune
@@ -361,6 +371,7 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
                             }
                         }
                     }
+                }
                 }
             } else {
                 // Chromatic 12-Tone Quick Grid
@@ -593,26 +604,37 @@ fun StrobeTunerSection(viewModel: AppViewModel) {
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        if (customName.isNotBlank() && customStrings.isNotEmpty()) {
-                            val newTuning = InstrumentTuning(
-                                id = "custom_${System.currentTimeMillis()}",
-                                name = customName,
-                                instrument = customInstrument,
-                                stringNotes = customStrings.toList(),
-                                isCustom = true
-                            )
-                            customTunings.add(newTuning)
-                            selectedTuning = newTuning
-                            selectedStringIdx = 0
-                            showAddCustomDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = inTuneColor)
-                ) {
-                    Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
-                }
+                val canSaveTuning =
+    customName.isNotBlank() &&
+    customStrings.isNotEmpty() &&
+    customStrings.size <= 12 &&
+    customStrings.all { it.isNotBlank() }
+
+Button(
+    onClick = {
+        if (canSaveTuning) {
+            val newTuning = InstrumentTuning(
+                id = "custom_${System.currentTimeMillis()}",
+                name = customName.trim(),
+                instrument = customInstrument,
+                stringNotes = customStrings.toList(),
+                isCustom = true
+            )
+
+            customTunings.add(newTuning)
+            selectedTuning = newTuning
+            selectedStringIdx = 0
+            isChromaticMode = false
+            showAddCustomDialog = false
+        }
+    },
+    enabled = canSaveTuning,
+    colors = ButtonDefaults.buttonColors(
+        containerColor = inTuneColor
+    )
+) {
+    Text("Save", color = Color.Black)
+}
             }
         )
     }
@@ -744,5 +766,87 @@ private fun TuningItemRow(
                 )
             }
         }
+    }
+}
+@Composable
+private fun TunerArcGauge(
+    centsDeviation: Int,
+    gaugeColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .padding(horizontal = 8.dp)
+    ) {
+        val strokeWidth = 12.dp.toPx()
+        val dotRadius = 7.dp.toPx()
+
+        // Keep the complete arc inside the Canvas.
+        val horizontalPadding = strokeWidth / 2f + dotRadius
+        val topPadding = strokeWidth / 2f + dotRadius
+        val bottomPadding = strokeWidth / 2f + dotRadius
+
+        val availableWidth = size.width - horizontalPadding * 2
+        val availableHeight = size.height - topPadding - bottomPadding
+
+        // Fit a semicircular-style gauge into available bounds.
+        val radius = minOf(
+            availableWidth / 2f,
+            availableHeight
+        )
+
+        val centerX = size.width / 2f
+        val centerY = size.height - bottomPadding
+
+        val topLeft = androidx.compose.ui.geometry.Offset(
+            centerX - radius,
+            centerY - radius
+        )
+
+        val arcSize = androidx.compose.ui.geometry.Size(
+            radius * 2f,
+            radius * 2f
+        )
+
+        // Background arc.
+        drawArc(
+            color = Color(0xFF203B2A),
+            startAngle = 200f,
+            sweepAngle = 140f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(
+                width = strokeWidth,
+                cap = StrokeCap.Round
+            )
+        )
+
+        // Deviation indicator.
+        val safeCents = centsDeviation.coerceIn(-50, 50)
+        val fraction = (safeCents + 50f) / 100f
+
+        val angle = Math.toRadians(
+            (200f + fraction * 140f).toDouble()
+        )
+
+        val dotCenter = androidx.compose.ui.geometry.Offset(
+            x = centerX + radius * kotlin.math.cos(angle).toFloat(),
+            y = centerY + radius * kotlin.math.sin(angle).toFloat()
+        )
+
+        drawCircle(
+            color = gaugeColor.copy(alpha = 0.2f),
+            radius = dotRadius * 1.9f,
+            center = dotCenter
+        )
+
+        drawCircle(
+            color = gaugeColor,
+            radius = dotRadius,
+            center = dotCenter
+        )
     }
 }

@@ -1373,6 +1373,7 @@ Row(
                 var showSpeedOptimizationDialog by remember { mutableStateOf(false) }
 
                 val isPlaying = viewModel.isScorePlaying.value
+
                 val currentScore = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
 
 
@@ -1442,19 +1443,19 @@ Row(
                 ) {
 
 
-                    // --- TOP BAR: Floats at TopCenter without shifting content ---
+                    // // --- TOP BAR: Floats at TopCenter without shifting content ---
                     AnimatedVisibility(
                         visible = areControlsVisible,
                         enter = fadeIn(tween(250)),
                         exit = fadeOut(tween(300)),
                         modifier = Modifier
                             .zIndex(20f)
-                            .fillMaxWidth()
+                            // .fillMaxWidth()
                             .align(Alignment.TopCenter)
                     ) {
                         Surface(
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    // .fillMaxWidth()
                                     .padding(horizontal = 14.dp, vertical = 8.dp),
                                 color = Color(0xFF0F0B18).copy(alpha = 0.92f),
                                 shape = RoundedCornerShape(22.dp),
@@ -1468,14 +1469,12 @@ Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    // Left: Song Info with Blue Pulsing Dot & Song Title
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    ) {
-                                       var showImportMenu by remember { mutableStateOf(false) }
+                                  Row(
+    modifier = Modifier.width(350.dp)
+) {
 
+
+                                       var showImportMenu by remember { mutableStateOf(false) }
 Row(
     modifier = Modifier
         .background(Color(0xFF140E26), RoundedCornerShape(16.dp))
@@ -1618,8 +1617,7 @@ Row(
             .width(1.dp),
         color = Color(0xFF382956)
     )
-
-    // 2. Glowing Indicator Dot & Song Title / Active Media info
+    
     val songTitle = currentScore?.title 
         ?: viewModel.currentMediaItem.value?.title 
         ?: viewModel.selectedMixerItem.value?.displayName 
@@ -1652,17 +1650,8 @@ Row(
         )
     }
 }
-}
-                                    
+                                    }
 
-                                    // Right: Clean Non-redundant Action Icons
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                      
-
-                    
 // Helper to cleanly update visualizer layout and notation format
 val updateLayout: (String, String, AppViewModel, () -> Unit) -> Unit = { mode, format, vm, closeMenu ->
     fsLayoutMode = mode
@@ -1792,106 +1781,32 @@ Box {
         )
     }
 }
-                                        
-                                        // Learn Mode (Scales, Arpeggios & Chords Trainer)
-                                        IconButton(
-                                            onClick = { showLearnModeDialog = true },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.School,
-                                                contentDescription = "Practice Scales & Chords",
-                                                tint = Color(0xFF80CBC4),
-                                                modifier = Modifier.size(17.dp)
-                                            )
-                                        }
+                                       // pEQInstrument Dropdown for visualizer & audio sample playback
+val currentSelectedInstType = ChordInstrumentType.fromNameOrNull(viewModel.selectedInstrument.value) 
+    ?: ChordInstrumentType.PIANO_ACOUSTIC
 
-                                        // Play-Along Evaluation & Live Accuracy
-                                        val isPlayAlongActive = viewModel.playAlongEngine.isEvaluating.value
-                                        IconButton(
-                                            onClick = {
-                                                if (!isPlayAlongActive) {
-                                                    val score = viewModel.currentScore.value as? Score
-                                                    if (score != null) {
-                                                        viewModel.playAlongEngine.startEvaluation(score, score.tempo)
-                                                        if (!viewModel.isScorePlaying.value) {
-                                                            viewModel.startScorePlayback()
-                                                        }
-                                                    }
-                                                }
-                                                showPlayAlongStatsDialog = true
-                                            },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.GraphicEq,
-                                                contentDescription = "Play-Along Accuracy",
-                                                tint = if (isPlayAlongActive) Color(0xFF00E676) else Color.White.copy(0.75f),
-                                                modifier = Modifier.size(17.dp)
-                                            )
-                                        }
-
-                                        // AI Audio-to-Score Model (muscriptor-small-lm.onnx)
-                                        IconButton(
-                                            onClick = { showAudioToMidiScreen = true },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.AutoAwesome,
-                                                contentDescription = "AI Audio to MIDI / Sheet Music",
-                                                tint = Color(0xFFFFD700),
-                                                modifier = Modifier.size(17.dp)
-                                            )
-                                        }
-  // MIDI Device Button
-                                        val isMidiConnected = viewModel.connectedMidiDeviceName.value?.isNotBlank() == true
-                                        Surface(
-                                            shape = RoundedCornerShape(16.dp),
-                                            color = if (isMidiConnected) Color(0xFF1C2B24) else Color(0xFF1E162E),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (isMidiConnected) Color(0xFF10B981).copy(0.5f) else Color(0xFF2E2445)
-                                            ),
-                                            modifier = Modifier.clickable {
-                                                viewModel.onScanMidiDevicesRequested?.invoke()
-                                            }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                 Icon(
-                                                     Icons.Default.Piano,
-                                                     contentDescription = "MIDI Device",
-                                                     tint = if (isMidiConnected) Color(0xFF10B981) else Color.White.copy(0.8f),
-                                                     modifier = Modifier.size(15.dp)
-                                                 )
-                                            }
-                                        }
-                                        // pEQInstrument Dropdown for visualizer & audio sample playback
-                                        var currentSelectedInstType by remember(viewModel.selectedInstrument.value) {
-                                            mutableStateOf(ChordInstrumentType.fromNameOrNull(viewModel.selectedInstrument.value) ?: ChordInstrumentType.PIANO_ACOUSTIC)
-                                        }
-                                        pEQInstrumentDropdown(
-                                            selectedInstrument = currentSelectedInstType,
-                                            accentColor = Color(0xFF64B5F6),
-                                            onInstrumentChange = { newInst ->
-                                                currentSelectedInstType = newInst
-                                                viewModel.selectedInstrument.value = newInst.title
-                                                try {
-                                                    viewModel.audioEngine.setInstrument(newInst.soundEngineName)
-                                                } catch (_: Exception) {}
-                                                if (newInst.title.contains("Guitar") || newInst == ChordInstrumentType.UKULELE) {
-                                                    viewModel.notationFormat.value = "Tab Only"
-                                                    notationFormat = "Tab Only"
-                                                } else if (newInst == ChordInstrumentType.PIANO_ACOUSTIC || newInst == ChordInstrumentType.PIANO_ELECTRIC || newInst == ChordInstrumentType.HARMONIUM) {
-                                                    viewModel.notationFormat.value = "Staff Only"
-                                                    notationFormat = "Staff Only"
-                                                }
-                                            },
-                                            modifier = Modifier.width(185.dp).height(32.dp)
-                                        )
+pEQInstrumentDropdown(
+    selectedInstrument = currentSelectedInstType,
+    accentColor = Color(0xFF64B5F6),
+    onInstrumentChange = { newInst ->
+        // Directly update the ViewModel state. 
+        // Compose will automatically pick up the change and recompose with the new instrument.
+        viewModel.selectedInstrument.value = newInst.title
+        
+        try {
+            viewModel.audioEngine.setInstrument(newInst.soundEngineName)
+        } catch (_: Exception) {}
+        
+        if (newInst.title.contains("Guitar") || newInst == ChordInstrumentType.UKULELE) {
+            viewModel.notationFormat.value = "Tab Only"
+            notationFormat = "Tab Only"
+        } else if (newInst == ChordInstrumentType.PIANO_ACOUSTIC || newInst == ChordInstrumentType.PIANO_ELECTRIC || newInst == ChordInstrumentType.HARMONIUM) {
+            viewModel.notationFormat.value = "Staff Only"
+            notationFormat = "Staff Only"
+        }
+    },
+    modifier = Modifier.width(185.dp).height(32.dp)
+)
                                         
                                         // MIDI Tracks Dropdown Selector (if score has tracks)
                                         val currentScoreObj = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
@@ -1983,7 +1898,7 @@ Box {
                                         }
 
                                       
-
+                                        
                                         // Export Button
                                         Button(
                                             onClick = { showExportDialog = true },
@@ -2006,6 +1921,84 @@ Box {
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = Color(0xFFC5CAE9)
                                             )
+                                        }
+
+                                        
+                                        // Learn Mode (Scales, Arpeggios & Chords Trainer)
+                                        IconButton(
+                                            onClick = { showLearnModeDialog = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.School,
+                                                contentDescription = "Practice Scales & Chords",
+                                                tint = Color(0xFF80CBC4),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+
+                                        // Play-Along Evaluation & Live Accuracy
+                                        val isPlayAlongActive = viewModel.playAlongEngine.isEvaluating.value
+                                        IconButton(
+                                            onClick = {
+                                                if (!isPlayAlongActive) {
+                                                    val score = viewModel.currentScore.value as? Score
+                                                    if (score != null) {
+                                                        viewModel.playAlongEngine.startEvaluation(score, score.tempo)
+                                                        if (!viewModel.isScorePlaying.value) {
+                                                            viewModel.startScorePlayback()
+                                                        }
+                                                    }
+                                                }
+                                                showPlayAlongStatsDialog = true
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.GraphicEq,
+                                                contentDescription = "Play-Along Accuracy",
+                                                tint = if (isPlayAlongActive) Color(0xFF00E676) else Color.White.copy(0.75f),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+
+                                        // AI Audio-to-Score Model (muscriptor-small-lm.onnx)
+                                        IconButton(
+                                            onClick = { showAudioToMidiScreen = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.AutoAwesome,
+                                                contentDescription = "AI Audio to MIDI / Sheet Music",
+                                                tint = Color(0xFFFFD700),
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+  // MIDI Device Button
+                                        val isMidiConnected = viewModel.connectedMidiDeviceName.value?.isNotBlank() == true
+                                        Surface(
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (isMidiConnected) Color(0xFF1C2B24) else Color(0xFF1E162E),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isMidiConnected) Color(0xFF10B981).copy(0.5f) else Color(0xFF2E2445)
+                                            ),
+                                            modifier = Modifier.clickable {
+                                                viewModel.onScanMidiDevicesRequested?.invoke()
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                 Icon(
+                                                     Icons.Default.Piano,
+                                                     contentDescription = "MIDI Device",
+                                                     tint = if (isMidiConnected) Color(0xFF10B981) else Color.White.copy(0.8f),
+                                                     modifier = Modifier.size(15.dp)
+                                                 )
+                                            }
                                         }
                                         
           // Settings Menu
@@ -2040,7 +2033,7 @@ Box {
                                             )
                                         }
                                     }
-                                }
+                                
                             }
                         }
                     }

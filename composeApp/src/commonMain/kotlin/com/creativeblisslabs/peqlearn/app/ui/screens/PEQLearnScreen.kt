@@ -59,7 +59,7 @@ private fun LearnMainContent(
         val tabs = listOf(
             Triple("CHORDS", "Chords", Icons.Default.LibraryMusic),
             Triple("PIANO & NOTATION", "Piano & Notation", Icons.Default.Piano),
-            Triple("EAR & SIGHT", "Ear & Sight", Icons.Default.Hearing),
+            Triple("STROBE TUNER", "Strobe Tuner", Icons.Default.Mic),
             Triple("DRUMS", "Drums", Icons.Default.Radio),
             Triple("RIYAAZ", "Riyaaz", Icons.Default.SelfImprovement),
         )
@@ -196,10 +196,9 @@ private fun LearnMainContent(
                                  
                                     "PIANO & NOTATION" -> {
                                         PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
-                                        StrobeTunerSection(viewModel)
                                     }
-                                    "EAR & SIGHT" -> {
-                                        EarTrainingAcademyScreen(viewModel = viewModel, primaryColor = primaryColor)
+                                    "STROBE TUNER" -> {
+                                        StrobeTunerSection(viewModel)
                                     }
                                     "DRUMS" -> {
                                         DrumAcademySection(viewModel, primaryColor, modifier = Modifier)
@@ -322,10 +321,9 @@ private fun LearnMainContent(
                             }
                             "PIANO & NOTATION" -> {
                                 PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
-                                StrobeTunerSection(viewModel)
                             }
-                            "EAR & SIGHT" -> {
-                                EarTrainingAcademyScreen(viewModel = viewModel, primaryColor = primaryColor)
+                            "STROBE TUNER" -> {
+                                StrobeTunerSection(viewModel)
                             }
                             "DRUMS" -> {
                                 DrumAcademySection(viewModel, primaryColor)
