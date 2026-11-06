@@ -18,12 +18,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FolderOpen
@@ -31,7 +29,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.ViewQuilt
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.material.icons.filled.List      
+import androidx.compose.material.icons.filled.List
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -102,6 +100,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Hearing
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.creativeblisslabs.peqlearn.app.ui.components.FullscreenDialog
@@ -155,7 +154,7 @@ class VisualizerStageCaptureController {
         measureStartTimes: FloatArray,
         measureDurations: FloatArray,
         flatNotes: List<ExportTimelineNote>
-    ): android.graphics.Bitmap? = withContext(Dispatchers.Main) {
+    ): androidx.compose.ui.graphics.ImageBitmap? {
         // 1. Step playhead to exact measure and beat offset for this video frame
         var mIdx = 0
         for (i in measureStartTimes.indices) {
@@ -190,19 +189,12 @@ class VisualizerStageCaptureController {
         // 3. Advance deterministic waterfall particle/flash clock
         exportTimeSec = timeSec
 
-        // 4. Wait two frame pulses so Compose recomposes and draws into stageGraphicsLayer
-        withFrameNanos { }
-        withFrameNanos { }
+        // 4. Yield execution so Compose recomposes and draws into stageGraphicsLayer
+        kotlinx.coroutines.yield()
 
-        val layer = graphicsLayer ?: return@withContext null
-        return@withContext runCatching {
-            val rawBmp = layer.toImageBitmap().asAndroidBitmap()
-            // Convert hardware bitmap to software ARGB_8888 if needed so Canvas drawing never crashes
-            if (rawBmp.config == android.graphics.Bitmap.Config.HARDWARE) {
-                rawBmp.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
-            } else {
-                rawBmp
-            }
+        val layer = graphicsLayer ?: return null
+        return runCatching {
+            layer.toImageBitmap()
         }.getOrNull()
     }
 }
@@ -427,46 +419,47 @@ fun PianoKeyboard88Keys(
     var showPlayAlongStatsDialog by rememberSaveable { mutableStateOf(false) }
     var showLearnModeDialog by rememberSaveable { mutableStateOf(false) }
     var showAudioToMidiScreen by rememberSaveable { mutableStateOf(false) }
+    var showEarTrainingScreen by rememberSaveable { mutableStateOf(false) }
 
     // CRITICAL FIX: Do NOT render or tick the inline Notation + Waterfall + Keyboard when Fullscreen mode is open!
     if (!isFullscreen) {
         LearnSectionCard(title = "Notation & Piano Viewer", icon = Icons.Filled.List) {
-                Column(
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalAlignment = Alignment.CenterVertically,
+                    // 1. Changes alignment to align elements to the end (right side)
+                    horizontalArrangement = Arrangement.End
+                ) {                        Button(
+                    onClick = { viewModel.onPickScoreFileRequested?.invoke() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.onSurface.copy(0.1f)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(26.dp)
                 ) {
-Row(
-    modifier = Modifier.fillMaxWidth(),
-    verticalAlignment = Alignment.CenterVertically,
-    // 1. Changes alignment to align elements to the end (right side)
-    horizontalArrangement = Arrangement.End 
-) {                        Button(
-                            onClick = { viewModel.onPickScoreFileRequested?.invoke() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.onSurface.copy(0.1f)
-                            ),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(26.dp)
-                        ) {
-                            Icon(Icons.Default.FileOpen, contentDescription = "Open Score", modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurface)
-                            Spacer(Modifier.width(3.dp))
-                            Text("Import", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
-                        }
+                    Icon(Icons.Default.FileOpen, contentDescription = "Open Score", modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.width(3.dp))
+                    Text("Import", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
+                }
 
-                        IconButton(
-                            onClick = { viewModel.isFullscreenKeyboard.value = true },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Fullscreen,
-                                contentDescription = "Fullscreen",
-                                tint = primaryColor,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                    IconButton(
+                        onClick = { viewModel.isFullscreenKeyboard.value = true },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = "Fullscreen",
+                            tint = primaryColor,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
-                
+                }
+
 
                 // Only mount StaffAndTabNotationViewer if layout mode includes Notation
                 val layoutMode = viewModel.visualizerLayoutMode.value
@@ -616,8 +609,8 @@ Row(
             }
         }
     }
-    
-    
+
+
 
     // Real-Time MIDI Connection & Disconnection Prompt Dialog
     viewModel.midiConnectionPrompt.value?.let { prompt ->
@@ -708,139 +701,142 @@ Row(
             }
         }
     }
-      if (showDumpDialog) {
-            val clipboardManager = LocalClipboardManager.current
-            var copiedMessage by remember { mutableStateOf(false) }
-            val currentScoreObj = viewModel.currentScore.value as? Score
-            val dumpText = remember(currentScoreObj) {
-                currentScoreObj?.dumpAsText() ?: "No active score loaded to inspect."
-            }
+    if (showDumpDialog) {
+        val clipboardManager = LocalClipboardManager.current
+        var copiedMessage by remember { mutableStateOf(false) }
+        val currentScoreObj = viewModel.currentScore.value as? Score
+        val dumpText = remember(currentScoreObj) {
+            currentScoreObj?.dumpAsText() ?: "No active score loaded to inspect."
+        }
 
-            ModalBottomSheet(
-                onDismissRequest = { showDumpDialog = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = Color(0xFF0F1117)
+        ModalBottomSheet(
+            onDismissRequest = { showDumpDialog = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF0F1117)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.85f)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.85f)
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Explicitly uses the baseline core Menu icon as a safe layout anchor
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Menu,
+                            contentDescription = null,
+                            tint = Color(0xFF64B5F6)
+                        )
+                        Text(
+                            "Score Notation Parser Dump",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp)
-) {
-    // Explicitly uses the baseline core Menu icon as a safe layout anchor
-    Icon(
-        imageVector = androidx.compose.material.icons.Icons.Default.Menu, 
-        contentDescription = null, 
-        tint = Color(0xFF64B5F6)
-    )
-    Text(
-        "Score Notation Parser Dump",
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-        color = Color.White
-    )
-}
-Row(
-    horizontalArrangement = Arrangement.spacedBy(8.dp), 
-    verticalAlignment = Alignment.CenterVertically
-) {
-    Button(
-        onClick = {
-            val titleSlug = currentScoreObj?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "_") ?: "score"
-            com.creativeblisslabs.peqlearn.app.shareTextFile("${titleSlug}_parser_dump.txt", dumpText)
-        },
-        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
-        shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        Icon(
-            imageVector = androidx.compose.material.icons.Icons.Default.Share, 
-            contentDescription = "Share File", 
-            modifier = Modifier.size(16.dp),
-            tint = Color.White
-        )
-        androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
-        Text("Share File", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-    }
-    Button(
-        onClick = {
-            clipboardManager.setText(AnnotatedString(dumpText))
-            copiedMessage = true
-        },
-        colors = ButtonDefaults.buttonColors(containerColor = if (copiedMessage) Color(0xFF2E7D32) else Color(0xFF1976D2)),
-        shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        // Swapped for standard core baseline icons to bypass compilation failure
-        Icon(
-            imageVector = if (copiedMessage) androidx.compose.material.icons.Icons.Default.Close else androidx.compose.material.icons.Icons.Default.Menu, 
-            contentDescription = null, 
-            modifier = Modifier.size(16.dp)
-        )
-        androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
-        Text(if (copiedMessage) "Copied!" else "Copy Text", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-    }
-    IconButton(onClick = { showDumpDialog = false }) {
-        Icon(
-            imageVector = androidx.compose.material.icons.Icons.Default.Close, 
-            contentDescription = "Close", 
-            tint = Color.White
-        )
-    }
-}
-                    }
-
-                    Text(
-                        "This parser dump displays all measures, note timings, voices, beam groups, rests, and note intervals. You can copy it or save it as a .txt file to compare with your MIDI file.",
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF06080C),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
-                    ) {
-                        val verticalScroll = rememberScrollState()
-                        val horizontalScroll = rememberScrollState()
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(verticalScroll)
-                                .horizontalScroll(horizontalScroll)
-                                .padding(16.dp)
+                        Button(
+                            onClick = {
+                                val titleSlug = currentScoreObj?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "_") ?: "score"
+                                com.creativeblisslabs.peqlearn.app.shareTextFile("${titleSlug}_parser_dump.txt", dumpText)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Text(
-                                text = dumpText,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                color = Color(0xFF81C784),
-                                lineHeight = 16.sp
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Share,
+                                contentDescription = "Share File",
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
+                            androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+                            Text("Share File", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        Button(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(dumpText))
+                                copiedMessage = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (copiedMessage) Color(0xFF2E7D32) else Color(0xFF1976D2)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            // Swapped for standard core baseline icons to bypass compilation failure
+                            Icon(
+                                imageVector = if (copiedMessage) androidx.compose.material.icons.Icons.Default.Close else androidx.compose.material.icons.Icons.Default.Menu,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+                            Text(if (copiedMessage) "Copied!" else "Copy Text", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        IconButton(onClick = { showDumpDialog = false }) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color.White
                             )
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
                 }
+
+                Text(
+                    "This parser dump displays all measures, note timings, voices, beam groups, rests, and note intervals. You can copy it or save it as a .txt file to compare with your MIDI file.",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF06080C),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                ) {
+                    val verticalScroll = rememberScrollState()
+                    val horizontalScroll = rememberScrollState()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(verticalScroll)
+                            .horizontalScroll(horizontalScroll)
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = dumpText,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            color = Color(0xFF81C784),
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
             }
         }
-
-    // Play-Along Evaluation & Live Accuracy Scorecard Dialog
+    }
+// Play-Along Evaluation & Live Accuracy Scorecard Studio Dialog
     if (showPlayAlongStatsDialog) {
         val scorecard = viewModel.playAlongEngine.scorecard.value
         val isEvaluating = viewModel.playAlongEngine.isEvaluating.value
+        val currentLoadedScore = viewModel.currentScore.value as? Score
+        var selectedSkillTier by rememberSaveable { mutableStateOf("Beginner") } // Beginner, Intermediate, Advanced
+        var waitForNoteEnabled by rememberSaveable { mutableStateOf(true) }
+        var autoSpeedUpLoop by rememberSaveable { mutableStateOf(false) }
 
         FullscreenDialog(
             onDismissRequest = { showPlayAlongStatsDialog = false }
@@ -863,10 +859,71 @@ Row(
                     ) {
                         Column {
                             Text("Live Play-Along Performance Studio", color = Color(0xFFFFD700), fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            Text(if (isEvaluating) "Listening to USB MIDI Keyboard Input..." else "Evaluation Stopped", color = Color.White.copy(0.7f), fontSize = 13.sp)
+                            Text(
+                                if (isEvaluating) "Listening to USB MIDI / Touch Keyboard Input..." else "Select your pianist tier & start evaluation",
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 13.sp
+                            )
                         }
                         IconButton(onClick = { showPlayAlongStatsDialog = false }) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(28.dp))
+                        }
+                    }
+
+                    // Pianist Skill Level Preset Bar (Adapts tempo, timing tolerance & practice aids)
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF161226),
+                        border = BorderStroke(1.dp, Color(0xFF2D234E)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("SELECT PIANIST PRACTICE TIER", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(
+                                    Triple("Beginner", "0.65x Speed • Note Labels • Step Wait", 0.65f),
+                                    Triple("Intermediate", "0.85x Speed • Hand Split • Tempo Ramp", 0.85f),
+                                    Triple("Advanced", "1.0x Concert Speed • Strict Timing", 1.0f)
+                                ).forEach { (tierName, desc, defaultSpeed) ->
+                                    val isSelected = selectedSkillTier == tierName
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) Color(0xFF5C6BC0) else Color(0xFF211A38),
+                                        border = BorderStroke(1.dp, if (isSelected) Color(0xFFFFD700) else Color.Transparent),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                selectedSkillTier = tierName
+                                                viewModel.playbackSpeed.value = defaultSpeed
+                                                when (tierName) {
+                                                    "Beginner" -> {
+                                                        viewModel.showNotationNoteNames.value = true
+                                                        viewModel.showPianoKeyLabels.value = true
+                                                        waitForNoteEnabled = true
+                                                    }
+                                                    "Intermediate" -> {
+                                                        viewModel.showNotationNoteNames.value = true
+                                                        waitForNoteEnabled = false
+                                                        autoSpeedUpLoop = true
+                                                    }
+                                                    "Advanced" -> {
+                                                        viewModel.showNotationNoteNames.value = false
+                                                        viewModel.showPianoKeyLabels.value = false
+                                                        waitForNoteEnabled = false
+                                                    }
+                                                }
+                                            }
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(tierName, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Text(desc, fontSize = 10.sp, color = Color.White.copy(alpha = 0.75f), lineHeight = 13.sp)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -882,10 +939,17 @@ Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column {
-                                Text("ACCURACY", color = Color.White.copy(0.6f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("OVERALL ACCURACY", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 Text("${scorecard.accuracyPercentage}%", color = Color(0xFF00E676), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold)
-                                Text("Avg timing error: ${scorecard.averageTimingErrorMs} ms", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                                Text("Avg timing offset: ${scorecard.averageTimingErrorMs} ms", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                                val feedbackTip = when {
+                                    scorecard.accuracyPercentage >= 95 -> "Concert Mastery! Ready to increase tempo by +10%."
+                                    scorecard.accuracyPercentage >= 80 -> "Solid run! Practice missed transitions with A–B Bar Loop."
+                                    scorecard.averageTimingErrorMs > 65 -> "Tip: Enable Metronome Click & practice at 0.75x tempo."
+                                    else -> "Tip: Isolate Right Hand (RH) first, then Left Hand (LH)."
+                                }
+                                Text(feedbackTip, color = Color(0xFF81D4FA), fontSize = 11.sp, fontWeight = FontWeight.Medium)
                             }
                             Box(
                                 modifier = Modifier
@@ -903,26 +967,66 @@ Row(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
                             Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("HIT NOTES", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                                Text("HIT NOTES", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
                                 Text("${scorecard.hitNotesCount}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E676))
                             }
                         }
                         Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
                             Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("MISSED", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                                Text("MISSED", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
                                 Text("${scorecard.missedNotesCount}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF5252))
                             }
                         }
                         Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
                             Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("STREAK", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                                Text("STREAK", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
                                 Text("${scorecard.currentStreak}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
                             }
                         }
                         Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF161226), modifier = Modifier.weight(1f)) {
                             Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("BEST", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.Bold)
+                                Text("BEST", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
                                 Text("${scorecard.bestStreak}", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF80D8FF))
+                            }
+                        }
+                    }
+
+                    // Smart Practice Aids (Wait-for-Note, Progressive Tempo Ramp, Metronome)
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF161226),
+                        border = BorderStroke(1.dp, Color(0xFF2D234E)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("INTERACTIVE PRACTICE AIDS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Wait-for-Note Step Mode (Beginner)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("Pauses score playhead until you press the highlighted chord keys", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+                                }
+                                Switch(
+                                    checked = waitForNoteEnabled,
+                                    onCheckedChange = { waitForNoteEnabled = it }
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Auto-Tempo Speed Ramp (+5% per Clean Loop)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("Gradually builds speed from slow practice up to 1.0x concert tempo", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+                                }
+                                Switch(
+                                    checked = autoSpeedUpLoop,
+                                    onCheckedChange = { autoSpeedUpLoop = it }
+                                )
                             }
                         }
                     }
@@ -934,8 +1038,16 @@ Row(
                                 if (isEvaluating) {
                                     viewModel.playAlongEngine.stopEvaluation()
                                 } else {
-                                    val s = viewModel.currentScore.value as? Score
-                                    if (s != null) viewModel.playAlongEngine.startEvaluation(s, s.tempo)
+                                    if (currentLoadedScore != null) {
+                                        viewModel.playAlongEngine.startEvaluation(
+                                            currentLoadedScore,
+                                            currentLoadedScore.tempo * viewModel.playbackSpeed.value
+                                        )
+                                        if (!viewModel.isScorePlaying.value) {
+                                            viewModel.startScorePlayback()
+                                        }
+                                        showPlayAlongStatsDialog = false
+                                    }
                                 }
                             },
                             modifier = Modifier.weight(1f).height(48.dp),
@@ -945,7 +1057,7 @@ Row(
                                 contentColor = if (isEvaluating) Color.White else Color.Black
                             )
                         ) {
-                            Text(if (isEvaluating) "Stop Evaluating" else "Start Evaluating", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(if (isEvaluating) "Stop Evaluating" else "Start Live Evaluation", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
                         OutlinedButton(
                             onClick = { showPlayAlongStatsDialog = false },
@@ -960,7 +1072,7 @@ Row(
         }
     }
 
-    // Learn Mode (Scales & Chords Practice Library) Fullscreen Studio
+    // Learn Mode (Masterworks, A-B Measure Range Drill, Smart Difficulty Analyzer & Scales/Chords)
     if (showLearnModeDialog) {
         FullscreenDialog(
             onDismissRequest = { showLearnModeDialog = false }
@@ -969,16 +1081,19 @@ Row(
                 modifier = Modifier.fillMaxSize(),
                 color = Color(0xFF0E0B1A)
             ) {
-                var practiceStudioTab by remember { mutableIntStateOf(0) } // 0 = Masterworks Tutorials, 1 = Score Measure-by-Measure Tutorial, 2 = Scales & Chords
-                var selectedTrainingMode by remember { mutableStateOf("FULL") } // "FULL", "RH_ONLY", "LH_ONLY", "SLOW_TEMPO"
-                var selectedMeasureNumber by remember(viewModel.scorePlayheadMeasure.value) { mutableIntStateOf(viewModel.scorePlayheadMeasure.value + 1) }
+                var practiceStudioTab by remember { mutableIntStateOf(0) } // 0 = Masterworks, 1 = Score Bar-by-Bar & A-B Loop, 2 = Scales & Chords
+                var selectedTrainingMode by remember { mutableStateOf("FULL") }
+                var selectedDifficultyFilter by remember { mutableStateOf("ALL") } // "ALL", "Easy", "Medium", "Hard"
                 val currentLoadedScore = viewModel.currentScore.value as? Score
+                val totalMeasures = currentLoadedScore?.measures?.size ?: 0
+                var loopStartBar by remember(totalMeasures) { mutableIntStateOf(1) }
+                var loopEndBar by remember(totalMeasures) { mutableIntStateOf(minOf(4, totalMeasures.coerceAtLeast(1))) }
 
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     // Header
                     Row(
@@ -987,403 +1102,469 @@ Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Interactive Practice Studio", color = Color(0xFFFFD700), fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            Text("Masterworks, Hand Separation & Technical Mastery", color = Color.White.copy(0.7f), fontSize = 13.sp)
+                            Text("Interactive Piano Practice Studio", color = Color(0xFFFFD700), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text("Curriculum for Beginners, Intermediate & Advanced Pianists", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
                         }
                         IconButton(onClick = { showLearnModeDialog = false }) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(28.dp))
                         }
                     }
 
-                // Tab Switcher: Inbuilt Masterworks vs Current Score Measure Tutorial vs Scales/Chords
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF130E24))
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (practiceStudioTab == 0) Color(0xFF5C6BC0) else Color.Transparent)
-                            .clickable { practiceStudioTab = 0 }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
-                            Text("Masterworks (${PracticeLibrary.builtInTutorials.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1.2f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (practiceStudioTab == 1) Color(0xFF5C6BC0) else Color.Transparent)
-                            .clickable { practiceStudioTab = 1 }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
-                            Text("Score Tutorial (${currentLoadedScore?.measures?.size ?: 0} Bars)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (practiceStudioTab == 2) Color(0xFF5C6BC0) else Color.Transparent)
-                            .clickable { practiceStudioTab = 2 }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.School, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
-                            Text("Scales & Chords", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
-                }
-
-                // If in Masterworks tab: Training Mode selector pill
-                if (practiceStudioTab == 0) {
+                    // Tab Switcher
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF130E24))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("TRAINING FOCUS:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF19132E))
-                                .padding(2.dp)
-                        ) {
-                            listOf(
-                                "FULL" to "Full Score",
-                                "RH_ONLY" to "RH Only",
-                                "LH_ONLY" to "LH Only",
-                                "SLOW_TEMPO" to "0.7x Tempo"
-                            ).forEach { (modeKey, label) ->
-                                val isSelected = selectedTrainingMode == modeKey
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSelected) Color(0xFF6C63FF) else Color.Transparent)
-                                        .clickable { selectedTrainingMode = modeKey }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        label,
-                                        fontSize = 10.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) Color.White else Color.White.copy(0.6f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // List content
-                if (practiceStudioTab == 0) {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(PracticeLibrary.builtInTutorials) { tutorial ->
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF19132E),
-                                border = BorderStroke(1.dp, Color(0xFF2C2250)),
+                        listOf(
+                            Triple(0, "Masterworks (${PracticeLibrary.builtInTutorials.size})", Icons.Default.LibraryMusic),
+                            Triple(1, "Score A–B Drill ($totalMeasures Bars)", Icons.Default.Tune),
+                            Triple(2, "Scales, Chords & Hanon", Icons.Default.School)
+                        ).forEach { (tabIdx, tabTitle, tabIcon) ->
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val readBytesFn: (String) -> ByteArray? = { name ->
-                                            viewModel.onReadAssetBytes?.invoke(name)
-                                        }
-                                        val loadedScore = PracticeLibrary.loadTutorialScore(
-                                            tutorial = tutorial,
-                                            readBytes = readBytesFn,
-                                            trainingMode = selectedTrainingMode
-                                        )
-                                        if (loadedScore != null) {
-                                            viewModel.currentScore.value = loadedScore
-                                            viewModel.resetScorePlayhead()
-                                            // Synchronize hand practice toggle
-                                            when (selectedTrainingMode) {
-                                                "RH_ONLY" -> viewModel.setHandPracticeMode("RIGHT")
-                                                "LH_ONLY" -> viewModel.setHandPracticeMode("LEFT")
-                                                else -> viewModel.setHandPracticeMode("BOTH")
-                                            }
-                                            showLearnModeDialog = false
-                                        }
-                                    }
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (practiceStudioTab == tabIdx) Color(0xFF5C6BC0) else Color.Transparent)
+                                    .clickable { practiceStudioTab = tabIdx }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(tabIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                    Text(tabTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+
+                    if (practiceStudioTab == 0) {
+                        // Filter by Easy / Medium / Hard + Training Mode (Full / RH / LH / Slow)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("ALL", "Easy", "Intermediate", "Advanced").forEach { diff ->
+                                    val active = selectedDifficultyFilter == diff
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (active) Color(0xFFFFD700) else Color(0xFF19132E))
+                                            .clickable { selectedDifficultyFilter = diff }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(tutorial.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                            Text("${tutorial.composer} • ${tutorial.era}", color = Color(0xFF81D4FA), fontSize = 11.sp)
-                                        }
-                                        AssistChip(
-                                            onClick = {},
-                                            label = { Text(tutorial.difficulty, fontSize = 10.sp, color = Color(0xFFA5D6A7)) }
+                                        Text(
+                                            diff,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (active) Color.Black else Color.White.copy(alpha = 0.7f)
                                         )
                                     }
+                                }
+                            }
 
-                                    Text(tutorial.description, color = Color.White.copy(0.75f), fontSize = 11.sp, lineHeight = 16.sp)
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF19132E))
+                                    .padding(2.dp)
+                            ) {
+                                listOf(
+                                    "FULL" to "Both Hands",
+                                    "RH_ONLY" to "RH Melody",
+                                    "LH_ONLY" to "LH Bass",
+                                    "SLOW_TEMPO" to "0.65x Slow"
+                                ).forEach { (modeKey, label) ->
+                                    val isSelected = selectedTrainingMode == modeKey
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSelected) Color(0xFF6C63FF) else Color.Transparent)
+                                            .clickable { selectedTrainingMode = modeKey }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Text("${tutorial.timeSignature} Time", fontSize = 10.sp, color = Color.White.copy(0.6f))
-                                            Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
-                                            Text("${tutorial.tempo} BPM", fontSize = 10.sp, color = Color(0xFFFFD700))
-                                            Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
-                                            Text("${tutorial.totalMeasures} Bars", fontSize = 10.sp, color = Color.White.copy(0.6f))
-                                        }
-                                        Button(
-                                            onClick = {
-                                                val readBytesFn: (String) -> ByteArray? = { name ->
-                                                    viewModel.onReadAssetBytes?.invoke(name)
-                                                }
-                                                val loadedScore = PracticeLibrary.loadTutorialScore(
-                                                    tutorial = tutorial,
-                                                    readBytes = readBytesFn,
-                                                    trainingMode = selectedTrainingMode
-                                                )
-                                                if (loadedScore != null) {
-                                                    viewModel.currentScore.value = loadedScore
-                                                    viewModel.resetScorePlayhead()
-                                                    when (selectedTrainingMode) {
-                                                        "RH_ONLY" -> viewModel.setHandPracticeMode("RIGHT")
-                                                        "LH_ONLY" -> viewModel.setHandPracticeMode("LEFT")
-                                                        else -> viewModel.setHandPracticeMode("BOTH")
-                                                    }
-                                                    showLearnModeDialog = false
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(8.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C6BC0)),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                            modifier = Modifier.height(28.dp)
-                                        ) {
-                                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(13.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Practice", fontSize = 11.sp)
-                                        }
+                                        Text(
+                                            label,
+                                            fontSize = 10.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.6f)
+                                        )
                                     }
+                                }
+                            }
+                        }
 
-                                    // Focus pills
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        tutorial.focusAreas.forEach { focus ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .background(Color(0xFF281D45))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                        val filteredTutorials = remember(selectedDifficultyFilter) {
+                            if (selectedDifficultyFilter == "ALL") PracticeLibrary.builtInTutorials
+                            else PracticeLibrary.builtInTutorials.filter {
+                                it.difficulty.contains(selectedDifficultyFilter, ignoreCase = true) ||
+                                        (selectedDifficultyFilter == "Easy" && it.difficulty.contains("Beginner", ignoreCase = true))
+                            }
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(filteredTutorials) { tutorial ->
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFF19132E),
+                                    border = BorderStroke(1.dp, Color(0xFF2C2250)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val readBytesFn: (String) -> ByteArray? = { name ->
+                                                viewModel.onReadAssetBytes?.invoke(name)
+                                            }
+                                            val loadedScore = PracticeLibrary.loadTutorialScore(
+                                                tutorial = tutorial,
+                                                readBytes = readBytesFn,
+                                                trainingMode = selectedTrainingMode
+                                            )
+                                            if (loadedScore != null) {
+                                                viewModel.currentScore.value = loadedScore.copy(
+                                                    title = tutorial.title,
+                                                    composer = tutorial.composer
+                                                )
+                                                viewModel.resetScorePlayhead()
+                                                when (selectedTrainingMode) {
+                                                    "RH_ONLY" -> viewModel.setHandPracticeMode("RIGHT")
+                                                    "LH_ONLY" -> viewModel.setHandPracticeMode("LEFT")
+                                                    else -> viewModel.setHandPracticeMode("BOTH")
+                                                }
+                                                showLearnModeDialog = false
+                                            }
+                                        }
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(tutorial.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                                Text("${tutorial.composer} • ${tutorial.era}", color = Color(0xFF81D4FA), fontSize = 11.sp)
+                                            }
+                                            AssistChip(
+                                                onClick = {},
+                                                label = { Text(tutorial.difficulty, fontSize = 10.sp, color = Color(0xFFA5D6A7)) }
+                                            )
+                                        }
+
+                                        Text(tutorial.description, color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp, lineHeight = 16.sp)
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text("${tutorial.timeSignature} Time", fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f))
+                                                Text("•", fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                                                Text("${tutorial.tempo} BPM", fontSize = 10.sp, color = Color(0xFFFFD700))
+                                                Text("•", fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                                                Text("${tutorial.totalMeasures} Bars", fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f))
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    val readBytesFn: (String) -> ByteArray? = { name ->
+                                                        viewModel.onReadAssetBytes?.invoke(name)
+                                                    }
+                                                    val loadedScore = PracticeLibrary.loadTutorialScore(
+                                                        tutorial = tutorial,
+                                                        readBytes = readBytesFn,
+                                                        trainingMode = selectedTrainingMode
+                                                    )
+                                                    if (loadedScore != null) {
+                                                        viewModel.currentScore.value = loadedScore.copy(
+                                                            title = tutorial.title,
+                                                            composer = tutorial.composer
+                                                        )
+                                                        viewModel.resetScorePlayhead()
+                                                        when (selectedTrainingMode) {
+                                                            "RH_ONLY" -> viewModel.setHandPracticeMode("RIGHT")
+                                                            "LH_ONLY" -> viewModel.setHandPracticeMode("LEFT")
+                                                            else -> viewModel.setHandPracticeMode("BOTH")
+                                                        }
+                                                        showLearnModeDialog = false
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C6BC0)),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(28.dp)
                                             ) {
-                                                Text(focus, fontSize = 9.sp, color = Color(0xFFCE93D8))
+                                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(13.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Practice", fontSize = 11.sp)
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                } else if (practiceStudioTab == 1) {
-                    // Measure-by-Measure Interactive Tutorial of the CURRENT Loaded Score
-                    if (currentLoadedScore == null || currentLoadedScore.measures.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color.White.copy(0.4f), modifier = Modifier.size(48.dp))
-                                Text("No Score Loaded Yet", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                Text("Load any MIDI file or score to practice it measure-by-measure with hand separation & loop controls.", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                    } else if (practiceStudioTab == 1) {
+                        // Score A–B Multi-Bar Loop Drill & Automatic Hardest-Measures Finder
+                        if (currentLoadedScore == null || currentLoadedScore.measures.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                Text("Import or select a score first to unlock Measure-by-Measure A–B Drills.", color = Color.White.copy(alpha = 0.7f))
+                            }
+                        } else {
+                            // Identify the 3 most complex bars in the score (highest note density + polyphony)
+                            val hardestBars = remember(currentLoadedScore) {
+                                currentLoadedScore.measures.mapIndexed { idx, m ->
+                                    idx + 1 to m.notes.count { !it.isRest }
+                                }.sortedByDescending { it.second }.take(4)
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // A-B Range Loop & Hand Separation Card
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF19132E),
+                                    border = BorderStroke(1.dp, Color(0xFF2C2250)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text("HANDS:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                                                listOf("BOTH" to "Both", "RIGHT" to "RH Only", "LEFT" to "LH Only").forEach { (hKey, hLabel) ->
+                                                    val isSelected = viewModel.activeHandMode.value == hKey
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(if (isSelected) Color(0xFF6C63FF) else Color(0xFF251A42))
+                                                            .clickable { viewModel.setHandPracticeMode(hKey) }
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text(hLabel, fontSize = 10.sp, color = Color.White, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                                    }
+                                                }
+                                            }
+
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text("SPEED:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                                                listOf(0.5f, 0.75f, 1.0f).forEach { spd ->
+                                                    val active = viewModel.playbackSpeed.value == spd
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(if (active) Color(0xFF00E676) else Color(0xFF251A42))
+                                                            .clickable { viewModel.playbackSpeed.value = spd }
+                                                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text("${spd}x", fontSize = 10.sp, color = if (active) Color.Black else Color.White, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // A-B Loop Range Selector
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text("A–B BAR LOOP:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                                                OutlinedButton(
+                                                    onClick = { loopStartBar = (loopStartBar - 1).coerceAtLeast(1) },
+                                                    contentPadding = PaddingValues(0.dp),
+                                                    modifier = Modifier.size(24.dp)
+                                                ) { Text("-", color = Color.White) }
+                                                Text("Bar $loopStartBar", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        loopStartBar = (loopStartBar + 1).coerceAtMost(totalMeasures)
+                                                        if (loopEndBar < loopStartBar) loopEndBar = loopStartBar
+                                                    },
+                                                    contentPadding = PaddingValues(0.dp),
+                                                    modifier = Modifier.size(24.dp)
+                                                ) { Text("+", color = Color.White) }
+
+                                                Text("to", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+
+                                                OutlinedButton(
+                                                    onClick = { loopEndBar = (loopEndBar - 1).coerceAtLeast(loopStartBar) },
+                                                    contentPadding = PaddingValues(0.dp),
+                                                    modifier = Modifier.size(24.dp)
+                                                ) { Text("-", color = Color.White) }
+                                                Text("Bar $loopEndBar", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                OutlinedButton(
+                                                    onClick = { loopEndBar = (loopEndBar + 1).coerceAtMost(totalMeasures) },
+                                                    contentPadding = PaddingValues(0.dp),
+                                                    modifier = Modifier.size(24.dp)
+                                                ) { Text("+", color = Color.White) }
+                                            }
+
+                                            Button(
+                                                onClick = {
+                                                    viewModel.isPracticeLoopEnabled.value = true
+                                                    val sIdx = (loopStartBar - 1).coerceIn(0, totalMeasures - 1)
+                                                    val eIdx = (loopEndBar - 1).coerceIn(sIdx, totalMeasures - 1)
+                                                    viewModel.practiceMeasureRange.value = sIdx to eIdx
+                                                    viewModel.seekToPosition(sIdx, 0f)
+                                                    viewModel.startScorePlayback()
+                                                    showLearnModeDialog = false
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700)),
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                                modifier = Modifier.height(30.dp)
+                                            ) {
+                                                Text("Loop Bars $loopStartBar–$loopEndBar", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                                            }
+                                        }
+
+                                        // Smart Challenging Bars Quick-Jump
+                                        if (hardestBars.isNotEmpty()) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text("CHALLENGING BARS:", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF8A80))
+                                                hardestBars.forEach { (barNum, count) ->
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Color(0xFF3B1D2E),
+                                                        border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.5f)),
+                                                        modifier = Modifier.clickable {
+                                                            loopStartBar = barNum
+                                                            loopEndBar = minOf(totalMeasures, barNum + 1)
+                                                        }
+                                                    ) {
+                                                        Text(
+                                                            "Bar $barNum ($count notes)",
+                                                            fontSize = 9.5.sp,
+                                                            color = Color(0xFFFFCDD2),
+                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Measure Grid Picker
+                                LazyColumn(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val measureRows = (1..totalMeasures).chunked(4)
+                                    items(measureRows) { rowIndices ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            rowIndices.forEach { barNum ->
+                                                val isInLoopRange = barNum in loopStartBar..loopEndBar
+                                                val measureObj = currentLoadedScore.measures.getOrNull(barNum - 1)
+                                                val noteCount = measureObj?.notes?.count { !it.isRest } ?: 0
+                                                val rhCount = measureObj?.notes?.count { !it.isRest && it.midiNote >= 60 } ?: 0
+                                                val lhCount = measureObj?.notes?.count { !it.isRest && it.midiNote < 60 } ?: 0
+                                                val difficultyColor = when {
+                                                    noteCount >= 16 -> Color(0xFFFF5252) // Hard bar
+                                                    noteCount >= 8 -> Color(0xFFFFD700)  // Medium bar
+                                                    else -> Color(0xFF69F0AE)            // Easy bar
+                                                }
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = if (isInLoopRange) Color(0xFF392B68) else Color(0xFF19132E),
+                                                    border = BorderStroke(1.dp, if (isInLoopRange) Color(0xFFFFD700) else Color(0xFF2C2250)),
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .clickable {
+                                                            loopStartBar = barNum
+                                                            loopEndBar = barNum
+                                                            viewModel.seekToPosition(barNum - 1, 0f)
+                                                            if (viewModel.isPracticeLoopEnabled.value) {
+                                                                viewModel.practiceMeasureRange.value = (barNum - 1) to (barNum - 1)
+                                                            }
+                                                            viewModel.startScorePlayback()
+                                                            showLearnModeDialog = false
+                                                        }
+                                                ) {
+                                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                            Text("Bar $barNum", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                                                            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(difficultyColor))
+                                                        }
+                                                        Text("$noteCount notes", color = Color.White.copy(alpha = 0.75f), fontSize = 10.sp)
+                                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Text("RH:$rhCount", fontSize = 9.sp, color = Color(0xFF81D4FA))
+                                                            Text("LH:$lhCount", fontSize = 9.sp, color = Color(0xFFCE93D8))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            if (rowIndices.size < 4) {
+                                                repeat(4 - rowIndices.size) {
+                                                    Spacer(Modifier.weight(1f))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else {
-                        val totalMeasures = currentLoadedScore.measures.size
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        // Scales, Chords & Technical Exercises
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            // Top Controls: Hand Selection (Both, RH, LH) & Loop Measure Toggle
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF19132E),
-                                border = BorderStroke(1.dp, Color(0xFF2C2250)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
+                            items(PracticeLibrary.items) { item ->
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFF19132E),
+                                    border = BorderStroke(1.dp, Color(0xFF2C2250)),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .clickable {
+                                            val practiceScore = PracticeLibrary.createScoreForPracticeItem(item)
+                                            viewModel.currentScore.value = practiceScore
+                                            viewModel.resetScorePlayhead()
+                                            showLearnModeDialog = false
+                                        }
                                 ) {
-                                    // Hand Isolation Toggle
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text("HAND ISOLATION:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
-                                        listOf(
-                                            "BOTH" to "Both Hands",
-                                            "RIGHT" to "RH Only",
-                                            "LEFT" to "LH Only"
-                                        ).forEach { (hKey, hLabel) ->
-                                            val isSelected = viewModel.activeHandMode.value == hKey
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(if (isSelected) Color(0xFF6C63FF) else Color(0xFF251A42))
-                                                    .clickable { viewModel.setHandPracticeMode(hKey) }
-                                                    .padding(horizontal = 8.dp, vertical = 5.dp)
-                                            ) {
-                                                Text(hLabel, fontSize = 10.sp, color = if (isSelected) Color.White else Color.White.copy(0.6f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                                            }
-                                        }
-                                    }
-
-                                    // Infinite Loop Measure Button
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("LOOP BAR:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
-                                        Switch(
-                                            checked = viewModel.isPracticeLoopEnabled.value,
-                                            onCheckedChange = { isEnabled ->
-                                                viewModel.isPracticeLoopEnabled.value = isEnabled
-                                                if (isEnabled) {
-                                                    val m = (selectedMeasureNumber - 1).coerceIn(0, totalMeasures - 1)
-                                                    viewModel.practiceMeasureRange.value = m to m
-                                                } else {
-                                                    viewModel.practiceMeasureRange.value = null
-                                                }
-                                            },
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = Color(0xFFFFD700),
-                                                checkedTrackColor = Color(0xFF6C63FF)
+                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(item.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                            AssistChip(
+                                                onClick = {},
+                                                label = { Text(item.category, fontSize = 10.sp) }
                                             )
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Measure Grid Picker
-                            Text("SELECT MEASURE TO DRILL:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(0.85f))
-                            LazyColumn(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val measureRows = (1..totalMeasures).chunked(4)
-                                items(measureRows) { rowIndices ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        rowIndices.forEach { barNum ->
-                                            val isCurrentBar = selectedMeasureNumber == barNum
-                                            val measureObj = currentLoadedScore.measures.getOrNull(barNum - 1)
-                                            val noteCount = measureObj?.notes?.size ?: 0
-                                            val rhCount = measureObj?.notes?.count { it.voice == 0 || it.midiNote >= 60 } ?: 0
-                                            val lhCount = measureObj?.notes?.count { it.voice == 1 || it.midiNote < 60 } ?: 0
-
-                                            Surface(
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = if (isCurrentBar) Color(0xFF6C63FF) else Color(0xFF19132E),
-                                                border = BorderStroke(1.dp, if (isCurrentBar) Color(0xFFFFD700) else Color(0xFF2C2250)),
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .clickable {
-                                                        selectedMeasureNumber = barNum
-                                                        viewModel.seekToPosition(barNum - 1, 0f)
-                                                        if (viewModel.isPracticeLoopEnabled.value) {
-                                                            viewModel.practiceMeasureRange.value = (barNum - 1) to (barNum - 1)
-                                                        }
-                                                        viewModel.startScorePlayback()
-                                                        showLearnModeDialog = false
-                                                    }
-                                            ) {
-                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                        Text("Bar $barNum", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
-                                                        Text("$noteCount notes", color = if (isCurrentBar) Color.White.copy(0.9f) else Color(0xFF81D4FA), fontSize = 10.sp)
-                                                    }
-                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                        Text("RH: $rhCount", fontSize = 9.sp, color = if (isCurrentBar) Color.White else Color(0xFF81D4FA))
-                                                        Text("LH: $lhCount", fontSize = 9.sp, color = if (isCurrentBar) Color.White else Color(0xFFCE93D8))
-                                                    }
-                                                }
-                                            }
                                         }
-                                        if (rowIndices.size < 4) {
-                                            repeat(4 - rowIndices.size) {
-                                                Spacer(Modifier.weight(1f))
-                                            }
+                                        Text(item.description, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("RH Fingering: ${item.fingeringRightHand.joinToString("-")}", fontSize = 11.sp, color = Color(0xFF81D4FA))
+                                            Text("LH Fingering: ${item.fingeringLeftHand.joinToString("-")}", fontSize = 11.sp, color = Color(0xFFCE93D8))
                                         }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(PracticeLibrary.items) { item ->
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF19132E),
-                                border = BorderStroke(1.dp, Color(0xFF2C2250)),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val practiceScore = PracticeLibrary.createScoreForPracticeItem(item)
-                                        viewModel.currentScore.value = practiceScore
-                                        viewModel.resetScorePlayhead()
-                                        showLearnModeDialog = false
-                                    }
-                            ) {
-                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(item.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                        AssistChip(
-                                            onClick = {},
-                                            label = { Text(item.category, fontSize = 10.sp) }
-                                        )
-                                    }
-                                    Text(item.description, color = Color.White.copy(0.7f), fontSize = 12.sp)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("RH: ${item.fingeringRightHand.joinToString(" ")}", fontSize = 11.sp, color = Color(0xFF81D4FA))
-                                        Text("LH: ${item.fingeringLeftHand.joinToString(" ")}", fontSize = 11.sp, color = Color(0xFFCE93D8))
                                     }
                                 }
                             }
@@ -1392,8 +1573,8 @@ Row(
                 }
             }
         }
+
     }
-}
 
     // AI Audio-to-Score Screen
     if (showAudioToMidiScreen) {
@@ -1418,7 +1599,24 @@ Row(
             }
         }
     }
-   // Open Fullscreen Stage when either user opens Fullscreen OR Video Export is running!
+
+    // Ear Training Academy Screen
+    if (showEarTrainingScreen) {
+        FullscreenDialog(
+            onDismissRequest = { showEarTrainingScreen = false }
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color(0xFF0F0B1E)
+            ) {
+                EarTrainingAcademyScreen(
+                    viewModel = viewModel,
+                    onBack = { showEarTrainingScreen = false }
+                )
+            }
+        }
+    }
+    // Open Fullscreen Stage when either user opens Fullscreen OR Video Export is running!
     val shouldMountFullscreenStage = viewModel.isFullscreenKeyboard.value || viewModel.isVideoExporting.value
 
     if (shouldMountFullscreenStage) {
@@ -1478,7 +1676,7 @@ Row(
                 val currentScore = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
 
 
-               val effectiveTempo = (currentScore?.tempo ?: 120f).coerceAtLeast(20f) * viewModel.playbackSpeed.value.coerceIn(0.25f, 2.5f)
+                val effectiveTempo = (currentScore?.tempo ?: 120f).coerceAtLeast(20f) * viewModel.playbackSpeed.value.coerceIn(0.25f, 2.5f)
 
                 val totalSeconds = remember(currentScore, effectiveTempo) {
                     if (currentScore == null) 0.0
@@ -1554,680 +1752,939 @@ Row(
                             .align(Alignment.TopCenter)
                     ) {
                         Surface(
-                                modifier = Modifier
-                                    // .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                                color = Color(0xFF0F0B18).copy(alpha = 0.92f),
-                                shape = RoundedCornerShape(22.dp),
-                                border = BorderStroke(1.dp, Color(0xFF281E38))
-                            ) {
-                                val topBarScrollState = rememberScrollState()
-                                Row(
-                                    modifier = Modifier
-                                        .horizontalScroll(topBarScrollState)
-                                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                  Row(
-    modifier = Modifier.width(350.dp)
-) {
-
-
-                                       var showImportMenu by remember { mutableStateOf(false) }
-Row(
-    modifier = Modifier
-        .background(Color(0xFF140E26), RoundedCornerShape(16.dp))
-        .border(BorderStroke(1.dp, Color(0xFF382956)), RoundedCornerShape(16.dp))
-        .padding(horizontal = 10.dp, vertical = 6.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp)
-) {
-    // 1. Open / Import Score Button with Dropdown
-    Box {
-        Button(
-            onClick = { showImportMenu = true },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E204A)),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, Color(0xFF523B7A)),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            modifier = Modifier.height(28.dp)
-        ) {
-            Icon(
-                Icons.Default.FileOpen,
-                contentDescription = "Import Score",
-                tint = Color(0xFFC5CAE9),
-                modifier = Modifier.size(12.dp)
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                "Import",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFFC5CAE9)
-            )
-            Spacer(Modifier.width(2.dp))
-            Icon(
-                Icons.Default.ArrowDropDown,
-                contentDescription = null,
-                tint = Color(0xFFC5CAE9).copy(alpha = 0.7f),
-                modifier = Modifier.size(14.dp)
-            )
-        }
-
-        DropdownMenu(
-            expanded = showImportMenu,
-            onDismissRequest = { showImportMenu = false },
-            modifier = Modifier
-                .widthIn(min = 260.dp, max = 320.dp)
-                .background(Color(0xFF140E26))
-                .border(BorderStroke(1.dp, Color(0xFF382956)), RoundedCornerShape(8.dp))
-        ) {
-            // Custom File Picker
-            DropdownMenuItem(
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text("Import Custom File...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("MIDI (.mid), MusicXML (.xml), PDF Score", fontSize = 10.sp, color = Color.White.copy(0.6f))
-                        }
-                    }
-                },
-                onClick = {
-                    showImportMenu = false
-                    viewModel.onPickScoreFileRequested?.invoke()
-                }
-            )
-
-            HorizontalDivider(color = Color(0xFF281C3F), modifier = Modifier.padding(vertical = 4.dp))
-
-            // Header for Built-in Tutorials
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color(0xFF81D4FA), modifier = Modifier.size(13.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("INBUILT MIDI TUTORIALS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81D4FA))
-            }
-
-            // List each built-in tutorial
-            PracticeLibrary.builtInTutorials.forEach { tutorial ->
-                DropdownMenuItem(
-                    text = {
-                        Column(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp)
+                                // .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            color = Color(0xFF0F0B18).copy(alpha = 0.92f),
+                            shape = RoundedCornerShape(22.dp),
+                            border = BorderStroke(1.dp, Color(0xFF281E38))
                         ) {
+                            val topBarScrollState = rememberScrollState()
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                modifier = Modifier
+                                    .horizontalScroll(topBarScrollState)
+                                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Text(
-                                    tutorial.title, 
-                                    fontSize = 12.sp, 
-                                    fontWeight = FontWeight.SemiBold, 
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text("${tutorial.tempo} BPM", fontSize = 10.sp, color = Color(0xFFFFD700))
-                            }
-                            Spacer(Modifier.height(2.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(tutorial.composer, fontSize = 10.sp, color = Color(0xFF81D4FA), maxLines = 1, modifier = Modifier.weight(1f, fill = false))
-                                Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
-                                Text(tutorial.timeSignature, fontSize = 10.sp, color = Color.White.copy(0.6f))
-                                Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
-                                Text(tutorial.difficulty, fontSize = 10.sp, color = Color(0xFFA5D6A7))
-                            }
-                        }
-                    },
-                    onClick = {
-                        showImportMenu = false
-                        val readBytesFn: (String) -> ByteArray? = { name ->
-                            viewModel.onReadAssetBytes?.invoke(name)
-                        }
-                        val loadedScore = PracticeLibrary.loadTutorialScore(
-                            tutorial = tutorial,
-                            readBytes = readBytesFn,
-                            trainingMode = "FULL"
-                        )
-                        if (loadedScore != null) {
-                            viewModel.currentScore.value = loadedScore
-                            viewModel.resetScorePlayhead()
-                        }
-                    }
-                )
-            }
-        }
-    }
+                                Row(
+                                    modifier = Modifier.width(350.dp)
+                                ) {
 
-    VerticalDivider(
-        modifier = Modifier
-            .height(16.dp)
-            .width(1.dp),
-        color = Color(0xFF382956)
-    )
-    
-    val songTitle = currentScore?.title 
-        ?: viewModel.currentMediaItem.value?.title 
-        ?: viewModel.selectedMixerItem.value?.displayName 
-        ?: "No Score Selected"
 
-    Row(
-        modifier = Modifier.weight(1f, fill = false),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF5C6BC0))
-        )
-        Text(
-            songTitle,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-            maxLines = 1,
-            modifier = Modifier.weight(1f, fill = false)
-        )
-        Icon(
-            Icons.Default.GraphicEq,
-            contentDescription = null,
-            tint = Color(0xFF5C6BC0),
-            modifier = Modifier.size(14.dp)
-        )
-    }
-}
-                                    }
+                                    var showImportMenu by remember { mutableStateOf(false) }
+                                    Row(
+                                        modifier = Modifier
+                                            .background(Color(0xFF140E26), RoundedCornerShape(16.dp))
+                                            .border(BorderStroke(1.dp, Color(0xFF382956)), RoundedCornerShape(16.dp))
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        // 1. Open / Import Score Button with Dropdown
+                                        Box {
+                                            Button(
+                                                onClick = { showImportMenu = true },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E204A)),
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, Color(0xFF523B7A)),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.height(28.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.FileOpen,
+                                                    contentDescription = "Import Score",
+                                                    tint = Color(0xFFC5CAE9),
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(
+                                                    "Import",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(0xFFC5CAE9)
+                                                )
+                                                Spacer(Modifier.width(2.dp))
+                                                Icon(
+                                                    Icons.Default.ArrowDropDown,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFC5CAE9).copy(alpha = 0.7f),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
 
-// Helper to cleanly update visualizer layout and notation format
-val updateLayout: (String, String, AppViewModel, () -> Unit) -> Unit = { mode, format, vm, closeMenu ->
-    fsLayoutMode = mode
-    if (format.isNotBlank()) {
-        vm.notationFormat.value = format
-    }
-    closeMenu()
-}
-
-// A single state controls the visibility of the combined menu
-var menuExpanded by remember { mutableStateOf(false) }
-
-Box {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF1E162E),
-        border = BorderStroke(1.dp, Color(0xFF372754)),
-        modifier = Modifier.clickable { menuExpanded = true }
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Icon(
-                Icons.Default.ViewQuilt,
-                contentDescription = "Layout Mode",
-                tint = Color(0xFF81D4FA),
-                modifier = Modifier.size(13.dp)
-            )
-            
-            // Format the current active state label cleanly
-            val currentFormatLabel = when (viewModel.notationFormat.value.trim().lowercase()) {
-                "tab", "tab only" -> "Tab"
-                "staff", "staff only" -> "Staff"
-                else -> "Both"
-            }
-            val displayLabel = when (fsLayoutMode) {
-                "Split" -> "Split ($currentFormatLabel)"
-                "Notation" -> "Notation ($currentFormatLabel)"
-                "KeyboardWaterfall" -> "Keyboard + Waterfall"
-                "Waterfall" -> "Waterfall Only"
-                else -> "Keyboard Only"
-            }
-
-            Text(
-                displayLabel,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White
-            )
-            Icon(
-                Icons.Default.ArrowDropDown,
-                contentDescription = null,
-                tint = Color.White.copy(0.7f),
-                modifier = Modifier.size(14.dp)
-            )
-        }
-    }
-
-    DropdownMenu(
-        expanded = menuExpanded,
-        onDismissRequest = { menuExpanded = false }
-    ) {
-        // 1. SPLIT MODE WITH SUB-OPTIONS
-        DropdownMenuItem(
-            text = { Text("Split (Staff + Waterfall)", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("Split", "staff", viewModel) { menuExpanded = false }
-            }
-        )
-        DropdownMenuItem(
-            text = { Text("Split (Tab + Waterfall)", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("Split", "tab", viewModel) { menuExpanded = false }
-            }
-        )
-        DropdownMenuItem(
-            text = { Text("Split (Both + Waterfall)", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("Split", "both", viewModel) { menuExpanded = false }
-            }
-        )
-
-        Divider(color = Color(0xFF372754).copy(alpha = 0.5f))
-
-        // 2. NOTATION ONLY WITH SUB-OPTIONS
-        DropdownMenuItem(
-            text = { Text("Notation Only (Staff)", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("Notation", "staff", viewModel) { menuExpanded = false }
-            }
-        )
-        DropdownMenuItem(
-            text = { Text("Notation Only (Tab)", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("Notation", "tab", viewModel) { menuExpanded = false }
-            }
-        )
-        DropdownMenuItem(
-            text = { Text("Notation Only (Both)", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("Notation", "both", viewModel) { menuExpanded = false }
-            }
-        )
-
-        Divider(color = Color(0xFF372754).copy(alpha = 0.5f))
-
-        // 3. STANDARD MODES
-        DropdownMenuItem(
-            text = { Text("Keyboard + Waterfall", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("KeyboardWaterfall", "", viewModel) { menuExpanded = false }
-            }
-        )
-        DropdownMenuItem(
-            text = { Text("Waterfall Only", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("Waterfall", "", viewModel) { menuExpanded = false }
-            }
-        )
-        DropdownMenuItem(
-            text = { Text("Keyboard Only", fontSize = 12.sp) },
-            onClick = {
-                updateLayout("Keyboard", "", viewModel) { menuExpanded = false }
-            }
-        )
-    }
-}
-                                       // pEQInstrument Dropdown for visualizer & audio sample playback
-val currentSelectedInstType = ChordInstrumentType.fromNameOrNull(viewModel.selectedInstrument.value) 
-    ?: ChordInstrumentType.PIANO_ACOUSTIC
-
-pEQInstrumentDropdown(
-    selectedInstrument = currentSelectedInstType,
-    accentColor = Color(0xFF64B5F6),
-    onInstrumentChange = { newInst ->
-        // Directly update the ViewModel state. 
-        // Compose will automatically pick up the change and recompose with the new instrument.
-        viewModel.selectedInstrument.value = newInst.title
-        
-        try {
-            viewModel.audioEngine.setInstrument(newInst.soundEngineName)
-        } catch (_: Exception) {}
-        
-        if (newInst.title.contains("Guitar") || newInst == ChordInstrumentType.UKULELE) {
-            viewModel.notationFormat.value = "Tab Only"
-            notationFormat = "Tab Only"
-        } else if (newInst == ChordInstrumentType.PIANO_ACOUSTIC || newInst == ChordInstrumentType.PIANO_ELECTRIC || newInst == ChordInstrumentType.HARMONIUM) {
-            viewModel.notationFormat.value = "Staff Only"
-            notationFormat = "Staff Only"
-        }
-    },
-    modifier = Modifier.width(185.dp).height(32.dp)
-)
-                                        
-                                        // MIDI Tracks Dropdown Selector (if score has tracks)
-                                        val currentScoreObj = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
-                                        val foundTracks = currentScoreObj?.tracks ?: emptyList()
-                                        if (foundTracks.isNotEmpty()) {
-                                            Box {
-                                                val activeTracksCount = foundTracks.count { tr -> viewModel.enabledTrackIndices[tr.trackIndex] ?: tr.isEnabled }
-                                                Surface(
-                                                    shape = RoundedCornerShape(16.dp),
-                                                    color = Color(0xFF1E162E),
-                                                    border = BorderStroke(1.dp, Color(0xFF2E2445)),
-                                                    modifier = Modifier.clickable { fsInstrumentMenuExpanded = true }
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                    ) {
-                                                        Icon(
-                                                            Icons.Default.Tune,
-                                                            contentDescription = null,
-                                                            tint = Color(0xFF9FA8DA),
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                        Text(
-                                                            "Tracks ($activeTracksCount/${foundTracks.size})",
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Medium,
-                                                            color = Color.White
-                                                        )
-                                                        Icon(
-                                                            Icons.Default.ArrowDropDown,
-                                                            contentDescription = null,
-                                                            tint = Color.White.copy(0.7f),
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
+                                            DropdownMenu(
+                                                expanded = showImportMenu,
+                                                onDismissRequest = { showImportMenu = false },
+                                                modifier = Modifier
+                                                    .widthIn(min = 260.dp, max = 320.dp)
+                                                    .background(Color(0xFF140E26))
+                                                    .border(BorderStroke(1.dp, Color(0xFF382956)), RoundedCornerShape(8.dp))
+                                            ) {
+                                                // Custom File Picker
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
+                                                            Spacer(Modifier.width(8.dp))
+                                                            Column {
+                                                                Text("Import Custom File...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                                Text("MIDI (.mid), MusicXML (.xml), PDF Score", fontSize = 10.sp, color = Color.White.copy(0.6f))
+                                                            }
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        showImportMenu = false
+                                                        viewModel.onPickScoreFileRequested?.invoke()
                                                     }
-                                                }
-                                                DropdownMenu(
-                                                    expanded = fsInstrumentMenuExpanded,
-                                                    onDismissRequest = { fsInstrumentMenuExpanded = false }
+                                                )
+
+                                                HorizontalDivider(color = Color(0xFF281C3F), modifier = Modifier.padding(vertical = 4.dp))
+
+                                                // Header for Built-in Tutorials
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Text(
-                                                        text = "MIDI TRACKS (${foundTracks.size})",
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color(0xFFFFD700),
-                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                                                    )
-                                                    foundTracks.forEach { track ->
-                                                        val isEnabled = viewModel.enabledTrackIndices[track.trackIndex] ?: track.isEnabled
-                                                        DropdownMenuItem(
-                                                            text = {
+                                                    Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = Color(0xFF81D4FA), modifier = Modifier.size(13.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text("INBUILT MIDI TUTORIALS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81D4FA))
+                                                }
+
+                                                // List each built-in tutorial
+                                                PracticeLibrary.builtInTutorials.forEach { tutorial ->
+                                                    DropdownMenuItem(
+                                                        text = {
+                                                            Column(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(vertical = 2.dp)
+                                                            ) {
                                                                 Row(
                                                                     modifier = Modifier.fillMaxWidth(),
                                                                     horizontalArrangement = Arrangement.SpaceBetween,
                                                                     verticalAlignment = Alignment.CenterVertically
                                                                 ) {
-                                                                    Column(modifier = Modifier.weight(1f)) {
-                                                                        Text(
-                                                                            track.trackName.ifBlank { "Track ${track.trackIndex + 1}" },
-                                                                            fontSize = 12.sp,
-                                                                            fontWeight = if (isEnabled) FontWeight.Bold else FontWeight.Normal,
-                                                                            color = if (isEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-                                                                        )
-                                                                        Text(
-                                                                            "Ch ${track.channel + 1} • ${track.noteCount} notes",
-                                                                            fontSize = 10.sp,
-                                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                                                                        )
-                                                                    }
-                                                                    Switch(
-                                                                        checked = isEnabled,
-                                                                        onCheckedChange = { checked ->
-                                                                            viewModel.enabledTrackIndices[track.trackIndex] = checked
-                                                                        },
-                                                                        modifier = Modifier.padding(start = 8.dp)
+                                                                    Text(
+                                                                        tutorial.title,
+                                                                        fontSize = 12.sp,
+                                                                        fontWeight = FontWeight.SemiBold,
+                                                                        color = Color.White,
+                                                                        maxLines = 1,
+                                                                        modifier = Modifier.weight(1f)
                                                                     )
+                                                                    Spacer(Modifier.width(8.dp))
+                                                                    Text("${tutorial.tempo} BPM", fontSize = 10.sp, color = Color(0xFFFFD700))
                                                                 }
-                                                            },
-                                                            onClick = {
-                                                                val currentVal = viewModel.enabledTrackIndices[track.trackIndex] ?: track.isEnabled
-                                                                viewModel.enabledTrackIndices[track.trackIndex] = !currentVal
+                                                                Spacer(Modifier.height(2.dp))
+                                                                Row(
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    Text(tutorial.composer, fontSize = 10.sp, color = Color(0xFF81D4FA), maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                                                                    Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                                                    Text(tutorial.timeSignature, fontSize = 10.sp, color = Color.White.copy(0.6f))
+                                                                    Text("•", fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                                                    Text(tutorial.difficulty, fontSize = 10.sp, color = Color(0xFFA5D6A7))
+                                                                }
                                                             }
-                                                        )
-                                                    }
+                                                        },
+                                                        onClick = {
+                                                            showImportMenu = false
+                                                            val readBytesFn: (String) -> ByteArray? = { name ->
+                                                                viewModel.onReadAssetBytes?.invoke(name)
+                                                            }
+                                                            val loadedScore = PracticeLibrary.loadTutorialScore(
+                                                                tutorial = tutorial,
+                                                                readBytes = readBytesFn,
+                                                                trainingMode = "FULL"
+                                                            )
+                                                            if (loadedScore != null) {
+                                                                viewModel.currentScore.value = loadedScore
+                                                                viewModel.resetScorePlayhead()
+                                                            }
+                                                        }
+                                                    )
                                                 }
                                             }
                                         }
 
-                                      
-                                        
-                                        // Export Button
-                                        Button(
-                                            onClick = { showExportDialog = true },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2045)),
-                                            shape = RoundedCornerShape(16.dp),
-                                            border = BorderStroke(1.dp, Color(0xFF4C3D75)),
-                                            contentPadding = PaddingValues(horizontal = 11.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(30.dp)
+                                        VerticalDivider(
+                                            modifier = Modifier
+                                                .height(16.dp)
+                                                .width(1.dp),
+                                            color = Color(0xFF382956)
+                                        )
+
+                                        val songTitle = currentScore?.title
+                                            ?: viewModel.currentMediaItem.value?.title
+                                            ?: viewModel.selectedMixerItem.value?.displayName
+                                            ?: "No Score Selected"
+
+                                        Row(
+                                            modifier = Modifier.weight(1f, fill = false),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            Icon(
-                                                Icons.Default.Upload,
-                                                contentDescription = "Export",
-                                                tint = Color(0xFFC5CAE9),
-                                                modifier = Modifier.size(13.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF5C6BC0))
                                             )
-                                            Spacer(Modifier.width(4.dp))
                                             Text(
-                                                "Export",
-                                                fontSize = 11.sp,
+                                                songTitle,
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFFC5CAE9)
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
-                                        }
-
-                                        
-                                        // Learn Mode (Scales, Arpeggios & Chords Trainer)
-                                        IconButton(
-                                            onClick = { showLearnModeDialog = true },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.School,
-                                                contentDescription = "Practice Scales & Chords",
-                                                tint = Color(0xFF80CBC4),
-                                                modifier = Modifier.size(17.dp)
-                                            )
-                                        }
-
-                                        // Play-Along Evaluation & Live Accuracy
-                                        val isPlayAlongActive = viewModel.playAlongEngine.isEvaluating.value
-                                        IconButton(
-                                            onClick = {
-                                                if (!isPlayAlongActive) {
-                                                    val score = viewModel.currentScore.value as? Score
-                                                    if (score != null) {
-                                                        viewModel.playAlongEngine.startEvaluation(score, score.tempo)
-                                                        if (!viewModel.isScorePlaying.value) {
-                                                            viewModel.startScorePlayback()
-                                                        }
-                                                    }
-                                                }
-                                                showPlayAlongStatsDialog = true
-                                            },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
                                             Icon(
                                                 Icons.Default.GraphicEq,
-                                                contentDescription = "Play-Along Accuracy",
-                                                tint = if (isPlayAlongActive) Color(0xFF00E676) else Color.White.copy(0.75f),
-                                                modifier = Modifier.size(17.dp)
+                                                contentDescription = null,
+                                                tint = Color(0xFF5C6BC0),
+                                                modifier = Modifier.size(14.dp)
                                             )
                                         }
+                                    }
+                                }
 
-                                        // AI Audio-to-Score Model (muscriptor-small-lm.onnx)
-                                        IconButton(
-                                            onClick = { showAudioToMidiScreen = true },
-                                            modifier = Modifier.size(32.dp)
+// Helper to cleanly update visualizer layout and notation format
+                                val updateLayout: (String, String, AppViewModel, () -> Unit) -> Unit = { mode, format, vm, closeMenu ->
+                                    fsLayoutMode = mode
+                                    if (format.isNotBlank()) {
+                                        vm.notationFormat.value = format
+                                    }
+                                    closeMenu()
+                                }
+
+// A single state controls the visibility of the combined menu
+                                var menuExpanded by remember { mutableStateOf(false) }
+
+                                Box {
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = Color(0xFF1E162E),
+                                        border = BorderStroke(1.dp, Color(0xFF372754)),
+                                        modifier = Modifier.clickable { menuExpanded = true }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Icon(
-                                                Icons.Default.AutoAwesome,
-                                                contentDescription = "AI Audio to MIDI / Sheet Music",
-                                                tint = Color(0xFFFFD700),
-                                                modifier = Modifier.size(17.dp)
+                                                Icons.Default.ViewQuilt,
+                                                contentDescription = "Layout Mode",
+                                                tint = Color(0xFF81D4FA),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+
+                                            // Format the current active state label cleanly
+                                            val currentFormatLabel = when (viewModel.notationFormat.value.trim().lowercase()) {
+                                                "tab", "tab only" -> "Tab"
+                                                "staff", "staff only" -> "Staff"
+                                                else -> "Both"
+                                            }
+                                            val displayLabel = when (fsLayoutMode) {
+                                                "Split" -> "Split ($currentFormatLabel)"
+                                                "Notation" -> "Notation ($currentFormatLabel)"
+                                                "KeyboardWaterfall" -> "Keyboard + Waterfall"
+                                                "Waterfall" -> "Waterfall Only"
+                                                else -> "Keyboard Only"
+                                            }
+
+                                            Text(
+                                                displayLabel,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color.White
+                                            )
+                                            Icon(
+                                                Icons.Default.ArrowDropDown,
+                                                contentDescription = null,
+                                                tint = Color.White.copy(0.7f),
+                                                modifier = Modifier.size(14.dp)
                                             )
                                         }
-  // MIDI Device Button
-                                        val isMidiConnected = viewModel.connectedMidiDeviceName.value?.isNotBlank() == true
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = menuExpanded,
+                                        onDismissRequest = { menuExpanded = false }
+                                    ) {
+                                        // 1. SPLIT MODE WITH SUB-OPTIONS
+                                        DropdownMenuItem(
+                                            text = { Text("Split (Staff + Waterfall)", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("Split", "staff", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Split (Tab + Waterfall)", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("Split", "tab", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Split (Both + Waterfall)", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("Split", "both", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+
+                                        Divider(color = Color(0xFF372754).copy(alpha = 0.5f))
+
+                                        // 2. NOTATION ONLY WITH SUB-OPTIONS
+                                        DropdownMenuItem(
+                                            text = { Text("Notation Only (Staff)", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("Notation", "staff", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Notation Only (Tab)", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("Notation", "tab", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Notation Only (Both)", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("Notation", "both", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+
+                                        Divider(color = Color(0xFF372754).copy(alpha = 0.5f))
+
+                                        // 3. STANDARD MODES
+                                        DropdownMenuItem(
+                                            text = { Text("Keyboard + Waterfall", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("KeyboardWaterfall", "", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Waterfall Only", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("Waterfall", "", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Keyboard Only", fontSize = 12.sp) },
+                                            onClick = {
+                                                updateLayout("Keyboard", "", viewModel) { menuExpanded = false }
+                                            }
+                                        )
+                                    }
+                                }
+                                // pEQInstrument Dropdown for visualizer & audio sample playback
+                                val currentSelectedInstType = ChordInstrumentType.fromNameOrNull(viewModel.selectedInstrument.value)
+                                    ?: ChordInstrumentType.PIANO_ACOUSTIC
+
+                                pEQInstrumentDropdown(
+                                    selectedInstrument = currentSelectedInstType,
+                                    accentColor = Color(0xFF64B5F6),
+                                    onInstrumentChange = { newInst ->
+                                        // Directly update the ViewModel state.
+                                        // Compose will automatically pick up the change and recompose with the new instrument.
+                                        viewModel.selectedInstrument.value = newInst.title
+
+                                        try {
+                                            viewModel.audioEngine.setInstrument(newInst.soundEngineName)
+                                        } catch (_: Exception) {}
+
+                                        if (newInst.title.contains("Guitar") || newInst == ChordInstrumentType.UKULELE) {
+                                            viewModel.notationFormat.value = "Tab Only"
+                                            notationFormat = "Tab Only"
+                                        } else if (newInst == ChordInstrumentType.PIANO_ACOUSTIC || newInst == ChordInstrumentType.PIANO_ELECTRIC || newInst == ChordInstrumentType.HARMONIUM) {
+                                            viewModel.notationFormat.value = "Staff Only"
+                                            notationFormat = "Staff Only"
+                                        }
+                                    },
+                                    modifier = Modifier.width(185.dp).height(32.dp)
+                                )
+
+                                // MIDI Tracks Dropdown Selector (if score has tracks)
+                                val currentScoreObj = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score
+                                val foundTracks = currentScoreObj?.tracks ?: emptyList()
+                                if (foundTracks.isNotEmpty()) {
+                                    Box {
+                                        val activeTracksCount = foundTracks.count { tr -> viewModel.enabledTrackIndices[tr.trackIndex] ?: tr.isEnabled }
                                         Surface(
                                             shape = RoundedCornerShape(16.dp),
-                                            color = if (isMidiConnected) Color(0xFF1C2B24) else Color(0xFF1E162E),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (isMidiConnected) Color(0xFF10B981).copy(0.5f) else Color(0xFF2E2445)
-                                            ),
-                                            modifier = Modifier.clickable {
-                                                viewModel.onScanMidiDevicesRequested?.invoke()
-                                            }
+                                            color = Color(0xFF1E162E),
+                                            border = BorderStroke(1.dp, Color(0xFF2E2445)),
+                                            modifier = Modifier.clickable { fsInstrumentMenuExpanded = true }
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
-                                                 Icon(
-                                                     Icons.Default.Piano,
-                                                     contentDescription = "MIDI Device",
-                                                     tint = if (isMidiConnected) Color(0xFF10B981) else Color.White.copy(0.8f),
-                                                     modifier = Modifier.size(15.dp)
-                                                 )
+                                                Icon(
+                                                    Icons.Default.Tune,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF9FA8DA),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Text(
+                                                    "Tracks ($activeTracksCount/${foundTracks.size})",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color.White
+                                                )
+                                                Icon(
+                                                    Icons.Default.ArrowDropDown,
+                                                    contentDescription = null,
+                                                    tint = Color.White.copy(0.7f),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
                                             }
                                         }
-                                        
-          // Settings Menu
-                                        IconButton(
-                                            onClick = { viewModel.showSettings.value = true },
-                                            modifier = Modifier.size(32.dp)
+                                        DropdownMenu(
+                                            expanded = fsInstrumentMenuExpanded,
+                                            onDismissRequest = { fsInstrumentMenuExpanded = false }
                                         ) {
-                                            Icon(
-                                                Icons.Default.Settings,
-                                                contentDescription = "Menu / Settings",
-                                                tint = Color.White.copy(0.75f),
-                                                modifier = Modifier.size(18.dp)
+                                            Text(
+                                                text = "MIDI TRACKS (${foundTracks.size})",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFFFD700),
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                                             )
+                                            foundTracks.forEach { track ->
+                                                val isEnabled = viewModel.enabledTrackIndices[track.trackIndex] ?: track.isEnabled
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    track.trackName.ifBlank { "Track ${track.trackIndex + 1}" },
+                                                                    fontSize = 12.sp,
+                                                                    fontWeight = if (isEnabled) FontWeight.Bold else FontWeight.Normal,
+                                                                    color = if (isEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                                                )
+                                                                Text(
+                                                                    "Ch ${track.channel + 1} • ${track.noteCount} notes",
+                                                                    fontSize = 10.sp,
+                                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                                                                )
+                                                            }
+                                                            Switch(
+                                                                checked = isEnabled,
+                                                                onCheckedChange = { checked ->
+                                                                    viewModel.enabledTrackIndices[track.trackIndex] = checked
+                                                                },
+                                                                modifier = Modifier.padding(start = 8.dp)
+                                                            )
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        val currentVal = viewModel.enabledTrackIndices[track.trackIndex] ?: track.isEnabled
+                                                        viewModel.enabledTrackIndices[track.trackIndex] = !currentVal
+                                                    }
+                                                )
+                                            }
                                         }
+                                    }
+                                }
 
-                                          // 13. Close / Dismiss Pill Button
+
+
+                                // Export Button
+                                Button(
+                                    onClick = { showExportDialog = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2045)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF4C3D75)),
+                                    contentPadding = PaddingValues(horizontal = 11.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Upload,
+                                        contentDescription = "Export",
+                                        tint = Color(0xFFC5CAE9),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        "Export",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFC5CAE9)
+                                    )
+                                }
+
+
+                                // Learn Mode (Scales, Arpeggios & Chords Trainer)
+                                IconButton(
+                                    onClick = { showLearnModeDialog = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.School,
+                                        contentDescription = "Practice Scales & Chords",
+                                        tint = Color(0xFF80CBC4),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+
+                                // Play-Along Evaluation & Live Accuracy
+                                val isPlayAlongActive = viewModel.playAlongEngine.isEvaluating.value
+                                IconButton(
+                                    onClick = {
+                                        if (!isPlayAlongActive) {
+                                            val score = viewModel.currentScore.value as? Score
+                                            if (score != null) {
+                                                viewModel.playAlongEngine.startEvaluation(score, score.tempo)
+                                                if (!viewModel.isScorePlaying.value) {
+                                                    viewModel.startScorePlayback()
+                                                }
+                                            }
+                                        }
+                                        showPlayAlongStatsDialog = true
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.GraphicEq,
+                                        contentDescription = "Play-Along Accuracy",
+                                        tint = if (isPlayAlongActive) Color(0xFF00E676) else Color.White.copy(0.75f),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+                                //Ear trainer
+                                val showEarTrainingScreen = viewModel.playAlongEngine
+                                IconButton(
+                                    onClick = { showEarTrainingScreen }, // Change state to show Ear Training
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Hearing,
+                                        contentDescription = "Ear Training",
+                                        tint = Color(0xFFFFD370),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+                                // AI Audio-to-Score Model (muscriptor-small-lm.onnx)
+                                IconButton(
+                                    onClick = { showAudioToMidiScreen = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.AutoAwesome,
+                                        contentDescription = "AI Audio to MIDI / Sheet Music",
+                                        tint = Color(0xFFFFD700),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+                                // MIDI Device Button
+                                val isMidiConnected = viewModel.connectedMidiDeviceName.value?.isNotBlank() == true
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (isMidiConnected) Color(0xFF1C2B24) else Color(0xFF1E162E),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isMidiConnected) Color(0xFF10B981).copy(0.5f) else Color(0xFF2E2445)
+                                    ),
+                                    modifier = Modifier.clickable {
+                                        viewModel.onScanMidiDevicesRequested?.invoke()
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Piano,
+                                            contentDescription = "MIDI Device",
+                                            tint = if (isMidiConnected) Color(0xFF10B981) else Color.White.copy(0.8f),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                }
+
+                                // Settings Menu
+                                IconButton(
+                                    onClick = { viewModel.showSettings.value = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Settings,
+                                        contentDescription = "Menu / Settings",
+                                        tint = Color.White.copy(0.75f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // 13. Close / Dismiss Pill Button
                                 Surface(
                                     shape = CircleShape,
                                     color = Color(0xFF1E162E),
                                     modifier = Modifier.size(26.dp)
                                 ) {
-                                    
-                                        IconButton(
+
+                                    IconButton(
                                         onClick = { areControlsVisible = !areControlsVisible },
                                         modifier = Modifier.size(26.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Close Fullscreen",
-                                                tint = Color.White.copy(0.6f),
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Close Fullscreen",
+                                            tint = Color.White.copy(0.6f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
-                                
+                                }
+
                             }
                         }
                     }
-                    
-                      val isExportingNow = stageCaptureController.isExportingVideo || viewModel.isVideoExporting.value
-BoxWithConstraints(
-    modifier = Modifier
-        .fillMaxSize()
-        .graphicsLayer(
-            scaleX = if (isExportingNow) 1f else fsZoomFactor,
-            scaleY = if (isExportingNow) 1f else fsZoomFactor,
-            translationX = if (isExportingNow) 0f else panOffset.x,
-            translationY = if (isExportingNow) 0f else panOffset.y
-        )
-        .drawWithContent {
-            stageGraphicsLayer.record {
-                this@drawWithContent.drawContent()
-            }
-            drawLayer(stageGraphicsLayer)
-        }
-        .background(Color.Black)
-) {
-                            val availableW = maxWidth
-                            val isNotationOnly = fsLayoutMode == "Notation"
-                            val isLandscapeWide = availableW >= 600.dp
-                            // Piano & waterfall width: in landscape wide or notation mode it fits availableW; in portrait split/waterfall/keyboard it expands for 88 playable keys
-                            val keyboardWidth = if (isLandscapeWide) availableW else maxOf(availableW, 30.dp * whiteKeyCount)
 
-                            val activeMidiNoteSet by remember {
-                                derivedStateOf {
-                                    viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet()
+                    val isExportingNow = stageCaptureController.isExportingVideo || viewModel.isVideoExporting.value
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = if (isExportingNow) 1f else fsZoomFactor,
+                                scaleY = if (isExportingNow) 1f else fsZoomFactor,
+                                translationX = if (isExportingNow) 0f else panOffset.x,
+                                translationY = if (isExportingNow) 0f else panOffset.y
+                            )
+                            .drawWithContent {
+                                stageGraphicsLayer.record {
+                                    this@drawWithContent.drawContent()
                                 }
+                                drawLayer(stageGraphicsLayer)
                             }
+                            .background(Color.Black)
+                    ) {
+                        val availableW = maxWidth
+                        val isNotationOnly = fsLayoutMode == "Notation"
+                        val isLandscapeWide = availableW >= 600.dp
+                        // Piano & waterfall width: in landscape wide or notation mode it fits availableW; in portrait split/waterfall/keyboard it expands for 88 playable keys
+                        val keyboardWidth = if (isLandscapeWide) availableW else maxOf(availableW, 30.dp * whiteKeyCount)
 
-                            // If in "Split" mode, structure layout so top Notation fits screen width (availableW),
-                            // while the lower Waterfall + Keyboard scroll horizontally to accommodate the 88 keys in portrait.
-                            if (fsLayoutMode == "Split") {
-                                Column(modifier = Modifier.fillMaxSize()) {
-                                    // 1. Notation Rendering on Top - Pinned 100% to screen width (availableW)
+                        val activeMidiNoteSet by remember {
+                            derivedStateOf {
+                                viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key }.toSet()
+                            }
+                        }
+
+                        // If in "Split" mode, structure layout so top Notation fits screen width (availableW),
+                        // while the lower Waterfall + Keyboard scroll horizontally to accommodate the 88 keys in portrait.
+                        if (fsLayoutMode == "Split") {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                // 1. Notation Rendering on Top - Pinned 100% to screen width (availableW)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(0.52f)
+                                        .background(Color(0xFF0D0B14))
+                                        .padding(bottom = 8.dp)
+                                ) {
+                                    StaffAndTabNotationViewer(
+                                        score = currentScore,
+                                        playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                        playheadOffset = viewModel.scorePlayheadOffset.value,
+                                        activeMidiNotes = viewModel.midiActiveNotes,
+                                        playingNote = viewModel.midiPlayingNote.value,
+                                        primaryColor = primaryColor,
+                                        currentFormat = notationFormat,
+                                        onFormatChange = { newFormat -> notationFormat = newFormat },
+                                        showLetters = viewModel.showNotationNoteNames.value,
+                                        showLyrics = fsShowLyrics,
+                                        isSplitStaff = viewModel.isSplitStaff.value,
+                                        isVerticalScroll = viewModel.isVerticalScroll.value,
+                                        leftHandColor = viewModel.leftHandColor.value,
+                                        rightHandColor = viewModel.rightHandColor.value,
+                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                        isRightHandHidden = viewModel.isRightHandHidden.value,
+                                        enabledTrackIndices = viewModel.enabledTrackIndices,
+                                        showScoreHeader = false,
+                                        compactStaffMode = true,
+                                        transposition = viewModel.transposition.intValue,
+                                        fallbackTitle = viewModel.currentMediaItem.value?.title ?: viewModel.selectedMixerItem.value?.displayName ?: "", // <-- PASSED HERE
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+
+                                    // Clean separator divider between notation and waterfall
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .weight(0.52f)
-                                            .background(Color(0xFF0D0B14))
-                                            .padding(bottom = 8.dp)
-                                    ) {
-                                        StaffAndTabNotationViewer(
-                                            score = currentScore,
-                                            playheadMeasure = viewModel.scorePlayheadMeasure.value,
-                                            playheadOffset = viewModel.scorePlayheadOffset.value,
-                                            activeMidiNotes = viewModel.midiActiveNotes,
-                                            playingNote = viewModel.midiPlayingNote.value,
-                                            primaryColor = primaryColor,
-                                            currentFormat = notationFormat,
-                                            onFormatChange = { newFormat -> notationFormat = newFormat },
-                                            showLetters = viewModel.showNotationNoteNames.value,
-                                            showLyrics = fsShowLyrics,
-                                            isSplitStaff = viewModel.isSplitStaff.value,
-                                            isVerticalScroll = viewModel.isVerticalScroll.value,
-                                            leftHandColor = viewModel.leftHandColor.value,
-                                            rightHandColor = viewModel.rightHandColor.value,
-                                            isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                            isRightHandHidden = viewModel.isRightHandHidden.value,
-                                            enabledTrackIndices = viewModel.enabledTrackIndices,
-                                            showScoreHeader = false,
-                                            compactStaffMode = true,
-                                            transposition = viewModel.transposition.intValue,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
+                                            .height(1.dp)
+                                            .align(Alignment.BottomCenter)
+                                            .background(Color(0x33FFFFFF))
+                                    )
+                                }
 
-                                        // Clean separator divider between notation and waterfall
+                                // 2. Waterfall + Keyboard on Bottom - Horizontally scrollable in portrait for 88 keys
+                                val bottomScrollModifier = if (isLandscapeWide) {
+                                    Modifier.fillMaxWidth().weight(0.48f)
+                                } else {
+                                    Modifier.fillMaxWidth().weight(0.48f).horizontalScroll(fsScrollState)
+                                }
+
+                                Box(modifier = bottomScrollModifier) {
+                                    Column(
+                                        modifier = Modifier
+                                            .width(keyboardWidth)
+                                            .fillMaxHeight()
+                                    ) {
+                                        // Waterfall Falling Notes (fills upper portion of bottom section)
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(1.dp)
-                                                .align(Alignment.BottomCenter)
-                                                .background(Color(0x33FFFFFF))
-                                        )
-                                    }
-
-                                    // 2. Waterfall + Keyboard on Bottom - Horizontally scrollable in portrait for 88 keys
-                                    val bottomScrollModifier = if (isLandscapeWide) {
-                                        Modifier.fillMaxWidth().weight(0.48f)
-                                    } else {
-                                        Modifier.fillMaxWidth().weight(0.48f).horizontalScroll(fsScrollState)
-                                    }
-
-                                    Box(modifier = bottomScrollModifier) {
-                                        Column(
-                                            modifier = Modifier
-                                                .width(keyboardWidth)
-                                                .fillMaxHeight()
+                                                .weight(1f)
+                                                .background(Color.Black)
                                         ) {
-                                            // Waterfall Falling Notes (fills upper portion of bottom section)
+                                            SynthesiaWaterfallOverlay(
+                                                activeMidiNotes = activeMidiNoteSet,
+                                                manualPressedNotes = fsManualPressedKeys.toSet(),
+                                                score = currentScore,
+                                                playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                                playheadOffset = viewModel.scorePlayheadOffset.value,
+                                                isPlaying = isPlaying,
+                                                fallingSpeedSetting = viewModel.fallingNotesSpeed.value,
+                                                modifier = Modifier.fillMaxSize(),
+                                                primaryColor = primaryColor,
+                                                glowEffect = true,
+                                                particlesEnabled = viewModel.showWaterfallParticles.value,
+                                                particleCount = viewModel.particleCount.intValue,
+                                                particleSpeed = viewModel.particleSpeed.floatValue,
+                                                particleScale = viewModel.particleScale.floatValue,
+                                                particleExpansion = viewModel.particleExpansion.floatValue,
+                                                lockParticleColor = viewModel.lockParticleColor.value,
+                                                particleCustomColor = viewModel.particleCustomColor.value,
+                                                flashSize = viewModel.flashSize.floatValue,
+                                                flashHaloIntensity = viewModel.flashHaloIntensity.floatValue,
+                                                noteCornerRadius = viewModel.noteCornerRadius.floatValue,
+                                                noteEdgeThickness = viewModel.noteEdgeThickness.floatValue,
+                                                noteStyleOval = viewModel.noteStyleOval.value,
+                                                leftHandColor = viewModel.leftHandColor.value,
+                                                rightHandColor = viewModel.rightHandColor.value,
+                                                isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                playbackSpeed = viewModel.playbackSpeed.value,
+                                                onFpsDropDetected = {
+                                                    if (viewModel.fallingNotesSpeed.value != "Slow" || viewModel.playbackSpeed.value > 0.75f) {
+                                                        showSpeedOptimizationDialog = true
+                                                    }
+                                                }
+                                            )
+                                        }
+
+                                        // Bottom Instrument Visualizer: UnifiedPianoKeyboard, UnifiedGuitarFretboard, Harmonium, Violin, Flute
+                                        val currentInst = viewModel.selectedInstrument.value
+                                        val isGuitarFamily = currentInst.contains("Guitar") || currentInst == "Ukulele"
+                                        val keyboardModifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(viewModel.keyboardHeightFactor.floatValue.dp)
+                                            .background(Color(0xFF161616))
+
+                                        Box(modifier = keyboardModifier) {
+                                            if (isGuitarFamily) {
+                                                val isUkulele = currentInst == "Ukulele"
+                                                val isSevenString = currentInst == "7-String Guitar"
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                UnifiedGuitarFretboard(
+                                                    numFrets = if (isUkulele) 15 else 24,
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                    accentColor = primaryColor,
+                                                    showNoteNames = fsShowLetters,
+                                                    stringLabels = when {
+                                                        isUkulele -> listOf("A", "E", "C", "G")
+                                                        isSevenString -> listOf("e", "B", "G", "D", "A", "E", "B")
+                                                        else -> listOf("e", "B", "G", "D", "A", "E")
+                                                    },
+                                                    openStringsSemis = when {
+                                                        isUkulele -> listOf(9, 4, 0, 7)
+                                                        isSevenString -> listOf(4, 11, 7, 2, 9, 4, 11)
+                                                        else -> listOf(4, 11, 7, 2, 9, 4)
+                                                    },
+                                                    onFretTapped = { _, _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    onFretReleased = { _, _, midi ->
+                                                        fsManualPressedKeys.remove(midi)
+                                                        viewModel.onMidiNoteOff(midi)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (currentInst == "Sitar") {
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                com.creativeblisslabs.peqlearn.app.ui.components.UnifiedSitarVisualizer(
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    accentColor = Color(0xFFFFB300),
+                                                    showNoteNames = fsShowLetters,
+                                                    onFretTapped = { _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (currentInst == "Harmonium" || currentInst == "Tabla") {
+                                                UnifiedHarmoniumVisualizer(
+                                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                                    accentColor = Color(0xFFFFB300),
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    onKeyTapped = { midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (currentInst == "Violin") {
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                UnifiedViolinFingerboard(
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    accentColor = Color(0xFFE040FB),
+                                                    showNoteNames = fsShowLetters,
+                                                    onPositionTapped = { _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (currentInst == "Flute") {
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                UnifiedFluteVisualizer(
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    accentColor = Color(0xFF00E5FF),
+                                                    onToneHoleTapped = { _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                UnifiedPianoKeyboard(
+                                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                                    accentColor = primaryColor,
+                                                    activeCoordinate = viewModel.midiPlayingNote.value,
+                                                    isPlaying = isPlaying,
+                                                    startNote = 21,
+                                                    endNote = 108,
+                                                    fillWidth = true,
+                                                    leftHandColor = viewModel.leftHandColor.value,
+                                                    rightHandColor = viewModel.rightHandColor.value,
+                                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                    customKeyColors = viewModel.playAlongEngine.liveKeyColors,
+                                                    onKeyTapped = { midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    onKeyReleased = { midi ->
+                                                        fsManualPressedKeys.remove(midi)
+                                                        viewModel.onMidiNoteOff(midi)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+
+                                                // Studio Red Velvet Cloth Strip
+                                                if (viewModel.keyboardShowVelvetCloth.value) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(4.dp)
+                                                            .align(Alignment.TopCenter)
+                                                            .background(
+                                                                Brush.verticalGradient(
+                                                                    listOf(
+                                                                        viewModel.keyboardClothColor.value,
+                                                                        viewModel.keyboardClothColor.value.copy(alpha = 0.85f),
+                                                                        Color(0xFF330000)
+                                                                    )
+                                                                )
+                                                            )
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // For Non-Split modes ("Notation", "Waterfall", "Keyboard")
+                            val scrollModifier = if (isLandscapeWide || isNotationOnly) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier
+                                    .fillMaxSize()
+                                    .horizontalScroll(fsScrollState)
+                            }
+                            val finalContentWidth = if (isNotationOnly || isLandscapeWide) availableW else keyboardWidth
+
+                            Box(modifier = scrollModifier) {
+                                Column(
+                                    modifier = Modifier
+                                        .width(finalContentWidth)
+                                        .fillMaxHeight()
+                                ) {
+                                    when (fsLayoutMode) {
+                                        "Notation" -> {
+                                            // Full height notation viewer fitting screen width
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .weight(1f)
+                                                    .background(Color(0xFF0D0B14))
+                                            ) {
+                                                StaffAndTabNotationViewer(
+                                                    score = currentScore,
+                                                    playheadMeasure = viewModel.scorePlayheadMeasure.value,
+                                                    playheadOffset = viewModel.scorePlayheadOffset.value,
+                                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                                    playingNote = viewModel.midiPlayingNote.value,
+                                                    primaryColor = primaryColor,
+                                                    currentFormat = notationFormat,
+                                                    onFormatChange = { newFormat -> notationFormat = newFormat },
+                                                    showLetters = viewModel.showNotationNoteNames.value,
+                                                    showLyrics = fsShowLyrics,
+                                                    isSplitStaff = viewModel.isSplitStaff.value,
+                                                    isVerticalScroll = viewModel.isVerticalScroll.value,
+                                                    leftHandColor = viewModel.leftHandColor.value,
+                                                    rightHandColor = viewModel.rightHandColor.value,
+                                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                    enabledTrackIndices = viewModel.enabledTrackIndices,
+                                                    showScoreHeader = false,
+                                                    compactStaffMode = true,
+                                                    transposition = viewModel.transposition.intValue,
+                                                    fallbackTitle = viewModel.currentMediaItem.value?.title ?: viewModel.selectedMixerItem.value?.displayName ?: "", // <-- PASSED HERE
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                        }
+                                        "Keyboard" -> {
+                                            // Keyboard Only: Spacer for upper visual area so instrument dominates
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                        else -> {
+                                            // Waterfall Only full height
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -2269,436 +2726,191 @@ BoxWithConstraints(
                                                     }
                                                 )
                                             }
+                                        }
+                                    }
 
-                                            // Bottom Instrument Visualizer: UnifiedPianoKeyboard, UnifiedGuitarFretboard, Harmonium, Violin, Flute
-                                            val currentInst = viewModel.selectedInstrument.value
-                                            val isGuitarFamily = currentInst.contains("Guitar") || currentInst == "Ukulele"
-                                            val keyboardModifier = Modifier
+                                    // Bottom Instrument Visualizer for Keyboard / Waterfall+Keyboard modes
+                                    if (fsLayoutMode != "Notation" && fsLayoutMode != "Waterfall") {
+                                        val currentInst = viewModel.selectedInstrument.value
+                                        val isGuitarFamily = currentInst.contains("Guitar") || currentInst == "Ukulele"
+                                        val keyboardModifier = if (fsLayoutMode == "Keyboard") {
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 190.dp, max = 225.dp)
+                                                .background(Color(0xFF161616))
+                                        } else {
+                                            Modifier
                                                 .fillMaxWidth()
                                                 .height(viewModel.keyboardHeightFactor.floatValue.dp)
                                                 .background(Color(0xFF161616))
-
-                                            Box(modifier = keyboardModifier) {
-                                                if (isGuitarFamily) {
-                                                    val isUkulele = currentInst == "Ukulele"
-                                                    val isSevenString = currentInst == "7-String Guitar"
-                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
-                                                    }
-                                                    UnifiedGuitarFretboard(
-                                                        numFrets = if (isUkulele) 15 else 24,
-                                                        activeNotes = activeList,
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
-                                                        accentColor = primaryColor,
-                                                        showNoteNames = fsShowLetters,
-                                                        stringLabels = when {
-                                                            isUkulele -> listOf("A", "E", "C", "G")
-                                                            isSevenString -> listOf("e", "B", "G", "D", "A", "E", "B")
-                                                            else -> listOf("e", "B", "G", "D", "A", "E")
-                                                        },
-                                                        openStringsSemis = when {
-                                                            isUkulele -> listOf(9, 4, 0, 7)
-                                                            isSevenString -> listOf(4, 11, 7, 2, 9, 4, 11)
-                                                            else -> listOf(4, 11, 7, 2, 9, 4)
-                                                        },
-                                                        onFretTapped = { _, _, midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        onFretReleased = { _, _, midi ->
-                                                            fsManualPressedKeys.remove(midi)
-                                                            viewModel.onMidiNoteOff(midi)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else if (currentInst == "Sitar") {
-                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
-                                                    }
-                                                    com.creativeblisslabs.peqlearn.app.ui.components.UnifiedSitarVisualizer(
-                                                        activeNotes = activeList,
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        accentColor = Color(0xFFFFB300),
-                                                        showNoteNames = fsShowLetters,
-                                                        onFretTapped = { _, midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else if (currentInst == "Harmonium" || currentInst == "Tabla") {
-                                                    UnifiedHarmoniumVisualizer(
-                                                        activeMidiNotes = viewModel.midiActiveNotes,
-                                                        accentColor = Color(0xFFFFB300),
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        onKeyTapped = { midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else if (currentInst == "Violin") {
-                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
-                                                    }
-                                                    UnifiedViolinFingerboard(
-                                                        activeNotes = activeList,
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        accentColor = Color(0xFFE040FB),
-                                                        showNoteNames = fsShowLetters,
-                                                        onPositionTapped = { _, midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else if (currentInst == "Flute") {
-                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
-                                                    }
-                                                    UnifiedFluteVisualizer(
-                                                        activeNotes = activeList,
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        accentColor = Color(0xFF00E5FF),
-                                                        onToneHoleTapped = { _, midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else {
-                                                    UnifiedPianoKeyboard(
-                                                        activeMidiNotes = viewModel.midiActiveNotes,
-                                                        accentColor = primaryColor,
-                                                        activeCoordinate = viewModel.midiPlayingNote.value,
-                                                        isPlaying = isPlaying,
-                                                        startNote = 21,
-                                                        endNote = 108,
-                                                        fillWidth = true,
-                                                        leftHandColor = viewModel.leftHandColor.value,
-                                                        rightHandColor = viewModel.rightHandColor.value,
-                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
-                                                        customKeyColors = viewModel.playAlongEngine.liveKeyColors,
-                                                        onKeyTapped = { midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        onKeyReleased = { midi ->
-                                                            fsManualPressedKeys.remove(midi)
-                                                            viewModel.onMidiNoteOff(midi)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-
-                                                    // Studio Red Velvet Cloth Strip
-                                                    if (viewModel.keyboardShowVelvetCloth.value) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .fillMaxWidth()
-                                                                .height(4.dp)
-                                                                .align(Alignment.TopCenter)
-                                                                .background(
-                                                                    Brush.verticalGradient(
-                                                                        listOf(
-                                                                            viewModel.keyboardClothColor.value,
-                                                                            viewModel.keyboardClothColor.value.copy(alpha = 0.85f),
-                                                                            Color(0xFF330000)
-                                                                        )
-                                                                    )
-                                                                )
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                // For Non-Split modes ("Notation", "Waterfall", "Keyboard")
-                                val scrollModifier = if (isLandscapeWide || isNotationOnly) {
-                                    Modifier.fillMaxSize()
-                                } else {
-                                    Modifier
-                                        .fillMaxSize()
-                                        .horizontalScroll(fsScrollState)
-                                }
-                                val finalContentWidth = if (isNotationOnly || isLandscapeWide) availableW else keyboardWidth
-
-                                Box(modifier = scrollModifier) {
-                                    Column(
-                                        modifier = Modifier
-                                            .width(finalContentWidth)
-                                            .fillMaxHeight()
-                                    ) {
-                                        when (fsLayoutMode) {
-                                            "Notation" -> {
-                                                // Full height notation viewer fitting screen width
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .weight(1f)
-                                                        .background(Color(0xFF0D0B14))
-                                                ) {
-                                                    StaffAndTabNotationViewer(
-                                                        score = currentScore,
-                                                        playheadMeasure = viewModel.scorePlayheadMeasure.value,
-                                                        playheadOffset = viewModel.scorePlayheadOffset.value,
-                                                        activeMidiNotes = viewModel.midiActiveNotes,
-                                                        playingNote = viewModel.midiPlayingNote.value,
-                                                        primaryColor = primaryColor,
-                                                        currentFormat = notationFormat,
-                                                        onFormatChange = { newFormat -> notationFormat = newFormat },
-                                                        showLetters = viewModel.showNotationNoteNames.value,
-                                                        showLyrics = fsShowLyrics,
-                                                        isSplitStaff = viewModel.isSplitStaff.value,
-                                                        isVerticalScroll = viewModel.isVerticalScroll.value,
-                                                        leftHandColor = viewModel.leftHandColor.value,
-                                                        rightHandColor = viewModel.rightHandColor.value,
-                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
-                                                        enabledTrackIndices = viewModel.enabledTrackIndices,
-                                                        showScoreHeader = false,
-                                                        compactStaffMode = true,
-                                                        transposition = viewModel.transposition.intValue,
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                }
-                                            }
-                                            "Keyboard" -> {
-                                                // Keyboard Only: Spacer for upper visual area so instrument dominates
-                                                Spacer(modifier = Modifier.weight(1f))
-                                            }
-                                            else -> {
-                                                // Waterfall Only full height
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .weight(1f)
-                                                        .background(Color.Black)
-                                                ) {
-                                                    SynthesiaWaterfallOverlay(
-                                                        activeMidiNotes = activeMidiNoteSet,
-                                                        manualPressedNotes = fsManualPressedKeys.toSet(),
-                                                        score = currentScore,
-                                                        playheadMeasure = viewModel.scorePlayheadMeasure.value,
-                                                        playheadOffset = viewModel.scorePlayheadOffset.value,
-                                                        isPlaying = isPlaying,
-                                                        fallingSpeedSetting = viewModel.fallingNotesSpeed.value,
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        primaryColor = primaryColor,
-                                                        glowEffect = true,
-                                                        particlesEnabled = viewModel.showWaterfallParticles.value,
-                                                        particleCount = viewModel.particleCount.intValue,
-                                                        particleSpeed = viewModel.particleSpeed.floatValue,
-                                                        particleScale = viewModel.particleScale.floatValue,
-                                                        particleExpansion = viewModel.particleExpansion.floatValue,
-                                                        lockParticleColor = viewModel.lockParticleColor.value,
-                                                        particleCustomColor = viewModel.particleCustomColor.value,
-                                                        flashSize = viewModel.flashSize.floatValue,
-                                                        flashHaloIntensity = viewModel.flashHaloIntensity.floatValue,
-                                                        noteCornerRadius = viewModel.noteCornerRadius.floatValue,
-                                                        noteEdgeThickness = viewModel.noteEdgeThickness.floatValue,
-                                                        noteStyleOval = viewModel.noteStyleOval.value,
-                                                        leftHandColor = viewModel.leftHandColor.value,
-                                                        rightHandColor = viewModel.rightHandColor.value,
-                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
-                                                        playbackSpeed = viewModel.playbackSpeed.value,
-                                                        onFpsDropDetected = {
-                                                            if (viewModel.fallingNotesSpeed.value != "Slow" || viewModel.playbackSpeed.value > 0.75f) {
-                                                                showSpeedOptimizationDialog = true
-                                                            }
-                                                        }
-                                                    )
-                                                }
-                                            }
                                         }
 
-                                        // Bottom Instrument Visualizer for Keyboard / Waterfall+Keyboard modes
-                                        if (fsLayoutMode != "Notation" && fsLayoutMode != "Waterfall") {
-                                            val currentInst = viewModel.selectedInstrument.value
-                                            val isGuitarFamily = currentInst.contains("Guitar") || currentInst == "Ukulele"
-                                            val keyboardModifier = if (fsLayoutMode == "Keyboard") {
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(min = 190.dp, max = 225.dp)
-                                                    .background(Color(0xFF161616))
+                                        Box(modifier = keyboardModifier) {
+                                            if (isGuitarFamily) {
+                                                val isUkulele = currentInst == "Ukulele"
+                                                val isSevenString = currentInst == "7-String Guitar"
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                UnifiedGuitarFretboard(
+                                                    numFrets = if (isUkulele) 15 else 24,
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                    accentColor = primaryColor,
+                                                    showNoteNames = fsShowLetters,
+                                                    stringLabels = when {
+                                                        isUkulele -> listOf("A", "E", "C", "G")
+                                                        isSevenString -> listOf("e", "B", "G", "D", "A", "E", "B")
+                                                        else -> listOf("e", "B", "G", "D", "A", "E")
+                                                    },
+                                                    openStringsSemis = when {
+                                                        isUkulele -> listOf(9, 4, 0, 7)
+                                                        isSevenString -> listOf(4, 11, 7, 2, 9, 4, 11)
+                                                        else -> listOf(4, 11, 7, 2, 9, 4)
+                                                    },
+                                                    onFretTapped = { _, _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    onFretReleased = { _, _, midi ->
+                                                        fsManualPressedKeys.remove(midi)
+                                                        viewModel.onMidiNoteOff(midi)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (currentInst == "Sitar") {
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                com.creativeblisslabs.peqlearn.app.ui.components.UnifiedSitarVisualizer(
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    accentColor = Color(0xFFFFB300),
+                                                    showNoteNames = fsShowLetters,
+                                                    onFretTapped = { _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (currentInst == "Harmonium" || currentInst == "Tabla") {
+                                                UnifiedHarmoniumVisualizer(
+                                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                                    accentColor = Color(0xFFFFB300),
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    onKeyTapped = { midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (currentInst == "Violin") {
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                UnifiedViolinFingerboard(
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    accentColor = Color(0xFFE040FB),
+                                                    showNoteNames = fsShowLetters,
+                                                    onPositionTapped = { _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (currentInst == "Flute") {
+                                                val activeList = remember(viewModel.midiActiveNotes.keys) {
+                                                    viewModel.midiActiveNotes.keys.toList()
+                                                }
+                                                UnifiedFluteVisualizer(
+                                                    activeNotes = activeList,
+                                                    activeMidiNote = viewModel.midiPlayingNote.value,
+                                                    accentColor = Color(0xFF00E5FF),
+                                                    onToneHoleTapped = { _, midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
                                             } else {
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .height(viewModel.keyboardHeightFactor.floatValue.dp)
-                                                    .background(Color(0xFF161616))
-                                            }
+                                                UnifiedPianoKeyboard(
+                                                    activeMidiNotes = viewModel.midiActiveNotes,
+                                                    accentColor = primaryColor,
+                                                    activeCoordinate = viewModel.midiPlayingNote.value,
+                                                    isPlaying = isPlaying,
+                                                    startNote = 21,
+                                                    endNote = 108,
+                                                    fillWidth = true,
+                                                    leftHandColor = viewModel.leftHandColor.value,
+                                                    rightHandColor = viewModel.rightHandColor.value,
+                                                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                                                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                                                    customKeyColors = viewModel.playAlongEngine.liveKeyColors,
+                                                    onKeyTapped = { midi ->
+                                                        if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
+                                                        viewModel.onMidiNoteOn(midi, 95)
+                                                    },
+                                                    onKeyReleased = { midi ->
+                                                        fsManualPressedKeys.remove(midi)
+                                                        viewModel.onMidiNoteOff(midi)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
 
-                                            Box(modifier = keyboardModifier) {
-                                                if (isGuitarFamily) {
-                                                    val isUkulele = currentInst == "Ukulele"
-                                                    val isSevenString = currentInst == "7-String Guitar"
-                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
-                                                    }
-                                                    UnifiedGuitarFretboard(
-                                                        numFrets = if (isUkulele) 15 else 24,
-                                                        activeNotes = activeList,
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
-                                                        accentColor = primaryColor,
-                                                        showNoteNames = fsShowLetters,
-                                                        stringLabels = when {
-                                                            isUkulele -> listOf("A", "E", "C", "G")
-                                                            isSevenString -> listOf("e", "B", "G", "D", "A", "E", "B")
-                                                            else -> listOf("e", "B", "G", "D", "A", "E")
-                                                        },
-                                                        openStringsSemis = when {
-                                                            isUkulele -> listOf(9, 4, 0, 7)
-                                                            isSevenString -> listOf(4, 11, 7, 2, 9, 4, 11)
-                                                            else -> listOf(4, 11, 7, 2, 9, 4)
-                                                        },
-                                                        onFretTapped = { _, _, midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        onFretReleased = { _, _, midi ->
-                                                            fsManualPressedKeys.remove(midi)
-                                                            viewModel.onMidiNoteOff(midi)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else if (currentInst == "Sitar") {
-                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
-                                                    }
-                                                    com.creativeblisslabs.peqlearn.app.ui.components.UnifiedSitarVisualizer(
-                                                        activeNotes = activeList,
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        accentColor = Color(0xFFFFB300),
-                                                        showNoteNames = fsShowLetters,
-                                                        onFretTapped = { _, midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else if (currentInst == "Harmonium" || currentInst == "Tabla") {
-                                                    UnifiedHarmoniumVisualizer(
-                                                        activeMidiNotes = viewModel.midiActiveNotes,
-                                                        accentColor = Color(0xFFFFB300),
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        onKeyTapped = { midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else if (currentInst == "Violin") {
-                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
-                                                    }
-                                                    UnifiedViolinFingerboard(
-                                                        activeNotes = activeList,
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        accentColor = Color(0xFFE040FB),
-                                                        showNoteNames = fsShowLetters,
-                                                        onPositionTapped = { _, midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else if (currentInst == "Flute") {
-                                                    val activeList = remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
-                                                    }
-                                                    UnifiedFluteVisualizer(
-                                                        activeNotes = activeList,
-                                                        activeMidiNote = viewModel.midiPlayingNote.value,
-                                                        accentColor = Color(0xFF00E5FF),
-                                                        onToneHoleTapped = { _, midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                } else {
-                                                    UnifiedPianoKeyboard(
-                                                        activeMidiNotes = viewModel.midiActiveNotes,
-                                                        accentColor = primaryColor,
-                                                        activeCoordinate = viewModel.midiPlayingNote.value,
-                                                        isPlaying = isPlaying,
-                                                        startNote = 21,
-                                                        endNote = 108,
-                                                        fillWidth = true,
-                                                        leftHandColor = viewModel.leftHandColor.value,
-                                                        rightHandColor = viewModel.rightHandColor.value,
-                                                        isLeftHandHidden = viewModel.isLeftHandHidden.value,
-                                                        isRightHandHidden = viewModel.isRightHandHidden.value,
-                                                        customKeyColors = viewModel.playAlongEngine.liveKeyColors,
-                                                        onKeyTapped = { midi ->
-                                                            if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(midi)
-                                                            viewModel.onMidiNoteOn(midi, 95)
-                                                        },
-                                                        onKeyReleased = { midi ->
-                                                            fsManualPressedKeys.remove(midi)
-                                                            viewModel.onMidiNoteOff(midi)
-                                                        },
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-
-                                                    // Studio Red Velvet Cloth Strip
-                                                    if (viewModel.keyboardShowVelvetCloth.value) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .fillMaxWidth()
-                                                                .height(4.dp)
-                                                                .align(Alignment.TopCenter)
-                                                                .background(
-                                                                    Brush.verticalGradient(
-                                                                        listOf(
-                                                                            viewModel.keyboardClothColor.value,
-                                                                            viewModel.keyboardClothColor.value.copy(alpha = 0.85f),
-                                                                            Color(0xFF330000)
-                                                                        )
+                                                // Studio Red Velvet Cloth Strip
+                                                if (viewModel.keyboardShowVelvetCloth.value) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(4.dp)
+                                                            .align(Alignment.TopCenter)
+                                                            .background(
+                                                                Brush.verticalGradient(
+                                                                    listOf(
+                                                                        viewModel.keyboardClothColor.value,
+                                                                        viewModel.keyboardClothColor.value.copy(alpha = 0.85f),
+                                                                        Color(0xFF330000)
                                                                     )
                                                                 )
-                                                        )
-                                                    }
+                                                            )
+                                                    )
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
-
-                            // 3-Pedal Grand Piano Unit cleanly embedded in right corner
-                            if (viewModel.showPedals.value) {
-                                val pedalBottomPadding = if (fsLayoutMode == "Notation") 20.dp else 152.dp
-                                PianoThreePedalUnit(
-                                    sustainPressed = viewModel.sustainPedalActive.value,
-                                    sostenutoPressed = viewModel.sostenutoPedalActive.value,
-                                    softPressed = viewModel.softPedalActive.value,
-                                    onPedalClick = { type, pressed ->
-                                        viewModel.onMidiPedalEventReceived(type, pressed)
-                                    },
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(end = 12.dp, bottom = pedalBottomPadding)
-                                        .graphicsLayer(
-                                            alpha = viewModel.pedalOpacity.floatValue,
-                                            scaleX = viewModel.pedalScaling.floatValue,
-                                            scaleY = viewModel.pedalScaling.floatValue
-                                        )
-                                )
                             }
                         }
+
+                        // 3-Pedal Grand Piano Unit cleanly embedded in right corner
+                        if (viewModel.showPedals.value) {
+                            val pedalBottomPadding = if (fsLayoutMode == "Notation") 20.dp else 152.dp
+                            PianoThreePedalUnit(
+                                sustainPressed = viewModel.sustainPedalActive.value,
+                                sostenutoPressed = viewModel.sostenutoPedalActive.value,
+                                softPressed = viewModel.softPedalActive.value,
+                                onPedalClick = { type, pressed ->
+                                    viewModel.onMidiPedalEventReceived(type, pressed)
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = 12.dp, bottom = pedalBottomPadding)
+                                    .graphicsLayer(
+                                        alpha = viewModel.pedalOpacity.floatValue,
+                                        scaleX = viewModel.pedalScaling.floatValue,
+                                        scaleY = viewModel.pedalScaling.floatValue
+                                    )
+                            )
+                        }
+                    }
 
                     // --- FLOATING BOTTOM PLAYBACK BAR: Styled exactly like reference image 1 ---
                     val controlsBottomPadding = if (fsLayoutMode == "Notation") 18.dp else 155.dp
                     AnimatedVisibility(
-visible = areControlsVisible && !stageCaptureController.isExportingVideo && !viewModel.isVideoExporting.value,                        enter = fadeIn(tween(250)),
+                        visible = areControlsVisible && !stageCaptureController.isExportingVideo && !viewModel.isVideoExporting.value,                        enter = fadeIn(tween(250)),
                         exit = fadeOut(tween(300)),
                         modifier = Modifier
                             .zIndex(20f)
@@ -2799,7 +3011,7 @@ visible = areControlsVisible && !stageCaptureController.isExportingVideo && !vie
                                 // 7. Blue Scrubbing Progress Slider
                                 Slider(
                                     value = timelineProgress,
-                                   onValueChange = { targetProgress ->
+                                    onValueChange = { targetProgress ->
                                         if (currentScore != null && totalSeconds > 0) {
                                             val targetTotalSec = targetProgress * totalSeconds.toFloat()
                                             var accumulated = 0f
@@ -3005,38 +3217,150 @@ visible = areControlsVisible && !stageCaptureController.isExportingVideo && !vie
                             }
                         }
                     }
-                    
-                    //export dialog progress
+
+                    // Big Centered Export Progress Dialog & Non-Responsive Backdrop
                     if (viewModel.isVideoExporting.value) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = Color(0xFF0F0B18).copy(alpha = 0.92f),
-        border = BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.7f)),
-        modifier = Modifier
-            .zIndex(30f)
-            .align(Alignment.TopEnd)
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            CircularProgressIndicator(
-                progress = { viewModel.videoExportProgress.floatValue },
-                modifier = Modifier.size(18.dp),
-                color = Color(0xFFFFD700),
-                strokeWidth = 2.5.dp
-            )
-            Text(
-                text = "Rendering UI Video: ${(viewModel.videoExportProgress.floatValue * 100).toInt()}%",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .zIndex(50f)
+                                .background(Color.Black.copy(alpha = 0.82f))
+                                .pointerInput(Unit) {
+                                    detectTapGestures { } // Consume all taps/clicks so background is non-responsive
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(24.dp),
+                                color = Color(0xFF12131A),
+                                border = BorderStroke(1.5.dp, Color(0xFFFFD700).copy(alpha = 0.7f)),
+                                shadowElevation = 16.dp,
+                                modifier = Modifier
+                                    .widthIn(max = 520.dp)
+                                    .fillMaxWidth(0.88f)
+                                    .padding(16.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    // Header Title with Movie Icon
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Movie,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFD700),
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                        Text(
+                                            text = "Rendering & Exporting Video",
+                                            style = MaterialTheme.typography.titleLarge,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    // Format Details Badge
+                                    Text(
+                                        text = "${viewModel.videoExportResolution.value.uppercase()} @ ${viewModel.videoExportFps.value} FPS • ${viewModel.videoExportTheme.value} Theme",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.7f)
+                                    )
+
+                                    // Circular Progress Gauge with Centered Percentage
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .size(110.dp)
+                                            .padding(6.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            progress = { viewModel.videoExportProgress.floatValue },
+                                            modifier = Modifier.fillMaxSize(),
+                                            color = Color(0xFFFFD700),
+                                            trackColor = Color(0xFF282A36),
+                                            strokeWidth = 9.dp
+                                        )
+                                        Text(
+                                            text = "${(viewModel.videoExportProgress.floatValue * 100).toInt()}%",
+                                            style = MaterialTheme.typography.headlineMedium,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color.White
+                                        )
+                                    }
+
+                                    // Linear Progress Bar
+                                    LinearProgressIndicator(
+                                        progress = { viewModel.videoExportProgress.floatValue },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(8.dp)
+                                            .clip(CircleShape),
+                                        color = Color(0xFFFFD700),
+                                        trackColor = Color(0xFF282A36)
+                                    )
+
+                                    // Details Card: Frame Count & Speed/ETA
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF0A0B10), RoundedCornerShape(14.dp))
+                                            .padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Frame Progress:",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.Gray
+                                            )
+                                            Text(
+                                                text = viewModel.videoExportFrameText.value.ifBlank { "Processing Frames..." },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Encoding Speed / ETA:",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.Gray
+                                            )
+                                            Text(
+                                                text = viewModel.videoExportEtaText.value.ifBlank { "Calculating ETA..." },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFFFFD700),
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    // Background Execution & Screen Wake Tip
+                                    Text(
+                                        text = "🔒 Screen is kept awake. You can safely switch apps — export will continue running in background via ongoing notification.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
                     // Speed Optimization Alert Dialog when frames / audio lag or drops are detected
                     if (showSpeedOptimizationDialog) {
                         AlertDialog(
@@ -3096,133 +3420,133 @@ visible = areControlsVisible && !stageCaptureController.isExportingVideo && !vie
             }
         }
     }
-        
-     // Comprehensive Export Studio Modal Bottom Sheet
-        if (showExportDialog) {
-            var exportStudioTab by rememberSaveable { mutableIntStateOf(0) }
-            ModalBottomSheet(
-                onDismissRequest = { showExportDialog = false },
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                dragHandle = { BottomSheetDefaults.DragHandle() },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Comprehensive Export Studio Modal Bottom Sheet
+    if (showExportDialog) {
+        var exportStudioTab by rememberSaveable { mutableIntStateOf(0) }
+        ModalBottomSheet(
+            onDismissRequest = { showExportDialog = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                
-                Column(
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            if (exportStudioTab == 0) Icons.Default.Movie else Icons.Default.PictureAsPdf,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            if (exportStudioTab == 0) "Performance Video Studio" else "Sheet Music PDF Export",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    // Parser Score .txt Dump button
+                    Button(
+                        onClick = { showDumpDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        // Fully qualified core baseline icon
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Menu,
+                            contentDescription = "Score Dump",
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.White
+                        )
+                        // Fully qualified Spacer package path
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
+                        Text("TXT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                    IconButton(onClick = { showExportDialog = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+
+                // Tab selector between Video Export and PDF Score Export
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    val tabs = listOf("Video Studio", "Sheet Music PDF")
+                    tabs.forEachIndexed { index, title ->
+                        val isSelected = exportStudioTab == index
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clickable { exportStudioTab = index }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                if (exportStudioTab == 0) Icons.Default.Movie else Icons.Default.PictureAsPdf,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
                             Text(
-                                if (exportStudioTab == 0) "Performance Video Studio" else "Sheet Music PDF Export",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
+                                text = title,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        // Parser Score .txt Dump button
-Button(
-    onClick = { showDumpDialog = true },
-    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
-    shape = RoundedCornerShape(10.dp),
-    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-) {
-    // Fully qualified core baseline icon
-    Icon(
-        imageVector = androidx.compose.material.icons.Icons.Default.Menu, 
-        contentDescription = "Score Dump", 
-        modifier = Modifier.size(16.dp), 
-        tint = Color.White
-    )
-    // Fully qualified Spacer package path
-    androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
-    Text("TXT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-}
-                        IconButton(onClick = { showExportDialog = false }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close")
-                        }
                     }
-
-                    // Tab selector between Video Export and PDF Score Export
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        val tabs = listOf("Video Studio", "Sheet Music PDF")
-                        tabs.forEachIndexed { index, title ->
-                            val isSelected = exportStudioTab == index
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                    .clickable { exportStudioTab = index }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = title,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                   if (exportStudioTab == 0) {
-    VideoExportStudioSection(
-        viewModel = viewModel,
-        onExportStarted = {
-            showExportDialog = false
-        }
-    )
-} else {
-    PdfExportStudioSection(
-        viewModel = viewModel,
-        onExportStarted = {
-            showExportDialog = false
-        }
-    )
-}
-
-                    Spacer(Modifier.height(16.dp))
                 }
+
+                if (exportStudioTab == 0) {
+                    VideoExportStudioSection(
+                        viewModel = viewModel,
+                        onExportStarted = {
+                            showExportDialog = false
+                        }
+                    )
+                } else {
+                    PdfExportStudioSection(
+                        viewModel = viewModel,
+                        onExportStarted = {
+                            showExportDialog = false
+                        }
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
             }
         }
+    }
 
-        if (viewModel.showSettings.value) {
-            PlaybackSettingsSheet(
-                viewModel = viewModel,
-                notationFormat = viewModel.notationFormat.value,
-                onFormatChange = { viewModel.notationFormat.value = it },
-                showLetters = viewModel.showPianoKeyLabels.value,
-                onShowLettersChange = { viewModel.showPianoKeyLabels.value = it },
-                showLyrics = viewModel.showLyrics.value,
-                onShowLyricsChange = { viewModel.showLyrics.value = it },
-                initialTab = 0,
-                onDismiss = { viewModel.showSettings.value = false }
-            )
-        }
+    if (viewModel.showSettings.value) {
+        PlaybackSettingsSheet(
+            viewModel = viewModel,
+            notationFormat = viewModel.notationFormat.value,
+            onFormatChange = { viewModel.notationFormat.value = it },
+            showLetters = viewModel.showPianoKeyLabels.value,
+            onShowLettersChange = { viewModel.showPianoKeyLabels.value = it },
+            showLyrics = viewModel.showLyrics.value,
+            onShowLyricsChange = { viewModel.showLyrics.value = it },
+            initialTab = 0,
+            onDismiss = { viewModel.showSettings.value = false }
+        )
+    }
 }
 
 @Composable
@@ -4606,103 +4930,103 @@ fun SynthesiaWaterfallOverlay(
         }
     }
     var prevExportTimeSec by remember { mutableStateOf<Float?>(null) }
-var prevExportActiveNotes by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var prevExportActiveNotes by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
-LaunchedEffect(exportTimeSec) {
-    val curT = exportTimeSec ?: run {
-        prevExportTimeSec = null
-        prevExportActiveNotes = emptySet()
-        return@LaunchedEffect
-    }
-    val prevT = prevExportTimeSec
-    val dtSec = if (prevT != null && curT >= prevT) (curT - prevT).coerceIn(0.001f, 0.1f) else (1f / 60f)
-    val dtScale = (dtSec * 60f).coerceIn(0.25f, 3.0f)
-    prevExportTimeSec = curT
+    LaunchedEffect(exportTimeSec) {
+        val curT = exportTimeSec ?: run {
+            prevExportTimeSec = null
+            prevExportActiveNotes = emptySet()
+            return@LaunchedEffect
+        }
+        val prevT = prevExportTimeSec
+        val dtSec = if (prevT != null && curT >= prevT) (curT - prevT).coerceIn(0.001f, 0.1f) else (1f / 60f)
+        val dtScale = (dtSec * 60f).coerceIn(0.25f, 3.0f)
+        prevExportTimeSec = curT
 
-    val currentCanvasH = canvasHeightPx
-    val currentCanvasW = canvasWidthPx
-    val contactY = if (currentCanvasH > 50f) currentCanvasH else 320f
-    val whiteKeyW = currentCanvasW / whiteKeyCount.toFloat()
+        val currentCanvasH = canvasHeightPx
+        val currentCanvasW = canvasWidthPx
+        val contactY = if (currentCanvasH > 50f) currentCanvasH else 320f
+        val whiteKeyW = currentCanvasW / whiteKeyCount.toFloat()
 
-    // Spawn flashes & particles only for newly struck notes at this exact frame
-    val newlyStruck = activeMidiNotes - prevExportActiveNotes
-    prevExportActiveNotes = activeMidiNotes.toSet()
+        // Spawn flashes & particles only for newly struck notes at this exact frame
+        val newlyStruck = activeMidiNotes - prevExportActiveNotes
+        prevExportActiveNotes = activeMidiNotes.toSet()
 
-    if (newlyStruck.isNotEmpty()) {
-        val isChordStrike = activeMidiNotes.size >= 2
-        for (midi in newlyStruck) {
-            if (midi !in 0..127) continue
-            val geom = WaterfallKeyGeometryLookup.keyGeometries[midi]
-            val baseBlockW = if (geom.isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
-            val xOff = (whiteKeyW - baseBlockW) / 2f
-            val strikeX = (geom.whiteKeyIndex * whiteKeyW) + xOff + baseBlockW / 2f
-            val baseColor = if (midi >= 60) rightHandColor else leftHandColor
-            val chordColor = if (isChordStrike) Color(0xFFFFD700) else baseColor
-            val baseRad = if (geom.isBlack) 28f else 38f
+        if (newlyStruck.isNotEmpty()) {
+            val isChordStrike = activeMidiNotes.size >= 2
+            for (midi in newlyStruck) {
+                if (midi !in 0..127) continue
+                val geom = WaterfallKeyGeometryLookup.keyGeometries[midi]
+                val baseBlockW = if (geom.isBlack) 0.62f * whiteKeyW else 0.88f * whiteKeyW
+                val xOff = (whiteKeyW - baseBlockW) / 2f
+                val strikeX = (geom.whiteKeyIndex * whiteKeyW) + xOff + baseBlockW / 2f
+                val baseColor = if (midi >= 60) rightHandColor else leftHandColor
+                val chordColor = if (isChordStrike) Color(0xFFFFD700) else baseColor
+                val baseRad = if (geom.isBlack) 28f else 38f
 
-            flashes.add(
-                PianoKeyFlash(
-                    midiNote = midi,
-                    centerX = strikeX,
-                    centerY = contactY,
-                    color = chordColor,
-                    velocity = 95,
-                    alpha = 0.95f * flashHaloIntensity.coerceIn(0.2f, 1.0f),
-                    radius = (if (isChordStrike) baseRad * 1.35f else baseRad) * flashSize.coerceIn(0.2f, 2.5f),
-                    isChordStrike = isChordStrike
-                )
-            )
-
-            if (particlesEnabled && particles.size < 96) {
-                val sparkBase = if (geom.isBlack) (particleCount * 0.4f).toInt() else (particleCount * 0.6f).toInt()
-                val count = sparkBase.coerceIn(2, 16)
-                val pColor = if (lockParticleColor) baseColor else particleCustomColor
-                for (i in 0 until count) {
-                    val angleRad = (-(30f + Random.nextFloat() * 120f) * (Math.PI / 180f)).toFloat()
-                    val speed = (Random.nextFloat() * 4.5f + 2.0f) * (particleSpeed / 4.5f).coerceIn(0.2f, 3.0f)
-                    val life = Random.nextFloat() * 18f + 14f
-                    particles.add(
-                        PianoSpark(
-                            x = strikeX + (Random.nextFloat() - 0.5f) * (8f * particleExpansion.coerceIn(0.2f, 4f)),
-                            y = contactY,
-                            vx = cos(angleRad) * speed * particleExpansion.coerceIn(0.5f, 2.5f),
-                            vy = sin(angleRad) * speed,
-                            alpha = 1.0f,
-                            size = (Random.nextFloat() * 2.2f + 1.6f) * particleScale.coerceIn(0.3f, 3.0f),
-                            maxLife = life,
-                            currentLife = life,
-                            color = pColor
-                        )
+                flashes.add(
+                    PianoKeyFlash(
+                        midiNote = midi,
+                        centerX = strikeX,
+                        centerY = contactY,
+                        color = chordColor,
+                        velocity = 95,
+                        alpha = 0.95f * flashHaloIntensity.coerceIn(0.2f, 1.0f),
+                        radius = (if (isChordStrike) baseRad * 1.35f else baseRad) * flashSize.coerceIn(0.2f, 2.5f),
+                        isChordStrike = isChordStrike
                     )
+                )
+
+                if (particlesEnabled && particles.size < 96) {
+                    val sparkBase = if (geom.isBlack) (particleCount * 0.4f).toInt() else (particleCount * 0.6f).toInt()
+                    val count = sparkBase.coerceIn(2, 16)
+                    val pColor = if (lockParticleColor) baseColor else particleCustomColor
+                    for (i in 0 until count) {
+                        val angleRad = (-(30f + Random.nextFloat() * 120f) * (Math.PI / 180f)).toFloat()
+                        val speed = (Random.nextFloat() * 4.5f + 2.0f) * (particleSpeed / 4.5f).coerceIn(0.2f, 3.0f)
+                        val life = Random.nextFloat() * 18f + 14f
+                        particles.add(
+                            PianoSpark(
+                                x = strikeX + (Random.nextFloat() - 0.5f) * (8f * particleExpansion.coerceIn(0.2f, 4f)),
+                                y = contactY,
+                                vx = cos(angleRad) * speed * particleExpansion.coerceIn(0.5f, 2.5f),
+                                vy = sin(angleRad) * speed,
+                                alpha = 1.0f,
+                                size = (Random.nextFloat() * 2.2f + 1.6f) * particleScale.coerceIn(0.3f, 3.0f),
+                                maxLife = life,
+                                currentLife = life,
+                                color = pColor
+                            )
+                        )
+                    }
                 }
             }
         }
-    }
 
-    // Step existing particles & flashes deterministically by dtScale
-    val gravity = 0.28f
-    val pIter = particles.listIterator()
-    while (pIter.hasNext()) {
-        val p = pIter.next()
-        p.x += p.vx * dtScale
-        p.y += p.vy * dtScale
-        p.vy += gravity * dtScale
-        p.vx *= 0.985f
-        p.currentLife -= dtScale
-        p.alpha = (p.currentLife / p.maxLife).coerceIn(0f, 1f)
-        if (p.currentLife <= 0f || p.alpha <= 0f) pIter.remove()
-    }
+        // Step existing particles & flashes deterministically by dtScale
+        val gravity = 0.28f
+        val pIter = particles.listIterator()
+        while (pIter.hasNext()) {
+            val p = pIter.next()
+            p.x += p.vx * dtScale
+            p.y += p.vy * dtScale
+            p.vy += gravity * dtScale
+            p.vx *= 0.985f
+            p.currentLife -= dtScale
+            p.alpha = (p.currentLife / p.maxLife).coerceIn(0f, 1f)
+            if (p.currentLife <= 0f || p.alpha <= 0f) pIter.remove()
+        }
 
-    val fIter = flashes.listIterator()
-    while (fIter.hasNext()) {
-        val f = fIter.next()
-        f.radius += 1.8f * flashSize.coerceIn(0.5f, 2.0f) * dtScale
-        f.alpha *= 0.88f
-        if (f.alpha < 0.03f) fIter.remove()
-    }
+        val fIter = flashes.listIterator()
+        while (fIter.hasNext()) {
+            val f = fIter.next()
+            f.radius += 1.8f * flashSize.coerceIn(0.5f, 2.0f) * dtScale
+            f.alpha *= 0.88f
+            if (f.alpha < 0.03f) fIter.remove()
+        }
 
-    fsFrameTicker++
-}
+        fsFrameTicker++
+    }
     Canvas(modifier = modifier.fillMaxSize()) {
         val _fsTick = fsFrameTicker
         val whiteKeyWidthPx = size.width / whiteKeyCount.toFloat()

@@ -12,6 +12,19 @@ fun initSystemWindowManager(activity: Activity) {
     activityReference = WeakReference(activity)
 }
 
+fun setKeepScreenOn(enabled: Boolean) {
+    val activity = getActivity() ?: return
+    activity.runOnUiThread {
+        runCatching {
+            if (enabled) {
+                activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
+}
+
 private fun getActivity(): Activity? {
 
     val activity = activityReference?.get()

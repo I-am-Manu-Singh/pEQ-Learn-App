@@ -1,6 +1,8 @@
 package com.creativeblisslabs.peqlearn.app.video
 
 import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.creativeblisslabs.peqlearn.app.pdf.AndroidPdfExporter
 import com.creativeblisslabs.peqlearn.app.ui.screens.PdfExportOptions
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
@@ -8,7 +10,6 @@ import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
 /**
  * Resolves the Android application context.
  */
@@ -26,6 +27,7 @@ private fun resolveApplicationContext(): Context {
 /**
  * Android implementation of MIDI video export.
  */
+@RequiresApi(Build.VERSION_CODES.O)
 actual fun exportVideoPlatformSpecific(
     config: VideoExportConfig,
     viewModel: AppViewModel,
@@ -71,24 +73,28 @@ actual fun exportVideoPlatformSpecific(
         }
     }
 }
-
-/**
- * Android implementation of PDF export.
- */
 actual fun compilePdfPlatformSpecific(
-    score: Score,
-    options: PdfExportOptions,
+    config: PdfExportConfig,
     onProgress: (Float) -> Unit,
     onComplete: (String?) -> Unit
 ) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
-            val context = resolveApplicationContext()
+            val context = runCatching {
+                Class.forName("android.app.ActivityThread")
+                    .getMethod("currentApplication")
+                    .invoke(null) as? android.content.Context
+            }.getOrNull() ?: throw IllegalStateException("Android Context unavailable for PDF export")
 
             AndroidPdfExporter.exportScoreToPdf(
                 context = context,
-                score = score,
-                options = options,
+                score = config.score,
+                options = config.options,
+                isLeftHandHidden = config.isLeftHandHidden,
+                isRightHandHidden = config.isRightHandHidden,
+                isSplitStaff = config.isSplitStaff,
+                enabledTrackIndices = config.enabledTrackIndices,
+                transposition = config.transposition,
                 onProgress = { progress ->
                     onProgress(progress)
                 },

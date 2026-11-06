@@ -47,6 +47,7 @@ import com.creativeblisslabs.peqlearn.app.ui.viewmodel.nextTrack
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.previousTrack
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.persistSession
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.pEQViewModelProvider
+import com.creativeblisslabs.peqlearn.app.ui.components.initSystemWindowManager
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        initSystemWindowManager(this)
         // 1. Get the window insets controller
         // val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
 

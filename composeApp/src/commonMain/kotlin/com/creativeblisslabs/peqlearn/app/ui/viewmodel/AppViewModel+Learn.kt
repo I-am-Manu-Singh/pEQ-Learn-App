@@ -73,15 +73,8 @@ fun AppViewModel.toggleDrumRecording() {
     isRecordingDrumSession.value = !isRecordingDrumSession.value
 }
 
-fun AppViewModel.remapPad(index: Int, sample: String) {
-    if (index >= 0 && index < drumPadLabels.size) {
-        drumPadLabels[index] = sample
-    }
-}
 
-fun AppViewModel.updateDrumPadVolume(index: Int, volume: Float) {
-    drumPadVolumes[index] = volume
-}
+
 
 fun AppViewModel.onTunerPitchDetected(pitch: Float, note: String, cents: Int) {
     detectedPitch.value = pitch

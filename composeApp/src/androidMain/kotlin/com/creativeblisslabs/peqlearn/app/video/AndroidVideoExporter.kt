@@ -21,6 +21,10 @@ import android.media.MediaMuxer
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
+import androidx.compose.ui.graphics.asAndroidBitmap
+import com.creativeblisslabs.peqlearn.app.services.pEQVideoExportService
+import com.creativeblisslabs.peqlearn.app.ui.components.setKeepScreenOn
 import com.creativeblisslabs.peqlearn.app.ui.screens.Accidental
 import com.creativeblisslabs.peqlearn.app.ui.screens.ExportTimelineNote
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
@@ -65,7 +69,7 @@ object AndroidVideoExporter {
         val color: Int, val isChord: Boolean
     )
 
-    private data class ExportFlatNote(
+    data class ExportFlatNote(
         val note: ScoreNote, val measureIndex: Int, val startSec: Float,
         val durationSec: Float, val endSec: Float, val isRightHand: Boolean, val isChord: Boolean
     )
@@ -84,9 +88,9 @@ object AndroidVideoExporter {
     }
 
     /**
-     * Converts an ARGB_8888 [argbPixels] array into NV12 / I420 YUV420 planar/semi-planar bytes
-     * according to the encoder's negotiated [colorFormat] so every frame can be queued with an
-     * exact microsecond `ptsUs` without EGL surface driver incompatibilities.
+     * Optimized 2x2 block ARGB_8888 -> YUV420 (NV12 / I420) encoder.
+     * Processes 4 pixels per iteration to cut inner loop iterations by 75% and
+     * eliminate per-pixel division and bounds checks.
      */
     private fun encodeArgbToYuv420(
         argbPixels: IntArray,
@@ -96,43 +100,66 @@ object AndroidVideoExporter {
         isSemiPlanarNV12: Boolean
     ) {
         val frameSize = width * height
-        var yIndex = 0
         var uvIndex = frameSize
         var uIndex = frameSize
         var vIndex = frameSize + (frameSize shr 2)
 
-        var index = 0
-        for (j in 0 until height) {
-            val isEvenRow = (j and 1) == 0
-            for (i in 0 until width) {
-                val argb = argbPixels[index++]
-                val r = (argb shr 16) and 0xFF
-                val g = (argb shr 8) and 0xFF
-                val b = argb and 0xFF
+        for (j in 0 until height step 2) {
+            val row1 = j * width
+            val row2 = (j + 1) * width
+            for (i in 0 until width step 2) {
+                val p00 = argbPixels[row1 + i]
+                val p01 = argbPixels[row1 + i + 1]
+                val p10 = argbPixels[row2 + i]
+                val p11 = argbPixels[row2 + i + 1]
 
-                // BT.601 full-range studio RGB -> YUV conversion
-                val y = (((66 * r + 129 * g + 25 * b + 128) shr 8) + 16).coerceIn(16, 235)
-                yuvBuffer[yIndex++] = y.toByte()
+                val r00 = (p00 shr 16) and 0xFF
+                val g00 = (p00 shr 8) and 0xFF
+                val b00 = p00 and 0xFF
 
-                if (isEvenRow && (i and 1) == 0) {
-                    val u = (((-38 * r - 74 * g + 112 * b + 128) shr 8) + 128).coerceIn(16, 240)
-                    val v = (((112 * r - 94 * g - 18 * b + 128) shr 8) + 128).coerceIn(16, 240)
-                    if (isSemiPlanarNV12) {
-                        if (uvIndex + 1 < yuvBuffer.size) {
-                            yuvBuffer[uvIndex++] = u.toByte()
-                            yuvBuffer[uvIndex++] = v.toByte()
-                        }
-                    } else {
-                        if (uIndex < frameSize + (frameSize shr 2) && vIndex < yuvBuffer.size) {
-                            yuvBuffer[uIndex++] = u.toByte()
-                            yuvBuffer[vIndex++] = v.toByte()
-                        }
-                    }
+                val r01 = (p01 shr 16) and 0xFF
+                val g01 = (p01 shr 8) and 0xFF
+                val b01 = p01 and 0xFF
+
+                val r10 = (p10 shr 16) and 0xFF
+                val g10 = (p10 shr 8) and 0xFF
+                val b10 = p10 and 0xFF
+
+                val r11 = (p11 shr 16) and 0xFF
+                val g11 = (p11 shr 8) and 0xFF
+                val b11 = p11 and 0xFF
+
+                // Fast integer Y calculation for BT.601
+                val y00 = (((66 * r00 + 129 * g00 + 25 * b00 + 128) shr 8) + 16).coerceIn(16, 235)
+                val y01 = (((66 * r01 + 129 * g01 + 25 * b01 + 128) shr 8) + 16).coerceIn(16, 235)
+                val y10 = (((66 * r10 + 129 * g10 + 25 * b10 + 128) shr 8) + 16).coerceIn(16, 235)
+                val y11 = (((66 * r11 + 129 * g11 + 25 * b11 + 128) shr 8) + 16).coerceIn(16, 235)
+
+                yuvBuffer[row1 + i] = y00.toByte()
+                yuvBuffer[row1 + i + 1] = y01.toByte()
+                yuvBuffer[row2 + i] = y10.toByte()
+                yuvBuffer[row2 + i + 1] = y11.toByte()
+
+                // Calculate U & V once per 2x2 pixel block using average RGB
+                val rAvg = (r00 + r01 + r10 + r11) shr 2
+                val gAvg = (g00 + g01 + g10 + g11) shr 2
+                val bAvg = (b00 + b01 + b10 + b11) shr 2
+
+                val u = (((-38 * rAvg - 74 * gAvg + 112 * bAvg + 128) shr 8) + 128).coerceIn(16, 240)
+                val v = (((112 * rAvg - 94 * gAvg - 18 * bAvg + 128) shr 8) + 128).coerceIn(16, 240)
+
+                if (isSemiPlanarNV12) {
+                    yuvBuffer[uvIndex++] = u.toByte()
+                    yuvBuffer[uvIndex++] = v.toByte()
+                } else {
+                    yuvBuffer[uIndex++] = u.toByte()
+                    yuvBuffer[vIndex++] = v.toByte()
                 }
             }
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     suspend fun exportMidiVideo(
         context: Context? = null,
         score: Score,
@@ -259,41 +286,7 @@ object AndroidVideoExporter {
 
             // Synthesize Polyphonic Studio Audio Track
             val sampleRate = sampleRateHz.coerceIn(44100, 48000)
-            val totalAudioSamples = (totalDurationSec * sampleRate).toInt()
-            val audioPcm = FloatArray(totalAudioSamples)
-
-            for (fn in flatNotes) {
-                val pitch = fn.note.midiNote.coerceIn(21, 108)
-                val startSample = (fn.startSec * sampleRate).toInt().coerceIn(0, totalAudioSamples - 1)
-                val ringSamples = ((fn.durationSec + 0.42f) * sampleRate).toInt()
-                val freq = 440.0 * 2.0.pow((pitch - 69) / 12.0)
-                val velGain = (90 / 127f) * 0.36f
-
-                for (s in 0 until ringSamples) {
-                    val idx = startSample + s
-                    if (idx >= totalAudioSamples) break
-                    val t = s.toFloat() / sampleRate
-                    val releaseFade = if (t > fn.durationSec) exp(-(t - fn.durationSec) * 12.0).toFloat() else 1.0f
-                    val hammerDecay = exp(-t * (1.8 + (pitch - 21) * 0.035)).toFloat()
-                    val attack = min(1.0f, t * 240.0f)
-                    val env = hammerDecay * attack * releaseFade
-                    val inharmonicity = 1.0 + 0.00015 * ((pitch - 60).coerceAtLeast(0))
-                    val wave = (
-                        sin(2.0 * Math.PI * freq * t) * 0.60 +
-                            sin(2.0 * Math.PI * freq * 2.0 * inharmonicity * t) * 0.23 +
-                            sin(2.0 * Math.PI * freq * 3.0 * inharmonicity * t) * 0.10 +
-                            sin(2.0 * Math.PI * freq * 4.0 * inharmonicity * t) * 0.05 +
-                            sin(2.0 * Math.PI * freq * 5.0 * inharmonicity * t) * 0.02
-                        ).toFloat() * env * velGain
-                    audioPcm[idx] = (audioPcm[idx] + wave).coerceIn(-0.98f, 0.98f)
-                }
-            }
-
-            val pcmByteBuffer = ByteBuffer.allocate(totalAudioSamples * 2).order(ByteOrder.LITTLE_ENDIAN)
-            for (s in audioPcm) {
-                pcmByteBuffer.putShort((s.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort())
-            }
-            pcmByteBuffer.flip()
+            val pcmByteBuffer = AudioSynthesizer.synthesizeAudioTrack(flatNotes, totalDurationSec, sampleRate)
 
             // Mount Fullscreen UI Stage if not already open and wait up to 600ms for GraphicsLayer to attach
             val wasPlayingBeforeExport = viewModel?.isScorePlaying?.value == true
@@ -500,6 +493,12 @@ object AndroidVideoExporter {
                 }
             }
 
+            if (appContext != null) {
+                pEQVideoExportService.startExportService(appContext)
+            }
+            setKeepScreenOn(true)
+            val exportStartMs = System.currentTimeMillis()
+
             try {
                 for (frameIndex in 0 until totalFrames) {
                     val currentTimeSec = frameIndex.toFloat() / targetFps
@@ -509,13 +508,20 @@ object AndroidVideoExporter {
                     // 1. Capture the exact live PianoKeyboard88Keys Compose UI Stage
                     val activeCtrl = stageCaptureController ?: viewModel?.visualizerStageCaptureController
                     val capturedUiBitmap: Bitmap? = if (activeCtrl != null && viewModel != null && activeCtrl.graphicsLayer != null) {
-                        activeCtrl.stepAndCaptureFrame(
+                        val imgBmp = activeCtrl.stepAndCaptureFrame(
                             viewModel = viewModel,
                             timeSec = currentTimeSec,
                             measureStartTimes = measureStartTimes,
                             measureDurations = measureDurations,
                             flatNotes = controllerTimelineNotes
                         )
+                        imgBmp?.asAndroidBitmap()?.let { rawBmp ->
+                            if (rawBmp.config == Bitmap.Config.HARDWARE) {
+                                rawBmp.copy(Bitmap.Config.ARGB_8888, false)
+                            } else {
+                                rawBmp
+                            }
+                        }
                     } else {
                         null
                     }
@@ -600,6 +606,30 @@ object AndroidVideoExporter {
                     if (frameIndex % (targetFps / 4).coerceAtLeast(1) == 0 || frameIndex == totalFrames - 1) {
                         val clampedProg = progress.coerceIn(0f, 0.99f)
                         activeController?.exportProgress = clampedProg
+
+                        val elapsedMs = (System.currentTimeMillis() - exportStartMs).coerceAtLeast(1L)
+                        val elapsedSec = elapsedMs / 1000f
+                        val currentFrame = frameIndex + 1
+                        val fpsRendered = currentFrame / elapsedSec
+                        val remainingFrames = (totalFrames - currentFrame).coerceAtLeast(0)
+                        val etaSec = if (fpsRendered > 0f) (remainingFrames / fpsRendered).toInt() else 0
+                        val etaMin = etaSec / 60
+                        val etaSecRem = etaSec % 60
+
+                        val speedFactor = fpsRendered / targetFps
+                        val speedText = if (speedFactor >= 1.0f) String.format("%.1fx (%.0f FPS)", speedFactor, fpsRendered) else String.format("%.2fx (%.0f FPS)", speedFactor, fpsRendered)
+                        val frameText = "Frame $currentFrame / $totalFrames"
+                        val etaText = String.format("ETA %02d:%02d • %s", etaMin, etaSecRem, speedText)
+
+                        viewModel?.let { vm ->
+                            vm.videoExportFrameText.value = frameText
+                            vm.videoExportEtaText.value = etaText
+                        }
+
+                        if (appContext != null) {
+                            pEQVideoExportService.updateProgress(appContext, clampedProg, frameText, etaText)
+                        }
+
                         withContext(Dispatchers.Main) {
                             onProgress(clampedProg)
                         }
@@ -608,6 +638,10 @@ object AndroidVideoExporter {
 
                 drainEncoders(endOfStream = true)
             } finally {
+                if (appContext != null) {
+                    pEQVideoExportService.stopExportService(appContext)
+                }
+                setKeepScreenOn(false)
                 if (viewModel != null) {
                     withContext(Dispatchers.Main) {
                         viewModel.visualizerStageCaptureController?.exportTimeSec = null

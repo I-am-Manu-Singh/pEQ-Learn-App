@@ -12,29 +12,28 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.learn.EarTrainingEngine
 import com.creativeblisslabs.peqlearn.app.learn.SightReadingEngine
+import com.creativeblisslabs.peqlearn.app.ui.components.MusicVectorSymbols
 import com.creativeblisslabs.peqlearn.app.ui.components.pEQGlassCard
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
+import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/**
- * INTERACTIVE EAR TRAINING & SIGHT-READING ACADEMY
- * Directly ports and enhances midee's interval quiz and sight-reading trainer.
- */
 @Composable
 fun EarTrainingAcademyScreen(
     viewModel: AppViewModel,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     onBack: () -> Unit = {}
 ) {
-    var activeMode by remember { mutableStateOf("EAR_TRAINING") } // "EAR_TRAINING" or "SIGHT_READING"
+    var activeMode by remember { mutableStateOf("SIGHT_READING") } // "SIGHT_READING", "EAR_TRAINING", "CHORD_EAR"
     var tier by remember { mutableStateOf("Beginner") }
 
     Column(
@@ -42,9 +41,8 @@ fun EarTrainingAcademyScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // TOP HEADER
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -56,39 +54,47 @@ fun EarTrainingAcademyScreen(
                 }
                 Column {
                     Text(
-                        text = if (activeMode == "EAR_TRAINING") "INTERVAL EAR TRAINER" else "SIGHT-READING TRAINER",
+                        text = when (activeMode) {
+                            "EAR_TRAINING" -> "INTERVAL EAR TRAINER"
+                            "CHORD_EAR" -> "CHORD QUALITY TRAINER"
+                            else -> "GRAND STAFF SIGHT-READING"
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black,
                         color = primaryColor
                     )
                     Text(
-                        text = if (activeMode == "EAR_TRAINING") "Recognize musical distances by ear" else "Master note identification & key signatures",
+                        text = "Beginner, Intermediate & Advanced Pianist Mastery",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.6f)
                     )
                 }
             }
 
-            // Mode Toggle Chips
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(
-                    selected = activeMode == "EAR_TRAINING",
-                    onClick = { activeMode = "EAR_TRAINING" },
-                    label = { Text("Ear Trainer", fontSize = 11.sp) }
-                )
                 FilterChip(
                     selected = activeMode == "SIGHT_READING",
                     onClick = { activeMode = "SIGHT_READING" },
                     label = { Text("Sight-Reading", fontSize = 11.sp) }
                 )
+                FilterChip(
+                    selected = activeMode == "EAR_TRAINING",
+                    onClick = { activeMode = "EAR_TRAINING" },
+                    label = { Text("Intervals", fontSize = 11.sp) }
+                )
+                FilterChip(
+                    selected = activeMode == "CHORD_EAR",
+                    onClick = { activeMode = "CHORD_EAR" },
+                    label = { Text("Chords", fontSize = 11.sp) }
+                )
             }
         }
 
         AnimatedContent(targetState = activeMode, label = "academy_switch") { mode ->
-            if (mode == "EAR_TRAINING") {
-                EarTrainingView(viewModel = viewModel, tier = tier, onTierChange = { tier = it })
-            } else {
-                SightReadingView(viewModel = viewModel)
+            when (mode) {
+                "EAR_TRAINING" -> EarTrainingView(viewModel = viewModel, tier = tier, onTierChange = { tier = it })
+                "CHORD_EAR" -> ChordQualityEarTrainerView(viewModel = viewModel, tier = tier, onTierChange = { tier = it })
+                else -> SightReadingView(viewModel = viewModel)
             }
         }
     }
@@ -103,7 +109,7 @@ private fun EarTrainingView(
     val scope = rememberCoroutineScope()
     var currentQuestion by remember { mutableStateOf(EarTrainingEngine.generateQuestion(tier)) }
     var selectedChoice by remember { mutableStateOf<EarTrainingEngine.Interval?>(null) }
-    var answerState by remember { mutableStateOf<Boolean?>(null) } // true = correct, false = incorrect
+    var answerState by remember { mutableStateOf<Boolean?>(null) }
     var scoreCount by remember { mutableIntStateOf(0) }
     var streak by remember { mutableIntStateOf(0) }
 
@@ -117,11 +123,11 @@ private fun EarTrainingView(
                 viewModel.audioEngine.noteOff(currentQuestion.targetPitch)
             } else {
                 viewModel.audioEngine.noteOn(currentQuestion.rootPitch, 0.9f)
-                delay(600)
+                delay(550)
                 viewModel.audioEngine.noteOff(currentQuestion.rootPitch)
-                delay(100)
+                delay(90)
                 viewModel.audioEngine.noteOn(currentQuestion.targetPitch, 0.9f)
-                delay(800)
+                delay(750)
                 viewModel.audioEngine.noteOff(currentQuestion.targetPitch)
             }
         }
@@ -131,8 +137,7 @@ private fun EarTrainingView(
         playInterval(harmonic = false)
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // TIER SELECTOR & STATS BAR
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -155,10 +160,7 @@ private fun EarTrainingView(
                 }
             }
 
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF1E222D)
-            ) {
+            Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF1E222D)) {
                 Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Score: $scoreCount", fontSize = 11.sp, color = Color.White)
                     Text("Streak: $streak 🔥", fontSize = 11.sp, color = Color(0xFFFFD700))
@@ -166,18 +168,13 @@ private fun EarTrainingView(
             }
         }
 
-        // MAIN QUIZ CARD
         pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(20.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = "Listen carefully to the two notes",
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.7f)
-                )
+                Text("Listen to the two notes and identify the interval distance", fontSize = 13.sp, color = Color.White.copy(alpha = 0.75f))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
@@ -186,21 +183,17 @@ private fun EarTrainingView(
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Melodic (One-by-One)")
+                        Text("Melodic (Arpeggiated)")
                     }
-
-                    OutlinedButton(
-                        onClick = { playInterval(harmonic = true) }
-                    ) {
+                    OutlinedButton(onClick = { playInterval(harmonic = true) }) {
                         Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Harmonic (Together)")
                     }
                 }
 
-                // MULTIPLE CHOICE OPTIONS
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     currentQuestion.choices.forEach { choice ->
@@ -219,9 +212,8 @@ private fun EarTrainingView(
                                 .fillMaxWidth()
                                 .clickable(enabled = answerState == null) {
                                     selectedChoice = choice
-                                    val correct = isCorrect
-                                    answerState = correct
-                                    if (correct) {
+                                    answerState = isCorrect
+                                    if (isCorrect) {
                                         scoreCount += 10
                                         streak += 1
                                     } else {
@@ -250,20 +242,18 @@ private fun EarTrainingView(
                     }
                 }
 
-                // FEEDBACK & NEXT BUTTON
                 if (answerState != null) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (answerState == true) "Correct! +10 Points" else "Miss! It was ${currentQuestion.interval.fullName}",
+                            text = if (answerState == true) "Correct! +10 Points" else "It was ${currentQuestion.interval.fullName}",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (answerState == true) Color(0xFF00E676) else Color(0xFFFF5252)
                         )
-
                         Button(
                             onClick = {
                                 currentQuestion = EarTrainingEngine.generateQuestion(tier)
@@ -283,15 +273,171 @@ private fun EarTrainingView(
 }
 
 @Composable
+private fun ChordQualityEarTrainerView(
+    viewModel: AppViewModel,
+    tier: String,
+    onTierChange: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val chordTypes = remember(tier) {
+        when (tier) {
+            "Beginner" -> listOf(
+                "Major Triad" to listOf(0, 4, 7),
+                "Minor Triad" to listOf(0, 3, 7),
+                "Suspended 4th" to listOf(0, 5, 7)
+            )
+            "Intermediate" -> listOf(
+                "Major Triad" to listOf(0, 4, 7),
+                "Minor Triad" to listOf(0, 3, 7),
+                "Diminished" to listOf(0, 3, 6),
+                "Augmented" to listOf(0, 4, 8),
+                "Dominant 7th" to listOf(0, 4, 7, 10)
+            )
+            else -> listOf(
+                "Major 7th" to listOf(0, 4, 7, 11),
+                "Minor 7th" to listOf(0, 3, 7, 10),
+                "Dominant 7th" to listOf(0, 4, 7, 10),
+                "Half-Diminished (m7b5)" to listOf(0, 3, 6, 10),
+                "Diminished 7th" to listOf(0, 3, 6, 9),
+                "Major 9th" to listOf(0, 4, 7, 11, 14)
+            )
+        }
+    }
+
+    var rootMidi by remember { mutableIntStateOf(60) }
+    var targetChord by remember(chordTypes) { mutableStateOf(chordTypes.random()) }
+    var answerResult by remember { mutableStateOf<String?>(null) }
+    var streak by remember { mutableIntStateOf(0) }
+
+    fun playCurrentChord(arpeggiate: Boolean) {
+        scope.launch {
+            val notes = targetChord.second.map { rootMidi + it }
+            if (arpeggiate) {
+                notes.forEach { n ->
+                    viewModel.audioEngine.noteOn(n, 0.85f)
+                    delay(240)
+                }
+                delay(700)
+                notes.forEach { viewModel.audioEngine.noteOff(it) }
+            } else {
+                notes.forEach { viewModel.audioEngine.noteOn(it, 0.85f) }
+                delay(1100)
+                notes.forEach { viewModel.audioEngine.noteOff(it) }
+            }
+        }
+    }
+
+    LaunchedEffect(targetChord, rootMidi) {
+        playCurrentChord(arpeggiate = false)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Beginner", "Intermediate", "Advanced").forEach { t ->
+                    AssistChip(
+                        onClick = {
+                            onTierChange(t)
+                            answerResult = null
+                        },
+                        label = { Text(t, fontSize = 11.sp, fontWeight = if (tier == t) FontWeight.Bold else FontWeight.Normal) }
+                    )
+                }
+            }
+            Text("Streak: $streak 🔥", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+        }
+
+        pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(20.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("Identify the Chord Harmony Quality", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { playCurrentChord(arpeggiate = false) }) {
+                        Text("Play Block Chord")
+                    }
+                    OutlinedButton(onClick = { playCurrentChord(arpeggiate = true) }) {
+                        Text("Arpeggiate Notes")
+                    }
+                }
+
+                chordTypes.forEach { (name, intervals) ->
+                    val isCorrect = name == targetChord.first
+                    val bg = when {
+                        answerResult != null && isCorrect -> Color(0xFF00E676)
+                        answerResult == name && !isCorrect -> Color(0xFFFF5252)
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = bg,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = answerResult == null) {
+                                answerResult = name
+                                if (isCorrect) streak++ else streak = 0
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(name, fontWeight = FontWeight.Bold, color = if (answerResult != null && isCorrect) Color.Black else Color.White)
+                            Text("Intervals: ${intervals.joinToString("-")}", fontSize = 11.sp, color = if (answerResult != null && isCorrect) Color.Black else Color.White.copy(alpha = 0.6f))
+                        }
+                    }
+                }
+
+                if (answerResult != null) {
+                    Button(
+                        onClick = {
+                            rootMidi = (53..67).random()
+                            targetChord = chordTypes.random()
+                            answerResult = null
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Next Chord")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SightReadingView(viewModel: AppViewModel) {
     var selectedTierId by remember { mutableStateOf("landmark") }
     val currentTier = remember(selectedTierId) { SightReadingEngine.getTier(selectedTierId) }
-    var currentPitch by remember { mutableStateOf(SightReadingEngine.nextNote(currentTier)) }
+    var currentPitch by remember { mutableIntStateOf(SightReadingEngine.nextNote(currentTier)) }
+    var showHintOnStaff by remember { mutableStateOf(false) }
     var streak by remember { mutableIntStateOf(0) }
+    var totalSolved by remember { mutableIntStateOf(0) }
     val weakNotes = remember { mutableStateListOf<Int>() }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // TIER CHIPS
+    // Listen to live USB MIDI / On-Screen Piano Key presses for hands-free sight-reading!
+    val livePlayedMidi = viewModel.midiPlayingNote.value
+    LaunchedEffect(livePlayedMidi) {
+        if (livePlayedMidi != null) {
+            if (livePlayedMidi == currentPitch || (livePlayedMidi % 12) == (currentPitch % 12)) {
+                streak++
+                totalSolved++
+                showHintOnStaff = false
+                currentPitch = SightReadingEngine.nextNote(currentTier, lastPitch = currentPitch, weakNotes = weakNotes.toSet())
+            } else {
+                streak = 0
+                if (currentPitch !in weakNotes) weakNotes.add(currentPitch)
+            }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -308,43 +454,102 @@ private fun SightReadingView(viewModel: AppViewModel) {
             }
         }
 
-        // FLASHCARD
         pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(
-                modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                modifier = Modifier.padding(20.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(
-                    text = "IDENTIFY THIS NOTE",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
-                )
-
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF1E222D)),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = SightReadingEngine.pitchToName(currentPitch),
-                        fontSize = 38.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFFFFD700)
+                        text = "READ FROM GRAND STAFF (OR PLAY ON MIDI KEYBOARD)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
+                    TextButton(onClick = { showHintOnStaff = !showHintOnStaff }) {
+                        Text(if (showHintOnStaff) "Hide Hint: ${SightReadingEngine.pitchToName(currentPitch)}" else "Show Hint", fontSize = 11.sp, color = Color(0xFFFFD700))
+                    }
                 }
 
-                Text(
-                    text = "Press the key on the piano or choose below:",
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.7f)
-                )
+                // Real Grand Staff Vector Note Flashcard Canvas (Treble + Bass Clef + Ledger Lines)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF141122),
+                    border = BorderStroke(1.dp, Color(0xFF2E264E)),
+                    modifier = Modifier.fillMaxWidth().height(195.dp)
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 14.dp)) {
+                        val spacing = 12.dp.toPx()
+                        val halfSpacing = spacing / 2f
+                        val trebleTop = 20.dp.toPx()
+                        val bassTop = trebleTop + 6.5f * spacing
+                        val lineColor = Color.White.copy(alpha = 0.45f)
+                        val clefColor = Color.White.copy(alpha = 0.9f)
 
-                // Quick choices
+                        for (i in 0..4) {
+                            val ty = trebleTop + i * spacing
+                            val by = bassTop + i * spacing
+                            drawLine(lineColor, Offset(0f, ty), Offset(size.width, ty), strokeWidth = 1.3f)
+                            drawLine(lineColor, Offset(0f, by), Offset(size.width, by), strokeWidth = 1.3f)
+                        }
+
+                        with(MusicVectorSymbols) {
+                            val clefH = spacing * 6.4f
+                            val clefW = clefH * 0.36f
+                            drawTrebleClef(clefColor, Offset(12f, trebleTop + 3f * spacing - 0.63f * clefH), Size(clefW, clefH))
+                            val bassH = spacing * 3.2f
+                            val bassW = bassH * 0.81f
+                            drawBassClef(clefColor, Offset(14f, bassTop + spacing - 0.32f * bassH), Size(bassW, bassH))
+                        }
+
+                        val isTreble = currentPitch >= 60
+                        val step = ChordVoicingEngine.getDiatonicStep(currentPitch)
+                        val ny = if (isTreble) {
+                            trebleTop + (38f - step) * halfSpacing
+                        } else {
+                            bassTop + (26f - step) * halfSpacing
+                        }
+                        val nx = size.width * 0.54f
+                        val sTop = if (isTreble) trebleTop else bassTop
+                        val sBot = sTop + 4f * spacing
+
+                        // Ledger lines
+                        if (ny < sTop - halfSpacing * 0.8f) {
+                            var ly = sTop - spacing
+                            while (ly >= ny - halfSpacing * 0.6f) {
+                                drawLine(Color.White.copy(alpha = 0.75f), Offset(nx - spacing, ly), Offset(nx + spacing, ly), strokeWidth = 1.5f)
+                                ly -= spacing
+                            }
+                        } else if (ny > sBot + halfSpacing * 0.8f) {
+                            var ly = sBot + spacing
+                            while (ly <= ny + halfSpacing * 0.6f) {
+                                drawLine(Color.White.copy(alpha = 0.75f), Offset(nx - spacing, ly), Offset(nx + spacing, ly), strokeWidth = 1.5f)
+                                ly += spacing
+                            }
+                        }
+
+                        with(MusicVectorSymbols) {
+                            val nw = spacing * 1.25f
+                            val nh = spacing * 0.90f
+                            drawNoteHead(
+                                color = Color(0xFFFFD700),
+                                size = Size(nw, nh),
+                                isHollow = false,
+                                isWhole = false,
+                                topLeft = Offset(nx - nw / 2f, ny - nh / 2f)
+                            )
+                            if ((currentPitch % 12) in listOf(1, 3, 6, 8, 10)) {
+                                drawSharp(Color(0xFFFFD700), Size(spacing * 0.55f, spacing * 1.4f), Offset(nx - nw - 6f, ny - spacing * 0.7f))
+                            }
+                        }
+                    }
+                }
+
                 val noteLetters = listOf("C", "D", "E", "F", "G", "A", "B")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -357,6 +562,8 @@ private fun SightReadingView(viewModel: AppViewModel) {
                                 val correct = targetName.startsWith(letter)
                                 if (correct) {
                                     streak++
+                                    totalSolved++
+                                    showHintOnStaff = false
                                     viewModel.audioEngine.noteOn(currentPitch, 0.9f)
                                     currentPitch = SightReadingEngine.nextNote(currentTier, lastPitch = currentPitch, weakNotes = weakNotes.toSet())
                                 } else {
@@ -375,13 +582,12 @@ private fun SightReadingView(viewModel: AppViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Streak: $streak 🔥", color = Color(0xFFFFD700), fontSize = 12.sp)
+                    Text("Solved: $totalSolved • Streak: $streak 🔥", color = Color(0xFFFFD700), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     if (weakNotes.isNotEmpty()) {
-                        Text("${weakNotes.size} weak notes prioritized (3x frequency)", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+                        Text("${weakNotes.size} weak notes prioritized (3x adaptive frequency)", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
                     }
                 }
             }
         }
     }
 }
-

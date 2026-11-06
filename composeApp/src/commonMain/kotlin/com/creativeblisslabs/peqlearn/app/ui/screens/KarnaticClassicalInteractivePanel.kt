@@ -363,6 +363,7 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                 rightHandColor = viewModel.rightHandColor.value,
                 isLeftHandHidden = viewModel.isLeftHandHidden.value,
                 isRightHandHidden = viewModel.isRightHandHidden.value,
+                fallbackTitle = viewModel.currentMediaItem.value?.title ?: viewModel.selectedMixerItem.value?.displayName ?: "", // <-- PASSED HERE
                 enabledTrackIndices = viewModel.enabledTrackIndices,
                 showScoreHeader = false,
                 modifier = Modifier.fillMaxWidth().height(240.dp)

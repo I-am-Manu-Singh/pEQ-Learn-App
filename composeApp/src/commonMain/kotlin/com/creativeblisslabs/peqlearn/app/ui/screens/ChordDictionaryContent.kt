@@ -1171,6 +1171,7 @@ Row(
             onFormatChange = onFormatChange,
             showScoreHeader = false,
             modifier = Modifier.fillMaxWidth().height(240.dp),
+            fallbackTitle = viewModel.currentMediaItem.value?.title ?: viewModel.selectedMixerItem.value?.displayName ?: "", // <-- PASSED HERE
             scrollState = scrollState
         )
 

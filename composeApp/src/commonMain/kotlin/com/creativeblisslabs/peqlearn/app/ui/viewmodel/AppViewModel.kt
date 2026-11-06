@@ -35,6 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withTimeoutOrNull
 import com.creativeblisslabs.peqlearn.app.data.normalizePath
+import com.creativeblisslabs.peqlearn.app.video.PdfExportConfig
 import com.creativeblisslabs.peqlearn.app.video.VideoExportConfig
 import com.creativeblisslabs.peqlearn.app.video.compilePdfPlatformSpecific
 import com.creativeblisslabs.peqlearn.app.video.exportVideoPlatformSpecific
@@ -295,6 +296,8 @@ val client = createHttpClient()
     val videoExportHistory = mutableStateListOf<VideoExportHistoryItem>()
     val isVideoExporting = mutableStateOf(false)
     val videoExportProgress = mutableFloatStateOf(0f)
+    val videoExportFrameText = mutableStateOf("")
+    val videoExportEtaText = mutableStateOf("")
   
     val showMiniPlayer = mutableStateOf(true)
     val isFullscreenKeyboard = mutableStateOf(false)
@@ -1907,19 +1910,40 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
             }
         }
     }
-    fun compileCurrentNotationToPDF(options: PdfExportOptions = pdfExportOptions.value, onComplete: ((String?) -> Unit)? = null) {
-        val score = currentScore.value ?: Score(
-            title = options.title.ifBlank { "pEQ Score Study" },
-            composer = options.composer.ifBlank { "pEQ Learn Studio" },
-            tempo = metronomeBpm.value.toFloat(),
-            timeSignature = "4/4"
-        )
-        isExportingPDF.value = true
-        pdfExportProgress.value = 0.05f
 
-        compilePdfPlatformSpecific(
+
+fun compileCurrentNotationToPDF(
+        options: PdfExportOptions = pdfExportOptions.value,
+        onComplete: ((String?) -> Unit)? = null
+    ) {
+    val rawScore = currentScore.value ?: Score(
+        title = options.title.ifBlank { currentMediaItem.value?.title ?: "pEQ Score Study" },
+        composer = options.composer.ifBlank { "pEQ Learn Studio" },
+        tempo = metronomeBpm.value.toFloat(),
+        timeSignature = "4/4"
+    )
+    val resolvedTitle = listOf(
+        options.title,
+        rawScore.title.takeUnless { it.equals("Untitled Score", ignoreCase = true) },
+        currentMediaItem.value?.title,
+        selectedMixerItem.value?.displayName,
+        rawScore.tracks.firstOrNull { it.trackName.isNotBlank() && !it.trackName.equals("Track 1", true) }?.trackName
+    ).firstOrNull { !it.isNullOrBlank() }?.substringAfterLast("/")?.substringBeforeLast(".")?.replace("_", " ") ?: "pEQ Studio Score"
+
+    val score = rawScore.copy(title = resolvedTitle)
+
+        val config = PdfExportConfig(
             score = score,
             options = options,
+            isLeftHandHidden = isLeftHandHidden.value,
+            isRightHandHidden = isRightHandHidden.value,
+            isSplitStaff = isSplitStaff.value,
+            enabledTrackIndices = enabledTrackIndices.toMap(),
+            transposition = transposition.intValue
+        )
+
+        compilePdfPlatformSpecific(
+            config = config,
             onProgress = { progress: Float ->
                 viewModelScope.launch(Dispatchers.Main) {
                     pdfExportProgress.value = progress
@@ -1934,7 +1958,6 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
             }
         )
     }
-
     fun exportVideoToFile(onComplete: (String) -> Unit) {
     val score = currentScore.value ?: Score(
         title = currentMediaItem.value?.title ?: "pEQ Performance",

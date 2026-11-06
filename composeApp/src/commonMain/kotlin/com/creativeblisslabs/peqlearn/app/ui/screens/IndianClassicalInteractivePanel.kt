@@ -361,6 +361,7 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                 isRightHandHidden = viewModel.isRightHandHidden.value,
                 enabledTrackIndices = viewModel.enabledTrackIndices,
                 showScoreHeader = false,
+                fallbackTitle = viewModel.currentMediaItem.value?.title ?: viewModel.selectedMixerItem.value?.displayName ?: "", // <-- PASSED HERE
                 modifier = Modifier.fillMaxWidth().height(240.dp)
             )
                         Spacer(modifier = Modifier.height(110.dp))

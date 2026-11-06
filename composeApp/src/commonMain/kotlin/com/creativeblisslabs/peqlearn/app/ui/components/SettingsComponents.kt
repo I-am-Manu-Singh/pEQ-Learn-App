@@ -983,7 +983,6 @@ fun VideoExportStudioSection(
         }
     }
 }
-
 @Composable
 fun PdfExportStudioSection(
     viewModel: AppViewModel,
@@ -1144,7 +1143,7 @@ fun PdfExportStudioSection(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "${(viewModel.pdfExportProgress.value * 100).toInt()}%",
+                    text = "${(viewModel.pdfExportProgress.value * 100f).toInt()}%",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.primary
@@ -1160,11 +1159,11 @@ fun PdfExportStudioSection(
     }
 
     // Compile & Export PDF Button
-   Button(
-    onClick = {
-        onExportStarted?.invoke()
-        viewModel.compileCurrentNotationToPDF()
-    },
+    Button(
+        onClick = {
+            onExportStarted?.invoke()
+            viewModel.compileCurrentNotationToPDF()
+        },
         enabled = !viewModel.isExportingPDF.value,
         modifier = Modifier.fillMaxWidth().height(52.dp),
         shape = MaterialTheme.shapes.medium,

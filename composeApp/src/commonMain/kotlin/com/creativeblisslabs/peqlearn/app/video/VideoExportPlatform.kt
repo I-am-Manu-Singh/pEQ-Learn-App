@@ -12,8 +12,7 @@ expect fun exportVideoPlatformSpecific(
 )
 
 expect fun compilePdfPlatformSpecific(
-    score: Score,
-    options: PdfExportOptions,
+    config: PdfExportConfig,
     onProgress: (Float) -> Unit,
     onComplete: (String?) -> Unit
 )
