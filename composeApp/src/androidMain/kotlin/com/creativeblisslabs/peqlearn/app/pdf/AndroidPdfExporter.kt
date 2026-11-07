@@ -261,6 +261,7 @@ object AndroidPdfExporter {
                                 showTab = showTab,
                                 showMeasureNumbers = options.includeMeasureNumbers,
                                 showNoteLetters = options.includeChordLabels,
+                                showFingerings = true,
                                 showLyrics = options.includeLyrics,
                                 isSplitStaff = isSplitStaff,
                                 isDarkTheme = isInverted,
@@ -312,6 +313,11 @@ object AndroidPdfExporter {
                 val cachePdfFile = File(context.cacheDir, pdfFileName)
                 FileOutputStream(cachePdfFile).use { out ->
                     document.writeTo(out)
+                    // Embed lossless pEQ Score payload trailer so exported PDFs can be re-imported & played like MIDI!
+                    runCatching {
+                        val payloadBytes = com.creativeblisslabs.peqlearn.app.util.MidiFileParser.encodeScorePayloadForPdf(score)
+                        out.write(payloadBytes)
+                    }
                 }
                 document.close()
 

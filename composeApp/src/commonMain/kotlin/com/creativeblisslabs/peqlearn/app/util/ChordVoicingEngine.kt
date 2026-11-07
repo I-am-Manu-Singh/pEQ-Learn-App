@@ -45,16 +45,17 @@ object ChordVoicingEngine {
             chordSuffix = typeDef.suffix
         )
     }
-
     /**
-     * Dynamically generates a playable chord shape (Advanced Overload).
+     * Dynamically generates a human-playable guitar/ukulele chord shape.
+     * Convention: returned `frets` and `fingers` are ordered High String (index 0, e4) -> Low String (lastIndex, E2)
+     * to match `UnifiedGuitarFretboard` and `getDictionaryGuitarShape`.
      */
     fun generateDynamicShape(
         rootMidiNote: Int,
         targetSemitones: List<Int>,
         voicingStyle: String = "Standard",
         startFret: Int = 1,
-        openStringPitches: List<Int> = listOf(40, 45, 50, 55, 59, 64),
+        openStringPitches: List<Int> = listOf(64, 59, 55, 50, 45, 40), // High e4 (0) to Low E2 (5)
         isPiano: Boolean = false,
         inversion: InversionStyle = InversionStyle.ROOT,
         chordSuffix: String = "",
@@ -62,29 +63,42 @@ object ChordVoicingEngine {
         difficulty: ChordDiff = ChordDiff.MEDIUM
     ): GuitarShape {
         val numStrings = openStringPitches.size
+        // Ensure openStringPitches are High-to-Low (e4..E2) so index (numStrings - 1) is the lowest bass string
+        val highToLowTuning = if (numStrings >= 2 && openStringPitches.first() < openStringPitches.last()) {
+            openStringPitches.reversed()
+        } else {
+            openStringPitches
+        }
 
-        val bassDegreeSafe = inversion.bassDegree.coerceAtMost(targetSemitones.lastIndex)
-        val targetBassNote = (rootMidiNote + targetSemitones[bassDegreeSafe]) % 12
+        val rootPc = ((rootMidiNote % 12) + 12) % 12
+        val bassDegreeSafe = inversion.bassDegree.coerceAtMost(targetSemitones.lastIndex.coerceAtLeast(0))
+        val targetBassPc = ((rootPc + (targetSemitones.getOrElse(bassDegreeSafe) { 0 })) % 12 + 12) % 12
 
-        val effectiveTarget = if (voicingStyle == "Power") {
-            targetSemitones.filterNot { it == 3 || it == 4 }
-        } else targetSemitones
+        val effectiveTarget = when (voicingStyle.lowercase()) {
+            "power" -> listOf(0, 7)
+            "shell" -> targetSemitones.filter { it == 0 || it == 3 || it == 4 || it == 10 || it == 11 }.ifEmpty { targetSemitones }
+            else -> targetSemitones
+        }
 
-        val absoluteTargetPitches = effectiveTarget.map { (rootMidiNote + it) % 12 }.toSet()
+        val absoluteTargetPitches = effectiveTarget.map { ((rootPc + it) % 12 + 12) % 12 }.toSet()
+        val minSearchFret = if (voicingStyle.equals("Barre", ignoreCase = true)) startFret.coerceAtLeast(1) else startFret.coerceAtLeast(1)
+        val maxSearchFret = (minSearchFret + 3).coerceAtMost(15)
 
         val stringPossibilities = List(numStrings) { stringIdx ->
-            val openPitch = openStringPitches[stringIdx]
+            val openPc = ((highToLowTuning[stringIdx] % 12) + 12) % 12
             val validFrets = mutableListOf<Int>()
-            val endFret = startFret + 4
 
-            if (absoluteTargetPitches.contains(openPitch % 12)) {
+            // Allow open strings only when not forcing a closed Barre/Power shape above fret 1
+            val allowOpen = !voicingStyle.equals("Barre", ignoreCase = true) &&
+                    !voicingStyle.equals("Power", ignoreCase = true) &&
+                    minSearchFret <= 2
+            if (allowOpen && absoluteTargetPitches.contains(openPc)) {
                 validFrets.add(0)
             }
 
-            for (fret in startFret..endFret) {
-                if (fret == 0) continue
-                val pitch = (openPitch + fret) % 12
-                if (absoluteTargetPitches.contains(pitch)) {
+            for (fret in minSearchFret..maxSearchFret) {
+                val pc = (openPc + fret) % 12
+                if (absoluteTargetPitches.contains(pc)) {
                     validFrets.add(fret)
                 }
             }
@@ -98,19 +112,23 @@ object ChordVoicingEngine {
         fun evaluateCombinations(stringIdx: Int, currentFrets: MutableList<Int>) {
             if (stringIdx == numStrings) {
                 val activeIndices = currentFrets.indices.filter { currentFrets[it] >= 0 }
-                if (activeIndices.isEmpty()) return
+                val minRequiredNotes = if (voicingStyle.equals("Power", true)) 2 else minOf(3, absoluteTargetPitches.size)
+                if (activeIndices.size < minRequiredNotes) return
 
-                val lowestIdx = activeIndices.first()
-                val lowestPitch = (openStringPitches[lowestIdx] + currentFrets[lowestIdx]) % 12
+                if (voicingStyle.equals("Power", true) && activeIndices.size > 3) return
+                if (voicingStyle.equals("Shell", true) && activeIndices.size > 4) return
 
-                if (lowestPitch != targetBassNote) return
+                // In High-to-Low string order, `activeIndices.last()` is the lowest-pitched bass string!
+                val lowestBassStringIdx = activeIndices.last()
+                val lowestPitchPc = ((highToLowTuning[lowestBassStringIdx] + currentFrets[lowestBassStringIdx]) % 12 + 12) % 12
+                if (lowestPitchPc != targetBassPc) return
 
                 val soundingPitches = activeIndices.map { sIdx ->
-                    (openStringPitches[sIdx] + currentFrets[sIdx]) % 12
+                    ((highToLowTuning[sIdx] + currentFrets[sIdx]) % 12 + 12) % 12
                 }.toSet()
 
                 if (soundingPitches.containsAll(absoluteTargetPitches)) {
-                    val score = scoreShapeMechanics(currentFrets, targetBassNote, openStringPitches)
+                    val score = scoreShapeMechanics(currentFrets, targetBassPc, highToLowTuning, difficulty)
                     if (score < bestScore) {
                         bestScore = score
                         bestFrets = currentFrets.toList()
@@ -127,102 +145,92 @@ object ChordVoicingEngine {
 
         evaluateCombinations(0, mutableListOf())
 
+        // Fallback if strict bass-note constraint yielded no shape in that 4-fret window
+        if (bestFrets.all { it == -1 }) {
+            bestFrets = List(numStrings) { sIdx ->
+                stringPossibilities[sIdx].firstOrNull { it >= 0 } ?: -1
+            }
+        }
+
         val nonZeroFrets = bestFrets.filter { it > 0 }
-        val optimalBaseFret = if (nonZeroFrets.isNotEmpty()) nonZeroFrets.minOrNull()!! else startFret
+        val optimalBaseFret = if (nonZeroFrets.isNotEmpty()) {
+            val minF = nonZeroFrets.minOrNull()!!
+            val maxF = nonZeroFrets.maxOrNull()!!
+            if (bestFrets.any { it == 0 } && maxF <= 4) 1 else minF
+        } else 1
 
         val generatedFingers = generateFingeringLabels(
-            bestFrets,
-            optimalBaseFret,
-            isPiano,
-            chordSuffix,
-            isLeftHand
+            frets = bestFrets,
+            baseFret = optimalBaseFret,
+            isPiano = isPiano,
+            chordSuffix = chordSuffix,
+            isLeftHand = isLeftHand
         )
 
-        val constraint = detectChordConstraint(bestFrets, generatedFingers, optimalBaseFret, isPiano)
+        val hasIndexBarre = bestFrets.count { it == optimalBaseFret && optimalBaseFret > 0 } >= 2 &&
+                bestFrets.none { it == 0 }
 
         return GuitarShape(
             frets = bestFrets,
             fingers = generatedFingers,
             baseFret = optimalBaseFret,
-            barre = if (constraint != null && constraint.contains("Barre")) optimalBaseFret else null
+            barre = if (hasIndexBarre) optimalBaseFret else null,
+            diff = difficulty
         )
     }
+    private fun scoreShapeMechanics(
+        frets: List<Int>,
+        rootPc: Int,
+        highToLowTuning: List<Int>,
+        diff: ChordDiff = ChordDiff.MEDIUM
+    ): Double {
+        var score = 0.0
+        val activeIndices = frets.indices.filter { frets[it] >= 0 }
+        if (activeIndices.isEmpty()) return 9999.0
 
+        val activeFrets = activeIndices.map { frets[it] }.filter { it > 0 }
+        if (activeFrets.isNotEmpty()) {
+            val minFret = activeFrets.minOrNull() ?: 0
+            val maxFret = activeFrets.maxOrNull() ?: 0
+            val span = maxFret - minFret
+            if (span > 3) score += 600.0
+            else if (span == 3) score += 90.0
+            score += span * 20.0
+
+            // Count how many distinct non-barre fingers are required
+            val nonBarreCount = activeFrets.count { it > minFret }
+            if (nonBarreCount > 3) score += 450.0 // Humans only have 4 fretting fingers (1..4)!
+        }
+
+        // Penalize interior muted strings between highest active and lowest active string
+        val firstActive = activeIndices.first()
+        val lastActive = activeIndices.last()
+        for (i in firstActive..lastActive) {
+            if (frets[i] == -1) score += 140.0
+        }
+
+        // Reward fuller 5- or 6-string voicings for standard chords
+        score -= activeIndices.size * 15.0
+
+        // Lowest sounding string is `activeIndices.last()` in High-to-Low order
+        val lowestStringIdx = activeIndices.last()
+        val lowestPitch = ((highToLowTuning[lowestStringIdx] + frets[lowestStringIdx]) % 12 + 12) % 12
+        if (lowestPitch != rootPc % 12) {
+            score += 180.0
+        }
+
+        if (diff == ChordDiff.EASY) {
+            val openCount = frets.count { it == 0 }
+            score -= openCount * 40.0
+            val maxFret = activeFrets.maxOrNull() ?: 0
+            if (maxFret > 4) score += 250.0
+        }
+        return score
+    }
     /**
-     * Dynamically generates a playable chord shape based on Difficulty (Simple Overload).
+     * Human-Logical Anatomical Finger Allocator for Guitar (1=Index, 2=Middle, 3=Ring, 4=Pinky) & Piano (1..5).
+     * Never assigns the same finger to two different non-barre strings on the same fret!
      */
-    fun generateDynamicShape(
-        rootMidiNote: Int,
-        targetSemitones: List<Int>,
-        difficulty: ChordDiff,
-        openStringPitches: List<Int>
-    ): GuitarShape {
-        val voicingStyle = when (difficulty) {
-            ChordDiff.EASY -> "Easy"
-            ChordDiff.MEDIUM -> "Standard"
-            ChordDiff.HARD -> "Advanced"
-        }
-        val startFret = when (difficulty) {
-            ChordDiff.EASY -> 1
-            ChordDiff.MEDIUM -> 3
-            ChordDiff.HARD -> 5
-        }
-        return generateDynamicShape(
-            rootMidiNote = rootMidiNote,
-            targetSemitones = targetSemitones,
-            voicingStyle = voicingStyle,
-            startFret = startFret,
-            openStringPitches = openStringPitches
-        )
-    }
-private fun scoreShapeMechanics(frets: List<Int>, root: Int, tuning: List<Int>, diff: ChordDiff = ChordDiff.MEDIUM): Double {
-    var score = 0.0
-    
-    // 1. Identify active strings (played frets 0 or higher)
-    val activeIndices = frets.indices.filter { frets[it] >= 0 }
-    if (activeIndices.isEmpty()) return 9999.0 // Invalid shape
-
-    // 2. Fret Span Penalties
-    val activeFrets = activeIndices.map { frets[it] }.filter { it > 0 }
-    if (activeFrets.isNotEmpty()) {
-        val minFret = activeFrets.minOrNull() ?: 0
-        val maxFret = activeFrets.maxOrNull() ?: 0
-        val span = maxFret - minFret
-        
-        // Stricter penalty for large spans (> 4 is very hard)
-        if (span > 4) score += 500.0
-        else if (span > 3) score += 200.0
-        
-        score += span * 25.0
-    }
-
-    // 3. String-Skipping Penalty (Avoid muted strings between played strings)
-    val firstActive = activeIndices.first()
-    val lastActive = activeIndices.last()
-    for (i in firstActive..lastActive) {
-        if (frets[i] == -1) score += 100.0 // Heavy penalty for skipping a string
-    }
-
-    // 4. Bass String Root Preference
-    val lowestStringIdx = activeIndices.first()
-    val lowestPitch = (tuning[lowestStringIdx] + frets[lowestStringIdx]) % 12
-    if (lowestPitch != root % 12) {
-        score += 150.0 // High penalty if the bass note isn't the root
-    }
-
-    // 5. Difficulty Adjustments
-    if (diff == ChordDiff.EASY) {
-        // Favor open strings
-        val openCount = frets.count { it == 0 }
-        score -= openCount * 50.0
-        
-        // Heavily penalize high fret positions for beginners
-        val maxFret = activeFrets.maxOrNull() ?: 0
-        if (maxFret > 5) score += 300.0
-    }
-
-    return score
-}
     fun generateFingeringLabels(
         frets: List<Int>,
         baseFret: Int,
@@ -230,46 +238,49 @@ private fun scoreShapeMechanics(frets: List<Int>, root: Int, tuning: List<Int>, 
         chordSuffix: String = "",
         isLeftHand: Boolean = false
     ): List<Int> {
-        val isScaleMode = chordSuffix == "SCALE" || frets.size > 6
-
+        val isScaleMode = chordSuffix == "SCALE" || frets.size > 7
         if (isPiano) {
-            if (isScaleMode) {
-                val fingerSequence = if (isLeftHand) listOf(5, 4, 3, 2, 1) else listOf(1, 2, 3, 1, 2, 3, 4, 5)
-                return List(frets.size) { fingerSequence[it % fingerSequence.size] }
-            }
-
-            val registry = if (isLeftHand) PIANO_LH_FINGERS else PIANO_RH_FINGERS
-            return registry[chordSuffix] ?: List(frets.size) { (it % 5) + 1 }
-        } else {
-            if (!isScaleMode) {
-                val guitarShape = GUITAR_LH_FINGERS[chordSuffix]
-                if (guitarShape != null && guitarShape.frets.size == frets.size) return guitarShape.fingers
-            }
-
-            val fingers = MutableList(frets.size) { 0 }
-            val activeStrings = frets.indices.filter { frets[it] >= 0 }
-            if (activeStrings.isEmpty()) return fingers
-
-            val minFret = frets.filter { it > 0 }.minOrNull() ?: baseFret
-
-            activeStrings.forEach { stringIdx ->
-                val fretValue = frets[stringIdx]
-                if (fretValue == 0) {
-                    fingers[stringIdx] = 0
-                } else if (fretValue > 0) {
-                    val relativeOffset = fretValue - minFret
-                    fingers[stringIdx] = when (relativeOffset) {
-                        0 -> 1
-                        1 -> 2
-                        2 -> 3
-                        else -> 4
-                    }.coerceIn(1, 4)
-                }
-            }
-            return fingers
+            return computePianoFingering(
+                pitches = frets,
+                chordSuffix = chordSuffix,
+                isScale = isScaleMode,
+                isLeftHand = isLeftHand
+            ).fingers
         }
-    }
 
+        val fingers = MutableList(frets.size) { 0 }
+        val frettedIndices = frets.indices.filter { frets[it] > 0 }
+        if (frettedIndices.isEmpty()) return fingers
+
+        val minFret = frettedIndices.minOf { frets[it] }
+        val notesAtMinFret = frettedIndices.filter { frets[it] == minFret }
+        val hasOpenStrings = frets.any { it == 0 }
+
+        // Detect true Index Finger Barre: 2+ strings at minFret AND no open strings between them
+        val isIndexBarre = !hasOpenStrings && notesAtMinFret.size >= 2 && minFret >= 1
+
+        // Sort fretted positions by (fret ascending, then string from bass [high index] to treble [low index])
+        // because human fingers 1, 2, 3, 4 naturally stack from lowest bass string to highest treble string on the same fret!
+        val orderedPositions = frettedIndices.sortedWith(
+            compareBy<Int> { frets[it] }.thenByDescending { it }
+        )
+
+        var nextAvailableFinger = 1
+        for (sIdx in orderedPositions) {
+            val fVal = frets[sIdx]
+            if (isIndexBarre && fVal == minFret) {
+                fingers[sIdx] = 1
+                if (nextAvailableFinger == 1) nextAvailableFinger = 2
+            } else {
+                val fretOffset = (fVal - minFret).coerceAtLeast(0)
+                val idealFinger = maxOf(nextAvailableFinger, (1 + fretOffset).coerceIn(1, 4))
+                val assigned = idealFinger.coerceIn(1, 4)
+                fingers[sIdx] = assigned
+                nextAvailableFinger = (assigned + 1).coerceAtMost(4)
+            }
+        }
+        return fingers
+    }
     private fun detectChordConstraint(frets: List<Int>, fingers: List<Int>, baseFret: Int, isPiano: Boolean): String? {
         if (isPiano) {
             val activeNotes = frets.filter { it > 0 }
@@ -449,45 +460,87 @@ private fun scoreShapeMechanics(frets: List<Int>, root: Int, tuning: List<Int>, 
         val root = baseMidi + (rootIdx % 12)
         return intervals.associate { (root + it) to true }
     }
-
     /**
-     * Computes piano fingering for chord or scale pitches.
+     * Computes authentic, human-logical Piano Right-Hand (or Left-Hand) fingering for any chord or scale.
+     * - Scales: Uses real classical thumb-under crossovers (e.g., C/G/D/A/E Major RH = 1-2-3-1-2-3-4-5, F Major RH = 1-2-3-4-1-2-3-4).
+     * - Chords: Uses interval-aware anatomical finger spans (1-3-5 root triad, 1-2-5 first inversion, 1-3-5 second inversion, 1-2-3-5 / 1-2-4-5 7th chords).
      */
     fun computePianoFingering(
         pitches: List<Int>,
         chordSuffix: String = "",
         isScale: Boolean = false,
-        voicingIdx: Int = 0
+        voicingIdx: Int = 0,
+        isLeftHand: Boolean = false
     ): com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData {
+        if (pitches.isEmpty()) return com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData()
+
         if (!isScale) {
-            val baseList = PIANO_RH_FINGERS[chordSuffix] ?: when (pitches.size) {
-                1 -> listOf(1)
-                2 -> listOf(1, 5)
-                3 -> when (voicingIdx) {
-                    1 -> listOf(1, 2, 5) // 1st inversion
-                    2 -> listOf(1, 3, 5) // 2nd inversion
-                    else -> listOf(1, 3, 5) // root position
+            val count = pitches.size
+            val sorted = pitches.sorted()
+            val fingers = if (!isLeftHand) {
+                when (count) {
+                    1 -> listOf(1)
+                    2 -> {
+                        val span = sorted[1] - sorted[0]
+                        when {
+                            span <= 2 -> listOf(1, 2)
+                            span <= 4 -> listOf(1, 3)
+                            span <= 6 -> listOf(1, 4)
+                            else -> listOf(1, 5)
+                        }
+                    }
+                    3 -> {
+                        val lowGap = sorted[1] - sorted[0]
+                        val highGap = sorted[2] - sorted[1]
+                        when {
+                            voicingIdx == 1 || (lowGap <= 3 && highGap >= 5) -> listOf(1, 2, 5) // 1st inversion (e.g. E-G-C)
+                            voicingIdx == 2 || (lowGap >= 5 && highGap <= 4) -> listOf(1, 3, 5) // 2nd inversion (e.g. G-C-E)
+                            else -> listOf(1, 3, 5) // Root triad
+                        }
+                    }
+                    4 -> {
+                        val topGap = sorted[3] - sorted[2]
+                        if (topGap <= 2) listOf(1, 2, 4, 5) else listOf(1, 2, 3, 5)
+                    }
+                    else -> List(count) { i -> (i + 1).coerceIn(1, 5) }
                 }
-                4 -> listOf(1, 2, 4, 5)
-                else -> listOf(1, 2, 3, 4, 5)
+            } else {
+                // Left Hand Chords (5 = Pinky on bass note, 1 = Thumb on top note)
+                when (count) {
+                    1 -> listOf(5)
+                    2 -> listOf(5, 1)
+                    3 -> if (voicingIdx == 2) listOf(5, 2, 1) else listOf(5, 3, 1)
+                    4 -> listOf(5, 3, 2, 1)
+                    else -> listOf(5, 4, 3, 2, 1).take(count)
+                }
             }
-            val fingers = pitches.indices.map { i ->
-                baseList.getOrElse(i) { (i % 5) + 1 }
-            }
-            return com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData(notes = pitches, fingers = fingers)
+            return com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData(notes = sorted, fingers = fingers)
         } else {
-            val rhScalePattern = listOf(1, 2, 3, 1, 2, 3, 4, 5)
+            // Multi-octave Scale Fingering with Classical Thumb-Under Crossovers
+            val rootPc = ((pitches.first() % 12) + 12) % 12
+            val rh7NotePattern = when (rootPc) {
+                5 -> listOf(1, 2, 3, 4, 1, 2, 3) // F Major (thumb on C, 4 on Bb)
+                1, 3, 6, 8, 10 -> listOf(2, 3, 1, 2, 3, 4, 1) // Black-key roots start on index/middle, thumb on white key
+                else -> listOf(1, 2, 3, 1, 2, 3, 4) // C, G, D, A, E, B Major/Minor standard 1-2-3-1-2-3-4
+            }
             val fingers = pitches.indices.map { i ->
-                rhScalePattern[i % rhScalePattern.size]
+                if (i == pitches.lastIndex && rootPc !in listOf(1, 3, 5, 6, 8, 10)) {
+                    5 // Top tonic resolution uses pinky (5)
+                } else if (i == pitches.lastIndex && rootPc == 5) {
+                    4 // F Major top tonic uses ring finger (4)
+                } else {
+                    rh7NotePattern[i % rh7NotePattern.size]
+                }
             }
             return com.creativeblisslabs.peqlearn.app.ui.screens.FingeringData(notes = pitches, fingers = fingers)
         }
     }
 
     /**
-     * Resolves guitar chord shape from RealChordsDb with CAGED / fret-range filters and fallback.
+     * Resolves guitar chord shape from RealChordsDb or dynamic generator, normalizing Unicode '♯'/'♭'
+     * and converts relative DB frets into absolute fret numbers so fretboard + audio playback always match!
      */
-     fun getDictionaryGuitarShape(
+    fun getDictionaryGuitarShape(
         rootName: String,
         suffix: String,
         diff: ChordDiff = ChordDiff.EASY,
@@ -500,9 +553,25 @@ private fun scoreShapeMechanics(frets: List<Int>, root: Int, tuning: List<Int>, 
         fretMaxConstrain: Int = 24,
         fallbackIntervals: List<Int> = listOf(0, 4, 7)
     ): GuitarShape {
-        val allRealPositions = RealChordsDb.getGuitarPositions(rootName, suffix)
+        val cleanRoot = rootName.replace("♯", "#").replace("♭", "b").trim()
+        val rootIdx = NOTE_NAMES_CD.indexOf(cleanRoot).takeIf { it >= 0 } ?: 0
+
+        // If user explicitly chose Power or Shell voicing, synthesize that exact voicing style
+        if (voicingType.equals("Power", ignoreCase = true) || voicingType.equals("Shell", ignoreCase = true)) {
+            return generateDynamicShape(
+                rootMidiNote = (rootIdx + capoFret) % 12,
+                targetSemitones = fallbackIntervals,
+                voicingStyle = voicingType,
+                startFret = startFret.coerceIn(1, 12),
+                openStringPitches = listOf(64, 59, 55, 50, 45, 40),
+                isPiano = false,
+                chordSuffix = suffix,
+                difficulty = diff
+            )
+        }
+
+        val allRealPositions = RealChordsDb.getGuitarPositions(cleanRoot, suffix)
         val filteredPositions = allRealPositions.filter { pos ->
-            // 1. Matches targeted static category fret range
             val matchesFretRange = when (fretRangeFilter) {
                 "Open (0-3)" -> pos.baseFret in 0..3
                 "Low (1-5)" -> pos.baseFret in 1..5
@@ -511,50 +580,72 @@ private fun scoreShapeMechanics(frets: List<Int>, root: Int, tuning: List<Int>, 
                 "12+ Frets" -> pos.baseFret >= 12
                 else -> true
             }
-            
-            // 2. Matches dynamic step/window constraints passed from the UI
-            val matchesWindow = pos.baseFret in fretMinConstrain..fretMaxConstrain
-
-            // 3. Matches CAGED shape filters (updated to handle "AUTO")
-            val matchesCaged = when (cagedFilter) {
-                "C-Shape" -> (pos.frets.getOrNull(1) ?: -1) > 0 && (pos.frets.getOrNull(0) ?: -1) <= 0
-                "A-Shape" -> (pos.frets.getOrNull(1) ?: -1) >= 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
-                "G-Shape" -> (pos.frets.getOrNull(0) ?: -1) > 0 && (pos.frets.getOrNull(5) ?: -1) > 0
-                "E-Shape" -> (pos.frets.getOrNull(0) ?: -1) >= 0 && (pos.frets.getOrNull(1) ?: -1) >= 0
-                "D-Shape" -> (pos.frets.getOrNull(0) ?: -1) < 0 && (pos.frets.getOrNull(1) ?: -1) < 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
-                "AUTO", "All CAGED" -> true
+            val matchesVoicingType = when (voicingType) {
+                "Barre" -> pos.barres.isNotEmpty() || pos.baseFret > 1
+                "Open" -> pos.baseFret == 1 && pos.frets.any { it == 0 }
                 else -> true
             }
-            
-            matchesFretRange && matchesWindow && matchesCaged
+            val matchesWindow = pos.baseFret in fretMinConstrain..fretMaxConstrain
+            val matchesCaged = when (cagedFilter) {
+                "C-Shape", "C" -> (pos.frets.getOrNull(1) ?: -1) > 0 && (pos.frets.getOrNull(0) ?: -1) <= 0
+                "A-Shape", "A" -> (pos.frets.getOrNull(1) ?: -1) >= 0 && (pos.frets.getOrNull(2) ?: -1) >= 0 && (pos.frets.getOrNull(0) ?: -1) == -1
+                "G-Shape", "G" -> (pos.frets.getOrNull(0) ?: -1) > 0 && (pos.frets.getOrNull(5) ?: -1) > 0
+                "E-Shape", "E" -> (pos.frets.getOrNull(0) ?: -1) >= 0 && (pos.frets.getOrNull(1) ?: -1) >= 0
+                "D-Shape", "D" -> (pos.frets.getOrNull(0) ?: -1) < 0 && (pos.frets.getOrNull(1) ?: -1) < 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
+                else -> true
+            }
+            matchesFretRange && matchesWindow && matchesCaged && matchesVoicingType
         }
 
-        val pool = if (filteredPositions.isNotEmpty()) filteredPositions else allRealPositions
+        val pool = when {
+            filteredPositions.isNotEmpty() -> filteredPositions
+            allRealPositions.isNotEmpty() && startFret == 1 && fretRangeFilter == "All Frets" -> allRealPositions
+            else -> emptyList()
+        }
+
         if (pool.isNotEmpty()) {
             val chosen = when (diff) {
                 ChordDiff.EASY -> pool.first()
                 ChordDiff.MEDIUM -> pool.getOrNull(1) ?: pool.first()
                 ChordDiff.HARD -> pool.last()
             }
-            val reversedFrets = chosen.frets.reversed()
-            val reversedFingers = chosen.fingers.reversed()
+            // Convert DB relative frets (when baseFret > 1) to ABSOLUTE frets so audio playback & fretboard always agree!
+            val baseOffset = if (chosen.baseFret > 1) chosen.baseFret - 1 else 0
+            val absoluteLowToHighFrets = chosen.frets.map { f ->
+                if (f > 0) f + baseOffset else f
+            }
+            val reversedFrets = absoluteLowToHighFrets.reversed()
+            val rawReversedFingers = chosen.fingers.reversed()
+            val cleanFingers = if (rawReversedFingers.any { it > 0 }) {
+                rawReversedFingers
+            } else {
+                generateFingeringLabels(reversedFrets, chosen.baseFret, isPiano = false, chordSuffix = suffix)
+            }
+            val absBarre = chosen.barres.firstOrNull()?.let { b -> if (b == 1 && baseOffset > 0) chosen.baseFret else b }
+
             return GuitarShape(
                 frets = reversedFrets,
-                fingers = reversedFingers,
+                fingers = cleanFingers,
                 baseFret = chosen.baseFret,
-                barre = chosen.barres.firstOrNull(),
+                barre = absBarre,
                 diff = diff
             )
         } else {
-            val rootIdx = NOTE_NAMES_CD.indexOf(rootName).takeIf { it >= 0 } ?: 0
+            val effectiveStart = when (fretRangeFilter) {
+                "Mid (5-9)" -> maxOf(startFret, 5)
+                "High (9-14)" -> maxOf(startFret, 9)
+                "12+ Frets" -> maxOf(startFret, 12)
+                else -> startFret
+            }
             return generateDynamicShape(
                 rootMidiNote = (rootIdx + capoFret) % 12,
                 targetSemitones = fallbackIntervals,
                 voicingStyle = voicingType,
-                startFret = startFret,
-                openStringPitches = listOf(4, 11, 7, 2, 9, 4),
+                startFret = effectiveStart,
+                openStringPitches = listOf(64, 59, 55, 50, 45, 40),
                 isPiano = false,
-                chordSuffix = suffix
+                chordSuffix = suffix,
+                difficulty = diff
             )
         }
     }

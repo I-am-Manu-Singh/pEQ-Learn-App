@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
@@ -122,15 +123,15 @@ import kotlinx.coroutines.launch
 import kotlin.collections.chunked
 import kotlin.collections.forEach
 import kotlin.collections.set
-
 @Composable
 fun LearnSectionCard(
     title: String,
     icon: ImageVector,
     info: String? = null,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
+    pEQGlassCard(modifier = modifier) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -160,7 +161,6 @@ fun LearnSectionCard(
     }
 }
 
-
 @Composable
 private fun AnalysisTile(
     label: String,
@@ -182,9 +182,9 @@ fun DrumAcademySection(
     viewModel: AppViewModel,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     modifier: Modifier = Modifier
-
 ) {
-    var workspaceMode by remember { mutableStateOf(0) }
+    var drumViewMode by remember { mutableStateOf(0) }
+    
     val padLabels = remember {
         listOf(
             "Kick 1", "Snare 1", "Rimshot", "Clap",
@@ -194,223 +194,321 @@ fun DrumAcademySection(
         )
     }
     val activeIndices = remember { mutableStateListOf<Int>() }
-    LearnSectionCard(title = "DRUM ACADEMY & SEQUENCER", icon = Icons.Filled.Adjust) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            var dropdownExpanded by remember { mutableStateOf(false) }
-            val currentSelectedTutorial = viewModel.selectedTutorial.value
 
-            ExposedDropdownMenuBox(
-                expanded = dropdownExpanded,
-                onExpandedChange = { dropdownExpanded = !dropdownExpanded },
-                modifier = Modifier.weight(1.2f)
-            ) {
-                OutlinedTextField(
-                    value = currentSelectedTutorial?.name?.uppercase() ?: "SELECT TRAINING PATTERN",
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
-                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
-                        focusedBorderColor = primaryColor,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    textStyle = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Black),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.menuAnchor()
-                )
+    LearnSectionCard(
+        title = "DRUM ACADEMY & SEQUENCER", 
+        icon = Icons.Filled.Adjust,
+        modifier = modifier
+    ) {
+        // BoxWithConstraints is fully supported in Compose Multiplatform (Android, iOS, Desktop, Web)
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val isWideScreen = maxWidth > 840.dp || maxWidth > maxHeight
 
-                ExposedDropdownMenu(
-                    expanded = dropdownExpanded,
-                    onDismissRequest = { dropdownExpanded = false },
-                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            if (isWideScreen) {
+                // --- WIDE / LANDSCAPE LEFT-RIGHT SPLIT ---
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    viewModel.drumTutorials.forEach { pattern ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = pattern.name.uppercase(),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (currentSelectedTutorial == pattern) primaryColor else MaterialTheme.colorScheme.onSurface
-                                )
-                            },
-                            onClick = {
-                                viewModel.startTutorial(pattern)
-                                dropdownExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            IconButton(
-                onClick = {
-                    if (viewModel.isPatternLooping.value) {
-                        viewModel.stopPatternPlayback()
-                    } else {
-                        currentSelectedTutorial?.let { viewModel.playPattern(it) }
-                    }
-                },
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        if (viewModel.isPatternLooping.value) Color(0xFFFF4D6D).copy(alpha = 0.15f) else primaryColor.copy(alpha = 0.12f),
-                        RoundedCornerShape(12.dp)
-                    )
-            ) {
-                Icon(
-                    imageVector = if (viewModel.isPatternLooping.value) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = "Toggle Loop Engine",
-                    tint = if (viewModel.isPatternLooping.value) Color(0xFFFF4D6D) else primaryColor,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-
-       
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Text(text = "SEQUENCE TEMPO", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                        Text(
-                            text = "${viewModel.liveTutorialBpm.intValue} BPM",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = primaryColor
-                        )
+                        TutorialAndPlaybackControl(viewModel, primaryColor)
+                        TempoControlRow(viewModel, primaryColor)
+                        RhythmGrooveWorkstation(viewModel = viewModel, primaryColor = primaryColor)
                     }
-                    Slider(
-                        value = viewModel.liveTutorialBpm.intValue.toFloat(),
-                        onValueChange = { viewModel.liveTutorialBpm.intValue = it.toInt() },
-                        valueRange = 60f..200f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = primaryColor,
-                            activeTrackColor = primaryColor
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        DrumWorkspaceSelector(
+                            drumViewMode = drumViewMode,
+                            onViewModeChange = { drumViewMode = it }
                         )
+                        
+                        DrumWorkspaceContent(
+                            drumViewMode = drumViewMode,
+                            viewModel = viewModel,
+                            primaryColor = primaryColor,
+                            padLabels = padLabels,
+                            activeIndices = activeIndices
+                        )
+                        
+                        SongArrangerTimeline(viewModel = viewModel, primaryColor = primaryColor)
+                    }
+                }
+            } else {
+                // --- STANDARD PORTRAIT VERTICAL STACK ---
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    TutorialAndPlaybackControl(viewModel, primaryColor)
+                    TempoControlRow(viewModel, primaryColor)
+                    RhythmGrooveWorkstation(viewModel = viewModel, primaryColor = primaryColor)
+                    
+                    DrumWorkspaceSelector(
+                        drumViewMode = drumViewMode,
+                        onViewModeChange = { drumViewMode = it }
+                    )
+                    
+                    DrumWorkspaceContent(
+                        drumViewMode = drumViewMode,
+                        viewModel = viewModel,
+                        primaryColor = primaryColor,
+                        padLabels = padLabels,
+                        activeIndices = activeIndices
+                    )
+                    
+                    SongArrangerTimeline(viewModel = viewModel, primaryColor = primaryColor)
+                }
+            }
+        }
+    }
+}
+
+// --- HELPER SUB-COMPOSABLES ---
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TutorialAndPlaybackControl(
+    viewModel: AppViewModel,
+    primaryColor: Color
+) {
+    var dropdownExpanded by remember { mutableStateOf(false) }
+    val currentSelectedTutorial = viewModel.selectedTutorial.value
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ExposedDropdownMenuBox(
+            expanded = dropdownExpanded,
+            onExpandedChange = { dropdownExpanded = !dropdownExpanded },
+            modifier = Modifier.weight(1.2f)
+        ) {
+            OutlinedTextField(
+                value = currentSelectedTutorial?.name?.uppercase() ?: "SELECT TRAINING PATTERN",
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                    focusedBorderColor = primaryColor,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                ),
+                textStyle = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Black),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.menuAnchor()
+            )
+
+            ExposedDropdownMenu(
+                expanded = dropdownExpanded,
+                onDismissRequest = { dropdownExpanded = false },
+                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            ) {
+                viewModel.drumTutorials.forEach { pattern ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = pattern.name.uppercase(),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (currentSelectedTutorial == pattern) primaryColor else MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        onClick = {
+                            viewModel.startTutorial(pattern)
+                            dropdownExpanded = false
+                        }
                     )
                 }
+            }
+        }
 
-                Button(
-                    onClick = { viewModel.handleTapTempo() },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                    modifier = Modifier.align(Alignment.CenterVertically)
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.TouchApp, null, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.height(2.dp))
-                        Text("TAP", fontSize = 8.sp, fontWeight = FontWeight.Black)
-                    }
+        IconButton(
+            onClick = {
+                if (viewModel.isPatternLooping.value) {
+                    viewModel.stopPatternPlayback()
+                } else {
+                    currentSelectedTutorial?.let { viewModel.playPattern(it) }
                 }
-            
-        }
-        RhythmGrooveWorkstation(viewModel=viewModel, primaryColor=primaryColor)
-   
-   // Workspace switcher: 0 = 16-Pad MPC Grid, 1 = 3D Drum Visualizer, 2 = Drum Kits
-    var drumViewMode by remember { mutableStateOf(0) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            },
+            modifier = Modifier
+                .size(44.dp)
+                .background(
+                    if (viewModel.isPatternLooping.value) Color(0xFFFF4D6D).copy(alpha = 0.15f) else primaryColor.copy(alpha = 0.12f),
+                    RoundedCornerShape(12.dp)
+                )
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                pEQFilterChip(
-                    selected = drumViewMode == 0,
-                    onClick = { drumViewMode = 0 },
-                    label = { Text("16-Pad MPC Grid", fontSize = 11.sp) }
-                )
-                pEQFilterChip(
-                    selected = drumViewMode == 1,
-                    onClick = { drumViewMode = 1 },
-                    label = { Text("3D Drum Visualizer", fontSize = 11.sp) }
-                )
-                pEQFilterChip(
-                    selected = drumViewMode == 2,
-                    onClick = { drumViewMode = 2 },
-                    label = { Text("Drum Kits", fontSize = 11.sp) }
+            Icon(
+                imageVector = if (viewModel.isPatternLooping.value) Icons.Default.Stop else Icons.Default.PlayArrow,
+                contentDescription = "Toggle Loop Engine",
+                tint = if (viewModel.isPatternLooping.value) Color(0xFFFF4D6D) else primaryColor,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TempoControlRow(
+    viewModel: AppViewModel,
+    primaryColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "SEQUENCE TEMPO", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                Text(
+                    text = "${viewModel.liveTutorialBpm.intValue} BPM",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = primaryColor
                 )
             }
+            Slider(
+                value = viewModel.liveTutorialBpm.intValue.toFloat(),
+                onValueChange = { viewModel.liveTutorialBpm.intValue = it.toInt() },
+                valueRange = 60f..200f,
+                colors = SliderDefaults.colors(
+                    thumbColor = primaryColor,
+                    activeTrackColor = primaryColor
+                )
+            )
         }
 
-        when (drumViewMode) {
-            0 -> {
-                DrumPadKitGrid(
-                    viewModel = viewModel, // <-- Pass viewModel so it can observe triggers
-                    labels = if (viewModel.drumPadLabels.isNotEmpty()) viewModel.drumPadLabels else padLabels,
-                    activeIndices = activeIndices,
-                    guidedIndices = setOf(0, 4, 8, 12),
-                    onPadClick = { index ->
-                        activeIndices.clear()
-                        activeIndices.add(index)
-                        val lbl = viewModel.drumPadLabels.getOrNull(index) ?: padLabels.getOrNull(index) ?: "KICK"
-                        viewModel.audioEngine.playSample(lbl, index, "DRUM")
-                    },
-                    onPadLongClick = { _ -> }
-                )
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Button(
+            onClick = { viewModel.handleTapTempo() },
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.TouchApp, null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.height(2.dp))
+                Text("TAP", fontSize = 8.sp, fontWeight = FontWeight.Black)
             }
-            1 -> {
-                com.creativeblisslabs.peqlearn.app.ui.components.ThreeDDrumVisualizer(
-                    viewModel = viewModel,
-                    primaryColor = primaryColor,
-                    currentKitLabels = if (viewModel.drumPadLabels.isNotEmpty()) viewModel.drumPadLabels else padLabels,
-                    modifier = Modifier.fillMaxWidth().height(360.dp)
-                )
-            }
-            else -> {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val currentKitName = viewModel.selectedDrumKit.value?.name ?: ""
-                    viewModel.drumKits.forEach { kit ->
-                        val isSelected = kit.name == currentKitName
-                        pEQGlassCard(
-                            modifier = Modifier.fillMaxWidth()
+        }
+    }
+}
+
+@Composable
+private fun DrumWorkspaceSelector(
+    drumViewMode: Int,
+    onViewModeChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        pEQFilterChip(
+            selected = drumViewMode == 0,
+            onClick = { onViewModeChange(0) },
+            label = { Text("16-Pad MPC Grid", fontSize = 11.sp) }
+        )
+        pEQFilterChip(
+            selected = drumViewMode == 1,
+            onClick = { onViewModeChange(1) },
+            label = { Text("3D Visualizer", fontSize = 11.sp) }
+        )
+        pEQFilterChip(
+            selected = drumViewMode == 2,
+            onClick = { onViewModeChange(2) },
+            label = { Text("Drum Kits", fontSize = 11.sp) }
+        )
+    }
+}
+
+@Composable
+private fun DrumWorkspaceContent(
+    drumViewMode: Int,
+    viewModel: AppViewModel,
+    primaryColor: Color,
+    padLabels: List<String>,
+    activeIndices: MutableList<Int>
+) {
+    when (drumViewMode) {
+        0 -> {
+            DrumPadKitGrid(
+                viewModel = viewModel,
+                labels = if (viewModel.drumPadLabels.isNotEmpty()) viewModel.drumPadLabels else padLabels,
+                activeIndices = activeIndices,
+                guidedIndices = setOf(0, 4, 8, 12),
+                onPadClick = { index ->
+                    activeIndices.clear()
+                    activeIndices.add(index)
+                    val lbl = viewModel.drumPadLabels.getOrNull(index) ?: padLabels.getOrNull(index) ?: "KICK"
+                    viewModel.audioEngine.playSample(lbl, index, "DRUM")
+                },
+                onPadLongClick = { _ -> }
+            )
+        }
+        1 -> {
+            com.creativeblisslabs.peqlearn.app.ui.components.ThreeDDrumVisualizer(
+                viewModel = viewModel,
+                primaryColor = primaryColor,
+                currentKitLabels = if (viewModel.drumPadLabels.isNotEmpty()) viewModel.drumPadLabels else padLabels,
+                modifier = Modifier.fillMaxWidth().height(360.dp)
+            )
+        }
+        else -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val currentKitName = viewModel.selectedDrumKit.value?.name ?: ""
+                viewModel.drumKits.forEach { kit ->
+                    val isSelected = kit.name == currentKitName
+                    pEQGlassCard(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            Column {
+                                Text(kit.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                                Text("${kit.labels.size} Samples Preloaded", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.switchDrumKit(kit)
+                                    viewModel.audioEngine.currentSelectedKitName = kit.id
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) primaryColor else MaterialTheme.colorScheme.surfaceVariant
+                                )
                             ) {
-                                Column {
-                                    Text(kit.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
-                                    Text("${kit.labels.size} Samples Preloaded", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                                }
-                                Button(
-                                    onClick = {
-                                        viewModel.switchDrumKit(kit)
-                                        viewModel.audioEngine.currentSelectedKitName = kit.id
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isSelected) primaryColor else MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                ) {
-                                    Text(if (isSelected) "ACTIVE" else "LOAD", fontSize = 11.sp)
-                                }
-                                }
+                                Text(if (isSelected) "ACTIVE" else "LOAD", fontSize = 11.sp)
                             }
                         }
                     }
                 }
             }
-                                                    SongArrangerTimeline(viewModel = viewModel, primaryColor = primaryColor)
-
         }
-    }    
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -587,8 +685,22 @@ fun DrumPadKitGrid(
             userScrollEnabled = false
         ) {
             gridItemsIndexed(labels) { index, label ->
-                // Check if the sequencer trigger map has set this specific pad label to true
-                val isTriggered = viewModel.sequencerTriggeredPads[label] == true
+                val upperLbl = label.uppercase()
+                val isTriggered = viewModel.sequencerTriggeredPads[label] == true ||
+                        viewModel.sequencerTriggeredPads["$index-$upperLbl"] == true ||
+                        viewModel.sequencerTriggeredPads.entries.any { (k, v) ->
+                            v && (
+                                    k.equals(label, ignoreCase = true) ||
+                                            (upperLbl.contains("KICK") && (k.contains("KICK", true) || k == "KCK")) ||
+                                            (upperLbl.contains("SNARE") && (k.contains("SNARE", true) || k == "SNR")) ||
+                                            (upperLbl.contains("CLOSED") && (k.contains("CLOSED", true) || k == "HHC")) ||
+                                            (upperLbl.contains("OPEN") && (k.contains("OPEN", true) || k == "OHH")) ||
+                                            (upperLbl.contains("CLAP") && (k.contains("CLAP", true) || k == "CLP")) ||
+                                            (upperLbl.contains("CRASH") && k.contains("CRASH", true)) ||
+                                            (upperLbl.contains("RIDE") && (k.contains("RIDE", true) || k == "RID")) ||
+                                            (upperLbl.contains("TOM") && k.contains("TOM", true))
+                                    )
+                        }
                 val isActive = activeIndices.contains(index) || isTriggered
 
                 DrumPadItem(
@@ -613,196 +725,363 @@ fun RhythmGrooveWorkstation(
     viewModel: AppViewModel,
     primaryColor: Color = MaterialTheme.colorScheme.primary
 ) {
-    val isRunning by viewModel.metronomeActive.collectAsState()
+    val isMetronomeRunning by viewModel.metronomeActive.collectAsState()
     val bpm by viewModel.metronomeBpm.collectAsState()
     var selectedTab by remember { mutableStateOf(GrooveStudioTab.METRONOME) }
-    var currentStep by remember { mutableStateOf(0) }
+    var isCustomSequencerPlaying by remember { mutableStateOf(false) }
+    var isLivePadRecording by remember { mutableStateOf(false) }
+    var localSeqStep by remember { mutableStateOf(0) }
+    var customPatternCounter by remember { mutableStateOf(1) }
     var timeSignatureNumerator by remember { mutableStateOf(4) }
-    var selectedTuningType by remember { mutableStateOf("C# Tanpura (Default)") }
 
-    // 16-step grid state for Kick, Snare, HiHat, Perc
     val drumTracks = remember {
         listOf("Kick", "Snare", "Hi-Hat", "Clap", "Tom", "Rimshot")
     }
+    val trackToSampleLabel = remember {
+        mapOf(
+            "Kick" to ("KICK" to 0),
+            "Snare" to ("SNARE" to 1),
+            "Hi-Hat" to ("HH_CLOSED" to 2),
+            "Clap" to ("CLAP" to 9),
+            "Tom" to ("TOM_MID" to 5),
+            "Rimshot" to ("SNARE" to 13)
+        )
+    }
+
     val gridState = remember {
         mutableStateMapOf<String, MutableList<Boolean>>().apply {
             drumTracks.forEach { track ->
-                this[track] = MutableList(16) { i ->
-                    when (track) {
-                        "Kick" -> i % 4 == 0
-                        "Snare" -> i % 8 == 4
-                        "Hi-Hat" -> i % 2 == 0
-                        else -> false
+                this[track] = mutableStateListOf<Boolean>().apply {
+                    for (i in 0 until 16) {
+                        add(
+                            when (track) {
+                                "Kick" -> i % 4 == 0
+                                "Snare" -> i % 8 == 4
+                                "Hi-Hat" -> i % 2 == 0
+                                else -> false
+                            }
+                        )
                     }
                 }
             }
         }
     }
 
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "RHYTHM WORKSTATION",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Black,
-                        color = primaryColor
-                    )
-                    Text(
-                        text = "Time Signature: $timeSignatureNumerator/4 • $bpm BPM",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+    // Live Pad Recording listener: when REC is armed and user taps any drum pad, quantize hit to current step!
+    val triggeredKeysSnapshot = viewModel.sequencerTriggeredPads.entries.filter { it.value }.map { it.key }
+    androidx.compose.runtime.LaunchedEffect(triggeredKeysSnapshot, isLivePadRecording) {
+        if (isLivePadRecording && (isCustomSequencerPlaying || viewModel.isPatternLooping.value)) {
+            val step = if (isCustomSequencerPlaying) localSeqStep else viewModel.currentStepIndex.intValue.coerceIn(0, 15)
+            triggeredKeysSnapshot.forEach { rawKey ->
+                val up = rawKey.uppercase()
+                val matchedTrack = when {
+                    up.contains("KICK") || up == "KCK" -> "Kick"
+                    up.contains("SNARE") || up == "SNR" -> "Snare"
+                    up.contains("HAT") || up == "HHC" || up == "OHH" -> "Hi-Hat"
+                    up.contains("CLAP") || up == "CLP" -> "Clap"
+                    up.contains("TOM") || up.contains("FLOOR") -> "Tom"
+                    up.contains("RIM") -> "Rimshot"
+                    else -> null
+                }
+                if (matchedTrack != null) {
+                    gridState[matchedTrack]?.set(step, true)
+                }
+            }
+        }
+    }
+
+    // Dedicated 16-Step Sequencer Audio & Visual Clock Loop
+    androidx.compose.runtime.LaunchedEffect(isCustomSequencerPlaying, bpm) {
+        if (!isCustomSequencerPlaying) {
+            viewModel.sequencerTriggeredPads.clear()
+            return@LaunchedEffect
+        }
+        while (isCustomSequencerPlaying) {
+            val safeBpm = bpm.coerceIn(40, 260)
+            val stepDurationMs = (15_000L / safeBpm).coerceAtLeast(45L) // 16th-note step duration
+            val step = localSeqStep % 16
+            viewModel.currentStepIndex.intValue = step
+
+            viewModel.sequencerTriggeredPads.clear()
+            drumTracks.forEach { trackName ->
+                if (gridState[trackName]?.getOrNull(step) == true) {
+                    val (sampleLbl, padIdx) = trackToSampleLabel[trackName] ?: ("KICK" to 0)
+                    viewModel.audioEngine.playSample(label = sampleLbl, index = padIdx, string = "DRUM")
+                    viewModel.sequencerTriggeredPads[sampleLbl] = true
+                    viewModel.triggerThreeDDrumVisualizer(sampleLbl)
+                }
+            }
+
+            delay(stepDurationMs)
+            localSeqStep = (localSeqStep + 1) % 16
+        }
+    }
+
+    val isActiveRun = if (selectedTab == GrooveStudioTab.STEP_SEQUENCER) isCustomSequencerPlaying else isMetronomeRunning
+
+    Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "RHYTHM WORKSTATION",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Black,
+                    color = primaryColor
+                )
+                Text(
+                    text = "Time Signature: $timeSignatureNumerator/4 • $bpm BPM",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (selectedTab == GrooveStudioTab.STEP_SEQUENCER) {
+                    OutlinedButton(
+                        onClick = { isLivePadRecording = !isLivePadRecording },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, if (isLivePadRecording) Color(0xFFFF1744) else MaterialTheme.colorScheme.outline),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (isLivePadRecording) Color(0xFFFF1744).copy(alpha = 0.18f) else Color.Transparent
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (isLivePadRecording) Color(0xFFFF1744) else Color.Gray)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (isLivePadRecording) "REC ARMED" else "REC",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (isLivePadRecording) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
 
                 Button(
-                    onClick = { viewModel.toggleMetronome() },
+                    onClick = {
+                        if (selectedTab == GrooveStudioTab.STEP_SEQUENCER) {
+                            if (!isCustomSequencerPlaying) {
+                                viewModel.stopPatternPlayback()
+                                viewModel.stopSongPlayback()
+                                localSeqStep = 0
+                            }
+                            isCustomSequencerPlaying = !isCustomSequencerPlaying
+                        } else {
+                            viewModel.toggleMetronome()
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isRunning) MaterialTheme.colorScheme.error else primaryColor
+                        containerColor = if (isActiveRun) MaterialTheme.colorScheme.error else primaryColor
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(
-                        imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        imageVector = if (isActiveRun) Icons.Default.Stop else Icons.Default.PlayArrow,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text(if (isRunning) "STOP" else "START", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(if (isActiveRun) "STOP" else "START", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
+        }
 
-            // Tabs
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(GrooveStudioTab.entries) { tab ->
-                    val isSelected = selectedTab == tab
-                    pEQFilterChip(
-                        selected = isSelected,
-                        onClick = { selectedTab = tab },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = tab.icon,
-                                contentDescription = tab.label,
-                                tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        label = { Text(tab.label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(GrooveStudioTab.entries) { tab ->
+                val isSelected = selectedTab == tab
+                pEQFilterChip(
+                    selected = isSelected,
+                    onClick = { selectedTab = tab },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.label,
+                            tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    label = { Text(tab.label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
+                )
+            }
+        }
+
+        when (selectedTab) {
+            GrooveStudioTab.METRONOME -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "$bpm",
+                        fontSize = 64.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                }
-            }
-            when (selectedTab) {
-                GrooveStudioTab.METRONOME -> {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "$bpm",
-                            fontSize = 64.sp,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = when {
-                                bpm < 60 -> "Largo"
-                                bpm < 80 -> "Adagio"
-                                bpm < 108 -> "Andante"
-                                bpm < 120 -> "Moderato"
-                                bpm < 168 -> "Allegro"
-                                else -> "Presto"
-                            },
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = primaryColor
-                        )
+                    Text(
+                        text = when {
+                            bpm < 60 -> "Largo"
+                            bpm < 80 -> "Adagio"
+                            bpm < 108 -> "Andante"
+                            bpm < 120 -> "Moderato"
+                            bpm < 168 -> "Allegro"
+                            else -> "Presto"
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = primaryColor
+                    )
 
-                        Slider(
-                            value = bpm.toFloat(),
-                            onValueChange = { viewModel.setMetronomeBpm(it.toInt()) },
-                            valueRange = 30f..280f,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    Slider(
+                        value = bpm.toFloat(),
+                        onValueChange = {
+                            viewModel.setMetronomeBpm(it.toInt())
+                            viewModel.liveTutorialBpm.intValue = it.toInt()
+                        },
+                        valueRange = 30f..240f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(60, 90, 120, 140, 160).forEach { presetBpm ->
-                                OutlinedButton(
-                                    onClick = { viewModel.setMetronomeBpm(presetBpm) },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("$presetBpm", fontSize = 11.sp)
-                                }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(60, 90, 120, 140, 160).forEach { presetBpm ->
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.setMetronomeBpm(presetBpm)
+                                    viewModel.liveTutorialBpm.intValue = presetBpm
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("$presetBpm", fontSize = 11.sp)
                             }
                         }
                     }
                 }
+            }
 
-                GrooveStudioTab.STEP_SEQUENCER -> {
-                    val currentStep = viewModel.currentStepIndex.intValue
-                    val isRunning = viewModel.isPatternLooping.value || viewModel.isSongPlaybackActive.value
+            GrooveStudioTab.STEP_SEQUENCER -> {
+                val activeStep = if (isCustomSequencerPlaying) localSeqStep else viewModel.currentStepIndex.intValue
+                val anySequencerRunning = isCustomSequencerPlaying || viewModel.isPatternLooping.value || viewModel.isSongPlaybackActive.value
 
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        drumTracks.forEach { track ->
-                            val steps = gridState[track] ?: return@forEach
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    drumTracks.forEach { track ->
+                        val steps = gridState[track] ?: return@forEach
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = track,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                modifier = Modifier.width(60.dp)
+                            )
+
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text(
-                                    text = track,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                    modifier = Modifier.width(60.dp)
-                                )
+                                for (i in 0 until 16) {
+                                    val isActive = steps.getOrNull(i) == true
+                                    val isCurrentStep = (i == activeStep && anySequencerRunning)
+                                    val isDownbeat = i % 4 == 0
 
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    for (i in 0 until 16) {
-                                        val isActive = steps.getOrNull(i) == true
-                                        val isCurrentStep = (i == currentStep && isRunning)
-                                        val isDownbeat = i % 4 == 0
-
-                                        pEQGlassCard(
+                                    pEQGlassCard(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(26.dp)
+                                    ) {
+                                        Box(
                                             modifier = Modifier
-                                                .weight(1f)
-                                                .height(26.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(
-                                                        when {
-                                                            isCurrentStep && isActive -> MaterialTheme.colorScheme.onSurface // Flash white on hit
-                                                            isCurrentStep -> primaryColor.copy(alpha = 0.6f) // Highlight current playhead column
-                                                            isActive -> primaryColor
-                                                            isDownbeat -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                                                            else -> Color.Transparent
-                                                        }
-                                                    )
-                                                    .clickable {
-                                                        val current = steps[i]
-                                                        steps[i] = !current
+                                                .fillMaxSize()
+                                                .background(
+                                                    when {
+                                                        isCurrentStep && isActive -> Color(0xFFFFEB3B)
+                                                        isCurrentStep -> primaryColor.copy(alpha = 0.55f)
+                                                        isActive -> primaryColor
+                                                        isDownbeat -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                                        else -> Color.Transparent
                                                     }
-                                            )
-                                        }
+                                                )
+                                                .clickable {
+                                                    val nextVal = !steps[i]
+                                                    steps[i] = nextVal
+                                                    if (nextVal) {
+                                                        val (sampleLbl, padIdx) = trackToSampleLabel[track] ?: ("KICK" to 0)
+                                                        viewModel.audioEngine.playSample(sampleLbl, padIdx, "DRUM")
+                                                    }
+                                                }
+                                        )
                                     }
                                 }
                             }
                         }
                     }
+
+                    // Action Row: Clear Grid & Save/Append Custom Beat to Song Arrangement Timeline
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                drumTracks.forEach { tr ->
+                                    val list = gridState[tr] ?: return@forEach
+                                    for (i in 0 until list.size) list[i] = false
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(0.38f)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("CLEAR", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                // Convert the 16-step grid into a DrumTutorial and append it to SongArrangerTimeline!
+                                val stepsList = List(16) { stepIdx ->
+                                    val hitsAtStep = mutableListOf<String>()
+                                    drumTracks.forEach { tr ->
+                                        if (gridState[tr]?.getOrNull(stepIdx) == true) {
+                                            val (sampleLbl, padIdx) = trackToSampleLabel[tr] ?: ("KICK" to 0)
+                                            hitsAtStep.add("$padIdx-$sampleLbl")
+                                        }
+                                    }
+                                    hitsAtStep.toList()
+                                }
+                                val customName = "${viewModel.audioEngine.currentSelectedKitName}: Custom Groove #${customPatternCounter++} (${bpm} BPM)"
+                                val newTutorial = DrumTutorial(name = customName, steps = stepsList)
+                                if (viewModel.drumTutorials.none { it.name == customName }) {
+                                    viewModel.drumTutorials.add(0, newTutorial)
+                                }
+                                viewModel.selectedTutorial.value = newTutorial
+                                viewModel.addBarToTimeline(patternName = customName, isFiller = false)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                            modifier = Modifier.weight(0.62f)
+                        ) {
+                            Icon(Icons.Default.AddCircleOutline, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("RECORD GROOVE TO TIMELINE", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
                 }
             }
         }
+    }
 }
 
 @Composable
@@ -864,53 +1143,67 @@ fun SongArrangerTimeline(
             }
         }
 
-     
-                    
-                val totalBarsCount = viewModel.songTimeline.size
-                val currentPlayingIdx = viewModel.currentPlayingBarIndex.intValue
-                val currentScrubProgress = remember(currentPlayingIdx, totalBarsCount) {
-                    if (totalBarsCount > 0 && currentPlayingIdx != -1) {
-                        currentPlayingIdx.toFloat() / (totalBarsCount - 1).coerceAtLeast(1).toFloat()
-                    } else 0f
-                }
 
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = currentScrubProgress.coerceIn(0f, 1f),
-                        onValueChange = { progress ->
-                            if (totalBarsCount > 0) {
-                                viewModel.scrubSongPlayhead(progress)
-                            }
-                        },
-                        valueRange = 0f..1f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = primaryColor,
-                            activeTrackColor = primaryColor,
-                            inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
 
-                    // Tick Markings and Bar Identifiers below slider
+        val totalBarsCount = viewModel.songTimeline.size
+        val currentPlayingIdx = viewModel.currentPlayingBarIndex.intValue
+        val currentStepInBar = viewModel.currentStepIndex.intValue.coerceIn(0, 15)
+
+        var isUserScrubbing by remember { mutableStateOf(false) }
+        var userScrubValue by remember { mutableFloatStateOf(0f) }
+
+        val livePlaybackProgress = remember(currentPlayingIdx, currentStepInBar, totalBarsCount) {
+            if (totalBarsCount > 0 && currentPlayingIdx >= 0) {
+                val fractionalBar = currentPlayingIdx.toFloat() + (currentStepInBar / 16f)
+                (fractionalBar / totalBarsCount.toFloat()).coerceIn(0f, 1f)
+            } else 0f
+        }
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Slider(
+                value = if (isUserScrubbing) userScrubValue else livePlaybackProgress,
+                onValueChange = { progress ->
+                    isUserScrubbing = true
+                    userScrubValue = progress.coerceIn(0f, 1f)
                     if (totalBarsCount > 0) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            for (i in 0 until totalBarsCount) {
-                                val isHighlighted = currentPlayingIdx == i
-                                Text(
-                                    text = (i + 1).toString(),
-                                    fontSize = 8.sp,
-                                    fontWeight = if (isHighlighted) FontWeight.Black else FontWeight.Normal,
-                                    color = if (isHighlighted) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
+                        viewModel.scrubSongPlayhead(userScrubValue)
+                    }
+                },
+                onValueChangeFinished = {
+                    isUserScrubbing = false
+                },
+                valueRange = 0f..1f,
+                colors = SliderDefaults.colors(
+                    thumbColor = primaryColor,
+                    activeTrackColor = primaryColor,
+                    inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (totalBarsCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    for (i in 0 until totalBarsCount) {
+                        val isHighlighted = currentPlayingIdx == i
+                        Text(
+                            text = "Bar ${i + 1}",
+                            fontSize = 8.sp,
+                            fontWeight = if (isHighlighted) FontWeight.Black else FontWeight.Normal,
+                            color = if (isHighlighted) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.clickable {
+                                val targetFrac = if (totalBarsCount <= 1) 0f else i.toFloat() / (totalBarsCount - 1).toFloat()
+                                viewModel.scrubSongPlayhead(targetFrac)
                             }
-                        }
+                        )
                     }
                 }
+            }
+        }
             
         
             if (viewModel.songTimeline.isEmpty()) {
@@ -1112,6 +1405,7 @@ fun SongArrangerTimeline(
         }
     
 }
+
 @Composable
 fun ProfessionalDrumKitGrid(
     viewModel: AppViewModel,

@@ -218,34 +218,72 @@ fun UnifiedGuitarFretboard(
         } else null
     }
 
+   // Stateful hand-box center fret memory so fast melodic runs stay in a smooth, human-playable 4-fret hand box
+    var lastHandBoxCenterFret by remember { mutableFloatStateOf(3f) }
+
     val activeFretPoints = remember(allUniquePitches, effectiveResolvedChordFrets, defaultOpenStringsMidi, isScaleMode, fretMinConstrain, fretMaxConstrain, safeNumFrets) {
         if (effectiveResolvedChordFrets != null) {
             emptySet()
         } else {
             val set = mutableSetOf<Pair<Int, Int>>()
-            allUniquePitches.forEach { midi ->
+            val usedStrings = mutableSetOf<Int>()
+            val maxAllowedFret = (safeBaseFret + safeNumFrets - 1).coerceAtMost(fretMaxConstrain)
+            val minAllowedFret = fretMinConstrain.coerceAtLeast(0)
+
+            // Sort pitches low-to-high so bass notes claim lower strings (5, 4, 3) first and treble notes claim (2, 1, 0)
+            val sortedPitches = allUniquePitches.sorted()
+            var currentChordAnchorFret: Int? = null
+
+            sortedPitches.forEach { midi ->
                 val candidates = mutableListOf<Pair<Int, Int>>()
                 defaultOpenStringsMidi.forEachIndexed { sIdx, openMidi ->
                     val fret = midi - openMidi
-                    if (fret in 0..(safeBaseFret + safeNumFrets - 1)) {
+                    if (fret in minAllowedFret..maxAllowedFret) {
                         candidates.add(sIdx to fret)
                     }
                 }
                 if (candidates.isNotEmpty()) {
-                    val inUserBox = candidates.filter { it.second in fretMinConstrain..fretMaxConstrain }
-                    val searchPool = if (inUserBox.isNotEmpty()) inUserBox else candidates
-                    val chosen = searchPool.minByOrNull { (sIdx, fret) ->
-                        val fretPenalty = when {
-                            fret in 0..5 -> fret * 2
-                            fret in 6..9 -> 12 + (fret - 5) * 3
-                            fret in 10..14 -> 30 + (fret - 9) * 5
-                            else -> 70 + fret * 10
+                    // Prefer unused strings so every note in a chord gets its own physical string
+                    val unusedCandidates = candidates.filter { it.first !in usedStrings }
+                    val pool = if (unusedCandidates.isNotEmpty()) unusedCandidates else candidates
+
+                    val chosen = pool.minByOrNull { (sIdx, fret) ->
+                        // 1. Hand-box cohesion penalty: keep chord notes within a 4-fret human finger span!
+                        val anchor = currentChordAnchorFret ?: lastHandBoxCenterFret.roundToInt()
+                        val handSpanDist = if (fret == 0) 0 else abs(fret - anchor)
+                        val stretchPenalty = when {
+                            fret == 0 -> 2 // Open string is easy
+                            handSpanDist <= 3 -> handSpanDist * 3 // Inside 4-fret hand box
+                            else -> 35 + handSpanDist * 14 // Heavy penalty for impossible >4 fret finger stretch!
                         }
-                        val stringRegisterPenalty = if (sIdx >= 4 && fret > 7) 40 else 0
-                        fretPenalty + stringRegisterPenalty
+
+                        // 2. Register penalty: avoid fretting high frets (>9) on thick wound bass strings (A2, E2)
+                        val woundStringPenalty = if (sIdx >= 4 && fret > 7) 45 else if (sIdx == 3 && fret > 9) 25 else 0
+
+                        // 3. Position preference: prefer lower/mid neck (frets 1..7) when no prior context requires upper neck
+                        val neckPositionCost = when {
+                            fret in 0..5 -> fret * 2
+                            fret in 6..9 -> 10 + (fret - 5) * 3
+                            fret in 10..12 -> 24 + (fret - 9) * 4
+                            else -> 50 + fret * 6
+                        }
+
+                        stretchPenalty + woundStringPenalty + neckPositionCost
                     }
-                    if (chosen != null) set.add(chosen)
+
+                    if (chosen != null) {
+                        set.add(chosen)
+                        usedStrings.add(chosen.first)
+                        if (chosen.second > 0 && currentChordAnchorFret == null) {
+                            currentChordAnchorFret = chosen.second
+                        }
+                    }
                 }
+            }
+
+            val frettedPositions = set.map { it.second }.filter { it > 0 }
+            if (frettedPositions.isNotEmpty()) {
+                lastHandBoxCenterFret = frettedPositions.average().toFloat().coerceIn(1f, 12f)
             }
             set
         }
@@ -383,6 +421,9 @@ fun UnifiedGuitarFretboard(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (onFretTapped != null || onFretReleased != null) {
+                        Modifier
                 .pointerInput(safeNumFrets, numStrings, safeBaseFret, leftPad, rightPad, playableW, nutH, bridgeH, midY) {
                     val activeFretPointers = mutableMapOf<Long, Triple<Int, Int, Int>>()
 
@@ -443,6 +484,10 @@ fun UnifiedGuitarFretboard(
                         }
                     }
                 }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             val w = size.width
             val pillColor = Color(0xFFFF9E1B)
@@ -806,6 +851,9 @@ fun UnifiedPianoKeyboard(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (onKeyTapped != null || onKeyReleased != null) {
+                        Modifier
                 .pointerInput(safeStart, safeEnd, whiteMidiNotes, finalWhiteKeyWidthPx, startPaddingOffset, renderedHeight, topPaddingOffset) {
                     val activePointers = mutableMapOf<Long, Int>()
                     fun resolveMidiAt(offset: Offset): Int? {
@@ -859,6 +907,10 @@ fun UnifiedPianoKeyboard(
                         }
                     }
                 }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             val totalHeight = renderedHeight
             val blackKeyWidthPx = finalWhiteKeyWidthPx * 0.58f
@@ -872,10 +924,11 @@ fun UnifiedPianoKeyboard(
             octaveTextPaint.textSize = (finalWhiteKeyWidthPx * 0.34f).coerceIn(6.dp.toPx(), 9.5f.dp.toPx())
 
             translate(left = startPaddingOffset, top = topPaddingOffset) {
-                // 1. White Keys
+                // 1. White Keys (3D Ivory Gradient, Depressed Key Shadow, & Neon Key-Strike Tint)
                 whiteMidiNotes.forEachIndexed { index, midiNote ->
                     val isHandHidden = if (midiNote >= 60) isRightHandHidden else isLeftHandHidden
-                    val isCurrentlyPlaying = !isHandHidden && activeCoordinate != null && (midiNote == activeCoordinate || (activeCoordinate < 12 && (midiNote % 12) == activeCoordinate))
+                    val isCurrentlyPlaying = !isHandHidden && activeCoordinate != null &&
+                        (midiNote == activeCoordinate || (activeCoordinate < 12 && (midiNote % 12) == activeCoordinate))
                     val isExplicitActive = !isHandHidden && (
                         activeMidiNotes[midiNote] == true ||
                             (activeCoordinate != null && activeCoordinate < 12 && (midiNote % 12) == activeCoordinate) ||
@@ -884,42 +937,67 @@ fun UnifiedPianoKeyboard(
                         )
 
                     val x = index * finalWhiteKeyWidthPx
+                    val keyW = (finalWhiteKeyWidthPx - 1.4f).coerceAtLeast(1f)
                     val handColor = if (midiNote >= 60) rightHandColor else leftHandColor
                     val customColor = customKeyColors[midiNote]
-                    val topKeyColor = when {
-                        customColor != null -> customColor
-                        isCurrentlyPlaying || isExplicitActive -> handColor
-                        else -> Color(0xFFF7F4EC)
-                    }
-                    val frontLipColor = when {
-                        customColor != null -> customColor.copy(alpha = 0.82f)
-                        isCurrentlyPlaying || isExplicitActive -> handColor.copy(alpha = 0.82f)
-                        else -> Color(0xFFD4C9B8)
+                    val activeKeyColor = customColor ?: handColor
+
+                    val pressSinkY = if (isCurrentlyPlaying || isExplicitActive) (totalHeight * 0.018f).coerceAtMost(3f) else 0f
+
+                    if (isCurrentlyPlaying || isExplicitActive) {
+                        // Illuminated 3D Active White Key
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White,
+                                    activeKeyColor.copy(alpha = 0.88f),
+                                    activeKeyColor
+                                ),
+                                startY = 0f,
+                                endY = topSurfaceH
+                            ),
+                            topLeft = Offset(x + 0.7f, pressSinkY),
+                            size = Size(keyW, topSurfaceH),
+                            cornerRadius = keyCorner
+                        )
+                        drawRoundRect(
+                            color = activeKeyColor.copy(alpha = 0.72f),
+                            topLeft = Offset(x + 0.7f, topSurfaceH - 1f),
+                            size = Size(keyW, frontFaceH + 1f),
+                            cornerRadius = keyCorner
+                        )
+                    } else {
+                        // Natural 3D Concert Ivory White Key with subtle top-to-bottom shading
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color(0xFFECEAE2), Color(0xFFFBF9F3), Color(0xFFF4F0E6)),
+                                startY = 0f,
+                                endY = topSurfaceH
+                            ),
+                            topLeft = Offset(x + 0.7f, 0f),
+                            size = Size(keyW, topSurfaceH),
+                            cornerRadius = keyCorner
+                        )
+                        drawRoundRect(
+                            color = Color(0xFFD2C8B8),
+                            topLeft = Offset(x + 0.7f, topSurfaceH - 1f),
+                            size = Size(keyW, frontFaceH + 1f),
+                            cornerRadius = keyCorner
+                        )
                     }
 
+                    // Crisp key separator border
                     drawRoundRect(
-                        color = topKeyColor,
-                        topLeft = Offset(x + 0.8f, 0f),
-                        size = Size((finalWhiteKeyWidthPx - 1.6f).coerceAtLeast(1f), topSurfaceH),
-                        cornerRadius = keyCorner
-                    )
-                    drawRoundRect(
-                        color = frontLipColor,
-                        topLeft = Offset(x + 0.8f, topSurfaceH - 1f),
-                        size = Size((finalWhiteKeyWidthPx - 1.6f).coerceAtLeast(1f), frontFaceH + 1f),
-                        cornerRadius = keyCorner
-                    )
-                    drawRoundRect(
-                        color = Color(0xFF1E222B).copy(alpha = 0.45f),
-                        topLeft = Offset(x + 0.8f, 0f),
-                        size = Size((finalWhiteKeyWidthPx - 1.6f).coerceAtLeast(1f), totalHeight),
+                        color = if (isExplicitActive) Color.White.copy(alpha = 0.8f) else Color(0xFF1A1D24).copy(alpha = 0.55f),
+                        topLeft = Offset(x + 0.7f, pressSinkY),
+                        size = Size(keyW, totalHeight - pressSinkY),
                         cornerRadius = keyCorner,
                         style = borderStroke
                     )
 
-                    val centerX = x + finalWhiteKeyWidthPx / 2f
+                    val centerX = x + finalWhiteKeyWidthPx * 0.5f
 
-                    if (midiNote % 12 == 0 && finalWhiteKeyWidthPx >= 10f) {
+                    if (midiNote % 12 == 0 && finalWhiteKeyWidthPx >= 10f && !isExplicitActive) {
                         val octaveNumber = (midiNote / 12) - 1
                         drawContext.canvas.nativeCanvas.drawText(
                             "C$octaveNumber",
@@ -932,18 +1010,19 @@ fun UnifiedPianoKeyboard(
                     if (isExplicitActive || showNoteNames) {
                         val fingerIndex = fingering?.notes?.indexOf(midiNote) ?: -1
                         val fingerNum = if (fingerIndex != -1) fingering?.fingers?.getOrNull(fingerIndex) else null
-                        val maxRad = (finalWhiteKeyWidthPx * 0.42f).coerceIn(4f, 12.dp.toPx())
-                        val badgeRadius = if (isCurrentlyPlaying) maxRad else if (isExplicitActive) maxRad * 0.9f else maxRad * 0.78f
-                        val badgeY = (totalHeight - frontFaceH - badgeRadius - 4f).coerceAtLeast(blackKeyHeightPx + badgeRadius + 2f)
+                        val pillW = (finalWhiteKeyWidthPx * 0.78f).coerceIn(8f, 22.dp.toPx())
+                        val pillH = pillW * 0.88f
+                        val badgeCenterY = (totalHeight - frontFaceH - pillH * 0.65f - 3f).coerceAtLeast(blackKeyHeightPx + pillH * 0.6f + 2f)
 
-                        drawCircle(
+                        drawRoundRect(
                             color = when {
-                                isCurrentlyPlaying -> Color(0xFFFFEB3B)
-                                isExplicitActive -> Color.White
-                                else -> Color(0xFF1E222B).copy(alpha = 0.85f)
+                                isCurrentlyPlaying -> Color(0xFF111318).copy(alpha = 0.92f)
+                                isExplicitActive -> Color(0xFF161922).copy(alpha = 0.88f)
+                                else -> Color(0xFF1E222B).copy(alpha = 0.78f)
                             },
-                            radius = badgeRadius,
-                            center = Offset(centerX, badgeY)
+                            topLeft = Offset(centerX - pillW * 0.5f, badgeCenterY - pillH * 0.5f),
+                            size = Size(pillW, pillH),
+                            cornerRadius = CornerRadius(pillH * 0.35f, pillH * 0.35f)
                         )
 
                         val displayNum = if (isExplicitActive && fingerNum != null && fingerNum > 0) {
@@ -952,23 +1031,29 @@ fun UnifiedPianoKeyboard(
                             NOTE_NAMES[(midiNote % 12 + 12) % 12]
                         }
                         keyBadgeTextPaint.color = when {
-                            isCurrentlyPlaying -> android.graphics.Color.rgb(190, 40, 0)
-                            isExplicitActive -> android.graphics.Color.rgb(230, 110, 0)
-                            else -> android.graphics.Color.WHITE
+                            isCurrentlyPlaying -> android.graphics.Color.rgb(255, 235, 59)
+                            isExplicitActive -> android.graphics.Color.WHITE
+                            else -> android.graphics.Color.rgb(230, 235, 245)
                         }
-                        keyBadgeTextPaint.textSize = (badgeRadius * 1.05f).coerceIn(5.5f.dp.toPx(), 10.5f.dp.toPx())
-                        drawContext.canvas.nativeCanvas.drawText(displayNum, centerX, badgeY + keyBadgeTextPaint.textSize * 0.35f, keyBadgeTextPaint)
+                        keyBadgeTextPaint.textSize = (pillH * 0.58f).coerceIn(6.dp.toPx(), 11.dp.toPx())
+                        drawContext.canvas.nativeCanvas.drawText(
+                            displayNum,
+                            centerX,
+                            badgeCenterY + keyBadgeTextPaint.textSize * 0.36f,
+                            keyBadgeTextPaint
+                        )
                     }
                 }
 
-                // 2. Black Keys
+                // 2. Black Keys (3D Ebony Bevel + Specular Top Cap & Illuminated Strike State)
                 whiteMidiNotes.forEachIndexed { index, midiNote ->
                     val semitone = (midiNote % 12 + 12) % 12
                     if (semitone in listOf(0, 2, 5, 7, 9)) {
                         val blackMidiNote = midiNote + 1
                         if (blackMidiNote <= safeEnd) {
                             val isHandHidden = if (blackMidiNote >= 60) isRightHandHidden else isLeftHandHidden
-                            val isCurrentlyPlaying = !isHandHidden && activeCoordinate != null && (blackMidiNote == activeCoordinate || (activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate))
+                            val isCurrentlyPlaying = !isHandHidden && activeCoordinate != null &&
+                                (blackMidiNote == activeCoordinate || (activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate))
                             val isExplicitActive = !isHandHidden && (
                                 activeMidiNotes[blackMidiNote] == true ||
                                     (activeCoordinate != null && activeCoordinate < 12 && (blackMidiNote % 12) == activeCoordinate) ||
@@ -976,45 +1061,72 @@ fun UnifiedPianoKeyboard(
                                     isCurrentlyPlaying
                                 )
 
-                            val blackX = (index * finalWhiteKeyWidthPx) + (finalWhiteKeyWidthPx - blackKeyWidthPx / 2f)
+                            val blackX = (index * finalWhiteKeyWidthPx) + (finalWhiteKeyWidthPx - blackKeyWidthPx * 0.5f)
                             val blackHandColor = if (blackMidiNote >= 60) rightHandColor else leftHandColor
-                            val customBlackColor = customKeyColors[blackMidiNote]
+                            val activeBlackColor = customKeyColors[blackMidiNote] ?: blackHandColor
 
+                            // Drop shadow on white keys
                             drawRoundRect(
-                                color = Color.Black.copy(alpha = 0.45f),
+                                color = Color.Black.copy(alpha = 0.52f),
                                 topLeft = Offset(blackX + 1.5f, 2f),
-                                size = Size(blackKeyWidthPx, blackKeyHeightPx + 2f),
+                                size = Size(blackKeyWidthPx, blackKeyHeightPx + 2.5f),
                                 cornerRadius = keyCorner
                             )
 
-                            val bodyColor = when {
-                                customBlackColor != null -> customBlackColor
-                                isCurrentlyPlaying || isExplicitActive -> blackHandColor
-                                else -> Color(0xFF1C1C1E)
+                            // Outer Ebony or Active Neon Body
+                            if (isCurrentlyPlaying || isExplicitActive) {
+                                drawRoundRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.9f),
+                                            activeBlackColor,
+                                            activeBlackColor.copy(alpha = 0.78f)
+                                        ),
+                                        startY = 0f,
+                                        endY = blackKeyHeightPx
+                                    ),
+                                    topLeft = Offset(blackX, 0f),
+                                    size = Size(blackKeyWidthPx, blackKeyHeightPx),
+                                    cornerRadius = keyCorner
+                                )
+                            } else {
+                                drawRoundRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(Color(0xFF141519), Color(0xFF22242B), Color(0xFF0E0F12)),
+                                        startY = 0f,
+                                        endY = blackKeyHeightPx
+                                    ),
+                                    topLeft = Offset(blackX, 0f),
+                                    size = Size(blackKeyWidthPx, blackKeyHeightPx),
+                                    cornerRadius = keyCorner
+                                )
+                                // 3D Ebony inner top cap bevel
+                                val inset = (blackKeyWidthPx * 0.12f).coerceIn(1.2f, 3f)
+                                drawRoundRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(Color(0xFF323640), Color(0xFF1B1D23)),
+                                        startY = 0f,
+                                        endY = blackKeyHeightPx * 0.86f
+                                    ),
+                                    topLeft = Offset(blackX + inset, 1f),
+                                    size = Size((blackKeyWidthPx - inset * 2f).coerceAtLeast(1f), blackKeyHeightPx * 0.86f),
+                                    cornerRadius = CornerRadius((cornerRadiusPx - 1f).coerceAtLeast(1f))
+                                )
                             }
-                            drawRoundRect(
-                                color = bodyColor,
-                                topLeft = Offset(blackX, 0f),
-                                size = Size(blackKeyWidthPx, blackKeyHeightPx),
-                                cornerRadius = keyCorner
-                            )
 
-                            val centerX = blackX + blackKeyWidthPx / 2f
+                            val centerX = blackX + blackKeyWidthPx * 0.5f
                             if (isExplicitActive || showNoteNames) {
                                 val fingerIndex = fingering?.notes?.indexOf(blackMidiNote) ?: -1
                                 val fingerNum = if (fingerIndex != -1) fingering?.fingers?.getOrNull(fingerIndex) else null
-                                val maxRad = (blackKeyWidthPx * 0.44f).coerceIn(3.5f, 10.dp.toPx())
-                                val badgeRadius = if (isCurrentlyPlaying) maxRad else if (isExplicitActive) maxRad * 0.9f else maxRad * 0.8f
-                                val badgeY = (blackKeyHeightPx - badgeRadius - 5f).coerceAtLeast(badgeRadius + 2f)
+                                val pillW = (blackKeyWidthPx * 0.84f).coerceIn(7f, 18.dp.toPx())
+                                val pillH = pillW * 0.90f
+                                val badgeCenterY = (blackKeyHeightPx - pillH * 0.65f - 4f).coerceAtLeast(pillH * 0.6f + 2f)
 
-                                drawCircle(
-                                    color = when {
-                                        isCurrentlyPlaying -> Color(0xFFFFEB3B)
-                                        isExplicitActive -> Color.White
-                                        else -> Color(0xFF1E222B).copy(alpha = 0.9f)
-                                    },
-                                    radius = badgeRadius,
-                                    center = Offset(centerX, badgeY)
+                                drawRoundRect(
+                                    color = Color(0xFF101217).copy(alpha = 0.90f),
+                                    topLeft = Offset(centerX - pillW * 0.5f, badgeCenterY - pillH * 0.5f),
+                                    size = Size(pillW, pillH),
+                                    cornerRadius = CornerRadius(pillH * 0.35f, pillH * 0.35f)
                                 )
 
                                 val displayNum = if (isExplicitActive && fingerNum != null && fingerNum > 0) {
@@ -1022,13 +1134,18 @@ fun UnifiedPianoKeyboard(
                                 } else {
                                     NOTE_NAMES[(blackMidiNote % 12 + 12) % 12]
                                 }
-                                keyBadgeTextPaint.color = when {
-                                    isCurrentlyPlaying -> android.graphics.Color.rgb(190, 40, 0)
-                                    isExplicitActive -> android.graphics.Color.rgb(230, 110, 0)
-                                    else -> android.graphics.Color.WHITE
+                                keyBadgeTextPaint.color = if (isCurrentlyPlaying) {
+                                    android.graphics.Color.rgb(255, 235, 59)
+                                } else {
+                                    android.graphics.Color.WHITE
                                 }
-                                keyBadgeTextPaint.textSize = (badgeRadius * 0.96f).coerceIn(5f.dp.toPx(), 9.dp.toPx())
-                                drawContext.canvas.nativeCanvas.drawText(displayNum, centerX, badgeY + keyBadgeTextPaint.textSize * 0.35f, keyBadgeTextPaint)
+                                keyBadgeTextPaint.textSize = (pillH * 0.54f).coerceIn(5.2f.dp.toPx(), 9.5f.dp.toPx())
+                                drawContext.canvas.nativeCanvas.drawText(
+                                    displayNum,
+                                    centerX,
+                                    badgeCenterY + keyBadgeTextPaint.textSize * 0.36f,
+                                    keyBadgeTextPaint
+                                )
                             }
                         }
                     }
@@ -1368,6 +1485,9 @@ fun UnifiedHarmoniumVisualizer(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (onKeyTapped != null || onKeyReleased != null) {
+                        Modifier
                 .pointerInput(safeStart, safeEnd, whiteMidiNotes, innerLeft, keybedTop, innerW, keybedH, whiteKeyW) {
                     val activePointers = mutableMapOf<Long, Int>()
 
@@ -1424,6 +1544,10 @@ fun UnifiedHarmoniumVisualizer(
                         }
                     }
                 }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             // Outer Teakwood Cabinet Bevel & Brass Corner Brackets
             drawRoundRect(
@@ -1920,6 +2044,9 @@ fun UnifiedViolinFingerboard(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (onPositionTapped != null || onPositionReleased != null) {
+                        Modifier
                 .pointerInput(totalPositions, numStrings, nutX, bridgeX, playableW, posXCenters) {
                     val activePointers = mutableMapOf<Long, Pair<Int, Int>>() // pointerId -> (stringIdx, midi)
 
@@ -1973,6 +2100,10 @@ fun UnifiedViolinFingerboard(
                         }
                     }
                 }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             val stringSpacingAtNut = (nutH / (numStrings - 1).coerceAtLeast(1)).coerceAtLeast(8f)
 
@@ -2245,6 +2376,9 @@ fun UnifiedFluteVisualizer(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (onToneHoleTapped != null || onToneHoleReleased != null) {
+                        Modifier
                 .pointerInput(numHoles, holesStartX, holeSpacing, holeMidiPitches) {
                     val activePointers = mutableMapOf<Long, Pair<Int, Int>>()
 
@@ -2287,6 +2421,10 @@ fun UnifiedFluteVisualizer(
                         }
                     }
                 }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             val tubeCorner = CornerRadius(tubeHeight * 0.5f, tubeHeight * 0.5f)
 
@@ -2551,6 +2689,9 @@ fun UnifiedTablaVisualizer(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
+                .then(
+                    if (onBolTapped != null || onBolReleased != null) {
+                        Modifier
                 .pointerInput(bayanCenter, dayanCenter, bayanRad, dayanRad) {
                     val activePointers = mutableMapOf<Long, String>()
 
@@ -2605,6 +2746,11 @@ fun UnifiedTablaVisualizer(
                         }
                     }
                 }
+                    } else {
+                        Modifier
+                    }
+                )
+
         ) {
             fun drawTablaDrum(
                 center: Offset,

@@ -240,7 +240,8 @@ class AndroidAudioEngine(
                 .build()
         )
     }.build()
-
+    // 3-Layer Velocity Sample Map for Acoustic Grand Piano: midiNote -> Triple(pSoundId, mfSoundId, fSoundId)
+    private val salamanderVelocityLayers = ConcurrentHashMap<Int, Triple<Int, Int, Int>>()
     // Low-latency hardware buffer size (44.1kHz 16-bit stereo)
     private val stereoBufferSize = AudioTrack.getMinBufferSize(
         44100,
@@ -714,7 +715,7 @@ class AndroidAudioEngine(
 
         initSystemSounds()
         initAllAssets()
-        loadSalamanderSamples()
+       loadSalamanderSamples()
         loadInstrumentSampleKit("PIANO", "piano/acoustic")
         loadInstrumentSampleKit("PIANO_ACOUSTIC", "piano/acoustic")
         loadInstrumentSampleKit("PIANO_ELECTRIC", "piano/electric")
@@ -728,6 +729,8 @@ class AndroidAudioEngine(
         loadInstrumentSampleKit("FLUTE", "flute")
         loadInstrumentSampleKit("VIOLIN", "violin")
         loadSf2Piano()
+        loadSf2Guitar()
+        loadSf2Harmonium()
 
         engineScope.launch(Dispatchers.IO) {
             loadSf2Tanpura()?.let { sf ->
@@ -1922,7 +1925,6 @@ class AndroidAudioEngine(
     private fun loadSalamanderSamples() {
         engineScope.launch(Dispatchers.IO) {
             try {
-                // Pitch mappings for Salamander samples (minor thirds from A0 to C8)
                 val samplePitches = mapOf(
                     "A0" to 21, "C1" to 24, "Ds1" to 27, "Fs1" to 30,
                     "A1" to 33, "C2" to 36, "Ds2" to 39, "Fs2" to 42,
@@ -1934,28 +1936,49 @@ class AndroidAudioEngine(
                     "A7" to 105, "C8" to 108
                 )
 
-                samplePitches.forEach { (name, midi) ->
-                    try {
-                        val afdMp3: AssetFileDescriptor = context.assets.openFd("piano/acoustic/$name.mp3")
-                        val soundId = salamanderSoundPool.load(afdMp3, 1)
-                        salamanderSampleMap[midi] = soundId
-                    } catch (e: Exception) {
-                        try {
-                            val afd: AssetFileDescriptor = context.assets.openFd("piano/salamander/salamander_ogg/$name.ogg")
-                            val soundId = salamanderSoundPool.load(afd, 1)
-                            salamanderSampleMap[midi] = soundId
-                        } catch (_: Exception) {}
+                fun loadAssetSoundId(path: String): Int {
+                    return try {
+                        context.assets.openFd(path).use { afd ->
+                            salamanderSoundPool.load(afd, 1)
+                        }
+                    } catch (_: Exception) {
+                        0
                     }
                 }
-                salamanderLoaded.set(true)
-                Log.i("AudioEngine", "Salamander Grand Piano samples loaded successfully into zero-lag SoundPool.")
+
+                samplePitches.forEach { (name, midi) ->
+                    // Load all 3 dynamic layers (-p, -mf, -f) from piano/acoustic/
+                    val pId = loadAssetSoundId("piano/acoustic/$name-p.mp3")
+                    val mfId = loadAssetSoundId("piano/acoustic/$name-mf.mp3")
+                    val fId = loadAssetSoundId("piano/acoustic/$name-f.mp3")
+
+                    if (pId != 0 || mfId != 0 || fId != 0) {
+                        val safeMf = if (mfId != 0) mfId else if (fId != 0) fId else pId
+                        val safeP = if (pId != 0) pId else safeMf
+                        val safeF = if (fId != 0) fId else safeMf
+                        salamanderVelocityLayers[midi] = Triple(safeP, safeMf, safeF)
+                        salamanderSampleMap[midi] = safeMf
+                    } else {
+                        // Legacy single-file fallback
+                        val singleMp3 = loadAssetSoundId("piano/acoustic/$name.mp3")
+                        val singleOgg = if (singleMp3 == 0) loadAssetSoundId("piano/salamander/salamander_ogg/$name.ogg") else singleMp3
+                        if (singleOgg != 0) {
+                            salamanderVelocityLayers[midi] = Triple(singleOgg, singleOgg, singleOgg)
+                            salamanderSampleMap[midi] = singleOgg
+                        }
+                    }
+                }
+                salamanderLoaded.set(salamanderVelocityLayers.isNotEmpty() || salamanderSampleMap.isNotEmpty())
+                Log.i("AudioEngine", "Loaded ${salamanderVelocityLayers.size * 3} multi-velocity piano samples (-p, -mf, -f) into SoundPool.")
             } catch (e: Exception) {
-                Log.e("AudioEngine", "Failed loading Salamander samples: ${e.message}")
+                Log.e("AudioEngine", "Failed loading Salamander velocity samples: ${e.message}")
             }
         }
     }
 
     private fun loadInstrumentSampleKit(instrumentKey: String, assetFolderPath: String) {
+        // Acoustic Piano is already handled by 3-layer loadSalamanderSamples()
+        if (instrumentKey == "PIANO" || instrumentKey == "PIANO_ACOUSTIC") return
         engineScope.launch(Dispatchers.IO) {
             try {
                 val noteBaseMap = mapOf(
@@ -1970,16 +1993,21 @@ class AndroidAudioEngine(
                 val assetList = try { context.assets.list(assetFolderPath) ?: emptyArray() } catch (_: Exception) { emptyArray() }
                 assetList.forEach { fileName ->
                     if (fileName.endsWith(".mp3")) {
-                        val base = fileName.removeSuffix(".mp3").trim()
+                        val base = fileName.removeSuffix(".mp3")
+                            .removeSuffix("-mf").removeSuffix("-f").removeSuffix("-p").trim()
                         val octave = base.lastOrNull()?.digitToIntOrNull()
                         val noteName = if (octave != null) base.dropLast(1) else null
                         if (noteName != null && octave != null && noteBaseMap.containsKey(noteName)) {
                             val midi = (octave + 1) * 12 + (noteBaseMap[noteName] ?: 0)
-                            try {
-                                val afd: AssetFileDescriptor = context.assets.openFd("$assetFolderPath/$fileName")
-                                val soundId = salamanderSoundPool.load(afd, 1)
-                                sampleMap[midi] = soundId
-                            } catch (_: Exception) {}
+                            // Prefer -mf or unsuffixed file as default map entry
+                            if (!sampleMap.containsKey(midi) || fileName.contains("-mf", true)) {
+                                try {
+                                    context.assets.openFd("$assetFolderPath/$fileName").use { afd ->
+                                        val soundId = salamanderSoundPool.load(afd, 1)
+                                        if (soundId != 0) sampleMap[midi] = soundId
+                                    }
+                                } catch (_: Exception) {}
+                            }
                         }
                     }
                 }
@@ -1990,9 +2018,8 @@ class AndroidAudioEngine(
             }
         }
     }
-
     override fun noteOn(midiNote: Int, velocity: Float) {
-        val clampedVel = velocity.coerceIn(0f, 1f)
+        val clampedVel = velocity.coerceIn(0.05f, 1.0f)
 
         // 1. Check if the active instrument has audio samples loaded in SoundPool
         val sampleInstrumentKey = when {
@@ -2061,68 +2088,18 @@ class AndroidAudioEngine(
                 }
             }
 
-            val soundId = salamanderSampleMap[closestMidi]
-            if (soundId != null) {
-                // Pitch shift playback rate based on semitone difference: 2^(semitones / 12)
+            val soundId = salamanderSampleMap[closestMidi] ?: return
+            if (soundId != 0) {
                 val semitoneDiff = midiNote - closestMidi
-                val rate = java.lang.Math.pow(2.0, semitoneDiff.toDouble() / 12.0).toFloat().coerceIn(0.5f, 2.0f)
-                // Stop any previous voice on the same key to prevent voice accumulation on rapid repetitive taps
-                salamanderActiveStreamMap.remove(midiNote)?.let { oldStreamId ->
-                    salamanderSoundPool.stop(oldStreamId)
+                val rate = Math.pow(2.0, semitoneDiff.toDouble() / 12.0).toFloat().coerceIn(0.5f, 2.0f)
+                salamanderActiveStreamMap.remove(midiNote)?.let { oldStream ->
+                    salamanderSoundPool.stop(oldStream)
                 }
                 val streamId = salamanderSoundPool.play(soundId, clampedVel, clampedVel, 1, 0, rate)
                 if (streamId != 0) {
                     salamanderActiveStreamMap[midiNote] = streamId
                 }
                 return
-            }
-        }
-
-        Log.d("AudioEngine", "Direct noteOn Received -> Note: $midiNote, Velocity: $velocity, Instrument: $currentInstrument, Mode: $pianoAudioMode")
-        engineScope.launch(Dispatchers.Default) {
-            synchronized(sf2Lock) {
-                if (sf2Loaded.get()) {
-                    val activeSf = when {
-                        currentInstrument.contains("HARMONIUM") -> soundFontPool["HARMONIUM"] ?: soundFontPool["PIANO"]
-                        currentInstrument.contains("GUITAR") -> soundFontPool["GUITAR"] ?: soundFontPool["PIANO"]
-                        else -> soundFontPool["PIANO"]
-                    }
-
-                    activeSf?.let { sf: FluidSynthPlayer ->
-                        val vel = (clampedVel * 127).toInt()
-                        try {
-                            sf.noteOn(0, midiNote, vel)
-                            // Render 1.2s of stereo audio for authentic note ring/sustain (44100 * 1.2 * 2)
-                            val samplesToRender = (44100 * 1.2 * 2).toInt().coerceAtLeast(stereoBufferSize)
-                            val floatBuffer = sf.renderFloat(samplesToRender)
-
-                            if (floatBuffer.isNotEmpty()) {
-                                // Master output scaling factor (0.8f) to prevent inter-sample peaking and distortion
-                                val shortBuffer = ShortArray(floatBuffer.size) { i ->
-                                    val sampleValue = (floatBuffer[i] * 0.8f).coerceIn(-1.0f, 1.0f)
-                                    (sampleValue * Short.MAX_VALUE).toInt().toShort()
-                                }
-
-                                voiceMutex.withLock {
-                                    val activeTrack = voicePool[currentVoiceIndex]
-                                    try {
-                                        activeTrack.pause()
-                                        activeTrack.flush()
-                                        activeTrack.play()
-                                        activeTrack.write(shortBuffer, 0, shortBuffer.size, AudioTrack.WRITE_NON_BLOCKING)
-                                    } catch (e: Exception) {
-                                        Log.e("AudioEngine", "SoundFont stream write failed: ${e.message}")
-                                    }
-                                    currentVoiceIndex = (currentVoiceIndex + 1) % VOICE_COUNT
-                                }
-                            }
-                        } catch (e: Throwable) {
-                            Log.e("AudioEngine", "Native synth noteOn error caught: ${e.message}")
-                        }
-                    }
-                } else {
-                    Log.w("AudioEngine", "Bypassing noteOn: SoundFont instrument '$currentInstrument' is not loaded.")
-                }
             }
         }
     }
@@ -2239,8 +2216,31 @@ class AndroidAudioEngine(
         }
     }
 
-    override fun allNotesOff() {
+   override fun allNotesOff() {
         try {
+            // 1. Stop all active SoundPool sample streams across all instruments
+            salamanderActiveStreamMap.values.forEach { streamId ->
+                runCatching { salamanderSoundPool.stop(streamId) }
+            }
+            salamanderActiveStreamMap.clear()
+
+            activeStreamsByInstrument.values.forEach { streamMap ->
+                streamMap.values.forEach { streamId ->
+                    runCatching { salamanderSoundPool.stop(streamId) }
+                }
+                streamMap.clear()
+            }
+
+            // 2. Silence any active FluidSynth voices
+            synchronized(sf2Lock) {
+                soundFontPool.values.forEach { sf ->
+                    runCatching {
+                        for (m in 0..127) sf.noteOff(0, m)
+                    }
+                }
+            }
+
+            // 3. Flush streaming PCM voicePool tracks
             voiceMutex.lock()
             voicePool.forEach { track ->
                 runCatching { track.pause(); track.flush(); track.play() }
@@ -2249,15 +2249,17 @@ class AndroidAudioEngine(
             activeTanpuraNotes.clear()
             currentlyPlayingNoteEngine = null
             currentlyPlayingTanpuraNote = null
-            
-            currentlyPlayingTanpuraId?.let { 
+
+            currentlyPlayingTanpuraId?.let {
                 systemSoundPool.stop(it)
                 currentlyPlayingTanpuraId = null
             }
-            
+
             stopAndReleaseTanpuraTracks()
         } finally {
-            voiceMutex.unlock()
+            if (voiceMutex.isHeldByCurrentThread) {
+                voiceMutex.unlock()
+            }
         }
     }
 
@@ -2608,17 +2610,43 @@ class AndroidAudioEngine(
                     }
                 }
                 "DRUM", "METRONOME" -> {
-                    val mapKey = "${currentSelectedKitName}_$index"
-                    val soundId = drumKitLoader.kitSampleMap[mapKey]
+                    // Resolve pad index from either explicit label ("KICK", "SNARE", "HH_CLOSED", "RIDE", etc.),
+                    // GM MIDI note number (35..81), or direct pad index (0..15)
+                    val cleanLabel = target.substringAfter("-")
+                    val resolvedPadIdx = when {
+                        index in 0..15 && cleanLabel.isEmpty() -> index
+                        cleanLabel == "KICK" || index == 35 || index == 36 -> 0
+                        cleanLabel == "SNARE" || index == 38 || index == 40 || index == 37 -> 1
+                        cleanLabel.contains("CLOSED") || cleanLabel == "HH" || index == 42 || index == 44 -> 2
+                        cleanLabel.contains("OPEN") || cleanLabel == "OHAT" || index == 46 -> 3
+                        cleanLabel == "TOM_HI" || cleanLabel == "TOM1" || index == 48 || index == 50 -> 4
+                        cleanLabel == "TOM_MID" || cleanLabel == "TOM2" || index == 45 || index == 47 -> 5
+                        cleanLabel == "FLOOR" || cleanLabel == "TOM_LO" || index == 41 || index == 43 -> 6
+                        cleanLabel == "CRASH" || index == 49 || index == 55 -> 7
+                        cleanLabel.contains("RIDE") || index == 51 || index == 53 || index == 59 -> 8
+                        cleanLabel == "CLAP" || index == 39 -> 9
+                        cleanLabel == "PERC" || cleanLabel.contains("COWBELL") || index == 56 -> 10
+                        cleanLabel.contains("SHAKER") || index == 69 || index == 70 || index == 82 -> 11
+                        cleanLabel == "KICK2" -> 12
+                        cleanLabel == "SNARE2" -> 13
+                        cleanLabel == "CRASH2" || index == 57 || index == 52 -> 14
+                        else -> drumKitLoader.padLabels.indexOfFirst { it.equals(cleanLabel, ignoreCase = true) }
+                            .takeIf { it >= 0 } ?: (index % 16).coerceAtLeast(0)
+                    }
 
-                    if (soundId != null && drumKitLoader.loadedAssetsStatus[soundId] == true) {
-                        val vol = if (index % 4 == 0) 1.0f else 0.6f
-                        soundPool.play(soundId, vol, vol, 1, 0, 1f)
-                        onPadTriggered?.invoke(index)
-                    } else {
-                        val expectedLabel = drumKitLoader.padLabels.getOrNull(index) ?: "UNKNOWN"
-                        val expectedAssetPath = "drums/fingerdrumming/$currentSelectedKitName/$index-$expectedLabel.wav"
-                        Log.e("AudioEngine", "Missing preloaded sound ID for key: $mapKey (Expected Path: $expectedAssetPath)")
+                    // Try primary kit mapKey, then fallback across any loaded kit or kitSounds["DRUM"]
+                    val primaryKey = "${currentSelectedKitName}_$resolvedPadIdx"
+                    val fallbackSoundId = drumKitLoader.kitSampleMap[primaryKey]
+                        ?: drumKitLoader.kitSampleMap.entries.firstOrNull { it.key.endsWith("_$resolvedPadIdx") }?.value
+                        ?: kitSounds["DRUM"]?.entries?.firstOrNull { it.key.contains(cleanLabel, ignoreCase = true) }?.value
+                        ?: drumKitLoader.kitSampleMap.values.firstOrNull()
+
+                    if (fallbackSoundId != null && fallbackSoundId != 0) {
+                        val vol = if (resolvedPadIdx == 0 || resolvedPadIdx == 1) 0.95f else 0.78f
+                        soundPool.play(fallbackSoundId, vol, vol, 1, 0, 1f)
+                        onPadTriggered?.invoke(resolvedPadIdx)
+                    } else if (metronomeStrongId != 0) {
+                        systemSoundPool.play(if (resolvedPadIdx == 0) metronomeStrongId else metronomeWeakId, 0.8f, 0.8f, 1, 0, 1f)
                     }
                 }
             }

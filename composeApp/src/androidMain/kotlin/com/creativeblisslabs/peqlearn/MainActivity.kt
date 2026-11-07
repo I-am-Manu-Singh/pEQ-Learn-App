@@ -328,26 +328,60 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        viewModel.onReadAssetBytes = { assetName ->
-            try {
-                assets.open(assetName).use { it.readBytes() }
-            } catch (_: Exception) {
-                try {
-                    assets.open("midi/$assetName").use { it.readBytes() }
-                } catch (_: Exception) {
-                    try {
-                        assets.open("tutorials/$assetName").use { it.readBytes() }
-                    } catch (_: Exception) {
-                        try {
-                            javaClass.classLoader?.getResourceAsStream(assetName)?.use { it.readBytes() }
-                        } catch (_: Exception) {
-                            null
+        // Discover all bundled MIDI files.
+        val scoreAssetFolders = listOf(
+            "musicxml/scores",
+            "midi/scores",
+            "midi/beyer_op101",
+            "midi/burgmuller_op100",
+            "midi/czerny_op299",
+            "midi/czerny_op599",
+            "midi/czerny_op777",
+            "midi/hanon_the_virtuoso_pianist",
+            "midi",
+            ""
+        )
+// Read bundled assets from root, midi/ and tutorials/
+        viewModel.onReadAssetBytes = { requestedPath ->
+            val clean = requestedPath.removePrefix("/").removePrefix("assets/")
+            var bytes: ByteArray? = runCatching { assets.open(clean).use { it.readBytes() } }.getOrNull()
+            if (bytes == null) {
+                val bareFile = clean.substringAfterLast("/")
+                for (folder in scoreAssetFolders) {
+                    val candidate = if (folder.isEmpty()) bareFile else "$folder/$bareFile"
+                    bytes = runCatching { assets.open(candidate).use { it.readBytes() } }.getOrNull()
+                    if (bytes != null) break
+                }
+            }
+            bytes
+        }
+
+
+        viewModel.onListMidiAssetsRequested = {
+            val allPaths = mutableListOf<String>()
+            for (folder in scoreAssetFolders) {
+                runCatching {
+                    val entries = assets.list(folder) ?: emptyArray()
+                    for (entry in entries) {
+                        if (entry.endsWith(".mid", true) ||
+                            entry.endsWith(".midi", true) ||
+                            entry.endsWith(".xml", true) ||
+                            entry.endsWith(".musicxml", true) ||
+                            entry.endsWith(".mxl", true)
+                        ) {
+                            allPaths.add(if (folder.isEmpty()) entry else "$folder/$entry")
                         }
                     }
                 }
             }
+            allPaths.distinct()
         }
 
+// Keep the legacy callback consistent.
+viewModel.onListMidiAssets = {
+    viewModel.onListMidiAssetsRequested?.invoke()
+        ?: emptyList()
+}
         viewModel.onRestoreOnnxState = {
             com.creativeblisslabs.peqlearn.app.ai.OnnxModelRegistry.restoreState(
                 getString = { key -> onnxPrefs.getString(key, null) },

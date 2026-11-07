@@ -237,7 +237,7 @@ private fun SystemTabContent(viewModel: AppViewModel) {
             }
         }
     }
-
+    
     // AI Stem Quality
     SettingsSection("AI Stem Quality", icon = Icons.Default.AutoAwesome) {
         Text("Model depth and decoupling quality for source separation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
@@ -523,33 +523,145 @@ private fun InstrumentsTabContent(viewModel: AppViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                    Text("Unified Piano & Visualizer Studio Settings", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        // Direct Inline Notation & Visualizer Studio Controls inside SettingsPanel
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "NOTATION & VISUALIZER STUDIO CONFIGURATION",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            // 1. Visualizer Layout Mode
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    "Split" to "Split (Notation + Waterfall)",
+                    "KeyboardWaterfall" to "Keyboard + Waterfall",
+                    "Waterfall" to "Waterfall Only",
+                    "Notation" to "Notation Only",
+                    "Keyboard" to "Keyboard Only"
+                ).forEach { (modeKey, label) ->
+                    pEQFilterChip(
+                        selected = viewModel.visualizerLayoutMode.value == modeKey,
+                        onClick = {
+                            viewModel.visualizerLayoutMode.value = modeKey
+                            viewModel.showWaterfall.value = modeKey != "Notation" && modeKey != "Keyboard"
+                        },
+                        label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                    )
                 }
+            }
+
+            // 2. Notation Format (Staff / Tab / Both) & Target Instrument
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("Staff Only", "Tab Only", "Both Viewers").forEach { fmt ->
+                    pEQFilterChip(
+                        selected = viewModel.notationFormat.value.equals(fmt, ignoreCase = true),
+                        onClick = { viewModel.notationFormat.value = fmt },
+                        label = { Text(fmt, style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+            }
+
+            // 3. Key Toggles (Note Names, Grand Staff Split, Vertical Scroll, Waterfall Particles, 3-Pedal Unit, Velvet Strip)
+            TogglePreference(
+                label = "Show Note Names on Sheet Music Noteheads",
+                desc = "Display pitch letters inside noteheads for rapid sight-reading.",
+                checked = viewModel.showNotationNoteNames.value,
+                onCheckedChange = { viewModel.showNotationNoteNames.value = it }
+            )
+            TogglePreference(
+                label = "Show Note Names on Piano Keys / Fretboard",
+                desc = "Display note & octave labels on the interactive instrument.",
+                checked = viewModel.showPianoKeyLabels.value,
+                onCheckedChange = { viewModel.showPianoKeyLabels.value = it }
+            )
+            TogglePreference(
+            label = "Show Suggested Piano Fingerings (1–5)",
+            desc = "Display vertical stacked finger numbers above Treble chords and below Bass chords.",
+            checked = viewModel.showSuggestedFingerings.value,
+            onCheckedChange = { viewModel.showSuggestedFingerings.value = it }
+)
+            TogglePreference(
+                label = "Grand Staff Split (Treble + Bass Staves)",
+                desc = "Split right-hand treble and left-hand bass onto dual staves.",
+                checked = viewModel.isSplitStaff.value,
+                onCheckedChange = { viewModel.isSplitStaff.value = it }
+            )
+            TogglePreference(
+                label = "Vertical Page Scrolling in Notation Viewer",
+                desc = "Scroll vertically system-by-system instead of single horizontal ribbon.",
+                checked = viewModel.isVerticalScroll.value,
+                onCheckedChange = {
+                    viewModel.isVerticalScroll.value = it
+                    viewModel.scrollDirectionHorizontal.value = !it
+                }
+            )
+            TogglePreference(
+                label = "Waterfall Sparks & Key Strike Bloom",
+                desc = "Emit physics particles and glowing key halos when notes land.",
+                checked = viewModel.showWaterfallParticles.value,
+                onCheckedChange = { viewModel.showWaterfallParticles.value = it }
+            )
+            TogglePreference(
+                label = "Show 3-Pedal Grand Piano Unit (Soft, Sostenuto, Sustain)",
+                desc = "Display interactive brass pedals synced with USB MIDI CC 64/66/67.",
+                checked = viewModel.showPedals.value,
+                onCheckedChange = { viewModel.showPedals.value = it }
+            )
+
+            // 4. Falling Notes Speed & Transpose / Octave Shift
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Waterfall Falling Speed", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Slow", "Normal", "Fast", "Extreme").forEach { spd ->
+                        pEQFilterChip(
+                            selected = viewModel.fallingNotesSpeed.value == spd,
+                            onClick = { viewModel.fallingNotesSpeed.value = spd },
+                            label = { Text(spd, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+            }
+
+            // 5. Active Score Multi-Track / Drum Mixer directly in Settings
+            val activeScoreTracks = (viewModel.currentScore.value as? Score)?.tracks ?: emptyList()
+            if (activeScoreTracks.isNotEmpty()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
                 Text(
-                    "All real-time MIDI visualizer settings (3D perspective, horizon vanishing depth, falling speed, particle physics, multi-track hand colors, and themes) are unified in the Piano Keyboard studio bottomsheet.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                    "ACTIVE SCORE MIDI TRACKS (${activeScoreTracks.size})",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                Button(
-                    onClick = {
-                        viewModel.currentTab.value = com.creativeblisslabs.peqlearn.app.Tab.Learn
-                        viewModel.showSettings.value = true
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Text("Open Visualizer Settings Sheet", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                activeScoreTracks.forEach { tr ->
+                    val enabled = viewModel.enabledTrackIndices[tr.trackIndex] ?: tr.isEnabled
+                    TogglePreference(
+                        label = tr.trackName.ifBlank { "Track ${tr.trackIndex + 1}" },
+                        desc = if (tr.channel == 9) "GM Percussion (Channel 10) • ${tr.noteCount} hits"
+                        else "MIDI Channel ${tr.channel + 1} • Patch ${tr.program + 1} • ${tr.noteCount} notes",
+                        checked = enabled,
+                        onCheckedChange = { viewModel.enabledTrackIndices[tr.trackIndex] = it }
+                    )
                 }
+            }
+
+            Button(
+                onClick = {
+                    viewModel.currentTab.value = com.creativeblisslabs.peqlearn.app.Tab.Learn
+                    viewModel.showSettings.value = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text("Open Full Studio Settings Sheet", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

@@ -134,6 +134,7 @@ val client = createHttpClient()
     val isLeftHandHidden = mutableStateOf(false)
     val isRightHandHidden = mutableStateOf(false)
     val enabledTrackIndices = mutableStateMapOf<Int, Boolean>()
+    private val sostenutoCapturedNotes = HashSet<Int>()
     val leftHandColor = mutableStateOf(Color(0xFF6C63FF))
     val rightHandColor = mutableStateOf(Color(0xFF4A90E2))
     val transposition = mutableIntStateOf(0)
@@ -229,6 +230,7 @@ val client = createHttpClient()
     val waterfallTheme = mutableStateOf("Neon Glow")
     val showPianoKeyLabels = mutableStateOf(true)
     val showNotationNoteNames = mutableStateOf(true)
+    val showSuggestedFingerings = mutableStateOf(true)
     val showWaterfall = mutableStateOf(true)
     val visualizerLayoutMode = mutableStateOf("Split") // "Split", "KeyboardWaterfall", "Waterfall", "Notation", "Keyboard"
     val showWaterfallParticles = mutableStateOf(true)
@@ -551,6 +553,8 @@ val client = createHttpClient()
     var onResolveModelPath: ((fileName: String) -> String?)? = null
     /** Reads raw bytes of an asset / resource file by name, null if missing */
     var onReadAssetBytes: ((assetName: String) -> ByteArray?)? = null
+    var onListMidiAssetsRequested: (() -> List<String>)? = null
+    var onListMidiAssets: (() -> List<String>)? = null
 
     // 📂 PLYLIST ENGINE (P-12)
     val customPlaylists = mutableStateMapOf<String, SnapshotStateList<pEQMediaItem>>()
@@ -1428,8 +1432,61 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
     fun loadRagasBySystem(system: String) {
         loadRagas(system)
     }
+private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): Int {
+        val a = (color.alpha * 255f + 0.5f).toInt().coerceIn(0, 255)
+        val r = (color.red * 255f + 0.5f).toInt().coerceIn(0, 255)
+        val g = (color.green * 255f + 0.5f).toInt().coerceIn(0, 255)
+        val b = (color.blue * 255f + 0.5f).toInt().coerceIn(0, 255)
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
+    }
 
-   private fun getMeasureDurationSeconds(measure: Measure, tempoBpm: Float): Float {
+    private fun mapGmDrumMidiToLabel(midiNote: Int): String? {
+        return when (midiNote) {
+            35, 36 -> "KICK"
+            38, 40, 37 -> "SNARE"
+            42, 44 -> "HH_CLOSED"
+            46 -> "HH_OPEN"
+            49, 55 -> "CRASH"
+            57, 52 -> "CRASH2"
+            51, 53, 59 -> "RIDE"
+            41, 43 -> "FLOOR"
+            45, 47 -> "TOM_LO"
+            48, 50 -> "TOM_HI"
+            39 -> "CLAP"
+            56 -> "PERC"
+            69, 70, 82 -> "SHAKER"
+            else -> null
+        }
+    }
+
+    /**
+     * Synchronizes [enabledTrackIndices] with the currently loaded [Score.tracks].
+     */
+    fun syncScoreTracks(score: Score?) {
+        enabledTrackIndices.clear()
+        if (score != null && score.tracks.isNotEmpty()) {
+            score.tracks.forEach { tr ->
+                enabledTrackIndices[tr.trackIndex] = tr.isEnabled
+            }
+        } else {
+            enabledTrackIndices[0] = true
+            enabledTrackIndices[1] = true
+        }
+    }
+
+    /**
+     * Toggles a specific MIDI track on/off and immediately silences any hanging notes if muted.
+     */
+    fun setTrackEnabled(trackIndex: Int, enabled: Boolean) {
+        enabledTrackIndices[trackIndex] = enabled
+        if (!enabled) {
+            audioEngine.allNotesOff()
+            midiActiveNotes.clear()
+            midiPlayingNote.value = null
+        }
+    }
+
+    private fun getMeasureDurationSeconds(measure: Measure, tempoBpm: Float): Float {
         val safeTempo = tempoBpm.coerceAtLeast(20f)
         val quarterBeats = measure.timeSignatureNumerator.toFloat() * (4f / measure.timeSignatureDenominator.coerceAtLeast(1).toFloat())
         return (60f / safeTempo) * quarterBeats
@@ -1446,7 +1503,6 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
         firedPedalsMap.clear()
         lastTrackedMeasure = clampedMeasure
 
-        // Pre-mark notes before clampedOffset as already fired so seeking mid-measure doesn't blast earlier notes!
         val targetMeasure = score.measures.getOrNull(clampedMeasure)
         if (targetMeasure != null) {
             val quarterBeats = targetMeasure.timeSignatureNumerator.toFloat() * (4f / targetMeasure.timeSignatureDenominator.coerceAtLeast(1).toFloat())
@@ -1479,6 +1535,7 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
         midiPlayingNote.value = null
         audioEngine.seekTo(accumulatedMs)
     }
+
     fun toggleScorePlayback() {
         if (isScorePlaying.value) {
             stopScorePlayback()
@@ -1486,7 +1543,6 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
             startScorePlayback()
         }
     }
-
     fun stopScorePlayback() {
         isScorePlaying.value = false
         isPlaying.value = false
@@ -1500,6 +1556,8 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
             midiPlayingNote.value = null
             firedNotesMap.clear()
             firedPedalsMap.clear()
+            notesToReleaseOnSustainUp.clear()
+            sostenutoCapturedNotes.clear()
             sustainPedalActive.value = false
             sustainActive.value = false
             sostenutoPedalActive.value = false
@@ -1514,10 +1572,65 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
         currentPosition.value = 0L
         audioEngine.seekTo(0L)
     }
+    // --- USB MIDI INPUT GATE & INTERACTIVE PLAY-ALONG MODES ---
+    val isUsbMidiInputEnabled = mutableStateOf(true)
+    val isGuidedPlayAlongActive = mutableStateOf(false)
+    // Modes: "WAIT_FOR_NOTE" (Step-by-Step), "MEASURE_FOLLOWUP" (Teacher Bar -> Student Bar),
+    //        "CONTINUOUS" (Live Sync), "TEMPO_RAMP" (+5% Speed per Clean Bar)
+    val playAlongPracticeMode = mutableStateOf("WAIT_FOR_NOTE")
+    val playAlongPhaseBanner = mutableStateOf("") // e.g. "WATCH & LISTEN (Bar 1)" or "YOUR TURN! Play Highlighted Keys"
+    val guidedTargetNotes = mutableStateListOf<Int>() // Notes currently flashing on visualizer waiting for user
+    val guidedSatisfiedNotes = mutableStateListOf<Int>() // Notes already hit in the current chord step
+
+    fun toggleUsbMidiInput() {
+        val nextState = !isUsbMidiInputEnabled.value
+        isUsbMidiInputEnabled.value = nextState
+        if (!nextState) {
+            // Immediately clear any held USB MIDI keys/pedals from visualizer & audio engine
+            notesToReleaseOnSustainUp.clear()
+            sostenutoCapturedNotes.clear()
+            sustainPedalActive.value = false
+            sustainActive.value = false
+            sostenutoPedalActive.value = false
+            softPedalActive.value = false
+            if (!isScorePlaying.value) {
+                midiActiveNotes.clear()
+                midiPlayingNote.value = null
+                audioEngine.allNotesOff()
+            }
+        }
+    }
+
+    /**
+     * Maps a track's GM Program number (0..127) and channel to the appropriate AndroidAudioEngine instrument key.
+     */
+    private fun resolveTrackInstrumentKey(measureScore: Score, voiceIndex: Int): String {
+        val track = measureScore.tracks.firstOrNull { it.trackIndex == voiceIndex }
+            ?: return selectedInstrument.value
+        if (track.channel == 9) return "DRUM"
+        return when (track.program.coerceIn(0, 127)) {
+            in 0..7 -> "PIANO_ACOUSTIC"
+            in 8..15 -> "PIANO_ELECTRIC"
+            in 16..23 -> "HARMONIUM"
+            24 -> "GUITAR_CLASSICAL"
+            25 -> "GUITAR_ACOUSTIC"
+            in 26..31 -> "GUITAR_ELECTRIC"
+            in 32..39 -> "GUITAR_ACOUSTIC"
+            in 40..55 -> "VIOLIN"
+            in 72..79 -> "FLUTE"
+            104 -> "SITAR"
+            in 112..119 -> "TABLA"
+            else -> selectedInstrument.value
+        }
+    }
 
     fun startScorePlayback() {
         val score = currentScore.value ?: return
         if (isScorePlaying.value) return
+
+        if (enabledTrackIndices.isEmpty()) {
+            syncScoreTracks(score)
+        }
 
         isScorePlaying.value = true
         isPlaying.value = true
@@ -1530,17 +1643,15 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
                 return@launch
             }
 
-            // Precompute exact measure start times & durations in score-time seconds
+            val drumTrackIndices = score.tracks.filter { it.channel == 9 }.map { it.trackIndex }.toSet()
+
             val measureStartsSec = FloatArray(numMeasures)
             val measureDurationsSec = FloatArray(numMeasures)
             val measureQuarterBeats = FloatArray(numMeasures)
             var runningSec = 0f
             for (i in 0 until numMeasures) {
                 val m = score.measures[i]
-                val qBeats =
-                    (m.timeSignatureNumerator.toFloat() * (4f / m.timeSignatureDenominator.coerceAtLeast(
-                        1
-                    ).toFloat())).coerceAtLeast(1f)
+                val qBeats = (m.timeSignatureNumerator.toFloat() * (4f / m.timeSignatureDenominator.coerceAtLeast(1).toFloat())).coerceAtLeast(1f)
                 val durSec = (60f / score.tempo.coerceAtLeast(20f)) * qBeats
                 measureStartsSec[i] = runningSec
                 measureDurationsSec[i] = durSec
@@ -1550,10 +1661,8 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
 
             val startMeasure = scorePlayheadMeasure.value.coerceIn(0, numMeasures - 1)
             val startOffset = scorePlayheadOffset.value.coerceIn(0f, 1f)
-            var scoreElapsedSec =
-                measureStartsSec[startMeasure] + (startOffset * measureDurationsSec[startMeasure])
+            var scoreElapsedSec = measureStartsSec[startMeasure] + (startOffset * measureDurationsSec[startMeasure])
 
-            // Pre-populate firedNotesMap for the starting position so we never burst past notes in the current measure
             firedNotesMap.clear()
             firedPedalsMap.clear()
             lastTrackedMeasure = startMeasure
@@ -1565,22 +1674,35 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
                 if (ev.position < initialBeat - 0.04f) firedPedalsMap[pIdx] = true
             }
 
-            // Active sounding notes tracker: pitch -> releaseTimeInScoreSeconds (eliminates spawning 100s of child coroutines!)
-            val scheduledNoteReleases = HashMap<Int, Float>(32)
+            val scheduledNoteReleases = HashMap<Int, Pair<Float, Int>>(32)
             val pitchesToActivate = ArrayList<Int>(16)
             val pitchesToRelease = ArrayList<Int>(16)
+            val drumLabelsToTrigger = ArrayList<String>(4)
+
+            // Measure Follow-Up (Call & Response) State:
+            // false = Teacher Demo Phase (app plays the measure), true = Student Follow-Up Phase (user plays the measure)
+            var isStudentFollowUpTurn = false
 
             val timeSource = TimeSource.Monotonic
-            var lastMark = timeSource.markNow()
+            val playbackOriginMark = timeSource.markNow()
+            var lastLoopMark = playbackOriginMark
             var lastUiBroadcastMs = 0L
 
             while (isActive && isScorePlaying.value) {
-                val elapsedDuration = lastMark.elapsedNow()
-                lastMark = timeSource.markNow()
-                val wallDeltaSec = elapsedDuration.inWholeMilliseconds / 1000f
+                val elapsedDuration = lastLoopMark.elapsedNow()
+                lastLoopMark = timeSource.markNow()
+                val wallDeltaSec = elapsedDuration.inWholeMicroseconds / 1_000_000f
+
+                // Freeze playhead advancement if waiting for user to press the flashing target keys on USB MIDI
+                val isWaitingForUserStep = isGuidedPlayAlongActive.value &&
+                    guidedTargetNotes.isNotEmpty() &&
+                    (playAlongPracticeMode.value == "WAIT_FOR_NOTE" ||
+                        (playAlongPracticeMode.value == "MEASURE_FOLLOWUP" && isStudentFollowUpTurn))
 
                 val speed = playbackSpeed.value.coerceIn(0.25f, 2.5f)
-                scoreElapsedSec += wallDeltaSec * speed
+                if (!isWaitingForUserStep) {
+                    scoreElapsedSec += wallDeltaSec * speed
+                }
                 val totalElapsedMs = (scoreElapsedSec * 1000f).toLong()
 
                 // 1. Identify current measure index
@@ -1594,7 +1716,32 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
                     currentMeasureIdx++
                 }
 
-                // End of score reached or loop boundary reached in measure-by-measure practice mode or A-B repeat
+                // Handle Measure Follow-Up (Teacher Demo -> Student Turn per Measure)
+                if (isGuidedPlayAlongActive.value && playAlongPracticeMode.value == "MEASURE_FOLLOWUP" &&
+                    currentMeasureIdx != lastTrackedMeasure
+                ) {
+                    if (!isStudentFollowUpTurn) {
+                        // Teacher just finished playing `lastTrackedMeasure` -> Rewind to start of `lastTrackedMeasure` for Student Turn!
+                        isStudentFollowUpTurn = true
+                        currentMeasureIdx = lastTrackedMeasure
+                        scoreElapsedSec = measureStartsSec[currentMeasureIdx]
+                        firedNotesMap.clear()
+                        firedPedalsMap.clear()
+                        scheduledNoteReleases.forEach { (p, _) -> audioEngine.noteOff(p) }
+                        scheduledNoteReleases.clear()
+                        withContext(Dispatchers.Main) {
+                            playAlongPhaseBanner.value = "YOUR TURN! Play Bar ${currentMeasureIdx + 1} on USB Keyboard"
+                            midiActiveNotes.clear()
+                        }
+                    } else {
+                        // Student finished Bar `lastTrackedMeasure` -> Advance to Teacher Demo of next bar!
+                        isStudentFollowUpTurn = false
+                        withContext(Dispatchers.Main) {
+                            playAlongPhaseBanner.value = "LISTEN & WATCH: Bar ${currentMeasureIdx + 1}"
+                        }
+                    }
+                }
+
                 val loopRange = practiceMeasureRange.value
                 val isMeasureLoopActive = isPracticeLoopEnabled.value && loopRange != null
                 val isAbLoopActive = abRepeatActive.value && abRepeatPointA.value != -1L && abRepeatPointB.value != -1L && abRepeatPointB.value > abRepeatPointA.value
@@ -1605,8 +1752,18 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
 
                 if (currentMeasureIdx > targetEndMeasure || currentMeasureIdx >= numMeasures || isAbRepeatBoundaryReached) {
                     if (isLoopActive) {
+                        // If Tempo Ramp mode is active and accuracy >= 85%, boost speed by +5% up to 1.25x!
+                        if (isGuidedPlayAlongActive.value && playAlongPracticeMode.value == "TEMPO_RAMP") {
+                            val acc = playAlongEngine.scorecard.value.accuracyPercentage
+                            if (acc >= 85) {
+                                val nextSpd = (playbackSpeed.value + 0.05f).coerceAtMost(1.25f)
+                                withContext(Dispatchers.Main) {
+                                    playbackSpeed.value = (kotlin.math.round(nextSpd * 100f) / 100f)
+                                    playAlongPhaseBanner.value = "Tempo Ramp +5% -> ${(playbackSpeed.value * 100).toInt()}% Speed!"
+                                }
+                            }
+                        }
                         if (isAbLoopActive && !isMeasureLoopActive) {
-                            // Seamless A-B repeat loop for active score
                             val loopStartMs = abRepeatPointA.value
                             scoreElapsedSec = (loopStartMs / 1000f).coerceAtLeast(0f)
                             currentMeasureIdx = 0
@@ -1616,7 +1773,6 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
                                 currentMeasureIdx++
                             }
                         } else {
-                            // Loop seamlessly back to start of practice measure
                             val loopStartMeasure = loopRange!!.first.coerceIn(0, numMeasures - 1)
                             currentMeasureIdx = loopStartMeasure
                             scoreElapsedSec = measureStartsSec[loopStartMeasure]
@@ -1637,7 +1793,6 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
                     }
                 }
 
-                // Measure transition
                 if (currentMeasureIdx != lastTrackedMeasure) {
                     firedNotesMap.clear()
                     firedPedalsMap.clear()
@@ -1653,58 +1808,94 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
 
                 pitchesToActivate.clear()
                 pitchesToRelease.clear()
+                drumLabelsToTrigger.clear()
 
-                // 2. Check scheduled note-offs first (if a note expired before or at this tick)
+                // 2. Release expired notes or notes belonging to a track that was just switched OFF
+                val rhMuted = isRightHandMuted.value || isRightHandHidden.value
+                val lhMuted = isLeftHandMuted.value || isLeftHandHidden.value
                 val releaseIter = scheduledNoteReleases.entries.iterator()
                 while (releaseIter.hasNext()) {
                     val entry = releaseIter.next()
-                    if (scoreElapsedSec >= entry.value) {
-                        val pitch = entry.key
+                    val pitch = entry.key
+                    val (releaseTimeSec, voiceIdx) = entry.value
+                    val trackStillEnabled = enabledTrackIndices[voiceIdx] ?: true
+                    val handMutedNow = (voiceIdx == 0 && rhMuted) || (voiceIdx == 1 && lhMuted)
+
+                    // Do not auto-expire target notes while paused waiting for the user's USB MIDI input!
+                    if ((!isWaitingForUserStep && scoreElapsedSec >= releaseTimeSec) || !trackStillEnabled || handMutedNow) {
                         audioEngine.noteOff(pitch)
                         pitchesToRelease.add(pitch)
                         releaseIter.remove()
                     }
                 }
 
-                // 3. Fire due notes on the audio thread IMMEDIATELY (all chord notes trigger within microseconds!)
+                // 3. Fire due notes at the current beat
                 val transOffset = transposition.value + (octaveShift.value * 12)
-                val rhMuted = isRightHandMuted.value
-                val lhMuted = isLeftHandMuted.value
                 val secPerBeat = 60f / score.tempo.coerceAtLeast(20f)
+                val newlyQueuedTargets = ArrayList<Int>(8)
 
-                measure.notes.forEachIndexed { index, note ->
-                    if (note.isRest || firedNotesMap[index] == true) return@forEachIndexed
-                    if (currentBeatInMeasure >= note.position) {
-                        firedNotesMap[index] = true
+                if (!isWaitingForUserStep) {
+                    measure.notes.forEachIndexed { index, note ->
+                        if (note.isRest || firedNotesMap[index] == true) return@forEachIndexed
+                        if (currentBeatInMeasure >= note.position) {
+                            firedNotesMap[index] = true
 
-                        val isTrackEnabled = enabledTrackIndices[note.voice] ?: true
-                        if (!isTrackEnabled) return@forEachIndexed
+                            val isTrackEnabled = enabledTrackIndices[note.voice] ?: true
+                            if (!isTrackEnabled) return@forEachIndexed
 
-                        val isRightHand = when (note.voice) {
-                            0 -> true
-                            1 -> false
-                            else -> note.midiNote >= 60
+                            val isDrumNote = note.voice in drumTrackIndices
+                            if (isDrumNote) {
+                                val drumLabel = mapGmDrumMidiToLabel(note.midiNote) ?: "SNARE"
+                                audioEngine.playSample(label = drumLabel, index = note.midiNote, string = "DRUM")
+                                drumLabelsToTrigger.add(drumLabel)
+                                return@forEachIndexed
+                            }
+
+                            val isRightHand = when (note.voice) {
+                                0 -> true
+                                1 -> false
+                                else -> note.midiNote >= 60
+                            }
+                            if ((isRightHand && rhMuted) || (!isRightHand && lhMuted)) return@forEachIndexed
+
+                            val effectivePitch = (note.midiNote + transOffset).coerceIn(0, 127)
+
+                            val shouldWaitOnThisNote = isGuidedPlayAlongActive.value && (
+                                playAlongPracticeMode.value == "WAIT_FOR_NOTE" ||
+                                    (playAlongPracticeMode.value == "MEASURE_FOLLOWUP" && isStudentFollowUpTurn)
+                                )
+
+                            if (shouldWaitOnThisNote) {
+                                // In Step-Wait or Student Follow-Up Turn: highlight/flash the target key on the visualizer
+                                // and wait for the user to strike it on their USB MIDI keyboard!
+                                newlyQueuedTargets.add(effectivePitch)
+                                pitchesToActivate.add(effectivePitch)
+                                val noteDurSec = (note.duration * secPerBeat * 0.94f).coerceAtLeast(0.15f)
+                                scheduledNoteReleases[effectivePitch] = (scoreElapsedSec + noteDurSec) to note.voice
+                            } else {
+                                // Normal playback or Teacher Demo Turn: sound the note through the track's instrument!
+                                if (scheduledNoteReleases.containsKey(effectivePitch)) {
+                                    audioEngine.noteOff(effectivePitch)
+                                }
+                                val softGainFactor = if (softPedalActive.value) 0.62f else 0.82f
+                                audioEngine.noteOn(effectivePitch, softGainFactor)
+
+                                val noteDurSec = (note.duration * secPerBeat * 0.94f).coerceAtLeast(0.06f)
+                                scheduledNoteReleases[effectivePitch] = (scoreElapsedSec + noteDurSec) to note.voice
+                                pitchesToRelease.remove(effectivePitch)
+                                pitchesToActivate.add(effectivePitch)
+
+                                if (isGuidedPlayAlongActive.value) {
+                                    newlyQueuedTargets.add(effectivePitch)
+                                }
+                            }
                         }
-                        if ((isRightHand && rhMuted) || (!isRightHand && lhMuted)) return@forEachIndexed
-
-                        val effectivePitch = (note.midiNote + transOffset).coerceIn(0, 127)
-                        // If same pitch is re-struck while still sustaining, re-articulate cleanly and extend release time
-                        if (scheduledNoteReleases.containsKey(effectivePitch)) {
-                            audioEngine.noteOff(effectivePitch)
-                        }
-                        audioEngine.noteOn(effectivePitch, 0.82f)
-
-                        // Release slightly (94% of duration) before next same-pitch note so repeated notes articulate clearly
-                        val noteDurSec = (note.duration * secPerBeat * 0.94f).coerceAtLeast(0.06f)
-                        scheduledNoteReleases[effectivePitch] = scoreElapsedSec + noteDurSec
-                        pitchesToRelease.remove(effectivePitch)
-                        pitchesToActivate.add(effectivePitch)
                     }
                 }
 
                 // 4. Process Pedal Events
                 var pedalStateChanged: Pair<Int, Boolean>? = null
-                if (measure.pedalEvents.isNotEmpty()) {
+                if (measure.pedalEvents.isNotEmpty() && !isWaitingForUserStep) {
                     measure.pedalEvents.forEachIndexed { pIdx, pedalEvent ->
                         if (firedPedalsMap[pIdx] != true && currentBeatInMeasure >= pedalEvent.position) {
                             firedPedalsMap[pIdx] = true
@@ -1713,16 +1904,20 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
                     }
                 }
 
-                // 5. Batch ALL UI state updates into a SINGLE Main-Thread Snapshot (throttled to ~60fps unless notes changed)
-                val nowMs = lastMark.elapsedNow().inWholeMilliseconds
-                val hasNoteChanges =
-                    pitchesToActivate.isNotEmpty() || pitchesToRelease.isNotEmpty() || pedalStateChanged != null
+                // 5. Batch UI state updates onto Main Thread
+                val nowMs = playbackOriginMark.elapsedNow().inWholeMilliseconds
+                val hasNoteChanges = pitchesToActivate.isNotEmpty() ||
+                    pitchesToRelease.isNotEmpty() ||
+                    newlyQueuedTargets.isNotEmpty() ||
+                    drumLabelsToTrigger.isNotEmpty() ||
+                    pedalStateChanged != null
+
                 if (hasNoteChanges || (nowMs - lastUiBroadcastMs) >= 16L) {
                     lastUiBroadcastMs = nowMs
-                    val actCopy =
-                        if (pitchesToActivate.isNotEmpty()) pitchesToActivate.toIntArray() else null
-                    val relCopy =
-                        if (pitchesToRelease.isNotEmpty()) pitchesToRelease.toIntArray() else null
+                    val actCopy = if (pitchesToActivate.isNotEmpty()) pitchesToActivate.toIntArray() else null
+                    val relCopy = if (pitchesToRelease.isNotEmpty()) pitchesToRelease.toIntArray() else null
+                    val targetCopy = if (newlyQueuedTargets.isNotEmpty()) newlyQueuedTargets.distinct() else null
+                    val drumCopy = if (drumLabelsToTrigger.isNotEmpty()) drumLabelsToTrigger.toList() else null
                     val pedCopy = pedalStateChanged
 
                     withContext(Dispatchers.Main) {
@@ -1733,6 +1928,19 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
 
                             relCopy?.forEach { p ->
                                 midiActiveNotes.remove(p)
+                                playAlongEngine.liveKeyColors.remove(p)
+                            }
+                            if (targetCopy != null && isGuidedPlayAlongActive.value) {
+                                guidedTargetNotes.clear()
+                                guidedTargetNotes.addAll(targetCopy)
+                                guidedSatisfiedNotes.clear()
+                                targetCopy.forEach { targetPitch ->
+                                    // Flash target key in bright Cyan/Gold on the visualizer so user knows what to press!
+                                    playAlongEngine.liveKeyColors[targetPitch] = androidx.compose.ui.graphics.Color(0xFF00E5FF)
+                                }
+                                if (playAlongPracticeMode.value == "WAIT_FOR_NOTE") {
+                                    playAlongPhaseBanner.value = "PLAY FLASHING KEY(S): ${targetCopy.joinToString { com.creativeblisslabs.peqlearn.app.ui.screens.getNoteNameFromMidi(it) }}"
+                                }
                             }
                             actCopy?.forEach { p ->
                                 midiActiveNotes[p] = true
@@ -1747,29 +1955,47 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
                                         sustainPedalActive.value = pressed
                                         sustainActive.value = pressed
                                     }
-
                                     66 -> sostenutoPedalActive.value = pressed
                                     67 -> softPedalActive.value = pressed
                                 }
                             }
                         }
+                        drumCopy?.forEach { dLabel ->
+                            viewModelScope.launch { triggerThreeDDrumVisualizer(dLabel) }
+                        }
                         playAlongEngine.updatePlayheadPosition(totalElapsedMs)
                     }
                 }
 
-                delay(6L) // High-precision 166Hz audio scheduler poll on background thread
+                delay(6L)
             }
         }
     }
-   fun onMidiEventReceived(note: Int, isNoteOn: Boolean, velocity: Int = 90, channel: Int = 1) {
-        // Trigger native audio engine IMMEDIATELY on the calling MIDI thread for zero-latency hardware keyboard response!
+
+    fun onMidiEventReceived(note: Int, isNoteOn: Boolean, velocity: Int = 90, channel: Int = 1) {
+        // STRICT USB MIDI GATE: If the user toggled the MIDI Device button OFF, ignore all incoming USB MIDI data!
+        if (!isUsbMidiInputEnabled.value) return
+
+        val isHeldBySustain = sustainPedalActive.value
+        val isHeldBySostenuto = sostenutoPedalActive.value && note in sostenutoCapturedNotes
+
+        // Trigger audio engine immediately for zero-latency hardware keyboard response
         if (isNoteOn && velocity > 0) {
-            audioEngine.noteOn(note, (velocity / 127f).coerceIn(0.1f, 1.0f))
-        } else if (!sustainPedalActive.value) {
-            audioEngine.noteOff(note)
+            val softScale = if (softPedalActive.value) 0.72f else 1.0f
+            val gain = ((velocity / 127f) * softScale).coerceIn(0.08f, 1.0f)
+            if (channel == 10) {
+                val drumLabel = mapGmDrumMidiToLabel(note) ?: "SNARE"
+                audioEngine.playSample(label = drumLabel, index = note, string = "DRUM")
+            } else {
+                audioEngine.noteOn(note, gain)
+            }
+        } else if (!isHeldBySustain && !isHeldBySostenuto) {
+            if (channel != 10) {
+                audioEngine.noteOff(note)
+            }
         }
 
-        // Update UI states on Main thread
+        // Update Visualizer & Guided Play-Along Step Engine on Main Thread
         viewModelScope.launch(Dispatchers.Main) {
             androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
                 lastMidiChannel.intValue = channel
@@ -1778,11 +2004,43 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
                     midiActiveNotes[note] = true
                     midiPlayingNote.value = note
                     playAlongEngine.onUserMidiNoteOn(note, currentPosition.value)
+
+                    // Guided Play-Along Step Matching: check if user pressed a flashing target note (exact or pitch-class match)
+                    if (isGuidedPlayAlongActive.value && guidedTargetNotes.isNotEmpty()) {
+                        val matchedTarget = guidedTargetNotes.firstOrNull { it == note }
+                            ?: guidedTargetNotes.firstOrNull { (it % 12) == (note % 12) && it !in guidedSatisfiedNotes }
+
+                        if (matchedTarget != null) {
+                            if (matchedTarget !in guidedSatisfiedNotes) {
+                                guidedSatisfiedNotes.add(matchedTarget)
+                            }
+                            // Color key Emerald Green to reward correct hit!
+                            playAlongEngine.liveKeyColors[matchedTarget] = androidx.compose.ui.graphics.Color(0xFF00E676)
+                            playAlongEngine.liveKeyColors[note] = androidx.compose.ui.graphics.Color(0xFF00E676)
+
+                            // Once all notes in the current flashing chord/step are pressed, advance to the next note/chord!
+                            if (guidedSatisfiedNotes.size >= guidedTargetNotes.size) {
+                                guidedTargetNotes.forEach { t ->
+                                    midiActiveNotes.remove(t)
+                                    playAlongEngine.liveKeyColors.remove(t)
+                                }
+                                guidedTargetNotes.clear()
+                                guidedSatisfiedNotes.clear()
+                            }
+                        } else {
+                            // Wrong key pressed -> Flash Crimson Red on that key
+                            playAlongEngine.liveKeyColors[note] = androidx.compose.ui.graphics.Color(0xFFFF5252)
+                        }
+                    }
                 } else {
-                    if (sustainPedalActive.value) {
+                    playAlongEngine.liveKeyColors.remove(note)
+                    if (sustainPedalActive.value || (sostenutoPedalActive.value && note in sostenutoCapturedNotes)) {
                         notesToReleaseOnSustainUp.add(note)
                     } else {
-                        midiActiveNotes.remove(note)
+                        // Keep flashing target notes illuminated if the user hasn't satisfied them yet
+                        if (note !in guidedTargetNotes) {
+                            midiActiveNotes.remove(note)
+                        }
                         if (midiPlayingNote.value == note) {
                             midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
                         }
@@ -1793,27 +2051,47 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
     }
 
     fun onMidiPedalEventReceived(pedalType: Int = 64, isPressed: Boolean) {
+        if (!isUsbMidiInputEnabled.value) return
         viewModelScope.launch(Dispatchers.Main) {
-            when (pedalType) {
-                64 -> { // Damper / Sustain Pedal
-                    sustainPedalActive.value = isPressed
-                    sustainActive.value = isPressed
-                    if (!isPressed) {
-                        notesToReleaseOnSustainUp.forEach { note ->
-                            midiActiveNotes.remove(note)
-                            audioEngine.noteOff(note)
-                        }
-                        notesToReleaseOnSustainUp.clear()
-                        if (midiPlayingNote.value != null && !midiActiveNotes.containsKey(midiPlayingNote.value)) {
-                            midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+            androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+                when (pedalType) {
+                    64 -> {
+                        sustainPedalActive.value = isPressed
+                        sustainActive.value = isPressed
+                        if (!isPressed) {
+                            val iter = notesToReleaseOnSustainUp.iterator()
+                            while (iter.hasNext()) {
+                                val note = iter.next()
+                                if (!sostenutoPedalActive.value || note !in sostenutoCapturedNotes) {
+                                    if (note !in guidedTargetNotes) midiActiveNotes.remove(note)
+                                    audioEngine.noteOff(note)
+                                    iter.remove()
+                                }
+                            }
+                            if (midiPlayingNote.value != null && !midiActiveNotes.containsKey(midiPlayingNote.value)) {
+                                midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
+                            }
                         }
                     }
-                }
-                66 -> { // Sostenuto Pedal
-                    sostenutoPedalActive.value = isPressed
-                }
-                67 -> { // Soft Pedal / Una Corda
-                    softPedalActive.value = isPressed
+                    66 -> {
+                        sostenutoPedalActive.value = isPressed
+                        if (isPressed) {
+                            sostenutoCapturedNotes.clear()
+                            sostenutoCapturedNotes.addAll(midiActiveNotes.filterValues { it }.keys)
+                        } else {
+                            sostenutoCapturedNotes.forEach { capturedNote ->
+                                if (capturedNote in notesToReleaseOnSustainUp && !sustainPedalActive.value) {
+                                    if (capturedNote !in guidedTargetNotes) midiActiveNotes.remove(capturedNote)
+                                    audioEngine.noteOff(capturedNote)
+                                    notesToReleaseOnSustainUp.remove(capturedNote)
+                                }
+                            }
+                            sostenutoCapturedNotes.clear()
+                        }
+                    }
+                    67 -> {
+                        softPedalActive.value = isPressed
+                    }
                 }
             }
         }
@@ -1833,24 +2111,41 @@ var visualizerStageCaptureController: com.creativeblisslabs.peqlearn.app.ui.scre
     fun dismissMidiPrompt() {
         midiConnectionPrompt.value = null
     }
-fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, fileName: String = "Imported Score") {
+
+    fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, fileName: String = "Imported Score") {
         isImportingPDF.value = true
         pdfImportProgress.value = 0.05f
 
+        val cleanFallbackTitle = fileName
+            .substringAfterLast("/")
+            .substringBeforeLast(".")
+            .replace(Regex("[_-]+"), " ")
+            .trim()
+            .ifBlank { "Imported Score" }
+
         viewModelScope.launch(Dispatchers.Default) {
             val parsedScore = fileBytes?.let { bytes ->
-                com.creativeblisslabs.peqlearn.app.util.UniversalScoreParser.parse(bytes, fileName, uriString)
-                    ?: com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(bytes, fileName)
+                com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(bytes, cleanFallbackTitle)
+                    ?: com.creativeblisslabs.peqlearn.app.util.UniversalScoreParser.parse(bytes, cleanFallbackTitle, uriString)
             }
 
-            val finalScore = parsedScore ?: Score(
-                title = fileName.substringBeforeLast("."),
+            val finalScore = (parsedScore ?: Score(
+                title = cleanFallbackTitle,
                 tempo = 120f,
                 timeSignature = "4/4",
                 measures = listOf(Measure(notes = emptyList()))
-            )
+            )).let { s ->
+                val hasPlayableNotes = s.measures.any { m -> m.notes.any { !it.isRest } }
+                val hasValidTitle = s.title.isNotBlank() &&
+                        !s.title.equals("Untitled Score", ignoreCase = true) &&
+                        !s.title.equals("Score", ignoreCase = true) &&
+                        !s.title.equals("Imported Score", ignoreCase = true)
+                s.copy(
+                    title = if (hasValidTitle) s.title else cleanFallbackTitle,
+                    isPdfScore = if (hasPlayableNotes) false else s.isPdfScore
+                )
+            }
 
-            // Calculate total score duration in milliseconds accounting for timeSignatureDenominator (e.g. 6/8, 3/8, 2/2)
             val safeTempo = finalScore.tempo.coerceAtLeast(20f)
             var totalDurationMs = 0L
             finalScore.measures.forEach { m ->
@@ -1858,13 +2153,13 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
                 val mDurSec = (60f / safeTempo) * quarterBeatsInMeasure
                 totalDurationMs += (mDurSec * 1000f).toLong()
             }
-            if (totalDurationMs <= 0L) totalDurationMs = 180000L // 3 min default fallback
+            if (totalDurationMs <= 0L) totalDurationMs = 180000L
 
             val ext = fileName.substringAfterLast(".", "SCORE").uppercase()
             val scoreItem = pEQMediaItem(
                 id = "score_${uriString.hashCode()}",
-                title = finalScore.title.ifBlank { fileName.substringBeforeLast(".") },
-                subtitle = "${finalScore.composer.ifBlank { "Score" }} • ${finalScore.timeSignature} •${finalScore.tempo.toInt()} BPM",
+                title = finalScore.title.ifBlank { cleanFallbackTitle },
+                subtitle = "${finalScore.composer.ifBlank { "Score" }} • ${finalScore.timeSignature} • ${finalScore.tempo.toInt()} BPM",
                 artist = finalScore.composer.ifBlank { "Score Composer" },
                 path = uriString,
                 type = MediaType.AUDIO,
@@ -1873,22 +2168,23 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
                 durationMs = totalDurationMs
             )
 
-            for (progress in 10..90 step 10) {
-                delay(12)
+            for (progress in 10..90 step 20) {
+                delay(10)
                 withContext(Dispatchers.Main) {
                     pdfImportProgress.value = progress / 100f
                 }
             }
 
             withContext(Dispatchers.Main) {
+                stopScorePlayback()
                 currentScore.value = finalScore
+                syncScoreTracks(finalScore)
                 currentMediaItem.value = scoreItem
                 currentDuration.value = totalDurationMs
                 currentPosition.value = 0L
                 scorePlayheadMeasure.value = 0
                 scorePlayheadOffset.value = 0f
 
-                // Track in queue, recents, and most played
                 val existingQueueIdx = playbackQueue.indexOfFirst { it.path == scoreItem.path }
                 if (existingQueueIdx == -1) {
                     playbackQueue.add(0, scoreItem)
@@ -1911,26 +2207,28 @@ fun parseIncomingScoreFile(uriString: String, fileBytes: ByteArray? = null, file
         }
     }
 
-
-fun compileCurrentNotationToPDF(
+    fun compileCurrentNotationToPDF(
         options: PdfExportOptions = pdfExportOptions.value,
         onComplete: ((String?) -> Unit)? = null
     ) {
-    val rawScore = currentScore.value ?: Score(
-        title = options.title.ifBlank { currentMediaItem.value?.title ?: "pEQ Score Study" },
-        composer = options.composer.ifBlank { "pEQ Learn Studio" },
-        tempo = metronomeBpm.value.toFloat(),
-        timeSignature = "4/4"
-    )
-    val resolvedTitle = listOf(
-        options.title,
-        rawScore.title.takeUnless { it.equals("Untitled Score", ignoreCase = true) },
-        currentMediaItem.value?.title,
-        selectedMixerItem.value?.displayName,
-        rawScore.tracks.firstOrNull { it.trackName.isNotBlank() && !it.trackName.equals("Track 1", true) }?.trackName
-    ).firstOrNull { !it.isNullOrBlank() }?.substringAfterLast("/")?.substringBeforeLast(".")?.replace("_", " ") ?: "pEQ Studio Score"
+        val rawScore = currentScore.value ?: Score(
+            title = options.title.ifBlank { currentMediaItem.value?.title ?: "pEQ Score Study" },
+            composer = options.composer.ifBlank { "pEQ Learn Studio" },
+            tempo = metronomeBpm.value.toFloat(),
+            timeSignature = "4/4"
+        )
+        val resolvedTitle = listOf(
+            options.title,
+            rawScore.title.takeUnless { it.equals("Untitled Score", ignoreCase = true) },
+            currentMediaItem.value?.title,
+            selectedMixerItem.value?.displayName,
+            rawScore.tracks.firstOrNull { it.trackName.isNotBlank() && !it.trackName.equals("Track 1", true) }?.trackName
+        ).firstOrNull { !it.isNullOrBlank() }?.substringAfterLast("/")?.substringBeforeLast(".")?.replace("_", " ") ?: "pEQ Studio Score"
 
-    val score = rawScore.copy(title = resolvedTitle)
+        val score = rawScore.copy(title = resolvedTitle)
+
+        isExportingPDF.value = true
+        pdfExportProgress.value = 0.05f
 
         val config = PdfExportConfig(
             score = score,
@@ -1958,111 +2256,105 @@ fun compileCurrentNotationToPDF(
             }
         )
     }
+
     fun exportVideoToFile(onComplete: (String) -> Unit) {
-    val score = currentScore.value ?: Score(
-        title = currentMediaItem.value?.title ?: "pEQ Performance",
-        tempo = metronomeBpm.value.toFloat(),
-        timeSignature = "4/4"
-    )
-    val res = videoExportResolution.value
-    val fpsInt = videoExportFps.value.filter { it.isDigit() }.toIntOrNull() ?: 60
+        val rawScore = currentScore.value ?: Score(
+            title = currentMediaItem.value?.title ?: "pEQ Performance",
+            tempo = metronomeBpm.value.toFloat(),
+            timeSignature = "4/4"
+        )
+        val resolvedTitle = listOf(
+            rawScore.title.takeUnless { it.equals("Untitled Score", ignoreCase = true) },
+            currentMediaItem.value?.title,
+            selectedMixerItem.value?.displayName
+        ).firstOrNull { !it.isNullOrBlank() }?.substringAfterLast("/")?.substringBeforeLast(".")?.replace("_", " ") ?: "pEQ Composition"
 
-    val effectsMap = mapOf(
-        "Notation" to (videoExportLayoutMode.value != "Waterfall"),
-        "Visualizer" to (videoExportLayoutMode.value != "Notation"),
-        "Glow" to (videoExportPeakSensitivity.floatValue > 30f),
-        "Particles" to showWaterfallParticles.value,
-        "RenderPedals" to videoExportRenderPedals.value,
-        "Theme" to (videoExportTheme.value == "Cyberpunk"),
-        "AudioSource" to (videoExportAudioSource.value == "MidiScore")
-    )
+        val score = rawScore.copy(title = resolvedTitle)
+        val res = videoExportResolution.value
+        val fpsInt = videoExportFps.value.filter { it.isDigit() }.toIntOrNull() ?: 60
 
-    val queueItem = com.creativeblisslabs.peqlearn.app.ui.viewmodel.VideoExportHistoryItem(
-        title = score.title.ifBlank { "pEQ Composition" },
-        resolution = res,
-        fps = videoExportFps.value,
-        audioSource = if (videoExportAudioSource.value == "AudioFile") videoExportExternalAudioName.value
-            ?: "Custom Audio File" else "MIDI Score Synth",
-        status = "Rendering",
-        progress = 0.01f
-    )
-    videoExportHistory.add(0, queueItem)
+        val effectsMap = mapOf(
+            "Notation" to (videoExportLayoutMode.value != "Waterfall"),
+            "Visualizer" to (videoExportLayoutMode.value != "Notation"),
+            "Glow" to (videoExportPeakSensitivity.floatValue > 30f),
+            "Particles" to showWaterfallParticles.value,
+            "RenderPedals" to videoExportRenderPedals.value,
+            "Theme" to (videoExportTheme.value == "Cyberpunk"),
+            "AudioSource" to (videoExportAudioSource.value == "MidiScore")
+        )
 
-    isVideoExporting.value = true
-    videoExportProgress.value = 0.01f
+        val queueItem = com.creativeblisslabs.peqlearn.app.ui.viewmodel.VideoExportHistoryItem(
+            title = resolvedTitle,
+            resolution = res,
+            fps = videoExportFps.value,
+            audioSource = if (videoExportAudioSource.value == "AudioFile") videoExportExternalAudioName.value
+                ?: "Custom Audio File" else "MIDI Score Synth",
+            status = "Rendering",
+            progress = 0.01f
+        )
+        videoExportHistory.add(0, queueItem)
 
-    val config = VideoExportConfig(
-        score = score,
-        resolution = res,
-        fps = fpsInt,
-        effects = effectsMap,
-        layoutMode = videoExportLayoutMode.value,
-        notationFormat = notationFormat.value,
-        visualTheme = videoExportTheme.value,
-        bitrateMbps = videoExportBitrate.value.filter { it.isDigit() }.toIntOrNull() ?: 12,
-        sampleRateHz = if (videoExportSampleRate.value.contains("48")) 48000 else 44100,
-        cameraYawDeg = videoExportCameraYaw.floatValue,
-        cameraPitchDeg = videoExportCameraPitch.floatValue,
-        eqBarsCount = videoExportEqBars.intValue,
-        peakSensitivity = videoExportPeakSensitivity.floatValue,
-        rightHandColorInt = rightHandColor.value.hashCode(),
-        leftHandColorInt = leftHandColor.value.hashCode(),
-        isRightHandHidden = isRightHandHidden.value,
-        isLeftHandHidden = isLeftHandHidden.value,
-        enabledTrackIndices = enabledTrackIndices.toMap(),
-        externalAudioUri = videoExportExternalAudioUri.value
-    )
+        isVideoExporting.value = true
+        videoExportProgress.value = 0.01f
 
-    exportVideoPlatformSpecific(
-    viewModel = this,
-    config = config,
-    onProgress = { progress: Float ->
-        videoExportProgress.value = progress
+        val config = VideoExportConfig(
+            score = score,
+            resolution = res,
+            fps = fpsInt,
+            effects = effectsMap,
+            layoutMode = videoExportLayoutMode.value,
+            notationFormat = notationFormat.value,
+            visualTheme = videoExportTheme.value,
+            bitrateMbps = videoExportBitrate.value.filter { it.isDigit() }.toIntOrNull() ?: 12,
+            sampleRateHz = if (videoExportSampleRate.value.contains("48")) 48000 else 44100,
+            cameraYawDeg = videoExportCameraYaw.floatValue,
+            cameraPitchDeg = videoExportCameraPitch.floatValue,
+            eqBarsCount = videoExportEqBars.intValue,
+            peakSensitivity = videoExportPeakSensitivity.floatValue,
+            rightHandColorInt = composeColorToArgbInt(rightHandColor.value),
+            leftHandColorInt = composeColorToArgbInt(leftHandColor.value),
+            isRightHandHidden = isRightHandHidden.value,
+            isLeftHandHidden = isLeftHandHidden.value,
+            enabledTrackIndices = enabledTrackIndices.toMap(),
+            externalAudioUri = videoExportExternalAudioUri.value
+        )
 
-        val idx = videoExportHistory.indexOfFirst {
-            it.id == queueItem.id
-        }
-
-        if (idx != -1) {
-            videoExportHistory[idx] =
-                videoExportHistory[idx].copy(progress = progress)
-        }
-    },
-    onComplete = { filePath: String? ->
-        isVideoExporting.value = false
-
-        val idx = videoExportHistory.indexOfFirst {
-            it.id == queueItem.id
-        }
-
-        if (filePath == null) {
-            videoExportProgress.value = 0f
-
-            if (idx != -1) {
-                videoExportHistory[idx] =
-                    videoExportHistory[idx].copy(
-                        status = "Failed",
-                        progress = 0f,
-                        filePath = null
-                    )
+        exportVideoPlatformSpecific(
+            viewModel = this,
+            config = config,
+            onProgress = { progress: Float ->
+                videoExportProgress.value = progress
+                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
+                if (idx != -1) {
+                    videoExportHistory[idx] = videoExportHistory[idx].copy(progress = progress)
+                }
+            },
+            onComplete = { filePath: String? ->
+                isVideoExporting.value = false
+                val idx = videoExportHistory.indexOfFirst { it.id == queueItem.id }
+                if (filePath == null) {
+                    videoExportProgress.value = 0f
+                    if (idx != -1) {
+                        videoExportHistory[idx] = videoExportHistory[idx].copy(
+                            status = "Failed",
+                            progress = 0f,
+                            filePath = null
+                        )
+                    }
+                } else {
+                    videoExportProgress.value = 1f
+                    if (idx != -1) {
+                        videoExportHistory[idx] = videoExportHistory[idx].copy(
+                            status = "Completed",
+                            progress = 1f,
+                            filePath = filePath
+                        )
+                    }
+                    onComplete(filePath)
+                }
             }
-        } else {
-            videoExportProgress.value = 1f
-
-            if (idx != -1) {
-                videoExportHistory[idx] =
-                    videoExportHistory[idx].copy(
-                        status = "Completed",
-                        progress = 1f,
-                        filePath = filePath
-                    )
-            }
-
-            onComplete(filePath)
-        }
+        )
     }
-)
-}
 
     fun playPattern(pattern: GroovePattern) {
         val kit = drumKits.firstOrNull() ?: return

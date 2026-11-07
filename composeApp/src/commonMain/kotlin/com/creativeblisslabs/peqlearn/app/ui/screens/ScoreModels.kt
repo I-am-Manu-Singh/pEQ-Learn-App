@@ -626,3 +626,21 @@ data class PdfExportOptions(
     val measuresPerSystem: Int = 4,
     val authorNotes: String = ""
 )
+
+private val GLOBAL_NOTE_NAMES = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+fun isMidiNoteBlack(midiNote: Int): Boolean {
+    val pc = ((midiNote % 12) + 12) % 12
+    return pc in intArrayOf(1, 3, 6, 8, 10)
+}
+
+fun getNoteNameFromMidi(midiNote: Int): String {
+    val pc = ((midiNote % 12) + 12) % 12
+    val octave = (midiNote / 12) - 1
+    return "${GLOBAL_NOTE_NAMES[pc]}$octave"
+}
+
+fun getPitchOnlyFromMidi(midiNote: Int): String {
+    val pc = ((midiNote % 12) + 12) % 12
+    return GLOBAL_NOTE_NAMES[pc]
+}

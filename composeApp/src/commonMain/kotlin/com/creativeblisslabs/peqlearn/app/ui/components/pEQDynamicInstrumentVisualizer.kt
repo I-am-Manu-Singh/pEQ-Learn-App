@@ -50,12 +50,33 @@ fun pEQDynamicInstrumentVisualizer(
                     )
                 }
                 ChordInstrumentType.TABLA -> {
-                    UnifiedHarmoniumVisualizer(
-                        activeMidiNotes = activeMap,
+                    val activeBolName = remember(activeNotes) {
+                        activeNotes.firstOrNull()?.let { midi ->
+                            when (midi % 12) {
+                                0, 1 -> "GHE"
+                                2, 3 -> "DHA"
+                                4, 5 -> "TIN"
+                                6, 7 -> "NA"
+                                8, 9 -> "TA"
+                                else -> "KAT"
+                            }
+                        }
+                    }
+                    UnifiedTablaVisualizer(
+                        activeBol = activeBolName,
                         accentColor = accentColor,
-                        activeMidiNote = activeMidiToken,
-                        onKeyTapped = onNoteTapped,
-                        modifier = Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(8.dp))
+                        onBolTapped = { bol ->
+                            val midi = when (bol) {
+                                "GHE" -> 36
+                                "DHA" -> 38
+                                "TIN" -> 42
+                                "NA" -> 46
+                                "TA" -> 48
+                                else -> 40
+                            }
+                            onNoteTapped(midi)
+                        },
+                        modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(8.dp))
                     )
                 }
                 ChordInstrumentType.GUITAR_ACOUSTIC, ChordInstrumentType.GUITAR_ELECTRIC, ChordInstrumentType.GUITAR_CLASSICAL, ChordInstrumentType.UKULELE, ChordInstrumentType.GUITAR_7 -> {

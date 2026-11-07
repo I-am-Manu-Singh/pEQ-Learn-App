@@ -1263,8 +1263,16 @@ object AndroidVideoExporter {
                     val pillLeft = centerX - pillW * 0.5f
                     val pillRight = centerX + pillW * 0.5f
                     val pillH = (clampedBottomY - clampedTopY).coerceAtLeast(14f * scale)
-                    val noteColor = if (fn.isRightHand) rhColor else lhColor
-
+                    val voiceIdx = fn.note.voice
+                    val trackObj = score.tracks.firstOrNull { it.trackIndex == voiceIdx }
+                    val noteColor = when {
+                        trackObj?.channel == 9 -> Color.parseColor("#FF5252") // Drum Kit Crimson
+                        voiceIdx == 0 -> rhColor
+                        voiceIdx == 1 -> lhColor
+                        else -> com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX[
+                            voiceIdx.coerceAtLeast(0) % com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX.size
+                        ].toInt()
+                    }
                     if (glowEnabled && isCurrentlySounding) {
                         noteFillPaint.color = noteColor
                         noteFillPaint.alpha = 85

@@ -31,6 +31,7 @@ import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
 import com.creativeblisslabs.peqlearn.app.ui.components.*
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.AppViewModel
 import com.creativeblisslabs.peqlearn.app.util.*
+import kotlin.math.abs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,8 +52,7 @@ fun ChordDictionaryPanel(
     val partColor = Color(0xFFFFB347)
     val scrollState = rememberScrollState()
 
-    val roots = remember { listOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B") }
-    val chordTypes = remember { CHORD_TYPE_DEFS.map { it.label } }
+val roots = remember { NOTE_NAMES_CD } // Uses "C#", "D#", "F#", "G#", "A#" so RealChordsDb lookups never fail!    val chordTypes = remember { CHORD_TYPE_DEFS.map { it.label } }
 
     var mode by remember { mutableStateOf(0) }
     var rootIdx by remember { mutableStateOf(0) }
@@ -125,67 +125,104 @@ fun ChordDictionaryPanel(
     var isArpeggioRunning by remember { mutableStateOf(false) }
     var activeSoundStyle by remember { mutableStateOf(InstrumentSoundStyle.SEQUENTIAL) }
 
-    val voicedIntervals = remember(chordTypeIdx, selectedVoicingIdx, selectedIntervalIdx) {
+    val voicedIntervals = remember(chordTypeIdx, selectedVoicingIdx, selectedIntervalIdx, selectedVoicingType) {
         val extraSemitone = if (selectedIntervalIdx > 0 && selectedIntervalIdx in INTERVALS_DATA.indices) {
-            INTERVALS_DATA[selectedIntervalIdx][4].toIntOrNull()
+            INTERVALS_DATA[selectedIntervalIdx][0].toIntOrNull()
+                ?: INTERVALS_DATA[selectedIntervalIdx].getOrNull(4)?.toIntOrNull()
         } else null
-        ChordVoicingEngine.getVoicedIntervals(
+
+        val inverted = ChordVoicingEngine.getVoicedIntervals(
             baseIntervals = typeDef.intervals,
             voicingIdx = selectedVoicingIdx,
             extraSemitone = extraSemitone
         )
+        when (selectedVoicingType) {
+            "Open" -> if (inverted.size >= 3) {
+                // Spread middle voice up an octave for an open piano voicing
+                inverted.mapIndexed { idx, semi -> if (idx == 1) semi + 12 else semi }.sorted()
+            } else inverted
+            "Shell" -> inverted.filterIndexed { idx, _ -> idx == 0 || idx == 1 || idx == inverted.lastIndex }
+            "Drop 2" -> if (inverted.size >= 3) {
+                val m = inverted.toMutableList()
+                val dropIdx = m.size - 2
+                m[dropIdx] = m[dropIdx] - 12
+                m.sorted()
+            } else inverted
+            else -> inverted
+        }
     }
 
-    val activeMidiMap = remember(rootIdx, chordTypeIdx, selectedDiff, voicedIntervals, mode, selectedScaleIdx, capoFret) {
-        val intervals = if (mode == 0) voicedIntervals else scalePair.second
+    val activeMidiMap = remember(rootIdx, chordTypeIdx, selectedDiff, voicedIntervals, mode, selectedScaleIdx, selectedOctaveSpan, capoFret) {
+        val intervals = if (mode == 0) {
+            voicedIntervals
+        } else {
+            // Build multi-octave scale intervals (2 Octaves or 3 Octaves) ending cleanly on the top tonic root!
+            val basePattern = scalePair.second
+            val numOctaves = if (selectedOctaveSpan == 1) 2 else 1
+            val multiOctave = mutableListOf<Int>()
+            for (oct in 0 until numOctaves) {
+                basePattern.forEach { semi -> multiOctave.add(semi + oct * 12) }
+            }
+            multiOctave.add(numOctaves * 12) // Top tonic resolution note
+            multiOctave.distinct().sorted()
+        }
         ChordVoicingEngine.getActiveMidiNotes(
-            rootIdx = rootIdx,
+            rootIdx = (rootIdx + (if (mode == 0) capoFret else 0)) % 12,
             intervals = intervals,
             baseMidi = 60
         )
     }
 
-val sortedMidi = remember(activeMidiMap) { activeMidiMap.keys.sorted() }
-val noteNames = remember(sortedMidi, mode) { sortedMidi.map { roots[it % 12] } }
+    val sortedMidi = remember(activeMidiMap) { activeMidiMap.keys.sorted() }
+    val noteNames = remember(sortedMidi, mode) { sortedMidi.map { roots[(it % 12 + 12) % 12] } }
+    val pianoPitches = sortedMidi
 
-// Bridge the reference gap: pianoPitches is just your sorted collection of active MIDI keys
-val pianoPitches = sortedMidi
+    val pianoFingering = remember(pianoPitches, typeDef.suffix, mode, selectedVoicingIdx) {
+        ChordVoicingEngine.computePianoFingering(
+            pitches = pianoPitches,
+            chordSuffix = typeDef.suffix,
+            isScale = (mode != 0),
+            voicingIdx = selectedVoicingIdx
+        )
+    }
 
-// Now your fingering evaluator can safely execute without losing parameter types
-val pianoFingering = remember(pianoPitches, typeDef.suffix, mode, selectedVoicingIdx) {
-    ChordVoicingEngine.computePianoFingering(
-        pitches = pianoPitches,
-        chordSuffix = typeDef.suffix,
-        isScale = (mode != 0),
-        voicingIdx = selectedVoicingIdx
-    )
-}
     val currentRootName = roots[rootIdx]
     val currentSuffix = typeDef.suffix
 
-   val guitarShape = remember(
-    rootIdx, chordTypeIdx, selectedDiff, capoFret,
-    selectedStartFret, selectedVoicingType, mode,
-    selectedCagedFilter, selectedFretRange
-) {
-    ChordVoicingEngine.getDictionaryGuitarShape(
-        rootName = currentRootName,
-        suffix = currentSuffix,
-        diff = selectedDiff,
-        capoFret = capoFret,
-        startFret = selectedStartFret,
-        voicingType = selectedVoicingType,
-        cagedFilter = if (selectedCagedFilter == "All CAGED") "AUTO" else selectedCagedFilter,
-        fretRangeFilter = selectedFretRange,
-        fretMinConstrain = selectedStartFret,
-        fretMaxConstrain = selectedStartFret + 4,   // simple 4‑fret window; can be tweaked
-        fallbackIntervals = typeDef.intervals
-    )
-}
+    val (resolvedFretMin, resolvedFretMax) = remember(selectedFretRange, selectedStartFret) {
+        when (selectedFretRange) {
+            "Open (0-3)" -> 0 to 4
+            "Low (1-5)" -> 1 to 5
+            "Mid (5-9)" -> 5 to 9
+            "High (9-14)" -> 9 to 14
+            "12+ Frets" -> 12 to 24
+            else -> if (selectedStartFret > 1) selectedStartFret to (selectedStartFret + 4) else 0 to 24
+        }
+    }
+
+    val guitarShape = remember(
+        rootIdx, chordTypeIdx, selectedDiff, capoFret,
+        selectedStartFret, selectedVoicingType, mode,
+        selectedCagedFilter, selectedFretRange, resolvedFretMin, resolvedFretMax
+    ) {
+        ChordVoicingEngine.getDictionaryGuitarShape(
+            rootName = currentRootName,
+            suffix = currentSuffix,
+            diff = selectedDiff,
+            capoFret = capoFret,
+            startFret = selectedStartFret,
+            voicingType = selectedVoicingType,
+            cagedFilter = if (selectedCagedFilter == "All CAGED") "AUTO" else selectedCagedFilter,
+            fretRangeFilter = selectedFretRange,
+            fretMinConstrain = resolvedFretMin,
+            fretMaxConstrain = resolvedFretMax,
+            fallbackIntervals = typeDef.intervals
+        )
+    }
 
     val ukuShape = remember(rootIdx, chordTypeIdx, selectedDiff, capoFret, selectedStartFret, selectedVoicingType, mode) {
         ChordVoicingEngine.getDictionaryUkuShape(
-            rootName = currentRootName,
+            rootName = currentRootName.replace("♯", "#"),
             suffix = currentSuffix,
             diff = selectedDiff,
             capoFret = capoFret,
@@ -328,96 +365,91 @@ Row(
 
 
 }
-   
-      
+              // Row 2: Secondary Configuration Dropdowns (Dynamically tailored to Instrument & Mode)
+
+        var scaleDirectionMode by remember { mutableStateOf("Up & Down") } // "Ascending", "Descending", "Up & Down"
+            var badgeDisplayMode by remember { mutableStateOf("Auto") }
+           
+
+        val isGuitarFamily = selectedInstrument in listOf(
+            ChordInstrumentType.GUITAR_ACOUSTIC,
+            ChordInstrumentType.GUITAR_ELECTRIC,
+            ChordInstrumentType.GUITAR_CLASSICAL
+        )
+        val is7String = selectedInstrument == ChordInstrumentType.GUITAR_7
+        val isUkulele = selectedInstrument == ChordInstrumentType.UKULELE
+        val isFretboardInstrument = isGuitarFamily || is7String || isUkulele
+        val isKeyboardFamily = selectedInstrument in listOf(
+            ChordInstrumentType.PIANO_ACOUSTIC,
+            ChordInstrumentType.PIANO_ELECTRIC,
+            ChordInstrumentType.HARMONIUM
+        )
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // ROW 1: Root Key | Chord Suffix (or Scale Formula) | Extension (Chord Mode) or Scale Direction (Scale Mode)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.weight(0.95f)) {
                     M3DropdownMenu(
-                        label = "Root Key",
+                        label = if (selectedInstrument in listOf(ChordInstrumentType.SITAR, ChordInstrumentType.FLUTE, ChordInstrumentType.HARMONIUM, ChordInstrumentType.TABLA)) "Sa / Root" else "Root Key",
                         selectedText = roots[rootIdx],
                         items = roots,
                         onItemSelect = { playbackJob?.cancel(); rootIdx = it }
                     )
                 }
-                Box(modifier = Modifier.weight(1.5f)) {
+                Box(modifier = Modifier.weight(1.55f)) {
                     if (mode == 0) {
                         M3DropdownMenu(
-                            label = "Chord Suffix",
+                            label = "Chord Type",
                             selectedText = typeDef.label,
-                            items = chordTypes,
+                            items = CHORD_TYPE_DEFS.map { it.label },
                             onItemSelect = { playbackJob?.cancel(); chordTypeIdx = it }
                         )
                     } else {
                         M3DropdownMenu(
-                            label = "Scale Formula",
+                            label = "Scale / Thaat / Raga",
                             selectedText = scalePair.first,
                             items = scaleFormulas.map { it.first },
                             onItemSelect = { playbackJob?.cancel(); selectedScaleIdx = it }
                         )
                     }
                 }
-                Box(modifier = Modifier.weight(1.3f)) {
+                Box(modifier = Modifier.weight(1.2f)) {
                     if (mode == 0) {
-                        val currentIntervalLabel = INTERVALS_DATA.getOrNull(selectedIntervalIdx)?.get(1)?.toString() ?: "None"
-                        val intervalItems = listOf("None") + INTERVALS_DATA.drop(1).map { "${it[2]} (${it[4]}st)" }
+                        val intervalItems = remember {
+                            listOf("None") + INTERVALS_DATA.drop(1).map { "${it[1]} (+${it[0]}st)" }
+                        }
+                        val currentIntervalLabel = intervalItems.getOrElse(selectedIntervalIdx) { "None" }
                         M3DropdownMenu(
-                            label = "Extension / Mod",
+                            label = "Add Interval",
                             selectedText = currentIntervalLabel,
                             items = intervalItems,
                             onItemSelect = { playbackJob?.cancel(); selectedIntervalIdx = it }
                         )
                     } else {
+                        val dirOptions = listOf("Ascending", "Descending", "Up & Down")
                         M3DropdownMenu(
-                            label = "Keyboard Range",
-                            selectedText = octaveOptions[selectedOctaveSpan],
-                            items = octaveOptions,
-                            onItemSelect = { selectedOctaveSpan = it }
+                            label = "Play Direction",
+                            selectedText = scaleDirectionMode,
+                            items = dirOptions,
+                            onItemSelect = { scaleDirectionMode = dirOptions[it] }
                         )
                     }
                 }
             }
 
-            // Row 2: Secondary Configuration Dropdowns (Dynamically tailored to Instrument & Mode)
-            val isGuitarFamily = selectedInstrument in listOf(
-                ChordInstrumentType.GUITAR_ACOUSTIC,
-                ChordInstrumentType.GUITAR_ELECTRIC,
-                ChordInstrumentType.GUITAR_CLASSICAL
-            )
-            val is7String = selectedInstrument == ChordInstrumentType.GUITAR_7
-            val isUkulele = selectedInstrument == ChordInstrumentType.UKULELE
-            val isFretboardInstrument = isGuitarFamily || is7String || isUkulele
-            val isKeyboardFamily = selectedInstrument in listOf(
-                ChordInstrumentType.PIANO_ACOUSTIC,
-                ChordInstrumentType.PIANO_ELECTRIC,
-                ChordInstrumentType.HARMONIUM,
-                ChordInstrumentType.TABLA
-            )
-
+            // ROW 2: Instrument-Contextual Controls (Only shows options that actually apply to the active instrument!)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (mode == 0) {
-                    // CHORD MODE: Voicing Style (Open, Barre, Power, Shell, Drop 2, etc.)
-                    val currentVoicingList = when {
-                        isGuitarFamily || is7String -> guitarVoicings
-                        isUkulele -> ukeVoicings
-                        selectedInstrument == ChordInstrumentType.SITAR -> listOf("Kharaj-Pancham", "Gandhar-Pancham", "Sympathetic Drone")
-                        isKeyboardFamily -> pianoVoicings
-                        selectedInstrument == ChordInstrumentType.VIOLIN -> listOf("Open", "Single Position", "Double Stop")
-                        selectedInstrument == ChordInstrumentType.FLUTE -> listOf("Standard", "Overblown", "Harmonic")
-                        else -> guitarVoicings
-                    }
-                    Box(modifier = Modifier.weight(1f)) {
-                        M3DropdownMenu(
-                            label = "Voicing Style",
-                            selectedText = selectedVoicingType,
-                            items = currentVoicingList,
-                            onItemSelect = { selectedVoicingType = currentVoicingList[it] }
-                        )
-                    }
-
-                    if (isKeyboardFamily) {
+                if (isKeyboardFamily) {
+                    if (mode == 0) {
                         Box(modifier = Modifier.weight(1f)) {
+                            M3DropdownMenu(
+                                label = "Voicing Spread",
+                                selectedText = selectedVoicingType,
+                                items = pianoVoicings,
+                                onItemSelect = { selectedVoicingType = pianoVoicings[it] }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1.1f)) {
                             M3DropdownMenu(
                                 label = "Inversion",
                                 selectedText = voicingOptions[selectedVoicingIdx],
@@ -425,29 +457,7 @@ Row(
                                 onItemSelect = { selectedVoicingIdx = it }
                             )
                         }
-                    } else if (isFretboardInstrument) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            M3DropdownMenu(
-                                label = "Fret Diff",
-                                selectedText = selectedDiff.label,
-                                items = ChordDiff.entries.map { it.label },
-                                onItemSelect = { selectedDiff = ChordDiff.entries[it] }
-                            )
-                        }
-                    }
-                } else {
-                    // SCALE MODE: Fret Position & Keyboard Range
-                    if (isFretboardInstrument) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            M3DropdownMenu(
-                                label = "Scale Neck Box",
-                                selectedText = selectedFretRange,
-                                items = fretRangeOptions,
-                                onItemSelect = { selectedFretRange = fretRangeOptions[it] }
-                            )
-                        }
-                    }
-                    if (isKeyboardFamily) {
+                    } else {
                         Box(modifier = Modifier.weight(1f)) {
                             M3DropdownMenu(
                                 label = "Octave Span",
@@ -457,40 +467,127 @@ Row(
                             )
                         }
                     }
-                }
-
-                if (isFretboardInstrument) {
                     Box(modifier = Modifier.weight(1f)) {
+                        val badgeOpts = listOf("Auto", "Note Names", "Fingers (1-5)")
                         M3DropdownMenu(
-                            label = "Start Fret",
-                            selectedText = "Fret $selectedStartFret",
-                            items = (1..12).map { "Fret $it" },
-                            onItemSelect = { selectedStartFret = it + 1 }
+                            label = "Key Badges",
+                            selectedText = badgeDisplayMode,
+                            items = badgeOpts,
+                            onItemSelect = { badgeDisplayMode = badgeOpts[it] }
                         )
                     }
-                }
-            }
-
-            // Row 3: Advanced Neck & CAGED Filters (Only for Guitar instruments that support CAGED & Fret positioning)
-            if (isGuitarFamily || is7String) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        M3DropdownMenu(
-                            label = if (mode == 0) "CAGED Chord Shape" else "CAGED Box / Pentatonic",
-                            selectedText = selectedCagedFilter,
-                            items = cagedOptions,
-                            onItemSelect = { selectedCagedFilter = cagedOptions[it] }
-                        )
-                    }
+                } else if (isFretboardInstrument) {
                     if (mode == 0) {
+                        val currentVoicingList = if (isUkulele) ukeVoicings else guitarVoicings
                         Box(modifier = Modifier.weight(1f)) {
                             M3DropdownMenu(
-                                label = "Fret Position",
+                                label = "Voicing Style",
+                                selectedText = selectedVoicingType,
+                                items = currentVoicingList,
+                                onItemSelect = { selectedVoicingType = currentVoicingList[it] }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            M3DropdownMenu(
+                                label = "Fret Difficulty",
+                                selectedText = selectedDiff.label,
+                                items = ChordDiff.entries.map { it.label },
+                                onItemSelect = { selectedDiff = ChordDiff.entries[it] }
+                            )
+                        }
+                    } else {
+                        Box(modifier = Modifier.weight(1.1f)) {
+                            M3DropdownMenu(
+                                label = "Neck Position Box",
                                 selectedText = selectedFretRange,
                                 items = fretRangeOptions,
                                 onItemSelect = { selectedFretRange = fretRangeOptions[it] }
                             )
                         }
+                    }
+                    Box(modifier = Modifier.weight(0.95f)) {
+                        M3DropdownMenu(
+                            label = "Anchor Fret",
+                            selectedText = "Fret $selectedStartFret",
+                            items = (1..12).map { "Fret $it" },
+                            onItemSelect = { selectedStartFret = it + 1 }
+                        )
+                    }
+                } else {
+                    // Sitar, Violin, Flute, Tabla
+                    Box(modifier = Modifier.weight(1f)) {
+                        M3DropdownMenu(
+                            label = "Register Span",
+                            selectedText = octaveOptions[selectedOctaveSpan],
+                            items = octaveOptions,
+                            onItemSelect = { selectedOctaveSpan = it }
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        val styleOpts = listOf("Sequential", "Block Chord", "Roundtrip Arp")
+                        val curStyleIdx = when (activeSoundStyle) {
+                            InstrumentSoundStyle.SEQUENTIAL -> 0
+                            InstrumentSoundStyle.ALL_AT_ONCE -> 1
+                            InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> 2
+                        }
+                        M3DropdownMenu(
+                            label = "Audition Style",
+                            selectedText = styleOpts[curStyleIdx],
+                            items = styleOpts,
+                            onItemSelect = {
+                                activeSoundStyle = when (it) {
+                                    1 -> InstrumentSoundStyle.ALL_AT_ONCE
+                                    2 -> InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP
+                                    else -> InstrumentSoundStyle.SEQUENTIAL
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            // ROW 3: Guitar / 7-String CAGED & Fret Position Filters
+            if (isGuitarFamily || is7String) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        M3DropdownMenu(
+                            label = if (mode == 0) "CAGED Chord Shape" else "CAGED Scale Box",
+                            selectedText = selectedCagedFilter,
+                            items = cagedOptions,
+                            onItemSelect = {
+                                selectedCagedFilter = cagedOptions[it]
+                                // In scale mode, automatically sync neck position to the chosen CAGED box!
+                                if (mode == 1) {
+                                    selectedStartFret = when (cagedOptions[it]) {
+                                        "C-Shape" -> 1
+                                        "A-Shape" -> 3
+                                        "G-Shape" -> 5
+                                        "E-Shape" -> 8
+                                        "D-Shape" -> 10
+                                        else -> 1
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    if (mode == 0) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            M3DropdownMenu(
+                                label = "Fret Zone Filter",
+                                selectedText = selectedFretRange,
+                                items = fretRangeOptions,
+                                onItemSelect = { selectedFretRange = fretRangeOptions[it] }
+                            )
+                        }
+                    }
+                    Box(modifier = Modifier.weight(0.9f)) {
+                        val badgeOpts = listOf("Auto", "Note Names", "Fingers (1-4)")
+                        M3DropdownMenu(
+                            label = "Fret Labels",
+                            selectedText = badgeDisplayMode,
+                            items = badgeOpts,
+                            onItemSelect = { badgeDisplayMode = badgeOpts[it] }
+                        )
                     }
                 }
             }
@@ -598,65 +695,77 @@ Row(
                                 }
                             }
 
-                            // 2. Build Authentic Audition Steps (stringIndex, fret, midiPitch)
+                            // 2. Build Authentic, Strictly Monotonic Audition Steps (stringIndex, absoluteFret, midiPitch)
                             val auditionSteps: List<Triple<Int, Int, Int>> = if (mode == 0) {
-                                // CHORD MODE: Strum the actual chord shape from lowest string to highest string
+                                // CHORD MODE: Strum from lowest-pitched string to highest-pitched string
                                 if (isUkulele) {
-                                    // Ukulele: strings 3, 2, 1, 0 (G4, C4, E4, A4)
+                                    val baseOff = if (ukuShape.baseFret > 1 && ukuShape.frets.filter { it > 0 }.maxOrNull() ?: 0 <= 4) ukuShape.baseFret - 1 else 0
                                     listOf(3, 2, 1, 0).mapNotNull { s ->
                                         val f = ukuShape.frets.getOrNull(s) ?: -1
-                                        if (f != -1) Triple(s, f, openStrings[s] + f) else null
+                                        if (f >= 0) {
+                                            val absFret = if (f > 0) f + baseOff else 0
+                                            Triple(s, absFret, openStrings[s] + absFret)
+                                        } else null
                                     }
                                 } else if (isGuitarFamily) {
-                                    // 6-String Guitar: strings 5 down to 0 (E2, A2, D3, G3, B3, e4)
                                     listOf(5, 4, 3, 2, 1, 0).mapNotNull { s ->
                                         val f = guitarShape.frets.getOrNull(s) ?: -1
-                                        if (f != -1) Triple(s, f, openStrings[s] + f) else null
+                                        if (f >= 0) Triple(s, f, openStrings[s] + f) else null
                                     }
                                 } else if (is7String) {
-                                    // 7-String Guitar: strings 6 down to 0
                                     listOf(6, 5, 4, 3, 2, 1, 0).mapNotNull { s ->
                                         val f = guitarShape.frets.getOrNull(s) ?: -1
-                                        if (f != -1) Triple(s, f, openStrings[s] + f) else null
+                                        if (f >= 0) Triple(s, f, openStrings[s] + f) else null
                                     }
                                 } else {
-                                    // Keyboards / Piano / Instruments without fretboards
                                     pianoPitches.map { Triple(0, 0, it) }
                                 }
                             } else {
-                                // SCALE MODE: Ergonomic scale run across strings within selected fret window
-                                val scaleSemis = (scalePair.second).map { (rootIdx + it) % 12 }.toSet()
+                                // SCALE MODE: Strictly Ascending Monotonic CAGED Box Run (no duplicate pitches at string crossings!)
+                                val scaleSemis = scalePair.second.map { (rootIdx + it) % 12 }.toSet()
                                 if (isGuitarFamily || is7String) {
+                                    val boxMin = if (fretMinBox == 0 && fretMaxBox > 5) selectedStartFret.coerceAtLeast(0) else fretMinBox
+                                    val boxMax = (boxMin + 4).coerceAtMost(24)
                                     val stringScanOrder = if (is7String) listOf(6, 5, 4, 3, 2, 1, 0) else listOf(5, 4, 3, 2, 1, 0)
-                                    val rawSteps = mutableListOf<Triple<Int, Int, Int>>()
+                                    val candidates = mutableListOf<Triple<Int, Int, Int>>()
                                     for (s in stringScanOrder) {
-                                        for (f in fretMinBox..fretMaxBox.coerceAtMost(15)) {
+                                        for (f in boxMin..boxMax) {
                                             val m = openStrings[s] + f
                                             if ((m % 12) in scaleSemis) {
-                                                rawSteps.add(Triple(s, f, m))
+                                                candidates.add(Triple(s, f, m))
                                             }
                                         }
                                     }
-                                    val firstRootIdx = rawSteps.indexOfFirst { it.third % 12 == rootIdx % 12 }
-                                    val trimmed = if (firstRootIdx >= 0 && (rawSteps.size - firstRootIdx) >= 7) {
-                                        rawSteps.subList(firstRootIdx, rawSteps.size)
-                                    } else rawSteps
-                                    trimmed.take(16)
+                                    // Deduplicate by MIDI pitch and sort strictly ascending from the lowest Root note in the box!
+                                    val uniqueSorted = candidates
+                                        .groupBy { it.third }
+                                        .map { (_, group) ->
+                                            // Prefer fretted notes inside the hand box over open strings if higher up the neck
+                                            group.minByOrNull { abs(it.second - (boxMin + 2)) } ?: group.first()
+                                        }
+                                        .sortedBy { it.third }
+
+                                    val firstRootPos = uniqueSorted.indexOfFirst { (it.third % 12) == (rootIdx % 12) }
+                                    val fromRoot = if (firstRootPos >= 0 && (uniqueSorted.size - firstRootPos) >= 6) {
+                                        uniqueSorted.subList(firstRootPos, uniqueSorted.size)
+                                    } else uniqueSorted
+                                    val maxNotes = if (selectedOctaveSpan == 1) 15 else 8
+                                    fromRoot.take(maxNotes)
                                 } else if (isUkulele) {
-                                    val rawSteps = mutableListOf<Triple<Int, Int, Int>>()
-                                    for (s in listOf(3, 2, 1, 0)) {
-                                        for (f in 0..5) {
+                                    // On Ukulele (re-entrant G4), sort by pitch across C4(2), E4(1), A4(0) for a true ascending scale
+                                    val candidates = mutableListOf<Triple<Int, Int, Int>>()
+                                    for (s in listOf(2, 1, 0)) {
+                                        for (f in 0..7) {
                                             val m = openStrings[s] + f
                                             if ((m % 12) in scaleSemis) {
-                                                rawSteps.add(Triple(s, f, m))
+                                                candidates.add(Triple(s, f, m))
                                             }
                                         }
                                     }
-                                    val firstRootIdx = rawSteps.indexOfFirst { it.third % 12 == rootIdx % 12 }
-                                    val trimmed = if (firstRootIdx >= 0 && (rawSteps.size - firstRootIdx) >= 5) {
-                                        rawSteps.subList(firstRootIdx, rawSteps.size)
-                                    } else rawSteps
-                                    trimmed.take(12)
+                                    val uniqueSorted = candidates.distinctBy { it.third }.sortedBy { it.third }
+                                    val firstRootPos = uniqueSorted.indexOfFirst { (it.third % 12) == (rootIdx % 12) }
+                                    val fromRoot = if (firstRootPos >= 0) uniqueSorted.subList(firstRootPos, uniqueSorted.size) else uniqueSorted
+                                    fromRoot.take(8)
                                 } else {
                                     pianoPitches.map { Triple(0, 0, it) }
                                 }
@@ -740,8 +849,11 @@ Row(
                                             viewModel.scorePlayheadOffset.value = idx.toFloat() / soundSequencePitches.size.coerceAtLeast(1).toFloat()
 
                                             viewModel.midiPlayingNote.value = midiPitch
-                                            viewModel.midiActiveNotes.clear()
-                                            viewModel.midiActiveNotes[midiPitch] = true
+                                            // Keep all chord/scale notes visible while highlighting the currently sounding note!
+                                            if (viewModel.midiActiveNotes.isEmpty()) {
+                                                viewModel.midiActiveNotes.putAll(activeMidiMap)
+                                            }
+//                                            viewModel.midiActiveNotes[midiPitch] = true
 
                                             try {
                                                 viewModel.audioEngine.noteOn(midiPitch, 0.85f)
@@ -857,8 +969,11 @@ Row(
                                 numFrets = 15,
                                 accentColor = partColor,
                                 rootNote = rootIdx,
-                                showNoteNames = (mode == 1),
-                                markOctaves = true,
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                markOctaves = true,
                                 highlightOctaveC = true,
                                 cagedMode = resolvedCaged,
                                 fretMinConstrain = fretMin,
@@ -898,8 +1013,11 @@ Row(
                                 activeCoordinate = if (isArpeggioRunning) activeMidiToken else null,
                                 startNote = startNoteBoundary,
                                 endNote = endNoteBoundary,
-                                showNoteNames = false,
-                                isPlaying = isArpeggioRunning,
+                                showNoteNames = when (badgeDisplayMode) {
+                                    "Note Names" -> true
+                                    "Fingers (1-5)", "Fingers (1-4)" -> false
+                                    else -> (mode == 1)
+                                },                                isPlaying = isArpeggioRunning,
                                 onKeyTapped = { midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument("PIANO")
@@ -953,8 +1071,11 @@ Row(
                                 numFrets = 5,
                                 accentColor = partColor,
                                 rootNote = rootIdx,
-                                showNoteNames = (mode == 1),
-                                markOctaves = true,
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                markOctaves = true,
                                 highlightOctaveC = true,
                                 chordFrets = if (mode == 0) ukuShape.frets else null,
                                 chordFingers = if (mode == 0) ukuShape.fingers else null,
@@ -1027,8 +1148,11 @@ Row(
                                 numFrets = 15,
                                 accentColor = partColor,
                                 rootNote = rootIdx,
-                                showNoteNames = (mode == 1),
-                                markOctaves = true,
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                markOctaves = true,
                                 highlightOctaveC = true,
                                 fretMinConstrain = fretMin,
                                 fretMaxConstrain = fretMax,
@@ -1084,8 +1208,11 @@ Row(
                                 activeNotes = pianoPitches,
                                 activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
                                 accentColor = partColor,
-                                showNoteNames = (mode == 1),
-                                onFretTapped = { _, midiNote ->
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                onFretTapped = { _, midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
                                         viewModel.onMidiNoteOn(midiNote, 95)
@@ -1103,8 +1230,11 @@ Row(
                                 activeNotes = pianoPitches,
                                 activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
                                 accentColor = partColor,
-                                showNoteNames = true,
-                                onPositionTapped = { _, midiNote ->
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                onPositionTapped = { _, midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument("VIOLIN")
                                         viewModel.onMidiNoteOn(midiNote, 95)
@@ -1237,7 +1367,7 @@ Row(
 
 
 @Composable
-private fun PianoFingerLegend(
+internal fun PianoFingerLegend(
     accentColor: Color,
     fingering: FingeringData,
     noteNames: List<String>
@@ -1271,7 +1401,7 @@ private fun PianoFingerLegend(
 }
 
 @Composable
-private fun GuitarFingerLegend(accentColor: Color) {
+internal fun GuitarFingerLegend(accentColor: Color) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1550,6 +1680,8 @@ fun ImmersiveKeyboardFretboardLabDialog(
     var isPlaying by remember { mutableStateOf(false) }
 
     var selectedMode by remember { mutableStateOf(0) } // 0 = Chords, 1 = Scales
+    var mode by remember { mutableIntStateOf(0) }
+    var badgeDisplayMode by remember { mutableStateOf("Note Names") }
     var labRootIdx by remember { mutableStateOf(rootIdx) }
     var labSuffixIdx by remember { mutableStateOf(qualityIdx) }
     var labInversion by remember { mutableStateOf("Root Position") }
@@ -1565,7 +1697,8 @@ fun ImmersiveKeyboardFretboardLabDialog(
     var noteNamingSystem by remember { mutableStateOf("Western (C, D, E)") }
     var synthSound by remember { mutableStateOf("Acoustic Piano") }
 
-    val roots = NOTE_NAMES_CD
+// Use ASCII '#' so all lookups in RealChordsDb, RealPianoChordsDb, and NOTE_NAMES_CD match 100%!
+    val roots = remember { NOTE_NAMES_CD }
     val currentRootName = roots[labRootIdx.coerceIn(0, roots.size - 1)]
 
     val chordSuffixes = listOf("Major", "Minor", "7th", "Major 7th", "Minor 7th", "Diminished", "Augmented", "Sus4", "Add9")
@@ -1746,21 +1879,13 @@ fun ImmersiveKeyboardFretboardLabDialog(
                         // Tuning Dropdown
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Tuning", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF161820))
-                                    .border(1.dp, Color(0xFF282D3A), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(tuningOption, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                                    Icon(Icons.Default.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurface.copy(0.7f), modifier = Modifier.size(18.dp))
-                                }
-                            }
+                            val guitarTuningList = listOf("Standard (EADGBE)", "Drop D (DADGBE)", "Half-Step Down (Eb)", "DADGAD Celtic", "Open G")
+                        M3DropdownMenu(
+                            label = "Tuning",
+                            selectedText = tuningOption,
+                            items = guitarTuningList,
+                            onItemSelect = { tuningOption = guitarTuningList[it] }
+                        )
                         }
 
                         // Capo Fret: [Open] [1] [2] [3] [4] [5]
@@ -1825,21 +1950,13 @@ fun ImmersiveKeyboardFretboardLabDialog(
                     } else if (activeLabTab == "Uke") {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Ukulele Tuning", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF161820))
-                                    .border(1.dp, Color(0xFF282D3A), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Standard C", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                    Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(18.dp))
-                                }
-                            }
+                            val ukeTuningList = listOf("Standard (GCEA)", "Low G (gCEA)", "Baritone (DGBE)")
+                        M3DropdownMenu(
+                            label = "Ukulele Tuning",
+                            selectedText = tuningOption,
+                            items = ukeTuningList,
+                            onItemSelect = { tuningOption = ukeTuningList[it] }
+                        )
                         }
                     }
 
@@ -1903,41 +2020,39 @@ fun ImmersiveKeyboardFretboardLabDialog(
                     // Note Naming System Dropdown
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Note Naming System", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF161820))
-                                .border(1.dp, Color(0xFF282D3A), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text(noteNamingSystem, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(18.dp))
-                            }
-                        }
+                       val namingList = listOf("Western (C, D, E)", "Sargam (Sa, Re, Ga)", "Solfege (Do, Re, Mi)")
+                        M3DropdownMenu(
+                            label = "Note Naming System",
+                            selectedText = noteNamingSystem,
+                            items = namingList,
+                            onItemSelect = { noteNamingSystem = namingList[it] }
+                        )
                     }
 
                     // Sound Generator
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Sound Generator", fontSize = 11.sp, color = Color.White.copy(0.6f), fontWeight = FontWeight.SemiBold)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF161820))
-                                .border(1.dp, Color(0xFF282D3A), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text(synthSound, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                Icon(Icons.Default.ArrowDropDown, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(18.dp))
+                      val soundGenList = listOf("Acoustic Piano", "Electric Piano", "Acoustic Guitar", "Electric Guitar", "Classical Guitar", "Harmonium", "Sitar", "Violin", "Flute")
+                        M3DropdownMenu(
+                            label = "Sound Generator",
+                            selectedText = synthSound,
+                            items = soundGenList,
+                            onItemSelect = { idx ->
+                                synthSound = soundGenList[idx]
+                                val engineName = when (synthSound) {
+                                    "Electric Piano" -> "PIANO_ELECTRIC"
+                                    "Acoustic Guitar" -> "GUITAR_ACOUSTIC"
+                                    "Electric Guitar" -> "GUITAR_ELECTRIC"
+                                    "Classical Guitar" -> "GUITAR_CLASSICAL"
+                                    "Harmonium" -> "HARMONIUM"
+                                    "Sitar" -> "SITAR"
+                                    "Violin" -> "VIOLIN"
+                                    "Flute" -> "FLUTE"
+                                    else -> "PIANO_ACOUSTIC"
+                                }
+                                runCatching { viewModel.audioEngine.setInstrument(engineName) }
                             }
-                        }
+                        )
                     }
                 }
 
@@ -2060,8 +2175,11 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     accentColor = orangeColor,
                                     startNote = 48,
                                     endNote = 84,
-                                    showNoteNames = true,
-                                    isPlaying = isPlaying,
+                                    showNoteNames = when (badgeDisplayMode) {
+                                        "Note Names" -> true
+                                        "Fingers (1-5)", "Fingers (1-4)" -> false
+                                        else -> (mode == 1)
+                                    },                                    isPlaying = isPlaying,
                                     onKeyTapped = { midi ->
                                         try {
                                             viewModel.audioEngine.setInstrument("PIANO")
@@ -2085,8 +2203,11 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     activeMidiNote = activeLabPlayingPitch,
                                     rootNote = labRootIdx,
                                     accentColor = orangeColor,
-                                    showNoteNames = true,
-                                    baseFret = if (capoFretSelected > 0) capoFretSelected else 1,
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                    baseFret = if (capoFretSelected > 0) capoFretSelected else 1,
                                     fretboardBrush = rosewoodBrush,
                                     showInlayDots = showInlayDots,
                                     onFretTapped = { _, _, midi ->
@@ -2106,8 +2227,11 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                     activeMidiNote = activeLabPlayingPitch,
                                     rootNote = labRootIdx,
                                     accentColor = orangeColor,
-                                    showNoteNames = true,
-                                    stringLabels = listOf("A", "E", "C", "G"),
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                    stringLabels = listOf("A", "E", "C", "G"),
                                     openStringsSemis = listOf(9, 4, 0, 7),
                                     fretboardBrush = rosewoodBrush,
                                     showInlayDots = showInlayDots,
@@ -2133,8 +2257,11 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                         activeCoordinate = activeLabPlayingPitch,
                                         startNote = 48,
                                         endNote = 84,
-                                        showNoteNames = true,
-                                        isPlaying = isPlaying,
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                        isPlaying = isPlaying,
                                         onKeyTapped = { midi ->
                                             try {
                                                 viewModel.audioEngine.setInstrument("PIANO")
@@ -2150,8 +2277,11 @@ fun ImmersiveKeyboardFretboardLabDialog(
                                         activeMidiNote = activeLabPlayingPitch,
                                         rootNote = labRootIdx,
                                         accentColor = orangeColor,
-                                        showNoteNames = true,
-                                        fretboardBrush = rosewoodBrush,
+showNoteNames = when (badgeDisplayMode) {
+    "Note Names" -> true
+    "Fingers (1-5)", "Fingers (1-4)" -> false
+    else -> (mode == 1)
+},                                        fretboardBrush = rosewoodBrush,
                                         showInlayDots = showInlayDots,
                                         onFretTapped = { _, _, midi ->
                                             try {
@@ -2290,7 +2420,6 @@ fun ImmersiveKeyboardFretboardLabDialog(
         }
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun M3DropdownMenu(
@@ -2303,16 +2432,19 @@ fun M3DropdownMenu(
 
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
+        onExpandedChange = { expanded = it }
     ) {
         OutlinedTextField(
             value = selectedText,
             onValueChange = {},
             readOnly = true,
-            label = { Text(label, fontSize = 10.sp) },
+            singleLine = true,
+            label = { Text(label, fontSize = 10.sp, maxLines = 1) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
-            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
+                .fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent
@@ -2324,7 +2456,13 @@ fun M3DropdownMenu(
         ) {
             items.forEachIndexed { index, item ->
                 DropdownMenuItem(
-                    text = { Text(item, fontSize = 12.sp) },
+                    text = {
+                        Text(
+                            text = item,
+                            fontSize = 12.sp,
+                            fontWeight = if (item == selectedText) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
                     onClick = {
                         onItemSelect(index)
                         expanded = false
@@ -2336,7 +2474,7 @@ fun M3DropdownMenu(
 }
 
 @Composable
-private fun CdLabel(text: String, modifier: Modifier = Modifier) {
+internal fun CdLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall.copy(
@@ -2349,7 +2487,7 @@ private fun CdLabel(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ScrollableRow(
+internal fun ScrollableRow(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit
 ) {

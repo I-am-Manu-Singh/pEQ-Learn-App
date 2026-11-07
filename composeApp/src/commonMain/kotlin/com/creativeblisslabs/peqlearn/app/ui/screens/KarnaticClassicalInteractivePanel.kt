@@ -164,17 +164,18 @@ internal fun KarnaticClassicalInteractivePanel(viewModel: AppViewModel) {
                             activeMidiNotes = baseScaleMap,
                             accentColor = accentColor,
                             activeMidiNote = playingNote,
-                            onKeyTapped = { midiNote ->
-                                try {
-                                    viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
-                                    viewModel.onMidiNoteOn(midiNote, 95)
-                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
-                                    scope.launch {
-                                        delay(300L)
-                                        viewModel.onMidiNoteOff(midiNote)
-                                    }
-                                } catch (_: Exception) {}
-                            },
+                            // onKeyTapped = { midiNote ->
+                            //     try {
+                            //         viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
+                            //         viewModel.onMidiNoteOn(midiNote, 95)
+                            //         viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                            //         scope.launch {
+                            //             delay(300L)
+                            //             viewModel.onMidiNoteOff(midiNote)
+                            //         }
+                            //     } catch (_: Exception) {}
+                            // },
+                            onKeyTapped = null,
                             modifier = Modifier.fillMaxWidth().height(118.dp).clip(RoundedCornerShape(8.dp))
                         )
                     }
