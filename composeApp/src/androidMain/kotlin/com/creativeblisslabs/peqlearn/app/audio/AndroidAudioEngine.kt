@@ -732,6 +732,10 @@ class AndroidAudioEngine(
         loadTablaBolAudioSamples()
         loadInstrumentSampleKit("FLUTE", "flute")
         loadInstrumentSampleKit("VIOLIN", "violin")
+        loadInstrumentSampleKit("BASS", "bass")
+        loadInstrumentSampleKit("VOICE", "voice")
+        loadInstrumentSampleKit("STRINGS", "strings")
+        loadInstrumentSampleKit("BRASS", "brass")
         loadSf2Piano()
         loadSf2Guitar()
         loadSf2Harmonium()
@@ -2038,8 +2042,8 @@ class AndroidAudioEngine(
 
                 val assetList = try { context.assets.list(assetFolderPath) ?: emptyArray() } catch (_: Exception) { emptyArray() }
                 assetList.forEach { fileName ->
-                    if (fileName.endsWith(".mp3")) {
-                        val base = fileName.removeSuffix(".mp3")
+                    if (fileName.endsWith(".mp3") || fileName.endsWith(".wav") || fileName.endsWith(".ogg")) {
+                        val base = fileName.removeSuffix(".mp3").removeSuffix(".wav").removeSuffix(".ogg")
                             .removeSuffix("-mf").removeSuffix("-f").removeSuffix("-p").trim()
                         val octave = base.lastOrNull()?.digitToIntOrNull()
                         val noteName = if (octave != null) base.dropLast(1) else null

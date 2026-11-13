@@ -537,6 +537,7 @@ fun resolveInstrumentWaterfallGeometry(
         var showDumpDialog by rememberSaveable { mutableStateOf(false) }
         var showHandsDumpDialog by rememberSaveable { mutableStateOf(false) }
         var showGuitarDumpDialog by rememberSaveable { mutableStateOf(false) }
+        var showMidiInstrumentsDumpDialog by rememberSaveable { mutableStateOf(false) }
         var showPlayAlongStatsDialog by rememberSaveable { mutableStateOf(false) }
         var showLearnModeDialog by rememberSaveable { mutableStateOf(false) }
         var showAudioToMidiScreen by rememberSaveable { mutableStateOf(false) }
@@ -1451,6 +1452,150 @@ fun resolveInstrumentWaterfallGeometry(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.5.sp,
                                 color = Color(0xFFFFB74D),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+
+        // ── MIDI Instruments & Voices Forensic Audit Dump Dialog ────────────────────
+        if (showMidiInstrumentsDumpDialog) {
+            val clipboardManager = LocalClipboardManager.current
+            var instCopied by remember { mutableStateOf(false) }
+            val scoreObj = viewModel.currentScore.value as? Score
+            val enabledTracksSnapshot = viewModel.enabledTrackIndices.toMap()
+            val instDumpText = remember(scoreObj, enabledTracksSnapshot) {
+                scoreObj?.dumpMidiInstrumentsAuditAsText(enabledTracksSnapshot)
+                    ?: "No active score loaded.\n\nLoad a score or MIDI file first, then tap 'Instruments TXT' to audit all tracks, GM program IDs, channels, voices, color coding, and note differentiation."
+            }
+            val titleSlugI = scoreObj?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "_") ?: "midi_score"
+
+            ModalBottomSheet(
+                onDismissRequest = { showMidiInstrumentsDumpDialog = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = Color(0xFF071214)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.88f)
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Header row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("🎼", fontSize = 20.sp)
+                            Text(
+                                "MIDI Instruments & Voices — Forensic Audit Dump",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Share file button
+                            Button(
+                                onClick = {
+                                    com.creativeblisslabs.peqlearn.app.shareTextFile(
+                                        "${titleSlugI}_instruments_dump.txt",
+                                        instDumpText
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF00897B)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Share, contentDescription = null,
+                                    modifier = Modifier.size(16.dp), tint = Color.White
+                                )
+                                androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "Share File",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            IconButton(onClick = { showMidiInstrumentsDumpDialog = false }) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        "Forensic MIDI Audit: Comprehensive breakdown of every track, GM program, MIDI channel, note voice, " +
+                                "assigned UI palette color hex, total note count, pitch boundaries, and measure-by-measure chronology.",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.7f),
+                        lineHeight = 18.sp
+                    )
+
+                    // Action buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(instDumpText))
+                                instCopied = true
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (instCopied) Color(0xFF2E7D32) else Color(0xFF00897B)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                if (instCopied) "✓ Copied to Clipboard!" else "Copy Full Audit Dump",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // Monospace dump text area
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF02090A),
+                        border = BorderStroke(1.dp, Color(0xFF00897B).copy(alpha = 0.3f))
+                    ) {
+                        val vertScroll = rememberScrollState()
+                        val horizScroll = rememberScrollState()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(vertScroll)
+                                .horizontalScroll(horizScroll)
+                                .padding(14.dp)
+                        ) {
+                            Text(
+                                text = instDumpText,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.5.sp,
+                                color = Color(0xFF80CBC4),
                                 lineHeight = 15.sp
                             )
                         }
@@ -5849,6 +5994,27 @@ fun resolveInstrumentWaterfallGeometry(
                                 androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
                                 Text(
                                     "Guitar TXT",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            // MIDI Instruments & Voices Audit Dump button
+                            Button(
+                                onClick = { showMidiInstrumentsDumpDialog = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF00897B)
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    "🎼",
+                                    fontSize = 13.sp
+                                )
+                                androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "Instruments TXT",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White

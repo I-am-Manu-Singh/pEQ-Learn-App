@@ -1084,3 +1084,173 @@ fun Score.dumpGuitarHandsOverlayAsText(
     sb.appendLine("========================================================================================================================")
     return sb.toString()
 }
+
+/**
+ * Generates an exhaustive forensic audit text dump of all MIDI tracks, instruments, GM programs,
+ * channels, voices, pitch ranges, color coding, and note statistics to guarantee clean differentiation
+ * and zero cross-instrument notes mixing.
+ */
+fun Score.dumpMidiInstrumentsAuditAsText(enabledTrackIndices: Map<Int, Boolean> = emptyMap()): String {
+    val sb = StringBuilder()
+    val ts = timeSignature
+    val bpmVal = tempo.toInt()
+
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine("                             MIDI INSTRUMENTS & VOICES FORENSIC AUDIT DUMP")
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine("SCORE TITLE         : $title")
+    sb.appendLine("COMPOSER            : $composer")
+    sb.appendLine("TOTAL TRACKS COUNT  : ${tracks.size}")
+    sb.appendLine("TOTAL MEASURES      : ${measures.size}")
+    sb.appendLine("DEFAULT TEMPO       : $bpmVal BPM | INITIAL TIME SIG: $ts")
+    sb.appendLine("ACTIVE COLOR PALETTE: ${com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX.size} distinct hex colors")
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine()
+
+    fun getGmProgramName(prog: Int, isDrum: Boolean): String {
+        if (isDrum) return "Standard GM Percussion / Drum Kit"
+        return when (prog) {
+            in 0..7 -> "Piano (Acoustic/Electric)"
+            in 8..15 -> "Chromatic Percussion (Celesta/Glockenspiel/Music Box/Marimba)"
+            in 16..23 -> "Organ (Hammond/Church/Reed/Accordion)"
+            in 24..31 -> "Guitar (Acoustic Nylon/Steel/Electric Clean/Overdriven/Distortion)"
+            in 32..39 -> "Bass (Acoustic/Finger/Pick/Fretless/Slap/Synth)"
+            in 40..47 -> "Strings / Solo Orchestral (Violin/Viola/Cello/Contrabass/Tremolo/Pizzicato/Harp)"
+            in 48..55 -> "Ensemble / Choir (String Ensembles/Synth Strings/Choir Aahs/Voice Oohs)"
+            in 56..63 -> "Brass (Trumpet/Trombone/Tuba/Muted Trumpet/French Horn/Brass Section)"
+            in 64..71 -> "Reed (Soprano/Alto/Tenor/Baritone Sax/Oboe/English Horn/Bassoon/Clarinet)"
+            in 72..79 -> "Pipe (Piccolo/Flute/Recorder/Pan Flute/Shakuhachi/Whistle/Ocarina)"
+            in 80..87 -> "Synth Lead (Square/Sawtooth/Calliope/Chiff/Charang/Voice/Fifth/Bass+Lead)"
+            in 88..95 -> "Synth Pad (New Age/Warm/Polysynth/Choir/Bowed/Metallic/Halo/Sweep)"
+            in 96..103 -> "Synth Effects (Rain/Soundtrack/Crystal/Atmosphere/Brightness/Goblins/Echoes/Sci-Fi)"
+            in 104..111 -> "Ethnic (Sitar/Banjo/Shamisen/Koto/Kalimba/Bagpipe/Fiddle/Shanai)"
+            in 112..119 -> "Percussive (Tinkle Bell/Agogo/Steel Drums/Woodblock/Taiko/Melodic Tom/Synth Drum)"
+            in 120..127 -> "Sound Effects (Guitar Fret Noise/Breath/Seashore/Bird/Telephone/Helicopter/Applause/Gunshot)"
+            else -> "Unknown GM Instrument"
+        }
+    }
+
+    val sharpNames = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    val flatNames = listOf("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
+    val noteNames = if (keySignature.accidentalsCount > 0 && !keySignature.isSharp) flatNames else sharpNames
+    fun midiToName(midi: Int): String {
+        if (midi < 0 || midi > 127) return "N/A"
+        val name = noteNames[midi % 12]
+        val oct = (midi / 12) - 1
+        return "$name$oct"
+    }
+
+    // Precompute per-track notes from score measures
+    // In pEQ-Learn ScoreNote.voice corresponds to trackIndex
+    val notesByVoice = mutableMapOf<Int, MutableList<Pair<Int, ScoreNote>>>() // voice -> list of (measureIndex, note)
+    measures.forEachIndexed { mIdx, measure ->
+        measure.notes.forEach { n ->
+            if (!n.isRest) {
+                notesByVoice.getOrPut(n.voice) { mutableListOf() }.add(Pair(mIdx + 1, n))
+            }
+        }
+    }
+
+    // 1. TRACK ROSTER SUMMARY
+    sb.appendLine("------------------------------------------------------------------------------------------------------------------------")
+    sb.appendLine("TRACK ROSTER OVERVIEW & COLOR DIFFERENTIATION:")
+    sb.appendLine("------------------------------------------------------------------------------------------------------------------------")
+    sb.appendLine("%-5s | %-24s | %-4s | %-6s | %-26s | %-10s | %-10s | %-12s | %-7s".format(
+        "TRK#", "NAME", "CH#", "GM#", "GM FAMILY / CATEGORY", "COLOR HEX", "PITCH RGN", "NOTE COUNT", "STATE"
+    ))
+    sb.appendLine("-".repeat(120))
+
+    var grandTotalNotes = 0
+    val palette = com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX
+
+    tracks.forEach { track ->
+        val trackNoteList = notesByVoice[track.trackIndex] ?: emptyList()
+        val trackNotesCount = trackNoteList.size
+        grandTotalNotes += trackNotesCount
+
+        var minMidi = Int.MAX_VALUE
+        var maxMidi = Int.MIN_VALUE
+        trackNoteList.forEach { (_, n) ->
+            if (n.midiNote < minMidi) minMidi = n.midiNote
+            if (n.midiNote > maxMidi) maxMidi = n.midiNote
+        }
+
+        val colorHex = "0x" + palette[track.trackIndex % palette.size].toString(16).uppercase().padStart(8, '0')
+        val isEnabled = enabledTrackIndices[track.trackIndex] ?: track.isEnabled
+        val stateStr = if (isEnabled) "ENABLED" else "MUTED"
+        val isDrum = (track.channel == 9 || track.channel == 10)
+        val familyName = getGmProgramName(track.program, isDrum)
+        val pitchStr = if (trackNotesCount > 0) {
+            "${midiToName(minMidi)}-${midiToName(maxMidi)}"
+        } else "EMPTY"
+
+        sb.appendLine("%-5d | %-24s | %-4d | %-6d | %-26s | %-10s | %-10s | %-12d | %-7s".format(
+            track.trackIndex,
+            track.trackName.take(24),
+            track.channel,
+            track.program,
+            familyName.take(26),
+            colorHex,
+            pitchStr,
+            trackNotesCount,
+            stateStr
+        ))
+    }
+    sb.appendLine("------------------------------------------------------------------------------------------------------------------------")
+    sb.appendLine("GRAND TOTAL NOTES ACROSS ALL INSTRUMENTS: $grandTotalNotes")
+    sb.appendLine()
+
+    // 2. DETAILED PER-TRACK CHRONOLOGY & VOICE BREAKDOWN
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine("DETAILED PER-TRACK & PER-VOICE NOTE AUDIT (DIFFERENTIATION CHECK):")
+    sb.appendLine("========================================================================================================================")
+
+    tracks.forEach { track ->
+        val trackNoteList = notesByVoice[track.trackIndex] ?: emptyList()
+        val noteCount = trackNoteList.size
+        val isDrum = (track.channel == 9 || track.channel == 10)
+        val colorHex = "0x" + palette[track.trackIndex % palette.size].toString(16).uppercase().padStart(8, '0')
+
+        sb.appendLine("TRACK #%d: \"%s\" (Channel: %d, GM Program: %d - %s, Assigned Color: %s, Notes: %d)".format(
+            track.trackIndex,
+            track.trackName,
+            track.channel,
+            track.program,
+            getGmProgramName(track.program, isDrum),
+            colorHex,
+            noteCount
+        ))
+
+        if (noteCount == 0) {
+            sb.appendLine("  [Track contains no note events]")
+            sb.appendLine()
+            return@forEach
+        }
+
+        // Group notes by measure
+        val measureGroups = trackNoteList.groupBy { it.first }
+        var printedMeasures = 0
+        measureGroups.toSortedMap().forEach { (mNum, pairs) ->
+            printedMeasures++
+            if (printedMeasures <= 30 || printedMeasures > measureGroups.size - 5) {
+                sb.appendLine("  Measure %-3d (Notes: %d):".format(mNum, pairs.size))
+                val sortedNotes = pairs.map { it.second }.sortedWith(compareBy({ it.position }, { it.midiNote }))
+                sortedNotes.forEach { n ->
+                    val pitchName = midiToName(n.midiNote)
+                    val drumLabel = if (isDrum) " [DrumKit: ${n.midiNote}]" else ""
+                    sb.appendLine("    Pos %-6.2fb | Voice %d | Pitch %-4s (MIDI %-3d) | Dur: %-5.2fb | Vel: %-3s%s".format(
+                        n.position, n.voice, pitchName, n.midiNote, n.duration, n.dynamic.ifEmpty { "100" }, drumLabel
+                    ))
+                }
+            } else if (printedMeasures == 31) {
+                sb.appendLine("  ... [Omitted measures ${printedMeasures} to ${measureGroups.size - 5} for brevity in dump] ...")
+            }
+        }
+        sb.appendLine()
+    }
+
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine("END OF MIDI INSTRUMENTS & VOICES FORENSIC AUDIT DUMP")
+    sb.appendLine("========================================================================================================================")
+    return sb.toString()
+}
