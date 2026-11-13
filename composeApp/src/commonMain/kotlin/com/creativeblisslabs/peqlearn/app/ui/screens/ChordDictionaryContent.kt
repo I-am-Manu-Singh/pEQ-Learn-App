@@ -905,6 +905,8 @@ Row(
                                 chordFingers = if (mode == 0) guitarShape.fingers else null,
                                 baseFret = if (mode == 0) (guitarShape.baseFret ?: 1) else 1,
                                 barreFret = if (mode == 0) (guitarShape.barre ?: -1) else -1,
+                                capoFret = capoFret,
+                                onCapoChanged = { capoFret = it },
                                 stringLabels = listOf("e", "B", "G", "D", "A", "E"),
                                 openStringsSemis = listOf(4, 11, 7, 2, 9, 4),
                                 activeCoordinate = highlightedGuitarCoordinate,
@@ -992,6 +994,8 @@ Row(
                                 activeNotes = pianoPitches,
                                 baseFret = if (mode == 0) ukuShape.baseFret else 1,
                                 barreFret = ukuShape.barre ?: -1,
+                                capoFret = capoFret,
+                                onCapoChanged = { capoFret = it },
                                 stringLabels = listOf("A", "E", "C", "G"),
                                 openStringsSemis = listOf(9, 4, 0, 7),
                                 activeCoordinate = highlightedUkuCoordinate,
@@ -1348,11 +1352,61 @@ fun CapoSection(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("🎸 DYNAMIC CAPO CALCULATOR", fontSize = 12.sp, fontWeight = FontWeight.Black, color = partColor, letterSpacing = 2.sp)
             Surface(shape = RoundedCornerShape(8.dp), color = if (capoFret > 0) partColor.copy(0.15f) else MaterialTheme.colorScheme.surfaceContainerLow) {
-                Text("Fret $capoFret", Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (capoFret > 0) partColor else MaterialTheme.colorScheme.onSurface.copy(0.5f))
+                Text(if (capoFret == 0) "Open (No Capo)" else "Capo Fret $capoFret", Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (capoFret > 0) partColor else MaterialTheme.colorScheme.onSurface.copy(0.5f))
             }
         }
 
-        Slider(value = capoFret.toFloat(), onValueChange = { onCapoChange(it.toInt()) }, valueRange = 0f..12f, steps = 11, colors = SliderDefaults.colors(thumbColor = partColor, activeTrackColor = partColor))
+        // Interactive Visual Mini-Fretboard Capo Slider
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(0.7f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("SLIDE OR TAP CAPO FRET", fontSize = 10.sp, fontWeight = FontWeight.Black, color = partColor.copy(0.8f), letterSpacing = 1.sp)
+                    Text(if (capoFret > 0) "+$capoFret Semitones" else "Standard Pitch", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
+                }
+
+                // Interactive Tappable/Sliding Capo Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    (0..12).forEach { f ->
+                        val isSelected = (capoFret == f)
+                        Surface(
+                            onClick = { onCapoChange(f) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) partColor else MaterialTheme.colorScheme.surfaceContainerHigh.copy(0.6f),
+                            border = if (isSelected) BorderStroke(1.5.dp, Color.White) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(0.2f)),
+                            modifier = Modifier.width(42.dp).height(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = if (f == 0) "0" else "$f",
+                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = if (isSelected) Color.Black else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Slider(
+                    value = capoFret.toFloat(),
+                    onValueChange = { onCapoChange(it.toInt()) },
+                    valueRange = 0f..12f,
+                    steps = 11,
+                    colors = SliderDefaults.colors(thumbColor = partColor, activeTrackColor = partColor)
+                )
+            }
+        }
 
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLow.copy(0.7f)) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -123,22 +123,26 @@ object ClassicalSargamEngine {
             base.startsWith("D₃") || base.startsWith("D3") || base.startsWith("N₂") || base.startsWith("N2") -> 10
             base.startsWith("N₃") || base.startsWith("N3") -> 11
 
-            // Hindustani Rishabh (re / r = Komal 1, Re / R = Shuddha 2 or Raga-contextual)
-            base == "re" || base == "r" || base == "रे़" -> 1
-            base.equals("Re", ignoreCase = true) || base.equals("R", ignoreCase = true) || base == "रे" -> {
+            // Hindustani Rishabh (re / r / r1 = Komal 1, Re / R / r2 = Shuddha 2, R3 = Shatshruti 3)
+            base == "re" || base == "r" || base == "रे़" || base == "re(k)" || base == "r(k)" -> {
+                if (1 in ragaSet) 1 else if (2 in ragaSet) 2 else 1
+            }
+            base.equals("Re", ignoreCase = true) || base.equals("R", ignoreCase = true) || base == "रे" || base == "re(s)" || base == "r(s)" -> {
                 if (2 in ragaSet) 2 else if (1 in ragaSet) 1 else if (3 in ragaSet) 3 else 2
             }
 
             // Hindustani Gandhar (ga / g = Komal 3, Ga / G = Shuddha 4 or Raga-contextual)
-            base == "ga" || base == "g" || base == "ग़" -> 3
-            base.equals("Ga", ignoreCase = true) || base.equals("G", ignoreCase = true) || base == "ग" -> {
+            base == "ga" || base == "g" || base == "ग़" || base == "ga(k)" || base == "g(k)" -> {
+                if (3 in ragaSet) 3 else if (4 in ragaSet) 4 else 3
+            }
+            base.equals("Ga", ignoreCase = true) || base.equals("G", ignoreCase = true) || base == "ग" || base == "ga(s)" || base == "g(s)" -> {
                 if (4 in ragaSet) 4 else if (3 in ragaSet) 3 else if (2 in ragaSet) 2 else 4
             }
 
             // Hindustani Madhyam (M / m = Shuddha 5, Ma / M' = Teevra 6 or Raga-contextual)
-            isExplicitTeevraMa -> 6
+            isExplicitTeevraMa || base == "m'" || base == "ma(t)" || base == "m(t)" -> 6
             base == "Ma" -> if (6 in ragaSet && 5 !in ragaSet) 6 else if (5 in ragaSet) 5 else 6
-            base == "ma" -> if (6 in ragaSet) 6 else 5
+            base == "ma" -> if (6 in ragaSet && 5 !in ragaSet) 6 else if (5 in ragaSet) 5 else 6
             base.equals("M", ignoreCase = true) || base == "म" || base == "म तीव्र" -> {
                 if (5 in ragaSet) 5 else if (6 in ragaSet) 6 else 5
             }
@@ -147,14 +151,18 @@ object ClassicalSargamEngine {
             base.equals("P", ignoreCase = true) || base.equals("Pa", ignoreCase = true) || base == "प" -> 7
 
             // Hindustani Dhaivat (dha / d = Komal 8, Dha / D = Shuddha 9 or Raga-contextual)
-            base == "dha" || base == "d" || base == "ध़" -> 8
-            base.equals("Dha", ignoreCase = true) || base.equals("D", ignoreCase = true) || base == "ध" -> {
+            base == "dha" || base == "d" || base == "ध़" || base == "dha(k)" || base == "d(k)" -> {
+                if (8 in ragaSet) 8 else if (9 in ragaSet) 9 else 8
+            }
+            base.equals("Dha", ignoreCase = true) || base.equals("D", ignoreCase = true) || base == "ध" || base == "dha(s)" || base == "d(s)" -> {
                 if (9 in ragaSet) 9 else if (8 in ragaSet) 8 else if (10 in ragaSet) 10 else 9
             }
 
             // Hindustani Nishad (ni / n = Komal 10, Ni / N = Shuddha 11 or Raga-contextual)
-            base == "ni" || base == "n" || base == "नि़" -> 10
-            base.equals("Ni", ignoreCase = true) || base.equals("N", ignoreCase = true) || base == "नि" -> {
+            base == "ni" || base == "n" || base == "नि़" || base == "ni(k)" || base == "n(k)" -> {
+                if (10 in ragaSet) 10 else if (11 in ragaSet) 11 else 10
+            }
+            base.equals("Ni", ignoreCase = true) || base.equals("N", ignoreCase = true) || base == "नि" || base == "ni(s)" || base == "n(s)" -> {
                 if (11 in ragaSet) 11 else if (10 in ragaSet) 10 else if (9 in ragaSet) 9 else 11
             }
 

@@ -294,8 +294,91 @@ val currentTargetNote = when {
                 )
             }
 
-            // STRINGS LIST / PEGS SELECTOR (Inline or Side-by-Side)
+            // STRINGS LIST / PEGS SELECTOR (Inline or Side-by-Side with Visual Headstock)
             if (!isChromaticMode) {
+                // Interactive Instrument Headstock Visualizer
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF0F1A12),
+                    border = BorderStroke(1.dp, Color(0xFF1E3824)),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "${selectedTuning.instrument.uppercase()} HEADSTOCK (${selectedTuning.stringNotes.size} STRINGS)",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = inTuneColor.copy(alpha = 0.8f),
+                            letterSpacing = 1.2.sp
+                        )
+
+                        // Headstock Canvas with Tuner Pegs & Strings
+                        Canvas(modifier = Modifier.fillMaxWidth().height(110.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val numStrings = selectedTuning.stringNotes.size
+                            val isUkulele = selectedTuning.instrument.contains("Ukulele", ignoreCase = true)
+                            val isBass = selectedTuning.instrument.contains("Bass", ignoreCase = true)
+
+                            // 1. Draw Stylized Instrument Headstock Wood Body
+                            val headstockPath = androidx.compose.ui.graphics.Path().apply {
+                                val topW = w * (if (isUkulele) 0.45f else 0.55f)
+                                val botW = w * (if (isUkulele) 0.35f else 0.42f)
+                                val midX = w / 2f
+                                moveTo(midX - botW / 2f, h)
+                                lineTo(midX - topW / 2f, 10f)
+                                quadraticBezierTo(midX, 0f, midX + topW / 2f, 10f)
+                                lineTo(midX + botW / 2f, h)
+                                close()
+                            }
+                            val woodBrush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                                colors = listOf(Color(0xFF2E241E), Color(0xFF1A1410), Color(0xFF100C0A))
+                            )
+                            drawPath(headstockPath, brush = woodBrush)
+                            drawPath(headstockPath, color = Color(0xFF5A4434), style = Stroke(width = 2.dp.toPx()))
+
+                            // 2. Draw Strings running down the headstock
+                            val botW = w * (if (isUkulele) 0.35f else 0.42f)
+                            val midX = w / 2f
+                            val stringSpacing = botW / (numStrings + 1).toFloat()
+                            val halfStrings = (numStrings + 1) / 2
+
+                            for (sIdx in 0 until numStrings) {
+                                val stringX = midX - botW / 2f + (sIdx + 1) * stringSpacing
+                                val isLeftPeg = sIdx < halfStrings
+                                val pegY = 20f + (if (isLeftPeg) sIdx else (numStrings - 1 - sIdx)) * (h * 0.72f / halfStrings.coerceAtLeast(1))
+                                val pegX = if (isLeftPeg) midX - botW * 0.75f else midX + botW * 0.75f
+                                val isSelected = (selectedStringIdx == sIdx)
+                                val isPegInTune = isSelected && isInTune
+
+                                // String line from peg to nut
+                                drawLine(
+                                    color = if (isSelected) inTuneColor else Color(0xFFC0C4CC).copy(alpha = 0.6f),
+                                    start = androidx.compose.ui.geometry.Offset(pegX, pegY),
+                                    end = androidx.compose.ui.geometry.Offset(stringX, h),
+                                    strokeWidth = if (isSelected) 2.5f.dp.toPx() else 1.2f.dp.toPx()
+                                )
+
+                                // Tuning Peg Button Indicator
+                                drawCircle(
+                                    color = if (isPegInTune) inTuneColor else if (isSelected) Color(0xFF38A169) else Color(0xFF718096),
+                                    radius = (if (isSelected) 8.dp else 6.dp).toPx(),
+                                    center = androidx.compose.ui.geometry.Offset(pegX, pegY)
+                                )
+                                drawCircle(
+                                    color = Color(0xFF1A202C),
+                                    radius = 3.dp.toPx(),
+                                    center = androidx.compose.ui.geometry.Offset(pegX, pegY)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),

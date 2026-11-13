@@ -117,6 +117,8 @@ fun UnifiedGuitarFretboard(
     chordFingers: List<Int>? = null,
     baseFret: Int = 1,
     barreFret: Int? = null,
+    capoFret: Int = 0,
+    onCapoChanged: ((Int) -> Unit)? = null,
     stringLabels: List<String> = listOf("e", "B", "G", "D", "A", "E"),
     openStringsSemis: List<Int> = listOf(4, 11, 7, 2, 9, 4),
     activeCoordinate: Pair<Int, Int>? = null,
@@ -616,6 +618,50 @@ fun UnifiedGuitarFretboard(
                         topLeft = Offset(barreX - barreW * 0.5f, curTop - 2f),
                         size = Size(barreW, curH + 4f),
                         cornerRadius = CornerRadius(barreW * 0.5f)
+                    )
+                }
+            }
+
+            // Realistic Sliding Guitar Capo
+            if (capoFret > 0) {
+                val relCapoFret = if (capoFret >= safeBaseFret) capoFret - safeBaseFret + 1 else capoFret
+                if (relCapoFret in 1..safeNumFrets) {
+                    val capoX = getFretCenterX(relCapoFret)
+                    val t = ((capoX - leftPad) / playableW).coerceIn(0f, 1f)
+                    val curTop = nutTop + (bridgeTop - nutTop) * t
+                    val curBottom = nutBottom + (bridgeBottom - nutBottom) * t
+                    val curH = curBottom - curTop
+                    val capoBarW = (stringSpacingAtNut * 0.70f).coerceIn(8f, 16.dp.toPx())
+
+                    // 1. Capo Rubber Pad Clamping Strings
+                    drawRoundRect(
+                        color = Color(0xFF1E2024),
+                        topLeft = Offset(capoX - capoBarW * 0.5f, curTop - 6f),
+                        size = Size(capoBarW, curH + 12f),
+                        cornerRadius = CornerRadius(3.dp.toPx())
+                    )
+                    // 2. Metallic Bar Chassis (Titanium/Bronze)
+                    val metalBrush = Brush.linearGradient(
+                        colors = listOf(Color(0xFFE0E2EC), Color(0xFF8E9099), Color(0xFF5A5C64)),
+                        start = Offset(capoX - capoBarW * 0.5f, curTop),
+                        end = Offset(capoX + capoBarW * 0.5f, curBottom)
+                    )
+                    drawRoundRect(
+                        brush = metalBrush,
+                        topLeft = Offset(capoX - capoBarW * 0.35f, curTop - 8f),
+                        size = Size(capoBarW * 0.7f, curH + 16f),
+                        cornerRadius = CornerRadius(4.dp.toPx())
+                    )
+                    // 3. Ergonomic Lever / Screw Clamp Mechanism
+                    drawCircle(
+                        color = Color(0xFF4A4C54),
+                        radius = (capoBarW * 0.55f).coerceAtLeast(5f),
+                        center = Offset(capoX, curTop - 12f)
+                    )
+                    drawCircle(
+                        color = Color(0xFFC0C2CC),
+                        radius = (capoBarW * 0.35f).coerceAtLeast(3f),
+                        center = Offset(capoX, curTop - 12f)
                     )
                 }
             }

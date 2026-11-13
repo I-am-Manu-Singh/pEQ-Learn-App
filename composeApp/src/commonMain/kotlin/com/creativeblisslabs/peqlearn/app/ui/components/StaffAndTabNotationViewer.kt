@@ -1633,14 +1633,25 @@ fun StaffAndTabNotationViewer(
                         }
 
                         val fittedStaffSpacingPx = if (!isVerticalScroll && viewportHeightPx > 80f) {
-                            minOf(idealStaffSpacingPx, (viewportHeightPx * 0.92f) / totalStaffSpacesNeeded)
-                                .coerceAtLeast(with(density) { 7.0.dp.toPx() })
+                            val targetSpacing = idealStaffSpacingPx
+                            val maxAllowedSpacing = (viewportHeightPx * 0.92f) / totalStaffSpacesNeeded
+                            // In horizontal scroll mode, allow zooming up to idealStaffSpacingPx with vertical scroll if it exceeds maxAllowedSpacing
+                            if (notationZoom > 1.25f) {
+                                idealStaffSpacingPx.coerceIn(with(density) { 7.0.dp.toPx() }, with(density) { 32.0.dp.toPx() })
+                            } else {
+                                minOf(idealStaffSpacingPx, maxAllowedSpacing)
+                                    .coerceAtLeast(with(density) { 7.0.dp.toPx() })
+                            }
                         } else {
                             idealStaffSpacingPx
                         }
                         val fittedTabSpacingPx = if (!showStaff && !isVerticalScroll && viewportHeightPx > 80f) {
-                            minOf(idealTabSpacingPx, (viewportHeightPx * 0.90f) / 10.5f)
-                                .coerceAtLeast(with(density) { 10.5.dp.toPx() })
+                            if (notationZoom > 1.25f) {
+                                idealTabSpacingPx.coerceIn(with(density) { 10.5.dp.toPx() }, with(density) { 36.0.dp.toPx() })
+                            } else {
+                                minOf(idealTabSpacingPx, (viewportHeightPx * 0.90f) / 10.5f)
+                                    .coerceAtLeast(with(density) { 10.5.dp.toPx() })
+                            }
                         } else {
                             idealTabSpacingPx * (fittedStaffSpacingPx / idealStaffSpacingPx.coerceAtLeast(1f))
                         }
@@ -1862,7 +1873,7 @@ fun StaffAndTabNotationViewer(
                                                         val glowTopY = if (showStaff) trebleBaseline - 2.2f * staffLineSpacing else tabBaseline - 1.5f * tabLineSpacing
                                                         val glowBotY = if (showTab) tabBaseline + 6.2f * tabLineSpacing else bassBaseline + 5.2f * staffLineSpacing
                                                         drawRect(
-                                                            color = Color(0x22FFD700),
+                                                            color = primaryColor.copy(alpha = if (isDark) 0.08f else 0.06f),
                                                             topLeft = Offset(startX, glowTopY),
                                                             size = Size(endX - startX, (glowBotY - glowTopY).coerceAtLeast(20f))
                                                         )
@@ -2030,6 +2041,7 @@ fun StaffAndTabNotationViewer(
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
                                     .horizontalScroll(horizontalScrollState)
                                     .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -2126,7 +2138,7 @@ fun StaffAndTabNotationViewer(
                                                     val glowTopY = if (showStaff) trebleBaseline - 2.2f * staffLineSpacing else tabBaseline - 1.5f * tabLineSpacing
                                                     val glowBotY = if (showTab) tabBaseline + 6.2f * tabLineSpacing else bassBaseline + 5.2f * staffLineSpacing
                                                     drawRect(
-                                                        color = Color(0x22FFD700),
+                                                        color = primaryColor.copy(alpha = if (isDark) 0.08f else 0.06f),
                                                         topLeft = Offset(startX, glowTopY),
                                                         size = Size(endX - startX, (glowBotY - glowTopY).coerceAtLeast(20f))
                                                     )
@@ -2614,14 +2626,21 @@ private fun drawTabMeasureContent(
                 drawText(lyricLayout, topLeft = Offset(nx - lyricLayout.size.width / 2f, lyricY))
             }
 
-            // Strumming Arrow Indicators (Down-strum ↓ / Up-strum ↑)
+            // Strumming Arrow Indicators (Down-strum ↓ / Up-strum ↑ / Rasgueado / Brush)
             if (note.pickDirection != PickDirection.NONE && tabNote == notesByPosition[note.position]?.firstOrNull()) {
-                val arrowSymbol = if (note.pickDirection == PickDirection.DOWN) MusicSymbols.STRUM_DOWN else MusicSymbols.STRUM_UP
+                val arrowSymbol = when (note.pickDirection) {
+                    PickDirection.DOWN, PickDirection.STRUM_DOWN -> MusicSymbols.STRUM_DOWN
+                    PickDirection.UP, PickDirection.STRUM_UP -> MusicSymbols.STRUM_UP
+                    PickDirection.RASGUEADO -> "Rasg."
+                    PickDirection.SLAP -> "S"
+                    PickDirection.POP -> "P"
+                    else -> MusicSymbols.STRUM_DOWN
+                }
                 val arrowLayout = textMeasurer.measure(
                     text = arrowSymbol,
                     style = TextStyle(color = config.primaryColor, fontSize = (11f * scale).sp, fontWeight = FontWeight.Black)
                 )
-                val arrowY = tBase - 1.25f * config.lineSpacing
+                val arrowY = tBase - 1.35f * config.lineSpacing
                 drawText(arrowLayout, topLeft = Offset(nx - arrowLayout.size.width / 2f, arrowY))
             }
 
@@ -2682,7 +2701,19 @@ private fun drawTabMeasureContent(
                     val pLayout = textMeasurer.measure("P", TextStyle(color = config.primaryColor, fontSize = (7.2f * scale).sp, fontWeight = FontWeight.Black))
                     drawText(pLayout, topLeft = Offset(nx - pLayout.size.width / 2f, ny - config.lineSpacing * 0.88f))
                 }
-                TabArticulation.DEAD_NOTE, TabArticulation.GHOST_NOTE, TabArticulation.PALM_MUTE, TabArticulation.LET_RING, TabArticulation.NONE -> {}
+                TabArticulation.PALM_MUTE -> {
+                    if (tabNote == notesByPosition[note.position]?.firstOrNull()) {
+                        val pmLayout = textMeasurer.measure("P.M.", TextStyle(color = config.primaryColor.copy(alpha = 0.85f), fontSize = (7.5f * scale).sp, fontWeight = FontWeight.Bold))
+                        drawText(pmLayout, topLeft = Offset(nx - pmLayout.size.width / 2f, tBase + 5.2f * config.lineSpacing))
+                    }
+                }
+                TabArticulation.LET_RING -> {
+                    if (tabNote == notesByPosition[note.position]?.firstOrNull()) {
+                        val lrLayout = textMeasurer.measure("let ring", TextStyle(color = config.primaryColor.copy(alpha = 0.85f), fontSize = (7.5f * scale).sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, fontWeight = FontWeight.Bold))
+                        drawText(lrLayout, topLeft = Offset(nx - lrLayout.size.width / 2f, tBase + 5.2f * config.lineSpacing))
+                    }
+                }
+                TabArticulation.DEAD_NOTE, TabArticulation.GHOST_NOTE, TabArticulation.NONE -> {}
             }
 
             // CRITICAL FIX FOR TAB TIES/SLURS:
@@ -3489,14 +3520,15 @@ private fun drawStaffMeasureContent(
             }
         }
         // 3a. Draw Deduplicated, Compact, Collision-Free Chord Symbols (At most 1 per beat position)
-        val chordFontSp = with(this) { (config.lineSpacing * 0.62f).coerceIn(6.5f, 11.5f).toSp() }
+        val chordFontSp = with(this) { (config.lineSpacing * 0.88f).coerceIn(10.0f, 15.5f).toSp() }
         val chordStyle = TextStyle(
             color = config.primaryColor,
             fontSize = chordFontSp,
             lineHeight = chordFontSp,
             fontWeight = FontWeight.Bold
         )
-        var lastChordRightEdgeX = notesStartX + 4f * noteScale
+        // Ensure starting clearance accounts for measure label on the left so chord name doesn't clip
+        var lastChordRightEdgeX = maxOf(notesStartX + 4f * noteScale, startX + 26f)
         val notesByBeatPos = visibleNotes.filter { !it.note.grace }.groupBy { it.note.position }.toSortedMap()
 
         for ((_, notesAtPos) in notesByBeatPos) {
@@ -3510,7 +3542,7 @@ private fun drawStaffMeasureContent(
             )
             val anchorX = notesAtPos.first().anchorX
             // Prevent horizontal clipping into the measure number on beat 0 or adjacent chords
-            val minSafeX = if (drawClefHeader) maxOf(lastChordRightEdgeX, startX + 2.2f * config.lineSpacing) else lastChordRightEdgeX
+            val minSafeX = if (drawClefHeader) maxOf(lastChordRightEdgeX, startX + 3.2f * config.lineSpacing) else lastChordRightEdgeX
             val safeX = (anchorX - chordLayout.size.width * 0.5f)
                 .coerceAtLeast(minSafeX)
                 .coerceAtMost((endX - chordLayout.size.width - 2f).coerceAtLeast(minSafeX))
@@ -3524,15 +3556,15 @@ private fun drawStaffMeasureContent(
                 else null
             }.minOrNull() ?: minNoteY
 
-            val highestStaffObstacleY = minOf(trebleBaseline - 0.55f * config.lineSpacing, minNoteY - 0.65f * config.lineSpacing, minBeamOrStemY - 0.35f * config.lineSpacing)
-            val safeChordY = (highestStaffObstacleY - chordLayout.size.height - 0.25f * config.lineSpacing)
+            val highestStaffObstacleY = minOf(trebleBaseline - 0.75f * config.lineSpacing, minNoteY - 0.75f * config.lineSpacing, minBeamOrStemY - 0.45f * config.lineSpacing)
+            val safeChordY = (highestStaffObstacleY - chordLayout.size.height - 0.35f * config.lineSpacing)
                 .coerceAtLeast(2f)
 
             drawText(
                 textLayoutResult = chordLayout,
                 topLeft = Offset(safeX, safeChordY)
             )
-            lastChordRightEdgeX = safeX + chordLayout.size.width + (0.45f * config.lineSpacing)
+            lastChordRightEdgeX = safeX + chordLayout.size.width + (0.55f * config.lineSpacing)
         }
         var lowestBassElementY = bassBaseline + 4f * config.lineSpacing
         for (n in visibleNotes) {
