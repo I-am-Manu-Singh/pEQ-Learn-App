@@ -942,3 +942,140 @@ fun Score.dumpHandsOverlayAsText(): String {
     sb.appendLine("═".repeat(108))
     return sb.toString()
 }
+
+/**
+ * Ultra-Forensic Diagnostic Dump for Guitar / Tablature Notation and Fretting / Picking Hands.
+ * Audits every single measure and beat:
+ *  - Solved fretting hand box & positions (fret, string, finger F1..F4)
+ *  - Open string vs fretted transitions
+ *  - Ergonomic hand span (max - min fret <= 4) and awkward stretch alerts
+ *  - Right-hand picking directions (Down, Up, Strum Down, Strum Up, Rasgueado, Fingerstyle)
+ *  - Tab articulations (Hammer-on, Pull-off, Slide Up/Down, Bend, Release, Palm Mute, Let Ring)
+ *  - Sounding pitch vs open string semitones
+ */
+fun Score.dumpGuitarHandsOverlayAsText(): String {
+    val sb = StringBuilder()
+    val openStrings = tuningMidi.ifEmpty { listOf(64, 59, 55, 50, 45, 40) }
+    val stringLabels = if (openStrings.size == 4) listOf("A", "E", "C", "G")
+    else if (openStrings.size == 7) listOf("e", "B", "G", "D", "A", "E", "B")
+    else listOf("e", "B", "G", "D", "A", "E")
+
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine("               pEQ-LEARN GUITAR TAB & HUMAN HANDS OVERLAY ULTRA-FORENSIC AUDIT DUMP")
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine("SCORE METADATA:")
+    sb.appendLine("  • Title              : $title")
+    sb.appendLine("  • Tuning             : $tuningName [${openStrings.map { getNoteNameFromMidi(it) }.joinToString()}]")
+    if (capo > 0) sb.appendLine("  • Capo               : Fret $capo")
+    sb.appendLine("  • Total Measures     : ${measures.size}")
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine()
+
+    var totalNotes = 0
+    var totalFrettedNotes = 0
+    var totalOpenStringNotes = 0
+    var handBoxShifts = 0
+    var spanViolations = 0
+    var lastHandBoxCenter = 3.0f
+
+    measures.forEachIndexed { mIdx, measure ->
+        val mNum = if (measure.measureIndex > 0) measure.measureIndex else mIdx + 1
+        val melodicNotes = measure.notes.filter { !it.isRest && it.voice != 9 }
+        sb.appendLine("------------------------------------------------------------------------------------------------------------------------")
+        sb.appendLine("MEASURE #$mNum  |  TimeSig: ${measure.timeSignatureNumerator}/${measure.timeSignatureDenominator}  |  Melodic Notes: ${melodicNotes.size}")
+        sb.appendLine("------------------------------------------------------------------------------------------------------------------------")
+
+        if (melodicNotes.isEmpty()) {
+            sb.appendLine("  (No melodic guitar notes in this measure)")
+            sb.appendLine()
+            return@forEachIndexed
+        }
+
+        val byPos = melodicNotes.groupBy { "%.2f".format(it.position) }.toSortedMap()
+
+        for ((posStr, notesAtBeat) in byPos) {
+            val beatPos = posStr.toFloatOrNull() ?: 0f
+            val pitches = notesAtBeat.map { it.midiNote }.distinct().sorted()
+            totalNotes += notesAtBeat.size
+
+            // Solve Viterbi fretboard placement
+            val (fretMap, nextBoxCenter) = com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine.solveFrettedSliceBiomechanical(
+                pitches = pitches,
+                openStringsMidiHighToLow = openStrings.map { it + capo },
+                maxFret = 22,
+                minFret = 0,
+                lastHandBoxCenterFret = lastHandBoxCenter
+            )
+
+            if (kotlin.math.abs(nextBoxCenter - lastHandBoxCenter) >= 2.0f) {
+                handBoxShifts++
+            }
+            lastHandBoxCenter = nextBoxCenter
+
+            val frettedFretList = fretMap.values.map { it.fret }.filter { it > 0 }
+            val span = if (frettedFretList.size > 1) frettedFretList.max() - frettedFretList.min() else 0
+            if (span > 4) spanViolations++
+
+            val chordLabel = notesAtBeat.firstNotNullOfOrNull { it.chordSymbol.takeIf { s -> s.isNotEmpty() } } ?: "Single Note"
+            val pickDir = notesAtBeat.firstNotNullOfOrNull { it.pickDirection.takeIf { p -> p != PickDirection.NONE } } ?: PickDirection.DOWN
+            val strPick = when (pickDir) {
+                PickDirection.STRUM_DOWN -> "Strum Down (↓)"
+                PickDirection.STRUM_UP -> "Strum Up (↑)"
+                PickDirection.RASGUEADO -> "Rasgueado (≋)"
+                PickDirection.DOWN -> "Downstroke (⊓)"
+                PickDirection.UP -> "Upstroke (∨)"
+                PickDirection.SLAP -> "Slap (S)"
+                PickDirection.POP -> "Pop (P)"
+                else -> "Pick"
+            }
+
+            sb.appendLine("  [Beat %-5s] BoxCenter=%.1ff | Chord: %-12s | Picking: %s | FretSpan: %d frets".format(
+                posStr, nextBoxCenter, chordLabel, strPick, span
+            ))
+
+            for (note in notesAtBeat) {
+                val placement = fretMap[note.midiNote]
+                val sIdx = placement?.stringIndex ?: (note.string ?: 0)
+                val fret = placement?.fret ?: (note.fret ?: 0)
+                val finger = placement?.finger ?: (note.fingering ?: 1)
+                val sName = stringLabels.getOrElse(sIdx) { "Str$sIdx" }
+                val pitchName = getNoteNameFromMidi(note.midiNote)
+
+                if (fret == 0) totalOpenStringNotes++ else totalFrettedNotes++
+
+                val fingerName = when (finger) {
+                    1 -> "F1 (Index)"
+                    2 -> "F2 (Middle)"
+                    3 -> "F3 (Ring)"
+                    4 -> "F4 (Pinky)"
+                    else -> "Thumb / Open"
+                }
+
+                val artFlags = mutableListOf<String>()
+                if (fret == 0) artFlags.add("OPEN STRING")
+                if (note.articulation != TabArticulation.NONE) artFlags.add("Art:${note.articulation.name}")
+                if (note.palmMute) artFlags.add("P.M.")
+                if (note.letRing) artFlags.add("LetRing")
+                if (note.vibrato) artFlags.add("Vibrato")
+                if (note.bend != null) artFlags.add("Bend(${note.bend.type.name}+${note.bend.bendSteps}st)")
+                if (note.whammy != null) artFlags.add("Whammy(${note.whammy.type.name})")
+
+                val flagStr = if (artFlags.isNotEmpty()) " [${artFlags.joinToString()}]" else ""
+                sb.appendLine("    • String %d (%s) | Fret %-2d | Finger: %-11s | Pitch: %-4s (MIDI %d)%s".format(
+                    sIdx + 1, sName, fret, fingerName, pitchName, note.midiNote, flagStr
+                ))
+            }
+        }
+        sb.appendLine()
+    }
+
+    sb.appendLine("========================================================================================================================")
+    sb.appendLine("SUMMARY OF GUITAR AUDIT:")
+    sb.appendLine("  • Total Notes Processed      : $totalNotes")
+    sb.appendLine("  • Fretted Notes              : $totalFrettedNotes")
+    sb.appendLine("  • Open String Notes          : $totalOpenStringNotes")
+    sb.appendLine("  • Hand Position Shifts       : $handBoxShifts")
+    sb.appendLine("  • Span Violations (> 4 frets): $spanViolations")
+    sb.appendLine("========================================================================================================================")
+    return sb.toString()
+}

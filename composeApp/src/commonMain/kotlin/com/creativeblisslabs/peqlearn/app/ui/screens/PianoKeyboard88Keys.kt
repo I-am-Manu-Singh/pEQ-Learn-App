@@ -530,6 +530,7 @@ fun resolveInstrumentWaterfallGeometry(
 
         var showDumpDialog by rememberSaveable { mutableStateOf(false) }
         var showHandsDumpDialog by rememberSaveable { mutableStateOf(false) }
+        var showGuitarDumpDialog by rememberSaveable { mutableStateOf(false) }
         var showPlayAlongStatsDialog by rememberSaveable { mutableStateOf(false) }
         var showLearnModeDialog by rememberSaveable { mutableStateOf(false) }
         var showAudioToMidiScreen by rememberSaveable { mutableStateOf(false) }
@@ -1293,6 +1294,144 @@ fun resolveInstrumentWaterfallGeometry(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.5.sp,
                                 color = Color(0xFFCE93D8),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+
+        // ── Guitar TAB & Hands Overlay Diagnostic Dump Dialog ───────────────────────
+        if (showGuitarDumpDialog) {
+            val clipboardManager = LocalClipboardManager.current
+            var guitarCopied by remember { mutableStateOf(false) }
+            val scoreObj = viewModel.currentScore.value as? Score
+            val guitarDumpText = remember(scoreObj) {
+                scoreObj?.dumpGuitarHandsOverlayAsText()
+                    ?: "No active score loaded.\n\nLoad a score or MIDI file first, then tap 'Guitar TXT' to audit fretting hand box, picking, and TAB positions."
+            }
+            val titleSlugG = scoreObj?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "_") ?: "guitar_score"
+
+            ModalBottomSheet(
+                onDismissRequest = { showGuitarDumpDialog = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = Color(0xFF0A0D14)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.88f)
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Header row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("🎸", fontSize = 20.sp)
+                            Text(
+                                "Guitar TAB & Hands Overlay — Diagnostic Dump",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Copy to clipboard
+                            Button(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(guitarDumpText))
+                                    guitarCopied = true
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (guitarCopied) Color(0xFF2E7D32) else Color(0xFF37474F)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    if (guitarCopied) "✓ Copied!" else "Copy All",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            // Share file button
+                            Button(
+                                onClick = {
+                                    com.creativeblisslabs.peqlearn.app.shareTextFile(
+                                        "${titleSlugG}_guitar_hands_dump.txt",
+                                        guitarDumpText
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFE65100)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Share, contentDescription = null,
+                                    modifier = Modifier.size(16.dp), tint = Color.White
+                                )
+                                androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "Share File",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            IconButton(onClick = { showGuitarDumpDialog = false }) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        "Forensic Guitar Audit: Fret numbers, String indexes, Fretting fingers (F1=Index … F4=Pinky), " +
+                                "Viterbi hand box centers, open string vs fretted transitions, picking directions, and articulation tags.",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.7f),
+                        lineHeight = 18.sp
+                    )
+
+                    // Monospace dump text area
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF06080C),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    ) {
+                        val vertScroll = rememberScrollState()
+                        val horizScroll = rememberScrollState()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(vertScroll)
+                                .horizontalScroll(horizScroll)
+                                .padding(14.dp)
+                        ) {
+                            Text(
+                                text = guitarDumpText,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.5.sp,
+                                color = Color(0xFFFFB74D),
                                 lineHeight = 15.sp
                             )
                         }
@@ -5666,6 +5805,29 @@ fun resolveInstrumentWaterfallGeometry(
                                 androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
                                 Text(
                                     "Hands TXT",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            // Guitar TAB & Hands Overlay Dump button
+                            Button(
+                                onClick = { showGuitarDumpDialog = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(
+                                        0xFFE65100
+                                    )
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    "🎸",
+                                    fontSize = 13.sp
+                                )
+                                androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "Guitar TXT",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
