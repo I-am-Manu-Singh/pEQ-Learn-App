@@ -593,7 +593,7 @@ object BiomechanicalPerformersEngine {
             val frettedVals = tempPlacements.values.map { it.second }.filter { it > 0 }
             if (frettedVals.size > 1) {
                 val span = frettedVals.max() - frettedVals.min()
-                if (span > 4) cost += (span - 4) * 450f + 350f
+                if (span > 4) cost += (span - 4) * 2000f + 1000f
                 else if (span == 4) cost += 28f
             }
 
@@ -604,7 +604,11 @@ object BiomechanicalPerformersEngine {
 
                 val finalMap = HashMap<Int, FrettedNotePlacement>(uniquePitches.size)
                 for ((transMidi, pair) in tempPlacements) {
-                    val (sIdx, fret) = pair
+                    var (sIdx, fret) = pair
+                    // Biomechanical guarantee: Clamp any outlier fret that exceeds 4-fret span from minFretted
+                    if (frettedVals.size > 1 && fret > 0 && fret - minFretted > 4) {
+                        fret = if (hasBarre) minFretted else minFretted + 4
+                    }
                     val finger = when {
                         fret <= 0 -> 0
                         hasBarre && fret == minFretted -> 1

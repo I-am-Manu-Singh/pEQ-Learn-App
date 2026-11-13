@@ -554,14 +554,33 @@ object MidiScoreParser {
         }
 
         // Post-process measure notes to assign guitar string, fret, strumming directions & TAB articulations
+        var runningTabBoxCenter = 3.0f
+        val standardGuitarTuning = listOf(64, 59, 55, 50, 45, 40)
         measureNotes.forEach { mNotes ->
-            val notesByBeat = mNotes.groupBy { it.position }
+            val notesByBeat = mNotes.groupBy { it.position }.toSortedMap()
             notesByBeat.forEach { (_, chordNotes) ->
                 val isStrum = chordNotes.size >= 2
                 val isDownStrum = isStrum && chordNotes.first().midiNote <= chordNotes.last().midiNote
+                val melodicPitches = chordNotes.filter { !it.isRest }.map { it.midiNote }.distinct().sorted()
+
+                val (fretMap, nextBoxCenter) = if (melodicPitches.isNotEmpty()) {
+                    BiomechanicalPerformersEngine.solveFrettedSliceBiomechanical(
+                        pitches = melodicPitches,
+                        openStringsMidiHighToLow = standardGuitarTuning,
+                        maxFret = 22,
+                        minFret = 0,
+                        lastHandBoxCenterFret = runningTabBoxCenter
+                    )
+                } else emptyMap<Int, BiomechanicalPerformersEngine.FrettedNotePlacement>() to runningTabBoxCenter
+                runningTabBoxCenter = nextBoxCenter
 
                 chordNotes.forEachIndexed { cIdx, note ->
-                    val (strIdx, fretNum) = computeGuitarStringAndFret(note.midiNote, note.voice)
+                    val placement = fretMap[note.midiNote]
+                    val (strIdx, fretNum) = if (placement != null) {
+                        (placement.stringIndex + 1) to placement.fret
+                    } else {
+                        computeGuitarStringAndFret(note.midiNote, runningTabBoxCenter)
+                    }
                     val updatedPick = if (isStrum && cIdx == 0) (if (isDownStrum) PickDirection.DOWN else PickDirection.UP) else note.pickDirection
                     val updatedArtic = if (note.duration <= 0.12f) TabArticulation.DEAD_NOTE else note.articulation
                     val updatedNote = note.copy(
@@ -1051,18 +1070,17 @@ object MidiScoreParser {
      * Snaps beat positions strictly to the 16th-note (0.25b) or 32nd-note (0.125b) binary grid
      * unless the note is unmistakably part of a triplet run. This eliminates the 0.33b vs 0.38b drift!
      */
-    private fun computeGuitarStringAndFret(midiNote: Int, channel: Int = 0): Pair<Int, Int> {
+    private fun computeGuitarStringAndFret(midiNote: Int, targetBoxCenter: Float = 3.0f): Pair<Int, Int> {
         val tuningMidi = listOf(64, 59, 55, 50, 45, 40) // High e4 (string 1) to Low E2 (string 6)
-        if (channel in 0..5) {
-            val openPitch = tuningMidi[channel]
-            val fret = (midiNote - openPitch).coerceIn(0, 24)
-            return (channel + 1) to fret
+        var transP = midiNote
+        while (transP < 40) {
+            transP += 12
         }
         val candidates = tuningMidi.mapIndexedNotNull { sIdx, openMidi ->
-            val fret = midiNote - openMidi
+            val fret = transP - openMidi
             if (fret in 0..24) (sIdx + 1) to fret else null
         }
-        return candidates.minByOrNull { it.second } ?: (1 to (midiNote - 64).coerceIn(0, 24))
+        return candidates.minByOrNull { abs(it.second - targetBoxCenter) } ?: (1 to (transP - 64).coerceIn(0, 24))
     }
 
     private fun quantizeBeatPosition(rawPos: Float): Float {
