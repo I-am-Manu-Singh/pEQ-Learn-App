@@ -477,6 +477,12 @@ fun resolveInstrumentWaterfallGeometry(
             allNotes.filter { !isMidiNoteBlack(it) }
         }
 
+        DisposableEffect(Unit) {
+            onDispose {
+                viewModel.clearVisualizerAndScoreOnScreenChange()
+            }
+        }
+
         val activeNotesSnapshot = remember {
             derivedStateOf { viewModel.midiActiveNotes.entries.filter { it.value }.map { it.key } }
         }
@@ -603,17 +609,48 @@ fun resolveInstrumentWaterfallGeometry(
             }
         }
         val playAlongAndActiveNotesMap by remember(totalTranspositionSemis) {
-    derivedStateOf {
-        val base = transposedActiveMidiNotesMap.toMutableMap()
-        if (viewModel.isGuidedPlayAlongActive.value) {
-            for (targetMidi in viewModel.guidedTargetNotes) {
-                val shifted = (targetMidi + totalTranspositionSemis).coerceIn(0, 127)
-                base[shifted] = true
+            derivedStateOf {
+                val base = transposedActiveMidiNotesMap.toMutableMap()
+                if (viewModel.isGuidedPlayAlongActive.value) {
+                    for (targetMidi in viewModel.guidedTargetNotes) {
+                        val shifted = (targetMidi + totalTranspositionSemis).coerceIn(0, 127)
+                        base[shifted] = true
+                    }
+                }
+                base
             }
         }
-        base
-    }
-}
+
+        val currentScoreObj = viewModel.currentScore.value as? Score
+        val guitarMelodicTracks = remember(currentScoreObj, enabledTracksSnapshot) {
+            resolvePlayableMelodicTrackIndices(currentScoreObj, enabledTracksSnapshot, preferGuitarTracks = true)
+        }
+
+        val guitarFilteredActiveList by remember(transposedActiveList, guitarMelodicTracks, viewModel.isScorePlaying.value) {
+            derivedStateOf {
+                if (currentScoreObj == null || !viewModel.isScorePlaying.value) {
+                    transposedActiveList
+                } else {
+                    viewModel.midiActiveNotes.entries
+                        .filter { (midi, on) -> on && (viewModel.activeNoteVoices[midi] == null || viewModel.activeNoteVoices[midi] in guitarMelodicTracks) }
+                        .map { (it.key + totalTranspositionSemis).coerceIn(0, 127) }
+                        .distinct()
+                        .sorted()
+                }
+            }
+        }
+
+        val guitarFilteredActiveNotesMap by remember(playAlongAndActiveNotesMap, guitarMelodicTracks, viewModel.isScorePlaying.value) {
+            derivedStateOf {
+                if (currentScoreObj == null || !viewModel.isScorePlaying.value) {
+                    playAlongAndActiveNotesMap
+                } else {
+                    viewModel.midiActiveNotes.entries
+                        .filter { (midi, on) -> on && (viewModel.activeNoteVoices[midi] == null || viewModel.activeNoteVoices[midi] in guitarMelodicTracks) }
+                        .associate { ((it.key + totalTranspositionSemis).coerceIn(0, 127)) to it.value }
+                }
+            }
+        }
         LaunchedEffect(showImportMenu, showLearnModeDialog) {
             if ((showImportMenu || showLearnModeDialog) && allTutorials.isEmpty()) {
                 isLoadingMidiLibrary = true
@@ -738,7 +775,7 @@ fun resolveInstrumentWaterfallGeometry(
                             ) {
                                 if (showWaterfall && layoutMode != "Keyboard") {
                                     SynthesiaWaterfallOverlay(
-                                        activeMidiNotes = activeMidiNoteSet,
+                                        activeMidiNotes = transposedActiveMidiNoteSet,
                                         manualPressedNotes = pressedKeys.toSet(),
                                         score = viewModel.currentScore.value as? com.creativeblisslabs.peqlearn.app.ui.screens.Score,
                                         playheadMeasure = viewModel.scorePlayheadMeasure.value,
@@ -771,7 +808,7 @@ fun resolveInstrumentWaterfallGeometry(
 //                                    exportTimeSec = stageCaptureController.exportTimeSec,
                                         playbackSpeed = viewModel.playbackSpeed.value,
                                         selectedInstrument = viewModel.selectedInstrument.value,
-                                        activeNoteColors = viewModel.activeNoteTrackColors,
+                                        activeNoteColors = transposedActiveNoteColors,
                                         transposition = totalTranspositionSemis
                                     )
                                 }
@@ -3284,7 +3321,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                 .background(Color.Black)
                                         ) {
                                             SynthesiaWaterfallOverlay(
-                                                activeMidiNotes = activeMidiNoteSet,
+                                                activeMidiNotes = transposedActiveMidiNoteSet,
                                                 manualPressedNotes = fsManualPressedKeys.toSet(),
                                                 score = currentScore,
                                                 playheadMeasure = viewModel.scorePlayheadMeasure.value,
@@ -3319,7 +3356,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                 enabledTrackIndices = viewModel.enabledTrackIndices.toMap(),
                                                 exportTimeSec = stageCaptureController.exportTimeSec,
                                                 selectedInstrument = viewModel.selectedInstrument.value,
-                                                activeNoteColors = viewModel.activeNoteTrackColors,
+                                                activeNoteColors = transposedActiveNoteColors,
                                                 transposition = totalTranspositionSemis
                                             )
                                         }
@@ -3343,7 +3380,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                     }
                                                 UnifiedGuitarFretboard(
                                                     numFrets = if (isUkulele) 15 else 24,
-                                                    activeNotes = transposedActiveList,
+                                                    activeNotes = guitarFilteredActiveList,
                                                     activeMidiNote = transposedPlayingNote,
                                                     isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                                     isRightHandHidden = viewModel.isRightHandHidden.value,
@@ -3392,7 +3429,7 @@ fun resolveInstrumentWaterfallGeometry(
 
                                                 // Realistic Anatomical Human Hand & Celluloid Pick Overlay for Guitar & Ukulele
                                                 GuitarHumanHandsOverlay(
-                                                    activeMidiNotes = playAlongAndActiveNotesMap,
+                                                    activeMidiNotes = guitarFilteredActiveNotesMap,
                                                     score = currentScore,
                                                     playheadMeasure = viewModel.scorePlayheadMeasure.value,
                                                     playheadOffset = viewModel.scorePlayheadOffset.value,
@@ -3408,6 +3445,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                     showPickingHand = viewModel.showRightHandGuide.value && !viewModel.isRightHandHidden.value,
                                                     handAccentColor = primaryColor,
                                                     pickColor = Color(0xFFFFB347),
+                                                    transposition = totalTranspositionSemis,
                                                     modifier = Modifier.fillMaxSize()
                                                 )
                                             } else if (currentInst == "Sitar") {
@@ -3680,7 +3718,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                     .background(Color.Black)
                                             ) {
                                                 SynthesiaWaterfallOverlay(
-                                                    activeMidiNotes = activeMidiNoteSet,
+                                                    activeMidiNotes = transposedActiveMidiNoteSet,
                                                     manualPressedNotes = fsManualPressedKeys.toSet(),
                                                     score = currentScore,
                                                     playheadMeasure = viewModel.scorePlayheadMeasure.value,
@@ -3715,7 +3753,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                     enabledTrackIndices = viewModel.enabledTrackIndices.toMap(),
                                                     exportTimeSec = stageCaptureController.exportTimeSec,
                                                     selectedInstrument = viewModel.selectedInstrument.value,
-                                                    activeNoteColors = viewModel.activeNoteTrackColors,
+                                                    activeNoteColors = transposedActiveNoteColors,
                                                     transposition = totalTranspositionSemis
                                                 )
                                             }
@@ -3749,7 +3787,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                     }
                                                 UnifiedGuitarFretboard(
                                                     numFrets = if (isUkulele) 15 else 24,
-                                                    activeNotes = transposedActiveList,
+                                                    activeNotes = guitarFilteredActiveList,
                                                     activeMidiNote = transposedPlayingNote,
                                                     isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                                     isRightHandHidden = viewModel.isRightHandHidden.value,
@@ -3798,7 +3836,7 @@ fun resolveInstrumentWaterfallGeometry(
 
                                                 // Realistic Anatomical Human Hand & Celluloid Pick Overlay for Guitar & Ukulele
                                                 GuitarHumanHandsOverlay(
-                                                    activeMidiNotes = playAlongAndActiveNotesMap,
+                                                    activeMidiNotes = guitarFilteredActiveNotesMap,
                                                     score = currentScore,
                                                     playheadMeasure = viewModel.scorePlayheadMeasure.value,
                                                     playheadOffset = viewModel.scorePlayheadOffset.value,
@@ -3814,6 +3852,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                     showPickingHand = viewModel.showRightHandGuide.value && !viewModel.isRightHandHidden.value,
                                                     handAccentColor = primaryColor,
                                                     pickColor = Color(0xFFFFB347),
+                                                    transposition = totalTranspositionSemis,
                                                     modifier = Modifier.fillMaxSize()
                                                 )
                                             } else if (currentInst == "Sitar") {

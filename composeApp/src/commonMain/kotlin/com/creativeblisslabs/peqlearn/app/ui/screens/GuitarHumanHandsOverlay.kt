@@ -124,12 +124,18 @@ fun GuitarHumanHandsOverlay(
     showPickingHand: Boolean = true,
     handAccentColor: Color = Color(0xFF6C63FF),
     pickColor: Color = Color(0xFFFFB347),
+    transposition: Int = 0,
     modifier: Modifier = Modifier
 ) {
     if (!showFrettingHand && !showPickingHand) return
 
     val safeNumFrets = numFrets.coerceIn(4, 24)
     val safeBaseFret = baseFret.coerceIn(1, 24)
+
+    val effectiveOpenStringsMidi = remember(openStringsMidi, transposition) {
+        if (transposition == 0) openStringsMidi
+        else openStringsMidi.map { it + transposition }
+    }
 
     val soundingPitches = remember(activeMidiNotes) {
         activeMidiNotes.entries
@@ -142,10 +148,10 @@ fun GuitarHumanHandsOverlay(
     var lastBoxCenter by remember { mutableFloatStateOf(3.0f) }
 
     // Solve optimal Viterbi string, fret, and finger placement
-    val viterbiSolution = remember(soundingPitches, openStringsMidi, safeNumFrets, safeBaseFret) {
+    val viterbiSolution = remember(soundingPitches, effectiveOpenStringsMidi, safeNumFrets, safeBaseFret) {
         BiomechanicalPerformersEngine.solveFrettedSliceBiomechanical(
             pitches = soundingPitches,
-            openStringsMidiHighToLow = openStringsMidi,
+            openStringsMidiHighToLow = effectiveOpenStringsMidi,
             maxFret = safeNumFrets,
             minFret = 0,
             lastHandBoxCenterFret = lastBoxCenter

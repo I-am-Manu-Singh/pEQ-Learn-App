@@ -339,6 +339,12 @@ fun MainScreen(
 
     val currentTab by viewModel.currentTab
 
+    LaunchedEffect(currentTab) {
+        if (currentTab != Tab.Library) {
+            viewModel.clearVisualizerAndScoreOnScreenChange()
+        }
+    }
+
 
     LaunchedEffect(
         viewModel.toastMessage.value

@@ -143,6 +143,8 @@ val client = createHttpClient()
 
     // Live per-note color map so Piano, Guitar, Harmonium, Violin, Flute & Sitar flash the EXACT same hand/track color as the Waterfall & Staff!
     val activeNoteTrackColors = mutableStateMapOf<Int, androidx.compose.ui.graphics.Color>()
+    // Live per-note track voice map so instrument visualizers (e.g. Guitar Fretboard, Harmonium, Sitar) only flash notes for their specific track!
+    val activeNoteVoices = mutableStateMapOf<Int, Int>()
 
     // Configurable Measures Per Row in Notation Viewer (1, 2, 3, or 4; default 2 for clear tablet/phone readability)
     val notationMeasuresPerRow = mutableIntStateOf(2)
@@ -1670,6 +1672,7 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
         androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
             midiActiveNotes.clear()
             activeNoteTrackColors.clear()
+            activeNoteVoices.clear()
             midiPlayingNote.value = null
             guidedTargetNotes.clear()
             guidedSatisfiedNotes.clear()
@@ -1689,11 +1692,30 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
         androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
             midiActiveNotes.clear()
             activeNoteTrackColors.clear()
+            activeNoteVoices.clear()
             scorePlayheadMeasure.value = 0
             scorePlayheadOffset.value = 0f
             currentPosition.value = 0L
         }
         audioEngine.seekTo(0L)
+    }
+
+    /**
+     * Resets score playback and clears visualizer notes when switching away from the score/library screen.
+     */
+    fun clearVisualizerAndScoreOnScreenChange() {
+        stopScorePlayback()
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            midiActiveNotes.clear()
+            activeNoteTrackColors.clear()
+            activeNoteVoices.clear()
+            midiPlayingNote.value = null
+            scorePlayheadMeasure.value = 0
+            scorePlayheadOffset.value = 0f
+            currentPosition.value = 0L
+            guidedTargetNotes.clear()
+            guidedSatisfiedNotes.clear()
+        }
     }
 
     // --- USB MIDI INPUT GATE & INTERACTIVE PLAY-ALONG MODES ---
@@ -2017,6 +2039,7 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                 val rhColorSnap = rightHandColor.value
                 val lhColorSnap = leftHandColor.value
                 val activatedColors = HashMap<Int, androidx.compose.ui.graphics.Color>(8)
+                val activatedVoices = HashMap<Int, Int>(8)
 
                 if (!isWaitingForUserStep) {
                     measure.notes.forEachIndexed { index, note ->
@@ -2034,9 +2057,10 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
 
                             val isDrumNote = note.voice in drumTrackIndices
                             if (isDrumNote) {
-                                if (effectiveMasterVol > 0.01f) {
+                                val drumEffectiveVol = (masterVol * trackVol).coerceIn(0f, 1f)
+                                if (drumEffectiveVol > 0.01f) {
                                     val drumLabel = mapGmDrumMidiToLabel(note.midiNote) ?: "SNARE"
-                                    audioEngine.setTablaGain(effectiveMasterVol)
+                                    audioEngine.setTablaGain(drumEffectiveVol)
                                     audioEngine.playSample(label = drumLabel, index = note.midiNote, string = "DRUM")
                                     drumLabelsToTrigger.add(drumLabel)
                                 }
@@ -2048,6 +2072,7 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
 
                             val effectivePitch = (note.midiNote + transOffset).coerceIn(0, 127)
                             activatedColors[effectivePitch] = noteTrackColor
+                            activatedVoices[effectivePitch] = note.voice
 
                             val shouldWaitOnThisNote = isGuidedPlayAlongActive.value && (
                                     playAlongPracticeMode.value == "WAIT_FOR_NOTE" ||
@@ -2116,6 +2141,7 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                             relCopy?.forEach { p ->
                                 midiActiveNotes.remove(p)
                                 activeNoteTrackColors.remove(p)
+                                activeNoteVoices.remove(p)
                                 playAlongEngine.liveKeyColors.remove(p)
                             }
                             if (targetCopy != null && isGuidedPlayAlongActive.value) {
@@ -2135,6 +2161,9 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                                 midiPlayingNote.value = p
                                 activatedColors[p]?.let { col ->
                                     activeNoteTrackColors[p] = col
+                                }
+                                activatedVoices[p]?.let { v ->
+                                    activeNoteVoices[p] = v
                                 }
                             }
                             if (relCopy != null && actCopy == null && midiPlayingNote.value !in midiActiveNotes) {

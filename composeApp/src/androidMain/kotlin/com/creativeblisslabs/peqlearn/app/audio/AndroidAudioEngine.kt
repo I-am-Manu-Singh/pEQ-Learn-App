@@ -2657,26 +2657,29 @@ class AndroidAudioEngine(
                     }
                 }
                 "DRUM", "METRONOME" -> {
-                    // Resolve pad index from either explicit label ("KICK", "SNARE", "HH_CLOSED", "RIDE", etc.),
-                    // GM MIDI note number (35..81), or direct pad index (0..15)
+                    // Resolve pad index strictly matching DrumKitLoader.padLabels:
+                    // 0: KICK, 1: SNARE, 2: HIHAT_CLOSED, 3: CLAP,
+                    // 4: KICK_ALT, 5: SNARE_ALT, 6: HIHAT_OPEN, 7: CRASH,
+                    // 8: TOM_HI, 9: TOM_MID, 10: TOM_LO, 11: RIDE,
+                    // 12: BASS_SUB, 13: RIM_CLICK, 14: PERC, 15: FX
                     val cleanLabel = target.substringAfter("-")
                     val resolvedPadIdx = when {
                         index in 0..15 && cleanLabel.isEmpty() -> index
                         cleanLabel == "KICK" || index == 35 || index == 36 -> 0
-                        cleanLabel == "SNARE" || index == 38 || index == 40 || index == 37 -> 1
+                        cleanLabel == "SNARE" || index == 38 -> 1
                         cleanLabel.contains("CLOSED") || cleanLabel == "HH" || index == 42 || index == 44 -> 2
-                        cleanLabel.contains("OPEN") || cleanLabel == "OHAT" || index == 46 -> 3
-                        cleanLabel == "TOM_HI" || cleanLabel == "TOM1" || index == 48 || index == 50 -> 4
-                        cleanLabel == "TOM_MID" || cleanLabel == "TOM2" || index == 45 || index == 47 -> 5
-                        cleanLabel == "FLOOR" || cleanLabel == "TOM_LO" || index == 41 || index == 43 -> 6
-                        cleanLabel == "CRASH" || index == 49 || index == 55 -> 7
-                        cleanLabel.contains("RIDE") || index == 51 || index == 53 || index == 59 -> 8
-                        cleanLabel == "CLAP" || index == 39 -> 9
-                        cleanLabel == "PERC" || cleanLabel.contains("COWBELL") || index == 56 -> 10
-                        cleanLabel.contains("SHAKER") || index == 69 || index == 70 || index == 82 -> 11
-                        cleanLabel == "KICK2" -> 12
-                        cleanLabel == "SNARE2" -> 13
-                        cleanLabel == "CRASH2" || index == 57 || index == 52 -> 14
+                        cleanLabel == "CLAP" || index == 39 -> 3
+                        cleanLabel == "KICK_ALT" || cleanLabel == "KICK2" -> 4
+                        cleanLabel == "SNARE_ALT" || cleanLabel == "SNARE2" || index == 40 -> 5
+                        cleanLabel.contains("OPEN") || cleanLabel == "OHAT" || index == 46 -> 6
+                        cleanLabel == "CRASH" || cleanLabel == "CRASH2" || index == 49 || index == 52 || index == 55 || index == 57 -> 7
+                        cleanLabel == "TOM_HI" || cleanLabel == "TOM1" || index == 48 || index == 50 -> 8
+                        cleanLabel == "TOM_MID" || cleanLabel == "TOM2" || index == 45 || index == 47 -> 9
+                        cleanLabel == "FLOOR" || cleanLabel == "TOM_LO" || index == 41 || index == 43 -> 10
+                        cleanLabel.contains("RIDE") || index == 51 || index == 53 || index == 59 -> 11
+                        cleanLabel == "BASS_SUB" -> 12
+                        cleanLabel.contains("RIM") || cleanLabel.contains("STICK") || index == 37 -> 13
+                        cleanLabel == "PERC" || cleanLabel.contains("COWBELL") || cleanLabel.contains("SHAKER") || index in listOf(54, 56, 58, 69, 70, 82) -> 14
                         else -> drumKitLoader.padLabels.indexOfFirst { it.equals(cleanLabel, ignoreCase = true) }
                             .takeIf { it >= 0 } ?: (index % 16).coerceAtLeast(0)
                     }
@@ -2688,12 +2691,15 @@ class AndroidAudioEngine(
                         ?: kitSounds["DRUM"]?.entries?.firstOrNull { it.key.contains(cleanLabel, ignoreCase = true) }?.value
                         ?: drumKitLoader.kitSampleMap.values.firstOrNull()
 
+                    val dynamicGain = if (tablaGain > 0.01f) tablaGain else 0.9f
                     if (fallbackSoundId != null && fallbackSoundId != 0) {
-                        val vol = if (resolvedPadIdx == 0 || resolvedPadIdx == 1) 0.95f else 0.78f
+                        val baseVol = if (resolvedPadIdx == 0 || resolvedPadIdx == 1) 0.95f else 0.85f
+                        val vol = (baseVol * dynamicGain).coerceIn(0.05f, 1.0f)
                         soundPool.play(fallbackSoundId, vol, vol, 1, 0, 1f)
                         onPadTriggered?.invoke(resolvedPadIdx)
                     } else if (metronomeStrongId != 0) {
-                        systemSoundPool.play(if (resolvedPadIdx == 0) metronomeStrongId else metronomeWeakId, 0.8f, 0.8f, 1, 0, 1f)
+                        val vol = (0.85f * dynamicGain).coerceIn(0.05f, 1.0f)
+                        systemSoundPool.play(if (resolvedPadIdx == 0) metronomeStrongId else metronomeWeakId, vol, vol, 1, 0, 1f)
                     }
                 }
             }
