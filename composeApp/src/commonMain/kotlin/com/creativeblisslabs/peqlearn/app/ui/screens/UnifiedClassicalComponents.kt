@@ -277,7 +277,7 @@ fun UnifiedRaagaBrowser(
                         accentColor = accentColor,
                         label = if (isAuditionRunning) "Playing..." else "Audition Scale",
                         isPlaying = isAuditionRunning,
-                        onPlayClick = {
+                        onClick = {
                             if (!isAuditionRunning) {
                                 isAuditionRunning = true
                                 val engine = getAudioEngine()
@@ -529,7 +529,7 @@ fun UnifiedTaalBrowser(
                         accentColor = accentColor,
                         label = if (isTaalLooping) "Stop Loop" else "Play Loop",
                         isPlaying = isTaalLooping,
-                        onPlayClick = {
+                        onClick = {
                             if (isTaalLooping) {
                                 isTaalLooping = false
                                 currentBeatPlayhead = -1
@@ -946,7 +946,7 @@ fun UnifiedThaatBrowser(
                         accentColor = accentColor,
                         label = "Play Thaat",
                         isPlaying = isPlaying,
-                        onPlayClick = {
+                        onClick = {
                             if (!isPlaying) {
                                 isPlaying = true
                                 val engine = getAudioEngine()
@@ -1251,7 +1251,7 @@ fun UnifiedAlankaarPanel(
                         accentColor = accentColor,
                         label = if (isThisRunning) "Stop" else "Practice",
                         isPlaying = isThisRunning,
-                        onPlayClick = {
+                        onClick = {
                             if (!isRunning) {
                                 isRunning = true
                                 activeIdx = currentAlankaram.number
@@ -1486,7 +1486,7 @@ fun PlayableInfoRowShared(
             accentColor = accentColor,
             label = "Play",
             isPlaying = isRowPlaying,
-            onPlayClick = {
+            onClick = {
                 if (!isRowPlaying) {
                     isRowPlaying = true
                     val engine = getAudioEngine()

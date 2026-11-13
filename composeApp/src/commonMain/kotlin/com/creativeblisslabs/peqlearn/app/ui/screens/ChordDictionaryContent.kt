@@ -335,6 +335,12 @@ Row(
         pEQInstrumentDropdown(
             selectedInstrument = selectedInstrument,
             accentColor = partColor,
+            instrumentVolumes = viewModel.instrumentVolumes,
+            onInstrumentVolumeChange = { inst, vol ->
+                if (viewModel.selectedInstrument.value == inst.title) {
+                    viewModel.audioEngine.setVolume(vol * viewModel.masterVolume.value)
+                }
+            },
             onInstrumentChange = { selectedInstrument = it }
         )
     }
@@ -649,7 +655,7 @@ Row(
                             InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> InstrumentSoundStyle.SEQUENTIAL
                         }
                     },
-                    onPlayClick = {
+                    onClick = {
                         if (isArpeggioRunning) {
                             playbackJob?.cancel()
                             pianoPitches.forEach { midi ->
@@ -969,11 +975,12 @@ Row(
                                 numFrets = 15,
                                 accentColor = partColor,
                                 rootNote = rootIdx,
-showNoteNames = when (badgeDisplayMode) {
-    "Note Names" -> true
-    "Fingers (1-5)", "Fingers (1-4)" -> false
-    else -> (mode == 1)
-},                                markOctaves = true,
+                                    showNoteNames = when (badgeDisplayMode) {
+                                        "Note Names" -> true
+                                        "Fingers (1-5)", "Fingers (1-4)" -> false
+                                        else -> (mode == 1)
+                                    },
+                                markOctaves = true,
                                 highlightOctaveC = true,
                                 cagedMode = resolvedCaged,
                                 fretMinConstrain = fretMin,
@@ -1071,11 +1078,12 @@ showNoteNames = when (badgeDisplayMode) {
                                 numFrets = 5,
                                 accentColor = partColor,
                                 rootNote = rootIdx,
-showNoteNames = when (badgeDisplayMode) {
-    "Note Names" -> true
-    "Fingers (1-5)", "Fingers (1-4)" -> false
-    else -> (mode == 1)
-},                                markOctaves = true,
+                                showNoteNames = when (badgeDisplayMode) {
+                                    "Note Names" -> true
+                                    "Fingers (1-5)", "Fingers (1-4)" -> false
+                                    else -> (mode == 1)
+                                },
+                                markOctaves = true,
                                 highlightOctaveC = true,
                                 chordFrets = if (mode == 0) ukuShape.frets else null,
                                 chordFingers = if (mode == 0) ukuShape.fingers else null,
@@ -1148,11 +1156,12 @@ showNoteNames = when (badgeDisplayMode) {
                                 numFrets = 15,
                                 accentColor = partColor,
                                 rootNote = rootIdx,
-showNoteNames = when (badgeDisplayMode) {
-    "Note Names" -> true
-    "Fingers (1-5)", "Fingers (1-4)" -> false
-    else -> (mode == 1)
-},                                markOctaves = true,
+                                showNoteNames = when (badgeDisplayMode) {
+                                    "Note Names" -> true
+                                    "Fingers (1-5)", "Fingers (1-4)" -> false
+                                    else -> (mode == 1)
+                                },
+                                markOctaves = true,
                                 highlightOctaveC = true,
                                 fretMinConstrain = fretMin,
                                 fretMaxConstrain = fretMax,
@@ -1208,11 +1217,12 @@ showNoteNames = when (badgeDisplayMode) {
                                 activeNotes = pianoPitches,
                                 activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
                                 accentColor = partColor,
-showNoteNames = when (badgeDisplayMode) {
-    "Note Names" -> true
-    "Fingers (1-5)", "Fingers (1-4)" -> false
-    else -> (mode == 1)
-},                                onFretTapped = { _, midiNote ->
+                                showNoteNames = when (badgeDisplayMode) {
+                                    "Note Names" -> true
+                                    "Fingers (1-5)", "Fingers (1-4)" -> false
+                                    else -> (mode == 1)
+                                },
+                                onFretTapped = { _, midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument(selectedInstrument.soundEngineName)
                                         viewModel.onMidiNoteOn(midiNote, 95)
@@ -1230,11 +1240,12 @@ showNoteNames = when (badgeDisplayMode) {
                                 activeNotes = pianoPitches,
                                 activeMidiNote = if (isArpeggioRunning) activeMidiToken else null,
                                 accentColor = partColor,
-showNoteNames = when (badgeDisplayMode) {
-    "Note Names" -> true
-    "Fingers (1-5)", "Fingers (1-4)" -> false
-    else -> (mode == 1)
-},                                onPositionTapped = { _, midiNote ->
+                                showNoteNames = when (badgeDisplayMode) {
+                                    "Note Names" -> true
+                                    "Fingers (1-5)", "Fingers (1-4)" -> false
+                                    else -> (mode == 1)
+                                },
+                                onPositionTapped = { _, midiNote ->
                                     try {
                                         viewModel.audioEngine.setInstrument("VIOLIN")
                                         viewModel.onMidiNoteOn(midiNote, 95)
@@ -1264,6 +1275,19 @@ showNoteNames = when (badgeDisplayMode) {
                                 modifier = Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(12.dp))
                             )
                         }
+                    }
+
+                    ChordInstrumentType.DRUM_KIT -> {
+                        ThreeDDrumVisualizer(
+                            viewModel = viewModel,
+                            primaryColor = partColor,
+                            currentKitLabels = viewModel.drumPadLabels,
+                            showOnlyPartLabel = false,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                        )
                     }
                 }
             }

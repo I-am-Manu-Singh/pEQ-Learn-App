@@ -134,9 +134,35 @@ val client = createHttpClient()
     val isLeftHandHidden = mutableStateOf(false)
     val isRightHandHidden = mutableStateOf(false)
     val enabledTrackIndices = mutableStateMapOf<Int, Boolean>()
+
+    // Per-MIDI-track volume (trackIndex -> 0.0f..1.0f, default 1.0f)
+    val trackVolumes = mutableStateMapOf<Int, Float>()
+
+    // Per-Instrument volume (instrumentTitle -> 0.0f..1.0f, default 1.0f)
+    val instrumentVolumes = mutableStateMapOf<String, Float>()
+
+    // Live per-note color map so Piano, Guitar, Harmonium, Violin, Flute & Sitar flash the EXACT same hand/track color as the Waterfall & Staff!
+    val activeNoteTrackColors = mutableStateMapOf<Int, androidx.compose.ui.graphics.Color>()
+
+    // Configurable Measures Per Row in Notation Viewer (1, 2, 3, or 4; default 2 for clear tablet/phone readability)
+    val notationMeasuresPerRow = mutableIntStateOf(2)
+
+    // Current PDF page index when viewing a raw PDF score
+    val currentPdfPageIndex = mutableIntStateOf(0)
+    val totalPdfPageCount = mutableIntStateOf(1)
+
+    // Thread-safe seek signal so scrubbing the slider while playing updates scoreElapsedSec in-place without pausing!
+    @kotlin.concurrent.Volatile
+    private var pendingSeekScoreSec: Float = -1f
+
     private val sostenutoCapturedNotes = HashSet<Int>()
     val leftHandColor = mutableStateOf(Color(0xFF6C63FF))
     val rightHandColor = mutableStateOf(Color(0xFF4A90E2))
+    
+    // Controls whether the articulated 3D/2D Human Left Hand (LH) & Right Hand (RH) Finger Guides are drawn over the Piano Keyboard
+    val showLeftHandGuide = mutableStateOf(true)
+    val showRightHandGuide = mutableStateOf(true)
+
     val transposition = mutableIntStateOf(0)
     val octaveShift = mutableIntStateOf(0)
     val isSplitStaff = mutableStateOf(true)
@@ -963,7 +989,7 @@ val client = createHttpClient()
         var current = 0f
         for (m in score.measures) {
             starts.add(current)
-            current += (60f / score.tempo) * m.timeSignatureNumerator
+            current += getMeasureDurationSeconds(m, score.tempo)
         }
         starts
     }
@@ -974,7 +1000,7 @@ val client = createHttpClient()
         if (score == null || starts.isEmpty()) 0f
         else {
             val lastMeasure = score.measures.last()
-            starts.last() + (60f / score.tempo) * lastMeasure.timeSignatureNumerator
+            starts.last() + getMeasureDurationSeconds(lastMeasure, score.tempo)
         }
     }
 
@@ -983,29 +1009,29 @@ val client = createHttpClient()
         val measureIdx = scorePlayheadMeasure.value
         val offset = scorePlayheadOffset.value
         val starts = measureStartTimesSeconds.value
-        
+
         val startSec = starts.getOrNull(measureIdx) ?: 0f
         val m = score.measures.getOrNull(measureIdx)
-        val mDur = if (m != null) (60f / score.tempo) * m.timeSignatureNumerator else 0f
-        
+        val mDur = if (m != null) getMeasureDurationSeconds(m, score.tempo) else 0f
+
         startSec + (offset * mDur)
     }
 
     fun seekToTotalSeconds(totalSeconds: Float) {
         val score = currentScore.value ?: return
         val starts = measureStartTimesSeconds.value
-        
+
         var targetM = 0
         var targetO = 0f
-        
+
         for (i in score.measures.indices) {
             val start = starts.getOrNull(i) ?: 0f
             val m = score.measures[i]
-            val dur = (60f / score.tempo) * m.timeSignatureNumerator
-            
+            val dur = getMeasureDurationSeconds(m, score.tempo).coerceAtLeast(0.001f)
+
             if (totalSeconds < start + dur) {
                 targetM = i
-                targetO = (totalSeconds - start) / dur
+                targetO = ((totalSeconds - start) / dur).coerceIn(0f, 1f)
                 break
             }
             if (i == score.measures.lastIndex) {
@@ -1212,65 +1238,102 @@ val songTimeline = mutableStateListOf<SongBar>().apply {
 val currentPlayingBarIndex = mutableIntStateOf(-1)
 val isSongPlaybackActive = mutableStateOf(false)
 private var songSequencerJob: Job? = null
+    private val padFlashJobs = mutableMapOf<String, Job>()
 
-/**
- * Playback Engine: Loops through the timeline bars sequentially
- */
-fun startSongPlayback() {
-    stopPatternPlayback() // Stop single pattern loop
-    songSequencerJob?.cancel()
-    isSongPlaybackActive.value = true
+    /**
+     * Playback Engine: Loops through the timeline bars sequentially (100% KMP commonMain)
+     */
+    fun startSongPlayback() {
+        stopPatternPlayback() // Stop single pattern loop
+        songSequencerJob?.cancel()
 
-    val activeKit = selectedDrumKit.value ?: drumKits.firstOrNull() ?: return
+        val activeKit = selectedDrumKit.value ?: drumKits.firstOrNull()
+        if (activeKit == null || songTimeline.isEmpty()) {
+            isSongPlaybackActive.value = false
+            return
+        }
 
-    songSequencerJob = viewModelScope.launch(Dispatchers.Default) {
-        while (isActive && isSongPlaybackActive.value) {
-            
-            for (barIdx in 0 until songTimeline.size) {
-                if (!isSongPlaybackActive.value) break
-                
-                withContext(Dispatchers.Main) {
-                    currentPlayingBarIndex.intValue = barIdx
-                }
+        isSongPlaybackActive.value = true
 
-                val currentBar = songTimeline[barIdx]
-                // Find the associated pattern structure in your library matching the timeline step property
-                val pattern = drumTutorials.find { it.name == currentBar.patternName }
+        songSequencerJob = viewModelScope.launch(Dispatchers.Main) {
+            try {
+                val timeSource = TimeSource.Monotonic
+                var nextStepMark = timeSource.markNow()
 
-                if (pattern != null) {
-                    // Execute the 16 steps of this specific bar matching the master BPM clock
-                    pattern.steps.forEachIndexed { stepIdx: Int, activeTokens: List<String> ->
-                        if (!isSongPlaybackActive.value) return@launch
-                        withContext(Dispatchers.Main) {
-                            currentStepIndex.intValue = stepIdx
-                        }
-                        val currentBpm = liveTutorialBpm.intValue.coerceIn(40, 240)
-                        val stepDelayMs = ((60.0 / currentBpm) * 1000 / 4).toLong()
+                while (isActive && isSongPlaybackActive.value) {
+                    val timelineSnapshot = songTimeline.toList()
+                    if (timelineSnapshot.isEmpty()) break
 
-                        activeTokens.forEach { token: String ->
-                            val baseLabel = token.uppercase().trim()
-                            val targetIndex = activeKit.labels.indexOfFirst { it.contains(baseLabel) }
+                    val startBar = currentPlayingBarIndex.intValue.coerceIn(0, timelineSnapshot.lastIndex)
 
-                            if (targetIndex != -1) {
-                                val literalLabel = activeKit.labels[targetIndex]
-                                audioEngine.playSample(label = literalLabel, index = targetIndex, string = "DRUM")
+                    for (barIdx in startBar until timelineSnapshot.size) {
+                        if (!isActive || !isSongPlaybackActive.value) break
 
-                                launch(Dispatchers.Main) {
-                                    sequencerTriggeredPads[literalLabel] = true
-                                    launch { delay(70); sequencerTriggeredPads[literalLabel] = false }
+                        currentPlayingBarIndex.intValue = barIdx
+                        val currentBar = timelineSnapshot[barIdx]
+                        val pattern = drumTutorials.find { it.name == currentBar.patternName }
+
+                        if (pattern != null && pattern.steps.isNotEmpty()) {
+                            pattern.steps.forEachIndexed { stepIdx, activeTokens ->
+                                if (!isActive || !isSongPlaybackActive.value) return@launch
+
+                                currentStepIndex.intValue = stepIdx
+
+                                val currentBpm = liveTutorialBpm.intValue.coerceIn(40, 240)
+                                val stepDurationMs = ((60_000.0 / currentBpm) / 4.0).toLong()
+
+                                activeTokens.forEach { token ->
+                                    val baseLabel = token.uppercase().trim()
+                                    val targetIndex = activeKit.labels.indexOfFirst {
+                                        it.uppercase().contains(baseLabel)
+                                    }
+
+                                    if (targetIndex != -1) {
+                                        val literalLabel = activeKit.labels[targetIndex]
+                                        audioEngine.playSample(
+                                            label = literalLabel,
+                                            index = targetIndex,
+                                            string = "DRUM"
+                                        )
+
+                                        padFlashJobs[literalLabel]?.cancel()
+                                        sequencerTriggeredPads[literalLabel] = true
+                                        padFlashJobs[literalLabel] = launch {
+                                            delay(70L)
+                                            sequencerTriggeredPads[literalLabel] = false
+                                        }
+                                    }
                                 }
+
+                                // Drift-free KMP scheduling using Long ms
+                                val elapsedMs = nextStepMark.elapsedNow().inWholeMilliseconds
+                                val sleepMs = stepDurationMs - elapsedMs
+                                if (sleepMs > 0L) {
+                                    delay(sleepMs)
+                                }
+                                nextStepMark = timeSource.markNow()
                             }
+                        } else {
+                            // Safe fallback for unassigned or empty bars (1 full 4/4 bar)
+                            val currentBpm = liveTutorialBpm.intValue.coerceIn(40, 240)
+                            val barDurationMs = ((60_000.0 / currentBpm) * 4.0).toLong()
+
+                            val elapsedMs = nextStepMark.elapsedNow().inWholeMilliseconds
+                            val sleepMs = barDurationMs - elapsedMs
+                            if (sleepMs > 0L) {
+                                delay(sleepMs)
+                            }
+                            nextStepMark = timeSource.markNow()
                         }
-                        delay(stepDelayMs)
                     }
-                } else {
-                    // Fallback baseline safety delay if a slot is left unassigned or empty
-                    delay(((60.0 / liveTutorialBpm.intValue) * 1000 * 4).toLong())
+
+                    currentPlayingBarIndex.intValue = 0
                 }
+            } finally {
+                currentStepIndex.intValue = -1
             }
         }
     }
-}
 
 fun stopSongPlayback() {
     isSongPlaybackActive.value = false
@@ -1491,49 +1554,101 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
         val quarterBeats = measure.timeSignatureNumerator.toFloat() * (4f / measure.timeSignatureDenominator.coerceAtLeast(1).toFloat())
         return (60f / safeTempo) * quarterBeats
     }
+    /**
+     * Unified Logical Hand & Track Assignment:
+     * - If the score has explicit RH (voice 0) and LH (voice 1) tracks, respects voice 0/1 unless the pitch crosses
+     *   into the extreme opposite register (< 48 C3 is always LH, > 72 C5 is always RH).
+     * - Returns Pair(isRightHand, resolvedColor).
+     */
+    fun resolveNoteHandAndColor(
+        note: ScoreNote,
+        score: Score?,
+        rhColor: androidx.compose.ui.graphics.Color = rightHandColor.value,
+        lhColor: androidx.compose.ui.graphics.Color = leftHandColor.value
+    ): Pair<Boolean, androidx.compose.ui.graphics.Color> {
+        val trackInfo = score?.tracks?.firstOrNull { it.trackIndex == note.voice }
+        if (trackInfo?.channel == 9) {
+            return true to androidx.compose.ui.graphics.Color(0xFFFF5252) // Drum track crimson
+        }
+        if (note.voice >= 2) {
+            val paletteHex = com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX
+            val col = androidx.compose.ui.graphics.Color(paletteHex[note.voice % paletteHex.size])
+            return (note.midiNote >= 60) to col
+        }
+
+        val hasDifferentiatedVoices = score?.measures?.any { m ->
+            m.notes.any { it.voice == 0 } && m.notes.any { it.voice == 1 }
+        } == true
+
+        val isRh = when {
+            note.midiNote < 48 -> false
+            note.midiNote > 72 -> true
+            hasDifferentiatedVoices -> note.voice == 0
+            else -> note.midiNote >= 60
+        }
+        return isRh to (if (isRh) rhColor else lhColor)
+    }
+
+    /**
+     * Steps to the Next Measure (for MIDI/MusicXML scores) or Next Page (for PDF scores).
+     */
+    fun stepToNextMeasureOrPage() {
+        val score = currentScore.value ?: return
+        if (score.isPdfScore && score.measures.all { it.notes.isEmpty() }) {
+            currentPdfPageIndex.intValue = (currentPdfPageIndex.intValue + 1)
+                .coerceAtMost((totalPdfPageCount.intValue - 1).coerceAtLeast(0))
+        } else if (score.measures.isNotEmpty()) {
+            val nextM = (scorePlayheadMeasure.value + 1).coerceAtMost(score.measures.lastIndex)
+            seekToPosition(nextM, 0f)
+        }
+    }
+
+    /**
+     * Steps to the Previous Measure (for MIDI/MusicXML scores) or Previous Page (for PDF scores).
+     * If already past 20% of the current measure, rewinds to the start of the current measure first.
+     */
+    fun stepToPreviousMeasureOrPage() {
+        val score = currentScore.value ?: return
+        if (score.isPdfScore && score.measures.all { it.notes.isEmpty() }) {
+            currentPdfPageIndex.intValue = (currentPdfPageIndex.intValue - 1).coerceAtLeast(0)
+        } else if (score.measures.isNotEmpty()) {
+            val targetM = if (scorePlayheadOffset.value > 0.25f) {
+                scorePlayheadMeasure.value
+            } else {
+                (scorePlayheadMeasure.value - 1).coerceAtLeast(0)
+            }
+            seekToPosition(targetM, 0f)
+        }
+    }
 
     fun seekToPosition(measure: Int, offset: Float) {
         val score = currentScore.value ?: return
         val clampedMeasure = measure.coerceIn(0, (score.measures.size - 1).coerceAtLeast(0))
         val clampedOffset = offset.coerceIn(0f, 1f)
 
-        scorePlayheadMeasure.value = clampedMeasure
-        scorePlayheadOffset.value = clampedOffset
-        firedNotesMap.clear()
-        firedPedalsMap.clear()
-        lastTrackedMeasure = clampedMeasure
-
-        val targetMeasure = score.measures.getOrNull(clampedMeasure)
-        if (targetMeasure != null) {
-            val quarterBeats = targetMeasure.timeSignatureNumerator.toFloat() * (4f / targetMeasure.timeSignatureDenominator.coerceAtLeast(1).toFloat())
-            val seekBeat = clampedOffset * quarterBeats
-            targetMeasure.notes.forEachIndexed { idx, note ->
-                if (note.position < seekBeat - 0.05f) {
-                    firedNotesMap[idx] = true
-                }
-            }
-            targetMeasure.pedalEvents.forEachIndexed { pIdx, ev ->
-                if (ev.position < seekBeat - 0.05f) {
-                    firedPedalsMap[pIdx] = true
-                }
-            }
-        }
-
-        var accumulatedMs = 0L
+        var accumulatedSec = 0f
         for (i in 0 until clampedMeasure) {
             val m = score.measures.getOrNull(i) ?: break
-            accumulatedMs += (getMeasureDurationSeconds(m, score.tempo) * 1000f).toLong()
+            accumulatedSec += getMeasureDurationSeconds(m, score.tempo)
         }
+        val targetMeasure = score.measures.getOrNull(clampedMeasure)
         if (targetMeasure != null) {
-            val mDurationMs = (getMeasureDurationSeconds(targetMeasure, score.tempo) * 1000f).toLong()
-            accumulatedMs += (clampedOffset * mDurationMs).toLong()
+            accumulatedSec += clampedOffset * getMeasureDurationSeconds(targetMeasure, score.tempo)
         }
 
-        currentPosition.value = accumulatedMs
+        // Signal the active playback coroutine to jump immediately to `accumulatedSec` on its next 6ms tick!
+        pendingSeekScoreSec = accumulatedSec
+
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            scorePlayheadMeasure.value = clampedMeasure
+            scorePlayheadOffset.value = clampedOffset
+            currentPosition.value = (accumulatedSec * 1000f).toLong()
+            midiActiveNotes.clear()
+            activeNoteTrackColors.clear()
+            midiPlayingNote.value = null
+        }
+
         audioEngine.allNotesOff()
-        midiActiveNotes.clear()
-        midiPlayingNote.value = null
-        audioEngine.seekTo(accumulatedMs)
     }
 
     fun toggleScorePlayback() {
@@ -1553,6 +1668,7 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
 
         androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
             midiActiveNotes.clear()
+            activeNoteTrackColors.clear()
             midiPlayingNote.value = null
             firedNotesMap.clear()
             firedPedalsMap.clear()
@@ -1567,11 +1683,16 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
 
     fun resetScorePlayhead() {
         stopScorePlayback()
-        scorePlayheadMeasure.value = 0
-        scorePlayheadOffset.value = 0f
-        currentPosition.value = 0L
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            midiActiveNotes.clear()
+            activeNoteTrackColors.clear()
+            scorePlayheadMeasure.value = 0
+            scorePlayheadOffset.value = 0f
+            currentPosition.value = 0L
+        }
         audioEngine.seekTo(0L)
     }
+
     // --- USB MIDI INPUT GATE & INTERACTIVE PLAY-ALONG MODES ---
     val isUsbMidiInputEnabled = mutableStateOf(true)
     val isGuidedPlayAlongActive = mutableStateOf(false)
@@ -1693,15 +1814,43 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                 lastLoopMark = timeSource.markNow()
                 val wallDeltaSec = elapsedDuration.inWholeMicroseconds / 1_000_000f
 
-                // Freeze playhead advancement if waiting for user to press the flashing target keys on USB MIDI
+                // Declare this at the top of the loop scope so step 2, 3, and 4 can all access it
                 val isWaitingForUserStep = isGuidedPlayAlongActive.value &&
-                    guidedTargetNotes.isNotEmpty() &&
-                    (playAlongPracticeMode.value == "WAIT_FOR_NOTE" ||
-                        (playAlongPracticeMode.value == "MEASURE_FOLLOWUP" && isStudentFollowUpTurn))
+                        guidedTargetNotes.isNotEmpty() &&
+                        (playAlongPracticeMode.value == "WAIT_FOR_NOTE" ||
+                                (playAlongPracticeMode.value == "MEASURE_FOLLOWUP" && isStudentFollowUpTurn))
 
-                val speed = playbackSpeed.value.coerceIn(0.25f, 2.5f)
-                if (!isWaitingForUserStep) {
-                    scoreElapsedSec += wallDeltaSec * speed
+                // 0. Check if user scrubbed the timeline slider or tapped Prev/Next Measure while playing!
+                val requestedSeekSec = pendingSeekScoreSec
+                if (requestedSeekSec >= 0f) {
+                    pendingSeekScoreSec = -1f
+                    scoreElapsedSec = requestedSeekSec
+                    scheduledNoteReleases.forEach { (p, _) -> audioEngine.noteOff(p) }
+                    scheduledNoteReleases.clear()
+                    firedNotesMap.clear()
+                    firedPedalsMap.clear()
+
+                    var seekMIdx = 0
+                    while (seekMIdx < numMeasures - 1 &&
+                        scoreElapsedSec >= measureStartsSec[seekMIdx] + measureDurationsSec[seekMIdx]
+                    ) {
+                        seekMIdx++
+                    }
+                    lastTrackedMeasure = seekMIdx
+                    val mStart = measureStartsSec[seekMIdx]
+                    val mDur = measureDurationsSec[seekMIdx].coerceAtLeast(0.001f)
+                    val seekBeat = ((scoreElapsedSec - mStart) / mDur).coerceIn(0f, 1f) * measureQuarterBeats[seekMIdx]
+                    score.measures[seekMIdx].notes.forEachIndexed { idx, note ->
+                        if (note.position < seekBeat - 0.04f) firedNotesMap[idx] = true
+                    }
+                    score.measures[seekMIdx].pedalEvents.forEachIndexed { pIdx, ev ->
+                        if (ev.position < seekBeat - 0.04f) firedPedalsMap[pIdx] = true
+                    }
+                } else {
+                    val speed = playbackSpeed.value.coerceIn(0.25f, 2.5f)
+                    if (!isWaitingForUserStep) {
+                        scoreElapsedSec += wallDeltaSec * speed
+                    }
                 }
                 val totalElapsedMs = (scoreElapsedSec * 1000f).toLong()
 
@@ -1814,12 +1963,17 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                 val rhMuted = isRightHandMuted.value || isRightHandHidden.value
                 val lhMuted = isLeftHandMuted.value || isLeftHandHidden.value
                 val releaseIter = scheduledNoteReleases.entries.iterator()
+
                 while (releaseIter.hasNext()) {
                     val entry = releaseIter.next()
                     val pitch = entry.key
                     val (releaseTimeSec, voiceIdx) = entry.value
                     val trackStillEnabled = enabledTrackIndices[voiceIdx] ?: true
                     val handMutedNow = (voiceIdx == 0 && rhMuted) || (voiceIdx == 1 && lhMuted)
+                    val isWaitingForUserStep = isGuidedPlayAlongActive.value &&
+                            guidedTargetNotes.isNotEmpty() &&
+                            (playAlongPracticeMode.value == "WAIT_FOR_NOTE" ||
+                                    (playAlongPracticeMode.value == "MEASURE_FOLLOWUP" && isStudentFollowUpTurn))
 
                     // Do not auto-expire target notes while paused waiting for the user's USB MIDI input!
                     if ((!isWaitingForUserStep && scoreElapsedSec >= releaseTimeSec) || !trackStillEnabled || handMutedNow) {
@@ -1834,6 +1988,12 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                 val secPerBeat = 60f / score.tempo.coerceAtLeast(20f)
                 val newlyQueuedTargets = ArrayList<Int>(8)
 
+                // Inside Step 3 of startScorePlayback():
+                val masterVol = masterVolume.value.coerceIn(0f, 1f)
+                val rhColorSnap = rightHandColor.value
+                val lhColorSnap = leftHandColor.value
+                val activatedColors = HashMap<Int, androidx.compose.ui.graphics.Color>(8)
+
                 if (!isWaitingForUserStep) {
                     measure.notes.forEachIndexed { index, note ->
                         if (note.isRest || firedNotesMap[index] == true) return@forEachIndexed
@@ -1843,42 +2003,45 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                             val isTrackEnabled = enabledTrackIndices[note.voice] ?: true
                             if (!isTrackEnabled) return@forEachIndexed
 
+                            val trackVol = (trackVolumes[note.voice] ?: 1.0f).coerceIn(0f, 1f)
+                            val instVol = (instrumentVolumes[selectedInstrument.value] ?: 1.0f).coerceIn(0f, 1f)
+                            val effectiveMasterVol = (masterVol * trackVol * instVol).coerceIn(0f, 1f)
+
                             val isDrumNote = note.voice in drumTrackIndices
                             if (isDrumNote) {
-                                val drumLabel = mapGmDrumMidiToLabel(note.midiNote) ?: "SNARE"
-                                audioEngine.playSample(label = drumLabel, index = note.midiNote, string = "DRUM")
-                                drumLabelsToTrigger.add(drumLabel)
+                                if (effectiveMasterVol > 0.01f) {
+                                    val drumLabel = mapGmDrumMidiToLabel(note.midiNote) ?: "SNARE"
+                                    audioEngine.setTablaGain(effectiveMasterVol)
+                                    audioEngine.playSample(label = drumLabel, index = note.midiNote, string = "DRUM")
+                                    drumLabelsToTrigger.add(drumLabel)
+                                }
                                 return@forEachIndexed
                             }
 
-                            val isRightHand = when (note.voice) {
-                                0 -> true
-                                1 -> false
-                                else -> note.midiNote >= 60
-                            }
+                            val (isRightHand, noteTrackColor) = resolveNoteHandAndColor(note, score, rhColorSnap, lhColorSnap)
                             if ((isRightHand && rhMuted) || (!isRightHand && lhMuted)) return@forEachIndexed
 
                             val effectivePitch = (note.midiNote + transOffset).coerceIn(0, 127)
+                            activatedColors[effectivePitch] = noteTrackColor
 
                             val shouldWaitOnThisNote = isGuidedPlayAlongActive.value && (
-                                playAlongPracticeMode.value == "WAIT_FOR_NOTE" ||
-                                    (playAlongPracticeMode.value == "MEASURE_FOLLOWUP" && isStudentFollowUpTurn)
-                                )
-
+                                    playAlongPracticeMode.value == "WAIT_FOR_NOTE" ||
+                                            (playAlongPracticeMode.value == "MEASURE_FOLLOWUP" && isStudentFollowUpTurn)
+                                    )
                             if (shouldWaitOnThisNote) {
-                                // In Step-Wait or Student Follow-Up Turn: highlight/flash the target key on the visualizer
-                                // and wait for the user to strike it on their USB MIDI keyboard!
                                 newlyQueuedTargets.add(effectivePitch)
                                 pitchesToActivate.add(effectivePitch)
                                 val noteDurSec = (note.duration * secPerBeat * 0.94f).coerceAtLeast(0.15f)
                                 scheduledNoteReleases[effectivePitch] = (scoreElapsedSec + noteDurSec) to note.voice
                             } else {
-                                // Normal playback or Teacher Demo Turn: sound the note through the track's instrument!
                                 if (scheduledNoteReleases.containsKey(effectivePitch)) {
                                     audioEngine.noteOff(effectivePitch)
                                 }
-                                val softGainFactor = if (softPedalActive.value) 0.62f else 0.82f
-                                audioEngine.noteOn(effectivePitch, softGainFactor)
+                                val baseGain = if (softPedalActive.value) 0.62f else 0.85f
+                                val finalGain = (baseGain * effectiveMasterVol).coerceIn(0f, 1f)
+                                if (finalGain > 0.01f) {
+                                    audioEngine.noteOn(effectivePitch, finalGain)
+                                }
 
                                 val noteDurSec = (note.duration * secPerBeat * 0.94f).coerceAtLeast(0.06f)
                                 scheduledNoteReleases[effectivePitch] = (scoreElapsedSec + noteDurSec) to note.voice
@@ -1892,7 +2055,6 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                         }
                     }
                 }
-
                 // 4. Process Pedal Events
                 var pedalStateChanged: Pair<Int, Boolean>? = null
                 if (measure.pedalEvents.isNotEmpty() && !isWaitingForUserStep) {
@@ -1928,6 +2090,7 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
 
                             relCopy?.forEach { p ->
                                 midiActiveNotes.remove(p)
+                                activeNoteTrackColors.remove(p)
                                 playAlongEngine.liveKeyColors.remove(p)
                             }
                             if (targetCopy != null && isGuidedPlayAlongActive.value) {
@@ -1945,6 +2108,9 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                             actCopy?.forEach { p ->
                                 midiActiveNotes[p] = true
                                 midiPlayingNote.value = p
+                                activatedColors[p]?.let { col ->
+                                    activeNoteTrackColors[p] = col
+                                }
                             }
                             if (relCopy != null && actCopy == null && midiPlayingNote.value !in midiActiveNotes) {
                                 midiPlayingNote.value = midiActiveNotes.keys.firstOrNull()
@@ -1982,7 +2148,7 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
         // Trigger audio engine immediately for zero-latency hardware keyboard response
         if (isNoteOn && velocity > 0) {
             val softScale = if (softPedalActive.value) 0.72f else 1.0f
-            val gain = ((velocity / 127f) * softScale).coerceIn(0.08f, 1.0f)
+            val gain = ((velocity / 127f) * masterVolume.value.coerceIn(0f, 1f)).coerceIn(0.08f, 1.0f)
             if (channel == 10) {
                 val drumLabel = mapGmDrumMidiToLabel(note) ?: "SNARE"
                 audioEngine.playSample(label = drumLabel, index = note, string = "DRUM")
@@ -2355,7 +2521,194 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
             }
         )
     }
+    /**
+     * Imports a loaded Score's drum/percussion notes (or all notes) into 16-step DrumTutorial bars
+     * and populates [drumTutorials] + [songTimeline].
+     */
+    fun importCurrentScoreIntoDrumSequencer() {
+        val score = currentScore.value ?: return
+        val drumTracks = score.tracks.filter { it.channel == 9 }.map { it.trackIndex }.toSet()
+        val importedBars = mutableListOf<DrumTutorial>()
 
+        score.measures.take(32).forEachIndexed { mIdx, measure ->
+            val beatsInM = (measure.timeSignatureNumerator.toFloat() * (4f / measure.timeSignatureDenominator.coerceAtLeast(1).toFloat())).coerceAtLeast(1f)
+            val steps = List(16) { MutableList(0) { "" } }
+            val notesForDrums = measure.notes.filter { !it.isRest && (drumTracks.isEmpty() || it.voice in drumTracks) }
+
+            notesForDrums.forEach { n ->
+                val stepIdx = ((n.position / beatsInM) * 16f).toInt().coerceIn(0, 15)
+                val padLabel = when (n.midiNote) {
+                    35, 36 -> "0-KICK"
+                    38, 40, 37 -> "1-SNARE"
+                    42, 44 -> "2-HH_CLOSED"
+                    46 -> "3-HH_OPEN"
+                    48, 50 -> "4-TOM_HI"
+                    45, 47 -> "5-TOM_MID"
+                    41, 43 -> "6-FLOOR"
+                    49, 55, 57 -> "7-CRASH"
+                    51, 53, 59 -> "8-RIDE"
+                    39 -> "9-CLAP"
+                    56 -> "10-PERC"
+                    69, 70, 82 -> "11-SHAKER"
+                    else -> "${(n.midiNote % 12)}-SNARE"
+                }
+                if (padLabel !in steps[stepIdx]) {
+                    steps[stepIdx].add(padLabel)
+                }
+            }
+            if (steps.any { it.isNotEmpty() }) {
+                val barTut = DrumTutorial(
+                    name = "${score.title.take(14)} Bar${mIdx + 1}",
+                    steps = steps.map { it.toList() }
+                )
+                importedBars.add(barTut)
+            }
+        }
+
+        if (importedBars.isNotEmpty()) {
+            liveTutorialBpm.intValue = score.tempo.toInt().coerceIn(40, 240)
+            setMetronomeBpm(liveTutorialBpm.intValue)
+            importedBars.forEach { tut ->
+                if (drumTutorials.none { it.name == tut.name }) {
+                    drumTutorials.add(tut)
+                }
+            }
+            selectedTutorial.value = importedBars.first()
+            songTimeline.clear()
+            importedBars.forEach { tut ->
+                addBarToTimeline(tut.name, isFiller = false)
+            }
+            toastMessage.value = "Imported ${importedBars.size} drum bars from${score.title}!"
+        }
+    }
+
+    /**
+     * Exports the current [songTimeline] (or active [selectedTutorial]) as a Standard MIDI File (.mid)
+     * on General MIDI Channel 10 (Percussion) and triggers the platform share sheet.
+     */
+    fun exportDrumCompositionAsMidi() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val barsToExport = if (songTimeline.isNotEmpty()) {
+                songTimeline.mapNotNull { bar ->
+                    drumTutorials.find { it.name.equals(bar.patternName, ignoreCase = true) }
+                        ?: selectedTutorial.value
+                }
+            } else {
+                listOfNotNull(selectedTutorial.value)
+            }
+            if (barsToExport.isEmpty()) return@launch
+
+            val bpm = liveTutorialBpm.intValue.coerceIn(40, 240)
+            val ppq = 480
+            val ticksPer16th = ppq / 4 // 120 ticks
+            val out = java.io.ByteArrayOutputStream()
+
+            fun writeInt32(v: Int) {
+                out.write((v ushr 24) and 0xFF)
+                out.write((v ushr 16) and 0xFF)
+                out.write((v ushr 8) and 0xFF)
+                out.write(v and 0xFF)
+            }
+            fun writeInt16(v: Int) {
+                out.write((v ushr 8) and 0xFF)
+                out.write(v and 0xFF)
+            }
+            fun writeVlq(buf: java.io.ByteArrayOutputStream, value: Int) {
+                var v = value.coerceAtLeast(0)
+                var buffer = v and 0x7F
+                while ((v shr 7) > 0) {
+                    v = v shr 7
+                    buffer = (buffer shl 8) or ((v and 0x7F) or 0x80)
+                }
+                while (true) {
+                    buf.write(buffer and 0xFF)
+                    if ((buffer and 0x80) != 0) buffer = buffer ushr 8 else break
+                }
+            }
+
+            // Build Track Chunk
+            val trk = java.io.ByteArrayOutputStream()
+            // Tempo Meta Event (FF 51 03)
+            val microsPerBeat = 60_000_000 / bpm
+            writeVlq(trk, 0)
+            trk.write(byteArrayOf(0xFF.toByte(), 0x51, 0x03, ((microsPerBeat ushr 16) and 0xFF).toByte(), ((microsPerBeat ushr 8) and 0xFF).toByte(), (microsPerBeat and 0xFF).toByte()))
+
+            var lastEventTick = 0
+            barsToExport.forEachIndexed { barIdx, tut ->
+                for (stepIdx in 0 until 16) {
+                    val stepTick = (barIdx * 16 + stepIdx) * ticksPer16th
+                    val hits = tut.steps.getOrNull(stepIdx) ?: emptyList()
+                    val gmNotes = hits.map { raw ->
+                        val up = raw.uppercase()
+                        when {
+                            up.contains("KICK") -> 36
+                            up.contains("SNARE") -> 38
+                            up.contains("OPEN") || up.contains("OHAT") -> 46
+                            up.contains("CLOSED") || up.contains("HAT") || up.contains("HH") -> 42
+                            up.contains("CRASH") -> 49
+                            up.contains("RIDE") -> 51
+                            up.contains("TOM_HI") -> 50
+                            up.contains("TOM_MID") -> 47
+                            up.contains("FLOOR") || up.contains("TOM_LO") -> 43
+                            up.contains("CLAP") -> 39
+                            up.contains("PERC") || up.contains("COWBELL") -> 56
+                            up.contains("SHAKER") -> 70
+                            else -> 38
+                        }
+                    }.distinct()
+
+                    if (gmNotes.isNotEmpty()) {
+                        gmNotes.forEachIndexed { idx, midiNote ->
+                            val delta = if (idx == 0) (stepTick - lastEventTick).coerceAtLeast(0) else 0
+                            writeVlq(trk, delta)
+                            trk.write(0x99) // Note On Channel 10
+                            trk.write(midiNote and 0x7F)
+                            trk.write(105)
+                        }
+                        lastEventTick = stepTick
+                        val noteOffTick = stepTick + (ticksPer16th / 2)
+                        gmNotes.forEachIndexed { idx, midiNote ->
+                            val delta = if (idx == 0) (noteOffTick - lastEventTick).coerceAtLeast(1) else 0
+                            writeVlq(trk, delta)
+                            trk.write(0x89) // Note Off Channel 10
+                            trk.write(midiNote and 0x7F)
+                            trk.write(0)
+                        }
+                        lastEventTick = noteOffTick
+                    }
+                }
+            }
+
+            // End of Track (FF 2F 00)
+            writeVlq(trk, ticksPer16th)
+            trk.write(byteArrayOf(0xFF.toByte(), 0x2F, 0x00))
+            val trkBytes = trk.toByteArray()
+
+            // MThd Header
+            out.write("MThd".encodeToByteArray())
+            writeInt32(6)
+            writeInt16(0) // Format 0
+            writeInt16(1) // 1 Track
+            writeInt16(ppq)
+            out.write("MTrk".encodeToByteArray())
+            writeInt32(trkBytes.size)
+            out.write(trkBytes)
+
+            // Also load this exported drum groove into currentScore so the user can view/export it in Staff/Video too!
+            val parsedDrumScore = com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.parse(out.toByteArray(), "pEQ Drum Groove (${bpm} BPM)")
+            withContext(Dispatchers.Main) {
+                if (parsedDrumScore != null) {
+                    currentScore.value = parsedDrumScore
+                    syncScoreTracks(parsedDrumScore)
+                }
+                toastMessage.value = "Exported ${barsToExport.size}-Bar Drum Groove (${bpm} BPM) to Score & MIDI!"
+            }
+            com.creativeblisslabs.peqlearn.app.shareTextFile(
+                "pEQ_Drum_Groove_${bpm}BPM.txt",
+                parsedDrumScore?.dumpAsText() ?: "pEQ Drum Groove (${barsToExport.size} Bars @ $bpm BPM)"
+            )
+        }
+    }
     fun playPattern(pattern: GroovePattern) {
         val kit = drumKits.firstOrNull() ?: return
         viewModelScope.launch(Dispatchers.Default) {

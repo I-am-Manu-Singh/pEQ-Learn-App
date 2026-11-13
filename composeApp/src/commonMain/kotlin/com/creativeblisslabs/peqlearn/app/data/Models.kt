@@ -27,6 +27,7 @@ enum class ChordInstrumentType(
     GUITAR_7("🎸", "7-String Guitar", "GUITAR_ELECTRIC", "guitar/guitar-electric", null),
     UKULELE("🪕", "Ukulele", "UKULELE", "guitar/guitar-acoustic", null),
     HARMONIUM("🪗", "Harmonium", "HARMONIUM", "harmonium", null),
+    DRUM_KIT("🥁", "Drum Kit", "DRUM", "drums", null),
     TABLA("🪘", "Tabla", "TABLA", "tabla", null),
     SITAR("🪕", "Sitar", "SITAR", "sitar", null),
     PIANO_ACOUSTIC("🎹", "Acoustic Piano", "PIANO_ACOUSTIC", "piano/acoustic", null),

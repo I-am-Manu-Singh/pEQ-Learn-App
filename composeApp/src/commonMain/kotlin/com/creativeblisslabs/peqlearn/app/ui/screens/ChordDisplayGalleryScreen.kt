@@ -448,7 +448,7 @@ fun ChordDisplayGalleryScreen(
                                     InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> InstrumentSoundStyle.SEQUENTIAL
                                 }
                             },
-                            onPlayClick = {
+                            onClick = {
                                 if (isGalleryPlaying) {
                                     galleryJob?.cancel()
                                     pianoChord?.midi?.forEach { try { viewModel.audioEngine.noteOff(it) } catch (_: Exception) {} }
@@ -525,7 +525,7 @@ fun ChordDisplayGalleryScreen(
                                     InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> InstrumentSoundStyle.SEQUENTIAL
                                 }
                             },
-                            onPlayClick = { playPosition(currentPosition) }
+                            onClick = { playPosition(currentPosition) }
                         )
                     }
 

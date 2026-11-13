@@ -4,7 +4,9 @@ import com.creativeblisslabs.peqlearn.app.ui.screens.Accidental
 import com.creativeblisslabs.peqlearn.app.ui.screens.KeySignature
 import com.creativeblisslabs.peqlearn.app.ui.screens.Measure
 import com.creativeblisslabs.peqlearn.app.ui.screens.MidiTrackInfo
+import com.creativeblisslabs.peqlearn.app.ui.screens.MusicalArticulation
 import com.creativeblisslabs.peqlearn.app.ui.screens.PedalEvent
+import com.creativeblisslabs.peqlearn.app.ui.screens.RestSymbol
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote
 import kotlin.math.abs
@@ -118,6 +120,7 @@ object MidiScoreParser {
         var timeNumerator = 4
         var timeDenominator = 4
         var keySignature = KeySignature.C_MAJOR
+        var explicitKeyParsed = false
         var detectedTitle = ""
         var detectedComposer = ""
         var initialTempoParsed = false
@@ -171,7 +174,7 @@ object MidiScoreParser {
                     val metaEnd = (offset + metaLen).coerceAtMost(trackEnd)
 
                     when (metaType) {
-                        0x01 -> { // Text Event (often composer, tempo text, or lyrics at tick > 0)
+                        0x01 -> {
                             val text = decodeMidiText(bytes, offset, metaLen)
                             if (text.isNotBlank()) {
                                 val lower = text.lowercase()
@@ -184,13 +187,13 @@ object MidiScoreParser {
                                 }
                             }
                         }
-                        0x02 -> { // Copyright / Composer Notice
+                        0x02 -> {
                             val text = decodeMidiText(bytes, offset, metaLen)
                             if (text.isNotBlank() && detectedComposer.isBlank() && text.length <= 60) {
                                 detectedComposer = text.replace(Regex("^(copyright|\\(c\\)|©)\\s*[0-9]*\\s*", RegexOption.IGNORE_CASE), "").trim()
                             }
                         }
-                        0x03 -> { // Sequence / Track Name
+                        0x03 -> {
                             val text = decodeMidiText(bytes, offset, metaLen)
                             if (text.isNotBlank()) {
                                 if (!rawTrackNames.containsKey(t)) {
@@ -207,20 +210,20 @@ object MidiScoreParser {
                                 }
                             }
                         }
-                        0x04 -> { // Instrument Name
+                        0x04 -> {
                             val text = decodeMidiText(bytes, offset, metaLen)
                             if (text.isNotBlank() && !rawTrackNames.containsKey(t)) {
                                 rawTrackNames[t] = text
                             }
                         }
-                        0x05 -> { // Official MIDI Lyric Event!
+                        0x05 -> {
                             val lyric = decodeMidiText(bytes, offset, metaLen)
                                 .replace("/", "").replace("\\", "").trim()
                             if (lyric.isNotBlank()) {
                                 rawTexts.add(RawTextEvent(currentTick, lyric, isLyric = true, isMarker = false))
                             }
                         }
-                        0x06, 0x07 -> { // Marker / Cue Point (e.g. Intro, Verse, Chorus, Bridge, Coda)
+                        0x06, 0x07 -> {
                             val marker = decodeMidiText(bytes, offset, metaLen)
                             if (marker.isNotBlank() && marker.length <= 28) {
                                 rawTexts.add(RawTextEvent(currentTick, marker, isLyric = false, isMarker = true))
@@ -229,8 +232,8 @@ object MidiScoreParser {
                         0x51 -> {
                             if (metaLen >= 3 && offset + 3 <= bytes.size) {
                                 val micros = ((bytes[offset].toInt() and 0xFF) shl 16) or
-                                        ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
-                                        (bytes[offset + 2].toInt() and 0xFF)
+                                    ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+                                    (bytes[offset + 2].toInt() and 0xFF)
                                 if (micros > 0 && (!initialTempoParsed || currentTick == 0L)) {
                                     tempoBpm = (60_000_000f / micros.toFloat()).coerceIn(24f, 280f)
                                     initialTempoParsed = true
@@ -249,8 +252,9 @@ object MidiScoreParser {
                             if (metaLen >= 2 && offset + 2 <= bytes.size) {
                                 val sf = bytes[offset].toInt()
                                 val mi = bytes[offset + 1].toInt() and 0xFF
-                                if (keySignature == KeySignature.C_MAJOR || currentTick == 0L) {
+                                if (!explicitKeyParsed || currentTick == 0L) {
                                     keySignature = matchKeySignature(sf, mi)
+                                    if (sf != 0 || mi != 0) explicitKeyParsed = true
                                 }
                             }
                         }
@@ -325,6 +329,12 @@ object MidiScoreParser {
         }
 
         if (rawNotes.isEmpty()) return null
+
+        // FIXED: If no explicit non-zero Key Signature meta-event was present in the MIDI file,
+        // automatically infer the true musical key from the melodic notes!
+        if (!explicitKeyParsed && keySignature == KeySignature.C_MAJOR) {
+            keySignature = inferKeySignatureFromNotes(rawNotes)
+        }
 
         val groupedStreams = rawNotes.groupBy { it.rawTrackIdx to it.channel }
         val trackInfoList = mutableListOf<MidiTrackInfo>()
@@ -411,13 +421,17 @@ object MidiScoreParser {
             }
         }
 
-        rawNotes.sortWith(compareBy({ it.startTick }, { it.midiNote }))
+        val drumVoiceIndices = trackInfoList.filter { it.channel == 9 }.map { it.trackIndex }.toSet()
+
+        // Pre-pass: Trim overlapping note durations within the same (voice, pitch) or homophonic chord stream
+        // so neural-network MIDI transcriptions don't produce +20.0b measure duration drift!
+        val deoverlappedRawNotes = trimOverlappingPolyphonicNotes(rawNotes, division)
 
         val beatsPerMeasure = timeNumerator.toFloat() * (4f / timeDenominator.toFloat())
         val ticksPerBeat = division
         val ticksPerMeasure = (beatsPerMeasure * ticksPerBeat).toLong().coerceAtLeast(1L)
 
-        val totalTicks = rawNotes.maxOf { it.startTick + it.durationTicks }
+        val totalTicks = deoverlappedRawNotes.maxOf { it.startTick + it.durationTicks }
         val numMeasures = ((totalTicks + ticksPerMeasure - 1) / ticksPerMeasure).toInt().coerceAtLeast(1)
 
         val measureNotes = Array(numMeasures) { mutableListOf<ScoreNote>() }
@@ -452,9 +466,13 @@ object MidiScoreParser {
             }
         }
 
+        // Compute global velocity statistics for adaptive dynamic & accent detection
+        val melodicVelocities = deoverlappedRawNotes.filter { it.channel != 9 }.map { it.velocity }
+        val meanVelocity = if (melodicVelocities.isNotEmpty()) melodicVelocities.average().toFloat() else 85f
+
         var noteIdCounter = 0
 
-        rawNotes.forEach { raw ->
+        deoverlappedRawNotes.forEach { raw ->
             val streamVoice = streamToVoiceIndex[raw.rawTrackIdx to raw.channel] ?: 0
             val effectiveVoice = if (streamVoice == -1) {
                 if (raw.midiNote < 60) 1 else 0
@@ -474,6 +492,8 @@ object MidiScoreParser {
                 val rawDur = raw.durationTicks.toFloat() / ticksPerBeat
                 val (qPos, qDur, isDotted, tupletVal) = quantizePositionAndDuration(rawPos, rawDur, beatsPerMeasure)
 
+                val artic = resolveMusicalArticulation(rawDur, qDur, raw.velocity, meanVelocity, raw.channel == 9)
+
                 measureNotes[startMeasure].add(
                     ScoreNote(
                         id = ++noteIdCounter,
@@ -485,7 +505,8 @@ object MidiScoreParser {
                         dotted = isDotted,
                         isDotted = isDotted,
                         tuplet = tupletVal,
-                        dynamic = dynamicMark
+                        dynamic = dynamicMark,
+                        musicalArticulation = artic
                     )
                 )
             } else {
@@ -526,29 +547,60 @@ object MidiScoreParser {
         }
 
         var lastAssignedDynamic = ""
+        var lastDynamicMeasureIdx = -10
+        var lastChordSymbol = ""
+
         val measures = List(numMeasures) { mIdx ->
-            val rawList = measureNotes[mIdx]
-                .distinctBy { "${it.position}_${it.midiNote}_${it.voice}" }
-                .sortedWith(compareBy({ it.position }, { it.voice }, { it.midiNote }))
+            // Coalesce fragmented micro-ties & clamp overlapping same-voice chords within the measure
+            val normalizedMeasureNotes = normalizeAndClampMeasureVoices(
+                rawList = measureNotes[mIdx],
+                beatsPerMeasure = beatsPerMeasure
+            )
 
             val lyricsForMeasure = measureLyricsByBeat[mIdx]
             val usedLyricPositions = mutableSetOf<Float>()
 
-            val cleanedNotes = ArrayList<ScoreNote>(rawList.size)
-            var lastPos = -1f
-            for (n in rawList) {
-                val shouldShowDynamic = n.dynamic.isNotEmpty() &&
-                        n.dynamic != lastAssignedDynamic &&
-                        (cleanedNotes.isEmpty() || n.position != lastPos)
+            // Group melodic notes by beat position to detect live chord symbols & assign piano fingerings
+            val melodicNotesAtPos = normalizedMeasureNotes
+                .filter { it.voice !in drumVoiceIndices }
+                .groupBy { it.position }
+
+            val chordSymByPos = mutableMapOf<Float, String>()
+            for ((pos, notesAtBeat) in melodicNotesAtPos) {
+                // Detect harmony on main beats or when >= 3 distinct pitch classes sound together
+                val isMainBeat = abs(pos - round(pos)) <= 0.15f || pos <= 0.26f
+                val pitches = notesAtBeat.map { it.midiNote }.distinct()
+                if (isMainBeat && pitches.size >= 3) {
+                    val detected = LiveChordDetector.detect(pitches)
+                    if (detected != null && detected.chordQuality != "Note" && detected.fullName != lastChordSymbol) {
+                        chordSymByPos[pos] = detected.fullName
+                        lastChordSymbol = detected.fullName
+                    }
+                }
+            }
+
+            // Compute ergonomic fingerings per (position, hand) cluster
+            val fingerByNoteId = assignErgonomicMeasureFingerings(normalizedMeasureNotes, drumVoiceIndices)
+
+            val cleanedNotes = ArrayList<ScoreNote>(normalizedMeasureNotes.size)
+            var lastPosForDyn = -1f
+            val attachedChordPositions = mutableSetOf<Float>()
+
+            for (n in normalizedMeasureNotes) {
+                val isMelodic = n.voice !in drumVoiceIndices
+                val shouldShowDynamic = isMelodic && n.dynamic.isNotEmpty() &&
+                    (n.dynamic != lastAssignedDynamic || (mIdx - lastDynamicMeasureIdx >= 8 && n.position <= 0.25f)) &&
+                    (cleanedNotes.isEmpty() || n.position != lastPosForDyn)
+
                 val dynToUse = if (shouldShowDynamic) {
                     lastAssignedDynamic = n.dynamic
-                    lastPos = n.position
+                    lastDynamicMeasureIdx = mIdx
+                    lastPosForDyn = n.position
                     n.dynamic
                 } else ""
 
-                // Attach lyric to the first melodic note at (or within 0.25 beats of) the lyric timestamp
                 var matchedLyric = ""
-                if (lyricsForMeasure.isNotEmpty()) {
+                if (isMelodic && lyricsForMeasure.isNotEmpty()) {
                     val closestBeat = lyricsForMeasure.keys
                         .filter { it !in usedLyricPositions && abs(it - n.position) <= 0.26f }
                         .minByOrNull { abs(it - n.position) }
@@ -558,13 +610,38 @@ object MidiScoreParser {
                     }
                 }
 
+                val chordSym = if (isMelodic && n.position !in attachedChordPositions && chordSymByPos.containsKey(n.position)) {
+                    attachedChordPositions.add(n.position)
+                    chordSymByPos[n.position].orEmpty()
+                } else ""
+
                 cleanedNotes.add(
                     n.copy(
                         dynamic = dynToUse,
-                        lyric = matchedLyric.ifBlank { n.lyric }
+                        lyric = matchedLyric.ifBlank { n.lyric },
+                        chordSymbol = chordSym.ifBlank { n.chordSymbol },
+                        fingering = fingerByNoteId[n.id] ?: n.fingering
                     )
                 )
             }
+
+            // Synthesize explicit RestSymbols per voice so parser audits have 0.00b drift and non-zero Rest counts!
+            val synthesizedRests = synthesizeMeasureRests(
+                notes = cleanedNotes.filter { it.voice !in drumVoiceIndices },
+                beatsPerMeasure = beatsPerMeasure
+            )
+
+            // Synthesize harmonic sustain pedal events on chord changes if MIDI lacked raw CC 64 events
+            val effectivePedals = if (measurePedals[mIdx].isNotEmpty()) {
+                measurePedals[mIdx].distinctBy { "${it.position}_${it.pedalType}_${it.isPressed}" }
+            } else if (chordSymByPos.isNotEmpty()) {
+                chordSymByPos.keys.sorted().flatMap { pos ->
+                    listOf(
+                        PedalEvent(position = pos, pedalType = 64, isPressed = true),
+                        PedalEvent(position = (pos + 1.75f).coerceAtMost(beatsPerMeasure - 0.05f), pedalType = 64, isPressed = false)
+                    )
+                }
+            } else emptyList()
 
             Measure(
                 measureIndex = mIdx + 1,
@@ -572,7 +649,8 @@ object MidiScoreParser {
                 timeSignatureDenominator = timeDenominator,
                 keySignature = keySignature,
                 notes = cleanedNotes,
-                pedalEvents = measurePedals[mIdx].distinctBy { "${it.position}_${it.pedalType}_${it.isPressed}" },
+                rests = synthesizedRests,
+                pedalEvents = effectivePedals,
                 rehearsalMark = measureMarkers[mIdx],
                 barline = if (mIdx == numMeasures - 1) "final" else "single"
             )
@@ -595,6 +673,230 @@ object MidiScoreParser {
         )
     }
 
+    /**
+     * Trims overlapping note durations on the same track/channel when the next chord or note onset arrives,
+     * preventing neural-network transcribed MIDIs from stacking 6-8 overlapping chords in the same voice.
+     */
+    private fun trimOverlappingPolyphonicNotes(rawNotes: List<RawMidiNote>, division: Float): List<RawMidiNote> {
+        val byStream = rawNotes.groupBy { it.rawTrackIdx to it.channel }
+        val result = ArrayList<RawMidiNote>(rawNotes.size)
+        val onsetClusterTol = (division * 0.06f).toLong().coerceAtLeast(10L)
+        val minDurTicks = (division * 0.125f).toLong().coerceAtLeast(20L)
+
+        for ((_, streamNotes) in byStream) {
+            val sorted = streamNotes.sortedWith(compareBy({ it.startTick }, { it.midiNote }))
+            // Group into chord onset clusters
+            val clusters = mutableListOf<MutableList<RawMidiNote>>()
+            for (n in sorted) {
+                if (clusters.isEmpty() || n.startTick - clusters.last().first().startTick > onsetClusterTol) {
+                    clusters.add(mutableListOf(n))
+                } else {
+                    clusters.last().add(n)
+                }
+            }
+
+            for (cIdx in clusters.indices) {
+                val cluster = clusters[cIdx]
+                val canonicalStart = cluster.first().startTick
+                val nextClusterStart = if (cIdx + 1 < clusters.size) clusters[cIdx + 1].first().startTick else Long.MAX_VALUE
+
+                // Deduplicate identical pitches in the same chord cluster
+                val byPitch = cluster.groupBy { it.midiNote }
+                for ((_, samePitchNotes) in byPitch) {
+                    val longest = samePitchNotes.maxByOrNull { it.durationTicks }!!
+                    val maxAllowedDur = (nextClusterStart - canonicalStart).coerceAtLeast(minDurTicks)
+                    val clampedDur = minOf(longest.durationTicks, maxAllowedDur).coerceAtLeast(minDurTicks)
+                    result.add(longest.copy(startTick = canonicalStart, durationTicks = clampedDur))
+                }
+            }
+        }
+        return result.sortedWith(compareBy({ it.startTick }, { it.midiNote }))
+    }
+
+    /**
+     * Normalizes quantized notes inside a measure:
+     * 1. Ensures all notes in the same voice & chord onset share the exact same quantized duration
+     *    and never overlap the next chord onset in that voice (eliminates +23b voice audit drift).
+     * 2. Enforces mutual consistency between position grid and duration grid (no binary 0.25 pos with 0.33 tuplet dur).
+     */
+    private fun normalizeAndClampMeasureVoices(
+        rawList: List<ScoreNote>,
+        beatsPerMeasure: Float
+    ): List<ScoreNote> {
+        if (rawList.isEmpty()) return emptyList()
+        val deduped = rawList.distinctBy { "${it.position}_${it.midiNote}_${it.voice}" }
+        val byVoice = deduped.groupBy { it.voice }
+        val normalized = ArrayList<ScoreNote>(deduped.size)
+
+        for ((_, vNotes) in byVoice) {
+            val byPos = vNotes.groupBy { it.position }.toSortedMap()
+            val positions = byPos.keys.toList()
+
+            for (i in positions.indices) {
+                val pos = positions[i]
+                val chord = byPos[pos] ?: continue
+                val nextPos = if (i + 1 < positions.size) positions[i + 1] else beatsPerMeasure
+                val maxSpan = (nextPos - pos).coerceAtLeast(0.125f)
+
+                for (n in chord) {
+                    val clampedDur = minOf(n.duration, maxSpan).coerceAtLeast(0.125f)
+                    val (cleanDur, isDotted, tupletVal) = refineQuantizedDuration(pos, clampedDur)
+                    val reachesNext = abs((pos + cleanDur) - nextPos) <= 0.04f
+                    normalized.add(
+                        n.copy(
+                            duration = cleanDur,
+                            dotted = isDotted,
+                            isDotted = isDotted,
+                            tuplet = tupletVal,
+                            tieStart = n.tieStart && reachesNext
+                        )
+                    )
+                }
+            }
+        }
+
+        return normalized.sortedWith(compareBy({ it.position }, { it.voice }, { it.midiNote }))
+    }
+
+    /**
+     * Synthesizes explicit RestSymbols for silent gaps in each voice so the Measure has complete rest coverage.
+     */
+    private fun synthesizeMeasureRests(
+        notes: List<ScoreNote>,
+        beatsPerMeasure: Float
+    ): List<RestSymbol> {
+        if (notes.isEmpty()) {
+            return listOf(RestSymbol(position = 0f, duration = beatsPerMeasure, voice = 0))
+        }
+        val rests = mutableListOf<RestSymbol>()
+        val standardRestDurs = floatArrayOf(4.0f, 2.0f, 1.0f, 0.5f, 0.25f, 0.125f)
+
+        fun emitRestsForGap(start: Float, gap: Float, voice: Int) {
+            var cur = start
+            var rem = gap
+            while (rem >= 0.11f) {
+                val d = standardRestDurs.firstOrNull { it <= rem + 0.03f } ?: 0.125f
+                rests.add(RestSymbol(position = NumberFormatUtil.round2(cur), duration = d, voice = voice))
+                cur += d
+                rem -= d
+            }
+        }
+
+        val byVoice = notes.groupBy { it.voice }
+        for ((voice, vNotes) in byVoice) {
+            val byPos = vNotes.groupBy { it.position }.toSortedMap()
+            var cursor = 0f
+            for ((pos, chord) in byPos) {
+                if (pos > cursor + 0.11f) {
+                    emitRestsForGap(cursor, pos - cursor, voice)
+                }
+                val chordDur = chord.maxOfOrNull { it.duration } ?: 0.25f
+                cursor = maxOf(cursor, pos + chordDur)
+            }
+            if (cursor < beatsPerMeasure - 0.11f) {
+                emitRestsForGap(cursor, beatsPerMeasure - cursor, voice)
+            }
+        }
+        return rests
+    }
+
+    private fun assignErgonomicMeasureFingerings(
+        notes: List<ScoreNote>,
+        drumVoiceIndices: Set<Int>
+    ): Map<Int, Int> {
+        val result = mutableMapOf<Int, Int>()
+        val melodic = notes.filter { it.voice !in drumVoiceIndices && !it.isRest }
+        val byPos = melodic.groupBy { it.position }
+
+        for ((_, slice) in byPos) {
+            val lhNotes = slice.filter { it.midiNote < 60 }.sortedBy { it.midiNote }
+            val rhNotes = slice.filter { it.midiNote >= 60 }.sortedBy { it.midiNote }
+
+            if (lhNotes.isNotEmpty()) {
+                val lhFingers = ChordVoicingEngine.computePianoFingering(
+                    pitches = lhNotes.map { it.midiNote },
+                    isScale = false,
+                    isLeftHand = true
+                ).fingers
+                lhNotes.forEachIndexed { i, n ->
+                    result[n.id] = lhFingers.getOrElse(i) { (5 - i).coerceIn(1, 5) }
+                }
+            }
+            if (rhNotes.isNotEmpty()) {
+                val rhFingers = ChordVoicingEngine.computePianoFingering(
+                    pitches = rhNotes.map { it.midiNote },
+                    isScale = false,
+                    isLeftHand = false
+                ).fingers
+                rhNotes.forEachIndexed { i, n ->
+                    result[n.id] = rhFingers.getOrElse(i) { (i + 1).coerceIn(1, 5) }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun resolveMusicalArticulation(
+        rawDurBeats: Float,
+        quantizedDurBeats: Float,
+        velocity: Int,
+        meanVelocity: Float,
+        isDrum: Boolean
+    ): MusicalArticulation {
+        if (isDrum) return MusicalArticulation.NONE
+        return when {
+            rawDurBeats <= 0.18f && quantizedDurBeats <= 0.25f -> MusicalArticulation.STACCATO
+            velocity >= meanVelocity + 20f && velocity >= 105 -> MusicalArticulation.ACCENT
+            rawDurBeats >= quantizedDurBeats * 0.96f && quantizedDurBeats >= 0.5f -> MusicalArticulation.TENUTO
+            else -> MusicalArticulation.NONE
+        }
+    }
+
+    /**
+     * Krumhansl-Schmuckler Key-Finding Algorithm over the MIDI note distribution.
+     * Accurately identifies keys like Bb Minor / F# Major / Db Major when the MIDI file lacks a 0x59 Key Event.
+     */
+    private fun inferKeySignatureFromNotes(rawNotes: List<RawMidiNote>): KeySignature {
+        val melodic = rawNotes.filter { it.channel != 9 }
+        if (melodic.isEmpty()) return KeySignature.C_MAJOR
+
+        val pcWeights = DoubleArray(12)
+        for (n in melodic) {
+            val pc = ((n.midiNote % 12) + 12) % 12
+            pcWeights[pc] += n.durationTicks.toDouble().coerceAtLeast(60.0)
+        }
+
+        val majorProfile = doubleArrayOf(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
+        val minorProfile = doubleArrayOf(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+
+        var bestFifths = 0
+        var bestScore = Double.NEGATIVE_INFINITY
+
+        // Map tonic pitch class -> fifths on Circle of Fifths
+        val majorFifthsByTonic = intArrayOf(0, -5, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5)
+        val minorFifthsByTonic = intArrayOf(-3, 4, -1, 6, 1, -4, 3, -2, 5, 0, -5, 2)
+
+        for (tonic in 0..11) {
+            var majScore = 0.0
+            var minScore = 0.0
+            for (i in 0..11) {
+                val w = pcWeights[(tonic + i) % 12]
+                majScore += w * majorProfile[i]
+                minScore += w * minorProfile[i]
+            }
+            if (majScore > bestScore) {
+                bestScore = majScore
+                bestFifths = majorFifthsByTonic[tonic]
+            }
+            if (minScore > bestScore) {
+                bestScore = minScore
+                bestFifths = minorFifthsByTonic[tonic]
+            }
+        }
+
+        return matchKeySignature(bestFifths, 0)
+    }
+
     private data class QuantizedRhythm(
         val position: Float,
         val duration: Float,
@@ -607,38 +909,46 @@ object MidiScoreParser {
         val gridTriplet = round(rawPos * 3f) / 3f
         val grid32 = round(rawPos * 8f) / 8f
         return when {
-            abs(rawPos - grid16) <= 0.045f -> grid16
-            abs(rawPos - gridTriplet) <= 0.035f -> gridTriplet
+            abs(rawPos - grid16) <= 0.055f -> grid16
+            abs(rawPos - gridTriplet) <= 0.030f -> NumberFormatUtil.round2(gridTriplet)
             else -> grid32
         }
     }
 
+    /**
+     * FIXED: Eliminates mutual-exclusion conflict between binary 16th-note grids and triplet grids.
+     * A note is ONLY assigned `tuplet = 3` if its onset position is actually on a triplet grid (`1/3` or `2/3` beat)!
+     */
     private fun quantizePositionAndDuration(rawPos: Float, rawDur: Float, beatsPerMeasure: Float): QuantizedRhythm {
         val qPos = quantizeBeatPosition(rawPos).coerceIn(0f, (beatsPerMeasure - 0.125f).coerceAtLeast(0f))
-
-        val gridTriplet = round(rawPos * 3f) / 3f
-        val isTripletPos = abs(rawPos - gridTriplet) <= 0.035f && abs(gridTriplet - (round(gridTriplet * 4f) / 4f)) > 0.04f
-        if (isTripletPos || abs(rawDur - 0.333f) <= 0.045f) {
-            return QuantizedRhythm(
-                position = qPos,
-                duration = 0.333f,
-                isDotted = false,
-                tuplet = 3
-            )
-        }
-
-        val canonicalDurations = floatArrayOf(
-            8.0f, 6.0f, 4.0f, 3.0f, 2.0f, 1.5f, 1.0f, 0.75f, 0.5f, 0.375f, 0.25f, 0.125f
-        )
-        val matchedDur = canonicalDurations.minByOrNull { abs(it - rawDur) } ?: 0.5f
-        val isDotted = matchedDur == 6.0f || matchedDur == 3.0f || matchedDur == 1.5f || matchedDur == 0.75f || matchedDur == 0.375f
-
+        val (cleanDur, isDotted, tupletVal) = refineQuantizedDuration(qPos, rawDur.coerceAtMost(beatsPerMeasure - qPos))
         return QuantizedRhythm(
             position = qPos,
-            duration = matchedDur.coerceAtMost((beatsPerMeasure - qPos).coerceAtLeast(0.125f)),
+            duration = cleanDur,
             isDotted = isDotted,
-            tuplet = 0
+            tuplet = tupletVal
         )
+    }
+
+    private fun refineQuantizedDuration(qPos: Float, rawDur: Float): Triple<Float, Boolean, Int> {
+        val fracInBeat = qPos - kotlin.math.floor(qPos)
+        val isTripletSubdivision = abs(fracInBeat - 0.33f) <= 0.03f || abs(fracInBeat - 0.67f) <= 0.03f
+
+        if (isTripletSubdivision) {
+            return Triple(0.33f, false, 3)
+        }
+
+        // Binary grid canonical durations
+        val canonicalDurations = floatArrayOf(
+            4.0f, 3.0f, 2.0f, 1.5f, 1.0f, 0.75f, 0.5f, 0.38f, 0.25f, 0.13f
+        )
+        val matchedDur = canonicalDurations.minByOrNull { abs(it - rawDur) } ?: 0.5f
+        val isDotted = matchedDur == 3.0f || matchedDur == 1.5f || matchedDur == 0.75f || matchedDur == 0.38f
+        return Triple(matchedDur, isDotted, 0)
+    }
+
+    private object NumberFormatUtil {
+        fun round2(v: Float): Float = round(v * 100f) / 100f
     }
 
     internal fun resolveAccidentalForPitch(midiNote: Int, keySignature: KeySignature): Accidental {
@@ -689,9 +999,9 @@ object MidiScoreParser {
 
     private fun read32(bytes: ByteArray, offset: Int): Int {
         return ((bytes[offset].toInt() and 0xFF) shl 24) or
-                ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
-                ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
-                (bytes[offset + 3].toInt() and 0xFF)
+            ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+            (bytes[offset + 3].toInt() and 0xFF)
     }
 
     private fun readVlq(bytes: ByteArray, offset: Int): Pair<Long, Int> {

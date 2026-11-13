@@ -211,6 +211,12 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
                         pEQInstrumentDropdown(
                             selectedInstrument = selectedToolInstrument,
                             accentColor = Color(0xFFFF9E1B),
+                            instrumentVolumes = viewModel.instrumentVolumes,
+                            onInstrumentVolumeChange = { inst, vol ->
+                                if (viewModel.selectedInstrument.value == inst.title) {
+                                    viewModel.audioEngine.setVolume(vol * viewModel.masterVolume.value)
+                                }
+                            },
                             onInstrumentChange = { selectedToolInstrument = it },
                             modifier = Modifier.width(180.dp)
                         )
@@ -259,7 +265,7 @@ private fun TransposerTool(viewModel: AppViewModel, roots: List<String>) {
                             isPlaying = isPlayingChord,
                             accentColor = Color(0xFFFF9E1B),
                             label = if (isPlayingChord) "Stop" else "Play Chord",
-                            onPlayClick = {
+                            onClick = {
                                 if (isPlayingChord) {
                                     isPlayingChord = false
                                 } else {
@@ -422,6 +428,12 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
             pEQInstrumentDropdown(
                 selectedInstrument = selectedFinderInstrument,
                 accentColor = Color(0xFFCE93D8),
+                instrumentVolumes = viewModel.instrumentVolumes,
+                onInstrumentVolumeChange = { inst, vol ->
+                    if (viewModel.selectedInstrument.value == inst.title) {
+                        viewModel.audioEngine.setVolume(vol * viewModel.masterVolume.value)
+                    }
+                },
                 onInstrumentChange = { selectedFinderInstrument = it },
                 modifier = Modifier.width(180.dp)
             )
@@ -503,7 +515,7 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
                 isPlaying = isPlayingVoicing,
                 accentColor = Color(0xFFCE93D8),
                 label = if (isPlayingVoicing) "Stop" else "Strum Voicing",
-                onPlayClick = {
+                onClick = {
                     if (isPlayingVoicing) {
                         isPlayingVoicing = false
                     } else {

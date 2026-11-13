@@ -209,6 +209,12 @@ fun ReferenceStudioPanel(
             pEQInstrumentDropdown(
                 selectedInstrument = selectedInstrumentType,
                 accentColor = Color(0xFFFFB347),
+                instrumentVolumes = viewModel.instrumentVolumes,
+                onInstrumentVolumeChange = { inst, vol ->
+                    if (viewModel.selectedInstrument.value == inst.title) {
+                        viewModel.audioEngine.setVolume(vol * viewModel.masterVolume.value)
+                    }
+                },
                 onInstrumentChange = { newInst ->
                     selectedInstrumentType = newInst
                     try {

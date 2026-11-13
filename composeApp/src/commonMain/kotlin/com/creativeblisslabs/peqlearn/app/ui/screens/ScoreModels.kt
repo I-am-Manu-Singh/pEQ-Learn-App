@@ -644,3 +644,229 @@ fun getPitchOnlyFromMidi(midiNote: Int): String {
     val pc = ((midiNote % 12) + 12) % 12
     return GLOBAL_NOTE_NAMES[pc]
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Piano Human-Hands Overlay Diagnostic Dump
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Builds a full human-readable forensic audit of how the PianoHumanHandsOverlay
+ * partitions notes into Left Hand / Right Hand and assigns finger numbers.
+ *
+ * Reports:
+ *  • Per-measure: which MIDI notes were active, how they were split LH/RH,
+ *    which finger number each note received, any notes SKIPPED (outside 21..108,
+ *    drum channel, or clamped away), and span-ergonomics warnings.
+ *  • Summary: total notes, skipped notes, clamped notes, hand-crossing events,
+ *    and span violations.
+ */
+fun Score.dumpHandsOverlayAsText(): String {
+    val sb = StringBuilder()
+
+    fun midiName(m: Int) = getNoteNameFromMidi(m)
+    fun isBlack(m: Int) = isMidiNoteBlack(m)
+
+    // Replicate hand-split logic from PianoHumanHandsOverlay
+    val pianoTrackIndices: Set<Int> = run {
+        val nonDrum = tracks.filter { it.channel != 9 }
+        val explicit = nonDrum.filter { tr ->
+            val nl = tr.trackName.lowercase()
+            tr.program in 0..7 || nl.contains("piano") || nl.contains("keys") ||
+                    nl.contains("right hand") || nl.contains("left hand") ||
+                    nl.contains("treble") || nl.contains("bass")
+        }.map { it.trackIndex }.toSet()
+        if (explicit.isNotEmpty()) explicit else nonDrum.map { it.trackIndex }.toSet()
+    }
+
+    var totalNotes = 0
+    var totalSkipped = 0
+    var totalClamped = 0
+    var handCrossings = 0
+    var spanViolations = 0
+    var missingFingers = 0
+
+    // Finger assignment heuristic (mirrors solveHumanChordAndMelodyFingers count-based logic + black-key thumb fix)
+    fun assignFingers(sorted: List<Int>, isRH: Boolean): List<Pair<Int, Int>> { // List<midiNote, fingerNum>
+        val count = sorted.size.coerceAtMost(5)
+        val sub = sorted.take(count)
+        val span = if (sub.size > 1) sub.last() - sub.first() else 0
+        // Black-key thumb check: RH lowest note, LH highest note
+        val rhThumbBlack = isRH && sub.isNotEmpty() && isMidiNoteBlack(sub.first())
+        val lhThumbBlack = !isRH && sub.isNotEmpty() && isMidiNoteBlack(sub.last())
+        fun bumpRh(fs: List<Int>) = if (rhThumbBlack) fs.map { (it + 1).coerceIn(2, 5) } else fs
+        fun bumpLh(fs: List<Int>) = if (lhThumbBlack) fs.map { (it - 1).coerceIn(1, 4) } else fs
+
+        val fingers: List<Int> = if (isRH) {
+            when (count) {
+                1  -> listOf(if (isMidiNoteBlack(sub[0])) 3 else 3)
+                2  -> bumpRh(when { span <= 2 -> listOf(1,2); span <= 4 -> listOf(1,3); span <= 6 -> listOf(1,4); else -> listOf(1,5) })
+                3  -> bumpRh(when { span <= 4 -> listOf(1,2,3); else -> listOf(1,3,5) })
+                4  -> bumpRh(if ((sub.getOrElse(3){0} - sub.getOrElse(2){0}) <= 2) listOf(1,2,4,5) else listOf(1,2,3,5))
+                else -> bumpRh(listOf(1,2,3,4,5))
+            }
+        } else {
+            when (count) {
+                1  -> listOf(if (isMidiNoteBlack(sub[0])) 3 else 3)
+                2  -> bumpLh(when { span <= 2 -> listOf(2,1); span <= 4 -> listOf(3,1); span <= 6 -> listOf(4,1); else -> listOf(5,1) })
+                3  -> bumpLh(when { span <= 4 -> listOf(3,2,1); else -> listOf(5,3,1) })
+                4  -> bumpLh(listOf(5,3,2,1))
+                else -> bumpLh(listOf(5,4,3,2,1))
+            }
+        }
+        return sub.mapIndexed { i, midi -> midi to (fingers.getOrElse(i) { i + 1 }.coerceIn(1, 5)) }
+    }
+
+    sb.appendLine("═".repeat(108))
+    sb.appendLine("       pEQ-LEARN  ·  PIANO HUMAN HANDS OVERLAY — FORENSIC DIAGNOSTIC DUMP")
+    sb.appendLine("═".repeat(108))
+    sb.appendLine("Score  : $title  |  Tempo: ${tempo.toInt()} BPM  |  Measures: ${measures.size}")
+    sb.appendLine("Tracks : ${tracks.joinToString { "#${it.trackIndex} \"${it.trackName}\" ch${it.channel+1} prog${it.program}" }}")
+    sb.appendLine("Piano-only track indices used for hand split: $pianoTrackIndices")
+    sb.appendLine("═".repeat(108))
+    sb.appendLine()
+
+    // Heuristic hand boundary
+    var lastLhCenter = 48
+    var lastRhCenter = 69
+
+    measures.forEachIndexed { mIdx, measure ->
+        val mNum = if (measure.measureIndex > 0) measure.measureIndex else mIdx + 1
+        val beatsPerMeasure = (measure.timeSignatureNumerator.toFloat() *
+                (4f / measure.timeSignatureDenominator.coerceAtLeast(1).toFloat())).coerceAtLeast(1f)
+
+        sb.appendLine("▌ MEASURE #$mNum  [${measure.timeSignatureNumerator}/${measure.timeSignatureDenominator}  ${beatsPerMeasure} beats]")
+
+        val allNotes = measure.notes.filter { !it.isRest }
+        totalNotes += allNotes.size
+
+        // Group by beat position (round to 2 dp for grouping)
+        val byBeat = allNotes.groupBy { "%.2f".format(it.position) }
+
+        byBeat.entries.sortedBy { it.key }.forEach { (beatStr, notes) ->
+            val beat = beatStr.toFloatOrNull() ?: 0f
+
+            // Separate piano notes from non-piano / drums
+            val drumNotes   = notes.filter { it.voice in (tracks.filter { t -> t.channel == 9 }.map { t -> t.trackIndex }) }
+            val pianoNotes  = notes.filter { it.voice in pianoTrackIndices && !it.isRest }
+            val skippedNow  = notes.filter { it !in pianoNotes && it !in drumNotes }
+
+            // Range check
+            val outOfRange  = pianoNotes.filter { it.midiNote !in 21..108 }
+            val validNotes  = pianoNotes.filter { it.midiNote in 21..108 }
+
+            totalSkipped += skippedNow.size + outOfRange.size
+
+            if (notes.isEmpty()) return@forEach
+
+            sb.append("  Beat %.2f │ Raw notes: ".format(beat))
+            sb.appendLine(notes.joinToString { "${midiName(it.midiNote)}(v${it.voice})" })
+
+            if (skippedNow.isNotEmpty()) {
+                sb.appendLine("           ⚠ SKIPPED (non-piano track): ${skippedNow.joinToString { midiName(it.midiNote) }}")
+            }
+            if (outOfRange.isNotEmpty()) {
+                sb.appendLine("           ⚠ SKIPPED (out of 21-108):  ${outOfRange.joinToString { "${it.midiNote}" }}")
+            }
+            if (validNotes.isEmpty()) {
+                sb.appendLine("           ─ No valid piano notes at this beat.")
+                return@forEach
+            }
+
+            val sorted = validNotes.map { it.midiNote }.distinct().sorted()
+
+            // Split heuristic
+            val hysteresisSplit = ((lastLhCenter + lastRhCenter + 60) / 3).coerceIn(55, 64)
+            val rawLh = sorted.filter { it < hysteresisSplit }.toMutableList()
+            val rawRh = sorted.filter { it >= hysteresisSplit }.toMutableList()
+
+            // Crossing guard
+            if (rawLh.isNotEmpty() && rawRh.isNotEmpty() && rawLh.last() >= rawRh.first()) {
+                handCrossings++
+                sb.appendLine("           ⚠ HAND CROSSING DETECTED — re-splitting by largest gap")
+                val all = (rawLh + rawRh).distinct().sorted()
+                rawLh.clear(); rawRh.clear()
+                var bestIdx = all.indexOfFirst { it >= 60 }.takeIf { it > 0 } ?: (all.size / 2).coerceAtLeast(1)
+                var maxGap = -1
+                for (i in 1 until all.size) {
+                    val g = all[i] - all[i - 1]
+                    if (all[i - 1] in 48..67 && g > maxGap) { maxGap = g; bestIdx = i }
+                }
+                for (i in all.indices) if (i < bestIdx) rawLh.add(all[i]) else rawRh.add(all[i])
+            }
+
+            // Ergonomic balance rebalance (mirrors overlay logic)
+            while (rawRh.size > 1 && (rawRh.size > 5 || rawRh.last() - rawRh.first() > 12) && rawLh.size < 5) {
+                val lo = rawRh.first()
+                if ((if (rawLh.isEmpty()) 0 else lo - rawLh.first()) <= 12 && lo <= 65) {
+                    rawRh.removeAt(0); rawLh.add(lo); rawLh.sort()
+                } else break
+            }
+            while (rawLh.size > 1 && (rawLh.size > 5 || rawLh.last() - rawLh.first() > 12) && rawRh.size < 5) {
+                val hi = rawLh.last()
+                if ((if (rawRh.isEmpty()) 0 else rawRh.last() - hi) <= 12 && hi >= 55) {
+                    rawLh.removeAt(rawLh.lastIndex); rawRh.add(0, hi); rawRh.sort()
+                } else break
+            }
+
+            // Clamp to 5 notes max per hand
+            val lhFinal = rawLh.distinct().sorted().take(5)
+            val rhFinal = rawRh.distinct().sorted().take(5)
+            totalClamped += (rawLh.size - lhFinal.size) + (rawRh.size - rhFinal.size)
+
+            // Span checks
+            val lhSpan = if (lhFinal.size > 1) lhFinal.last() - lhFinal.first() else 0
+            val rhSpan = if (rhFinal.size > 1) rhFinal.last() - rhFinal.first() else 0
+            if (lhSpan > 12) { spanViolations++; sb.appendLine("           ⚠ LH SPAN VIOLATION: ${lhSpan} semitones > 12 (exceeds one octave hand reach!)") }
+            if (rhSpan > 12) { spanViolations++; sb.appendLine("           ⚠ RH SPAN VIOLATION: ${rhSpan} semitones > 12 (exceeds one octave hand reach!)") }
+
+            // Assign fingers
+            val lhFingers = assignFingers(lhFinal, false)
+            val rhFingers = assignFingers(rhFinal, true)
+
+            // Check for black-key thumb (bad fingering)
+            val lhThumbBlack = lhFingers.any { (m, f) -> f == 1 && isBlack(m) }
+            val rhThumbBlack = rhFingers.any { (m, f) -> f == 1 && isBlack(m) }
+            if (lhThumbBlack) sb.appendLine("           ⚠ LH THUMB on BLACK KEY — ergonomically awkward")
+            if (rhThumbBlack) sb.appendLine("           ⚠ RH THUMB on BLACK KEY — ergonomically awkward")
+
+            // Missing-finger check
+            val allMidi = lhFinal + rhFinal
+            val assignedMidi = lhFingers.map { it.first } + rhFingers.map { it.first }
+            val unassigned = allMidi.filter { it !in assignedMidi }
+            if (unassigned.isNotEmpty()) {
+                missingFingers += unassigned.size
+                sb.appendLine("           ⚠ NO FINGER ASSIGNED for: ${unassigned.joinToString { midiName(it) }}")
+            }
+
+            // Update center heuristic
+            if (lhFinal.isNotEmpty()) lastLhCenter = ((lhFinal.first() + lhFinal.last()) / 2).coerceIn(21, 108)
+            if (rhFinal.isNotEmpty()) lastRhCenter = ((rhFinal.first() + rhFinal.last()) / 2).coerceIn(21, 108)
+
+            // Print result table
+            sb.appendLine("           LH [${lhFinal.size} notes, span=$lhSpan semi] : " +
+                    lhFingers.joinToString(" | ") { (m, f) -> "${midiName(m)}→F$f${if(isBlack(m)) "♯" else ""}" })
+            sb.appendLine("           RH [${rhFinal.size} notes, span=$rhSpan semi] : " +
+                    rhFingers.joinToString(" | ") { (m, f) -> "${midiName(m)}→F$f${if(isBlack(m)) "♯" else ""}" })
+        }
+
+        sb.appendLine()
+    }
+
+    sb.appendLine("═".repeat(108))
+    sb.appendLine("SUMMARY")
+    sb.appendLine("═".repeat(108))
+    sb.appendLine("  Total notes in score        : $totalNotes")
+    sb.appendLine("  Notes skipped (drum/non-piano or out of range) : $totalSkipped")
+    sb.appendLine("  Notes clamped (> 5 per hand, rebalanced)       : $totalClamped")
+    sb.appendLine("  Hand-crossing events detected                   : $handCrossings")
+    sb.appendLine("  Span violations (> 12 semitones per hand)       : $spanViolations")
+    sb.appendLine("  Notes with no finger assigned                   : $missingFingers")
+    if (totalSkipped > 0)
+        sb.appendLine("  ⚠ $totalSkipped notes were NOT shown on the overlay — check track/channel assignments above!")
+    if (handCrossings > 0)
+        sb.appendLine("  ⚠ $handCrossings hand-crossing events auto-fixed — may indicate ambiguous track voice data")
+    if (spanViolations > 0)
+        sb.appendLine("  ⚠ $spanViolations span violations — overlay may visually stretch beyond realistic hand reach")
+    sb.appendLine("═".repeat(108))
+    return sb.toString()
+}

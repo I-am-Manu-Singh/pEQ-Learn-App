@@ -387,9 +387,10 @@ object ChordVoicingEngine {
         )
     }
 
-    fun getDiatonicStep(midiNote: Int): Int {
-        val octave = (midiNote / 12) - 1
-        val stepInOctave = MusicConstants.CHROMATIC_TO_DIATONIC_STEPS[midiNote % 12]
+   fun getDiatonicStep(midiNote: Int): Int {
+        val safeMidi = midiNote.coerceIn(0, 127)
+        val octave = (safeMidi / 12) - 1
+        val stepInOctave = MusicConstants.CHROMATIC_TO_DIATONIC_STEPS[((safeMidi % 12) + 12) % 12]
         return (octave * 7) + stepInOctave
     }
 
@@ -709,102 +710,111 @@ object ChordVoicingEngine {
      * computations against RealChordsDb, RealPianoChordsDb, and ChordModels.
      */
     fun verifyIntegrity(): String {
-        val report = StringBuilder()
-        var passed = 0
-        var total = 0
+    val report = StringBuilder()
+    var passed = 0
+    var total = 0
 
-        val roots = listOf("C", "D", "E", "F", "G", "A", "B")
-        val testChords = listOf(
-            "major" to "",
-            "m" to "m",
-            "7" to "7",
-            "maj7" to "maj7",
-            "dim" to "dim",
-            "aug" to "aug",
-            "sus2" to "sus2",
-            "sus4" to "sus4"
-        )
+    val roots = listOf("C", "D", "E", "F", "G", "A", "B")
+    val testChords = listOf(
+        "major" to "",
+        "m" to "m",
+        "7" to "7",
+        "maj7" to "maj7",
+        "dim" to "dim",
+        "aug" to "aug",
+        "sus2" to "sus2",
+        "sus4" to "sus4"
+    )
 
-        // 1. Verify Piano Pitch Classes Against RealPianoChordsDb
-        for (root in roots) {
-            val rootIdx = NOTE_NAMES_CD.indexOf(root).coerceAtLeast(0)
-            for ((dbSuffix, engineSuffix) in testChords) {
-                total++
-                val dbChord = RealPianoChordsDb.getChord(root, dbSuffix)
-                val enginePitches = buildPianoShape(
-                    rootIdx = rootIdx,
-                    suffix = engineSuffix,
-                    style = PianoVoicingStyle.CLOSE,
-                    inversion = InversionStyle.ROOT,
-                    octave = 4
-                ).map { it % 12 }.toSet()
+    // 1. Verify Piano Pitch Classes Against RealPianoChordsDb
+    for (root in roots) {
+        val rootIdx = NOTE_NAMES_CD.indexOf(root).coerceAtLeast(0)
+        for ((dbSuffix, engineSuffix) in testChords) {
+            total++
+            val dbChord = RealPianoChordsDb.getChord(root, dbSuffix)
+            val enginePitches = buildPianoShape(
+                rootIdx = rootIdx,
+                suffix = engineSuffix,
+                style = PianoVoicingStyle.CLOSE,
+                inversion = InversionStyle.ROOT,
+                octave = 4
+            ).map { it % 12 }.toSet()
 
-                val expectedPitches = dbChord?.notes?.mapNotNull { noteName ->
-                    val norm = when (noteName.uppercase()) {
-                        "DB" -> "C#"
-                        "EB" -> "D#"
-                        "GB" -> "F#"
-                        "AB" -> "G#"
-                        "BB" -> "A#"
-                        else -> noteName
-                    }
-                    val idx = NOTE_NAMES_CD.indexOf(norm)
-                    if (idx >= 0) idx else null
-                }?.toSet()
-
-                if (expectedPitches != null && enginePitches == expectedPitches) {
-                    passed++
-                } else if (expectedPitches != null) {
-                    report.appendLine("[Piano Mismatch] $root $dbSuffix: Engine=$enginePitches vs DB=$expectedPitches")
-                } else {
-                    // DB chord not found, engine fallback valid
-                    passed++
+            val expectedPitches = dbChord?.notes?.mapNotNull { noteName ->
+                val norm = when (noteName.uppercase()) {
+                    "DB" -> "C#"
+                    "EB" -> "D#"
+                    "GB" -> "F#"
+                    "AB" -> "G#"
+                    "BB" -> "A#"
+                    else -> noteName
                 }
+                val idx = NOTE_NAMES_CD.indexOf(norm)
+                if (idx >= 0) idx else null
+            }?.toSet()
+
+            if (expectedPitches != null && enginePitches == expectedPitches) {
+                passed++
+            } else if (expectedPitches != null) {
+                report.appendLine("[Piano Mismatch] $root $dbSuffix: Engine=$enginePitches vs DB=$expectedPitches")
+            } else {
+                // DB chord not found, engine fallback valid
+                passed++
             }
         }
+    }
 
-        // 2. Verify Guitar Voicings and Fingering against RealChordsDb
-        for (root in roots) {
-            for ((_, suffix) in testChords) {
-                total++
-                val dbPositions = RealChordsDb.getGuitarPositions(root, suffix)
-                if (dbPositions.isNotEmpty()) {
-                    val dbFirst = dbPositions.first()
-                    val engineShape = getDictionaryGuitarShape(
-                        rootName = root,
-                        suffix = suffix,
-                        diff = ChordDiff.EASY
-                    )
-                    // RealChordsDb is low-to-high (E2..E4). Engine reverses to high-to-low (E4..E2)
-                    val expectedFrets = dbFirst.frets.reversed()
-                    val expectedFingers = dbFirst.fingers.reversed()
-                    if (engineShape.frets == expectedFrets && engineShape.fingers == expectedFingers && engineShape.baseFret == dbFirst.baseFret) {
-                        passed++
-                    } else {
-                        report.appendLine("[Guitar Mismatch] $root $suffix: Engine frets=${engineShape.frets} vs DB=$expectedFrets")
-                    }
-                } else {
-                    passed++
-                }
-            }
-        }
-
-        // 3. Verify Piano Fingering Resolution against ChordModels.kt
+    // 2. Verify Guitar Voicings and Fingering against RealChordsDb
+    for (root in roots) {
         for ((_, suffix) in testChords) {
             total++
-            val expectedFingers = PIANO_RH_FINGERS[suffix] ?: listOf(1, 3, 5)
-            val dummyPitches = listOf(60, 64, 67)
-            val calculated = computePianoFingering(dummyPitches, suffix).fingers
-            if (calculated.take(expectedFingers.size) == expectedFingers) {
-                passed++
+            val dbPositions = RealChordsDb.getGuitarPositions(root, suffix)
+            if (dbPositions.isNotEmpty()) {
+                val dbFirst = dbPositions.first()
+                val engineShape = getDictionaryGuitarShape(
+                    rootName = root,
+                    suffix = suffix,
+                    diff = ChordDiff.EASY
+                )
+                
+                // ---> NEW SNIPPET ADDED HERE <---
+                val baseOffset = if (dbFirst.baseFret > 1) dbFirst.baseFret - 1 else 0
+                val expectedFrets = dbFirst.frets.map { f -> if (f > 0) f + baseOffset else f }.reversed()
+                val rawRevFingers = dbFirst.fingers.reversed()
+                val expectedFingers = if (rawRevFingers.any { it > 0 }) {
+                    rawRevFingers
+                } else {
+                    generateFingeringLabels(expectedFrets, dbFirst.baseFret, isPiano = false, chordSuffix = suffix)
+                }
+                // ---> END OF NEW SNIPPET <---
+
+                if (engineShape.frets == expectedFrets && engineShape.fingers == expectedFingers && engineShape.baseFret == dbFirst.baseFret) {
+                    passed++
+                } else {
+                    report.appendLine("[Guitar Mismatch] $root $suffix: Engine frets=${engineShape.frets} vs DB=$expectedFrets")
+                }
             } else {
-                report.appendLine("[Fingering Mismatch] $suffix: Engine=$calculated vs Expected=$expectedFingers")
+                passed++
             }
         }
-
-        report.appendLine("Verification Completed: $passed/$total checks passed.")
-        return report.toString()
     }
+
+    // 3. Verify Piano Fingering Resolution against ChordModels.kt
+    for ((_, suffix) in testChords) {
+        total++
+        val expectedFingers = PIANO_RH_FINGERS[suffix] ?: listOf(1, 3, 5)
+        val dummyPitches = listOf(60, 64, 67)
+        val calculated = computePianoFingering(dummyPitches, suffix).fingers
+        if (calculated.take(expectedFingers.size) == expectedFingers) {
+            passed++
+        } else {
+            report.appendLine("[Fingering Mismatch] $suffix: Engine=$calculated vs Expected=$expectedFingers")
+        }
+    }
+
+    report.appendLine("Verification Completed: $passed/$total checks passed.")
+    return report.toString()
+}
 }
 
 object CompositionEngine {

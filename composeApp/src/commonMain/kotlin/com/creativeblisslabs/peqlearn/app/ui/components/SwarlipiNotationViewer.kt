@@ -179,43 +179,43 @@ fun SwarlipiNotationViewer(
                     }
 
                     // Play Bandish Button
-                    InstrumentPlayButton(
-                        accentColor = accentColor,
-                        label = if (isPlayingBandish) "Stop" else "Sing Bandish",
-                        isPlaying = isPlayingBandish,
-                        onPlayClick = {
-                            if (isPlayingBandish) {
-                                isPlayingBandish = false
-                                currentMatraIndex = -1
-                            } else {
-                                isPlayingBandish = true
-                                val engine = getAudioEngine()
-                                engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
-                                scope.launch {
-                                    try {
-                                        val allMatras = activeMovement.avartans.flatMap { it.vibhags.flatMap { v -> v.matras } }
-                                        allMatras.forEachIndexed { idx, matra ->
-                                            if (!isPlayingBandish) return@forEachIndexed
-                                            currentMatraIndex = idx
-                                            val note = matra.notes.firstOrNull()
-                                            if (note != null && !note.isAvagraha) {
-                                                val midi = swarToMidi(note.swar, note.saptak, note.variation, 60)
-                                                engine.noteOn(midi, 0.85f)
-                                                onPlayNote?.invoke(midi)
-                                                delay(280L)
-                                                engine.noteOff(midi)
-                                            } else {
-                                                delay(280L)
-                                            }
-                                        }
-                                    } finally {
-                                        currentMatraIndex = -1
-                                        isPlayingBandish = false
-                                    }
-                                }
-                            }
+InstrumentPlayButton(
+    accentColor = accentColor,
+    label = if (isPlayingBandish) "Stop" else "Sing Bandish",
+    isPlaying = isPlayingBandish,
+    onClick = {
+        if (isPlayingBandish) {
+            isPlayingBandish = false
+            currentMatraIndex = -1
+        } else {
+            isPlayingBandish = true
+            val engine = getAudioEngine()
+            engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
+            scope.launch {
+                try {
+                    val allMatras = activeMovement.avartans.flatMap { it.vibhags.flatMap { v -> v.matras } }
+                    allMatras.forEachIndexed { idx, matra ->
+                        if (!isPlayingBandish) return@forEachIndexed
+                        currentMatraIndex = idx
+                        val note = matra.notes.firstOrNull()
+                        if (note != null && !note.isAvagraha) {
+                            val midi = swarToMidi(note.swar, note.saptak, note.variation, 60)
+                            engine.noteOn(midi, 0.85f)
+                            onPlayNote?.invoke(midi)
+                            delay(280L)
+                            engine.noteOff(midi)
+                        } else {
+                            delay(280L)
                         }
-                    )
+                    }
+                } finally {
+                    currentMatraIndex = -1
+                    isPlayingBandish = false
+                }
+            }
+        }
+    }
+)
                 }
             }
 

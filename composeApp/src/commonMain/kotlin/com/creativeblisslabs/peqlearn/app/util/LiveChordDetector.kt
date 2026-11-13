@@ -47,14 +47,16 @@ object LiveChordDetector {
 
     fun detect(notes: Collection<Int>): DetectedChord? {
         if (notes.isEmpty()) return null
-        val distinctPitches = notes.map { it % 12 }.distinct()
-        if (distinctPitches.isEmpty()) return null
-
-        val lowestMidi = notes.minOrNull() ?: return null
-        val bassPitch = lowestMidi % 12
+        val sortedNotes = notes.sorted()
+        val lowestMidi = sortedNotes.first()
+        val bassPitch = ((lowestMidi % 12) + 12) % 12
         val bassNoteName = NOTE_NAMES[bassPitch]
 
-        // Single note / Unison
+        // Order candidate roots so the lowest bass pitch is always tested FIRST!
+        val distinctPitches = listOf(bassPitch) + sortedNotes.map { ((it % 12) + 12) % 12 }.distinct().filter { it != bassPitch }
+        if (distinctPitches.isEmpty()) return null
+
+        // Single note / Unison / Octave
         if (distinctPitches.size == 1) {
             return DetectedChord(
                 rootName = bassNoteName,
@@ -65,7 +67,7 @@ object LiveChordDetector {
             )
         }
 
-        // Test each pitch in the set as the prospective root note
+        // Pass 1: Exact template match (prioritizing root == bassPitch first, then inverted roots)
         for (rootPitch in distinctPitches) {
             val relativeIntervals = distinctPitches.map { (it - rootPitch + 12) % 12 }.toSet()
 
@@ -96,7 +98,7 @@ object LiveChordDetector {
             }
         }
 
-        // Partial match / subset match if 3+ notes sounding
+        // Pass 2: Subset / 5th-omitted match if 3+ notes sounding
         if (distinctPitches.size >= 3) {
             for (rootPitch in distinctPitches) {
                 val relativeIntervals = distinctPitches.map { (it - rootPitch + 12) % 12 }.toSet()
@@ -118,7 +120,7 @@ object LiveChordDetector {
             }
         }
 
-        // Fallback for dyad / intervals
+        // Pass 3: Fallback for dyad / harmonic intervals
         if (distinctPitches.size == 2) {
             val semitoneDist = (distinctPitches[1] - distinctPitches[0] + 12) % 12
             val intervalName = when (semitoneDist) {

@@ -82,6 +82,7 @@ fun ThreeDDrumVisualizer(
     viewModel: AppViewModel,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     currentKitLabels: List<String> = emptyList(),
+    showOnlyPartLabel: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var yaw by remember { mutableFloatStateOf(16f) }
@@ -1184,99 +1185,17 @@ fun ThreeDDrumVisualizer(
                 // --- D. SUBTLE ON-INSTRUMENT CALLOUT LABEL WHEN ACTIVE ---
                 if (isActive) {
                     labelPaint.textSize = (8.5f * topCenter.scale).coerceIn(16f, 28f)
-                    val activeText = if (part.label == "HH_CLOSED" && isHhOpenTriggered) "OPEN HAT" else part.displayName
+                    val activeText = if (showOnlyPartLabel) {
+                        if (part.label == "HH_CLOSED" && isHhOpenTriggered) "HH_OPEN" else part.label
+                    } else {
+                        if (part.label == "HH_CLOSED" && isHhOpenTriggered) "OPEN HAT" else part.displayName
+                    }
                     drawContext.canvas.nativeCanvas.drawText(
                         activeText,
                         topCenter.x,
                         topCenter.y - ovalHeight - 6f * topCenter.scale,
                         labelPaint
                     )
-                }
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // 6. COMPACT STUDIO HUD OVERLAY (CAMERA READOUT, ACTIVE HIT & RESET)
-        // ═══════════════════════════════════════════════════════════════════
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Left Badge: Active Drum Hit Readout or Drag Hint
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = Color.Black.copy(alpha = 0.52f),
-                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.16f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(if (anyPadTriggered) Color(0xFF4ADE80) else primaryColor)
-                    )
-                    Text(
-                        text = lastHitDisplay ?: "3D STUDIO KIT • DRAG TO ORBIT",
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // Right Controls: Zoom & Camera Reset
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.Black.copy(alpha = 0.52f),
-                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.16f)),
-                    modifier = Modifier.clickable {
-                        zoom = when {
-                            zoom < 0.95f -> 1.0f
-                            zoom < 1.12f -> 1.18f
-                            else -> 0.86f
-                        }
-                    }
-                ) {
-                    Text(
-                        text = "${(zoom * 100).toInt()}%",
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
-
-                if (abs(yaw - 16f) > 1f || abs(pitch - 32f) > 1f || abs(zoom - 1f) > 0.05f) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = primaryColor.copy(alpha = 0.28f),
-                        border = BorderStroke(0.8.dp, primaryColor.copy(alpha = 0.65f)),
-                        modifier = Modifier.clickable {
-                            yaw = 16f
-                            pitch = 32f
-                            zoom = 1f
-                        }
-                    ) {
-                        Text(
-                            text = "RESET VIEW",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                        )
-                    }
                 }
             }
         }

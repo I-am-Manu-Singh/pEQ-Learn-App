@@ -201,7 +201,7 @@ fun ProgressionsStudioPanel(
                     isPlaying = isPlaying,
                     accentColor = Color(0xFFAB47BC),
                     label = if (isPlaying) "Stop" else "Play Progression",
-                    onPlayClick = { playProgression() }
+                    onClick = { playProgression() }
                 )
             }
         }
@@ -222,6 +222,12 @@ fun ProgressionsStudioPanel(
             pEQInstrumentDropdown(
                 selectedInstrument = selectedInstrumentType,
                 accentColor = Color(0xFFAB47BC),
+                instrumentVolumes = viewModel.instrumentVolumes,
+                onInstrumentVolumeChange = { inst, vol ->
+                    if (viewModel.selectedInstrument.value == inst.title) {
+                        viewModel.audioEngine.setVolume(vol * viewModel.masterVolume.value)
+                    }
+                },
                 onInstrumentChange = {
                     selectedInstrumentType = it
                     try {

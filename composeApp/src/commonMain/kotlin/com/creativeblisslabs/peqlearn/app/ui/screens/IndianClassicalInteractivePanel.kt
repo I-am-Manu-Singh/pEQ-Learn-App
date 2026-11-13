@@ -132,6 +132,12 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                 pEQInstrumentDropdown(
                     selectedInstrument = selectedInstrument,
                     accentColor = accentColor,
+                    instrumentVolumes = viewModel.instrumentVolumes,
+                    onInstrumentVolumeChange = { inst, vol ->
+                        if (viewModel.selectedInstrument.value == inst.title) {
+                            viewModel.audioEngine.setVolume(vol * viewModel.masterVolume.value)
+                        }
+                    },
                     onInstrumentChange = {
                         selectedInstrument = it
                         try {
@@ -337,6 +343,8 @@ internal fun IndianClassicalInteractivePanel(viewModel: AppViewModel) {
                             modifier = Modifier.fillMaxWidth().height(88.dp).clip(RoundedCornerShape(8.dp))
                         )
                     }
+                    ChordInstrumentType.DRUM_KIT -> { }
+
                 }
             }
 

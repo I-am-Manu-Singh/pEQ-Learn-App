@@ -144,6 +144,8 @@ fun pEQDynamicInstrumentVisualizer(
                         modifier = Modifier.fillMaxWidth().height(95.dp).clip(RoundedCornerShape(8.dp))
                     )
                 }
+                ChordInstrumentType.DRUM_KIT -> { }
+
             }
         }
     }

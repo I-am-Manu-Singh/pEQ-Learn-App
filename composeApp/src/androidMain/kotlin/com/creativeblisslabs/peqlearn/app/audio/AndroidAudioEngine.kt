@@ -250,6 +250,7 @@ class AndroidAudioEngine(
     ).coerceAtLeast(2048)
 
     private val VOICE_COUNT = 12
+    @RequiresApi(Build.VERSION_CODES.O)
     private val voicePool = Array(VOICE_COUNT) {
         AudioTrack.Builder()
             .setAudioAttributes(
@@ -303,6 +304,8 @@ class AndroidAudioEngine(
 
     // --- STEP 2: CLASS LEVEL STATE, CACHES, AND MEDIA3/DSP FIELDS ---
     private var bassHandle = 0
+    @Volatile
+    private var masterEngineVolume = 1.0f
     private val stemHandles = ConcurrentHashMap<String, Int>()
     private var currentTrackUrl: String? = null
     private var currentInstrument = "PIANO"
@@ -1072,6 +1075,7 @@ class AndroidAudioEngine(
         )
     }
 
+    @OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun getRegistry(): Map<String, String> {
         return mapOf(
             "HARDWARE_OUTPUT" to (player?.audioSessionId?.toString() ?: "OFF"),
@@ -1393,9 +1397,12 @@ class AndroidAudioEngine(
     }
 
     override fun setVolume(volume: Float) {
-        AudioEngineProvider.setVolume(volume)
+        masterEngineVolume = volume.coerceIn(0f, 1f)
+        AudioEngineProvider.setVolume(masterEngineVolume)
+        voiceMutex.withLock {
+            voicePool.forEach { runCatching { it.setVolume(masterEngineVolume) } }
+        }
     }
-
     override fun setTanpuraGain(gain: Float) {
         tanpuraGain = gain
         tanpuraTrack1?.setVolume(gain)
@@ -2019,7 +2026,8 @@ class AndroidAudioEngine(
         }
     }
     override fun noteOn(midiNote: Int, velocity: Float) {
-        val clampedVel = velocity.coerceIn(0.05f, 1.0f)
+        if (masterEngineVolume <= 0.005f) return
+        val clampedVel = (velocity * masterEngineVolume).coerceIn(0.02f, 1.0f)
 
         // 1. Check if the active instrument has audio samples loaded in SoundPool
         val sampleInstrumentKey = when {
