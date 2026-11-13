@@ -700,121 +700,26 @@ Row(
                                 else -> listOf(64, 59, 55, 50, 45, 40)
                             }
 
-                            val (fretMinBox, fretMaxBox) = when (selectedFretRange) {
-                                "Open (0-3)" -> 0 to 3
-                                "Low (1-5)" -> 1 to 5
-                                "Mid (5-9)" -> 5 to 9
-                                "High (9-14)" -> 9 to 14
-                                "12+ Frets" -> 12 to 24
-                                else -> {
-                                    if (isGuitarFamily || is7String) {
-                                        // Standard open/first position box for natural ergonomics
-                                        0 to 4
-                                    } else 0 to 15
-                                }
-                            }
-
-                            // 2. Build Authentic, Strictly Monotonic Audition Steps (stringIndex, absoluteFret, midiPitch)
-                            val auditionSteps: List<Triple<Int, Int, Int>> = if (mode == 0) {
-                                // CHORD MODE: Strum from lowest-pitched string to highest-pitched string
-                                if (isUkulele) {
-                                    val baseOff = if (ukuShape.baseFret > 1 && ukuShape.frets.filter { it > 0 }.maxOrNull() ?: 0 <= 4) ukuShape.baseFret - 1 else 0
-                                    listOf(3, 2, 1, 0).mapNotNull { s ->
-                                        val f = ukuShape.frets.getOrNull(s) ?: -1
-                                        if (f >= 0) {
-                                            val absFret = if (f > 0) f + baseOff else 0
-                                            Triple(s, absFret, openStrings[s] + absFret)
-                                        } else null
-                                    }
-                                } else if (isGuitarFamily) {
-                                    listOf(5, 4, 3, 2, 1, 0).mapNotNull { s ->
-                                        val f = guitarShape.frets.getOrNull(s) ?: -1
-                                        if (f >= 0) Triple(s, f, openStrings[s] + f) else null
-                                    }
-                                } else if (is7String) {
-                                    listOf(6, 5, 4, 3, 2, 1, 0).mapNotNull { s ->
-                                        val f = guitarShape.frets.getOrNull(s) ?: -1
-                                        if (f >= 0) Triple(s, f, openStrings[s] + f) else null
-                                    }
-                                } else {
-                                    pianoPitches.map { Triple(0, 0, it) }
-                                }
-                            } else {
-                                // SCALE MODE: Strictly Ascending Monotonic CAGED Box Run (no duplicate pitches at string crossings!)
-                                val scaleSemis = scalePair.second.map { (rootIdx + it) % 12 }.toSet()
-                                if (isGuitarFamily || is7String) {
-                                    val boxMin = if (fretMinBox == 0 && fretMaxBox > 5) selectedStartFret.coerceAtLeast(0) else fretMinBox
-                                    val boxMax = (boxMin + 4).coerceAtMost(24)
-                                    val stringScanOrder = if (is7String) listOf(6, 5, 4, 3, 2, 1, 0) else listOf(5, 4, 3, 2, 1, 0)
-                                    val candidates = mutableListOf<Triple<Int, Int, Int>>()
-                                    for (s in stringScanOrder) {
-                                        for (f in boxMin..boxMax) {
-                                            val m = openStrings[s] + f
-                                            if ((m % 12) in scaleSemis) {
-                                                candidates.add(Triple(s, f, m))
-                                            }
-                                        }
-                                    }
-                                    // Deduplicate by MIDI pitch and sort strictly ascending from the lowest Root note in the box!
-                                    val uniqueSorted = candidates
-                                        .groupBy { it.third }
-                                        .map { (_, group) ->
-                                            // Prefer fretted notes inside the hand box over open strings if higher up the neck
-                                            group.minByOrNull { abs(it.second - (boxMin + 2)) } ?: group.first()
-                                        }
-                                        .sortedBy { it.third }
-
-                                    val firstRootPos = uniqueSorted.indexOfFirst { (it.third % 12) == (rootIdx % 12) }
-                                    val fromRoot = if (firstRootPos >= 0 && (uniqueSorted.size - firstRootPos) >= 6) {
-                                        uniqueSorted.subList(firstRootPos, uniqueSorted.size)
-                                    } else uniqueSorted
-                                    val maxNotes = if (selectedOctaveSpan == 1) 15 else 8
-                                    fromRoot.take(maxNotes)
-                                } else if (isUkulele) {
-                                    // On Ukulele (re-entrant G4), sort by pitch across C4(2), E4(1), A4(0) for a true ascending scale
-                                    val candidates = mutableListOf<Triple<Int, Int, Int>>()
-                                    for (s in listOf(2, 1, 0)) {
-                                        for (f in 0..7) {
-                                            val m = openStrings[s] + f
-                                            if ((m % 12) in scaleSemis) {
-                                                candidates.add(Triple(s, f, m))
-                                            }
-                                        }
-                                    }
-                                    val uniqueSorted = candidates.distinctBy { it.third }.sortedBy { it.third }
-                                    val firstRootPos = uniqueSorted.indexOfFirst { (it.third % 12) == (rootIdx % 12) }
-                                    val fromRoot = if (firstRootPos >= 0) uniqueSorted.subList(firstRootPos, uniqueSorted.size) else uniqueSorted
-                                    fromRoot.take(8)
-                                } else {
-                                    pianoPitches.map { Triple(0, 0, it) }
-                                }
-                            }
-val directionalSteps: List<Triple<Int, Int, Int>> = if (mode == 1 && auditionSteps.isNotEmpty()) {
-                                when (scaleDirectionMode) {
-                                    "Descending" -> auditionSteps.reversed()
-                                    "Up & Down" -> if (auditionSteps.size > 2) {
-                                        auditionSteps + auditionSteps.subList(0, auditionSteps.size - 1).reversed()
-                                    } else auditionSteps
-                                    else -> auditionSteps
-                                }
-                            } else {
-                                auditionSteps
-                            }
-
-                            val sequenceSteps: List<Triple<Int, Int, Int>> = if (directionalSteps.isNotEmpty()) {
-                                when (activeSoundStyle) {
-                                    InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> {
-                                        if (directionalSteps.size > 2 && scaleDirectionMode != "Up & Down") {
-                                            directionalSteps + directionalSteps.subList(0, directionalSteps.size - 1).reversed()
-                                        } else if (directionalSteps.size == 2) {
-                                            listOf(directionalSteps[0], directionalSteps[1], directionalSteps[0])
-                                        } else directionalSteps
-                                    }
-                                    else -> directionalSteps
-                                }
-                            } else {
-                                pianoPitches.map { Triple(0, 0, it) }
-                            }
+                            // 2. Delegate generation of authentic, strictly monotonic audition steps to ChordVoicingEngine
+                            val sequenceSteps = ChordVoicingEngine.generateAuditionSteps(
+                                mode = mode,
+                                openStrings = openStrings,
+                                isFretboardInstrument = isFretboardInstrument,
+                                isGuitarFamily = isGuitarFamily,
+                                isUkulele = isUkulele,
+                                is7String = is7String,
+                                guitarShapeFrets = guitarShape.frets,
+                                ukuShapeFrets = ukuShape.frets,
+                                ukuBaseFret = ukuShape.baseFret,
+                                rootIdx = rootIdx,
+                                scaleFormulaSemis = scalePair.second,
+                                selectedFretRange = selectedFretRange,
+                                selectedStartFret = selectedStartFret,
+                                selectedOctaveSpan = selectedOctaveSpan,
+                                pianoPitches = pianoPitches,
+                                scaleDirectionMode = scaleDirectionMode,
+                                isRoundTrip = (activeSoundStyle == InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP)
+                            )
 
                             val soundSequencePitches: List<Int> = sequenceSteps.map { it.third }
 
@@ -847,11 +752,27 @@ val directionalSteps: List<Triple<Int, Int, Int>> = if (mode == 1 && auditionSte
                                 capo = capoFret,
                                 measures = builtMeasures
                             )
-                            viewModel.currentScore.value = BiomechanicalPerformersEngine.enrichScoreWithViterbiFretboardAndFingers(
+                            val enrichedScore = BiomechanicalPerformersEngine.enrichScoreWithViterbiFretboardAndFingers(
                                 score = rawMockScore,
                                 tuningMidiHighToLow = openStrings,
                                 capo = capoFret
                             )
+                            viewModel.currentScore.value = enrichedScore
+
+                            // Extract the exact Viterbi-solved string and fret placements from enrichedScore notes
+                            val enrichedMelodicNotes = enrichedScore.measures.flatMap { it.notes }.filter { !it.isRest }
+                            val viterbiSteps: List<Triple<Int, Int, Int>> = if (isFretboardInstrument && enrichedMelodicNotes.isNotEmpty()) {
+                                sequenceSteps.mapIndexed { idx, rawStep ->
+                                    val solvedNote = enrichedMelodicNotes.getOrNull(idx)
+                                    if (solvedNote != null && solvedNote.string != null && solvedNote.fret != null) {
+                                        Triple(solvedNote.string!!, solvedNote.fret!!, solvedNote.midiNote)
+                                    } else {
+                                        rawStep
+                                    }
+                                }
+                            } else {
+                                sequenceSteps
+                            }
 
                             playbackJob = scope.launch {
                                 try {
@@ -878,7 +799,7 @@ val directionalSteps: List<Triple<Int, Int, Int>> = if (mode == 1 && auditionSte
                                         }
                                     } else {
                                         val stepDelay = if (activeSoundStyle == InstrumentSoundStyle.SEQUENTIAL) 280L else 330L
-                                        sequenceSteps.forEachIndexed { globalIdx, step ->
+                                        viterbiSteps.forEachIndexed { globalIdx, step ->
                                             val midiPitch = step.third
                                             val mIdx = globalIdx / notesPerBar
                                             val idxInBar = globalIdx % notesPerBar
@@ -936,62 +857,21 @@ val directionalSteps: List<Triple<Int, Int, Int>> = if (mode == 1 && auditionSte
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         // Strings top to bottom: e4 (64), B3 (59), G3 (55), D3 (50), A2 (45), E2 (40)
                         val openGuitarStrings = listOf(64, 59, 55, 50, 45, 40)
-                        val (fretMin, fretMax) = remember(selectedFretRange) {
-                            when (selectedFretRange) {
-                                "Open (0-3)" -> 0 to 3
-                                "Low (1-5)" -> 1 to 5
-                                "Mid (5-9)" -> 5 to 9
-                                "High (9-14)" -> 9 to 14
-                                "12+ Frets" -> 12 to 24
-                                else -> 0 to 24
-                            }
+                        val (fretMin, fretMax) = remember(selectedFretRange, selectedStartFret, mode) {
+                            ChordVoicingEngine.resolveFretRangeBounds(selectedFretRange, selectedStartFret, mode == 1)
                         }
 
                         val highlightedGuitarCoordinate = remember(currentPlayingCoordinate, activeMidiToken, guitarShape.frets, isArpeggioRunning, mode, fretMin, fretMax) {
                             if (isArpeggioRunning) {
-                                if (currentPlayingCoordinate != null) {
-                                    currentPlayingCoordinate
-                                } else if (activeMidiToken != null) {
-                                    var targetMatch: Pair<Int, Int>? = null
-                                    if (mode == 0) {
-                                        for (s in guitarShape.frets.indices) {
-                                            val fret = guitarShape.frets[s]
-                                            if (fret != -1 && (openGuitarStrings[s] + fret) == activeMidiToken) {
-                                                targetMatch = s to fret
-                                                break
-                                            }
-                                        }
-                                        // Fallback to pitch class if octave didn't match directly
-                                        if (targetMatch == null) {
-                                            for (s in guitarShape.frets.indices) {
-                                                val fret = guitarShape.frets[s]
-                                                if (fret != -1 && (openGuitarStrings[s] + fret) % 12 == activeMidiToken % 12) {
-                                                    targetMatch = s to fret
-                                                    break
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        // Scale mode: find matching fret within the selected fret constraints
-                                        for (s in openGuitarStrings.indices) {
-                                            val fret = (activeMidiToken % 12 - openGuitarStrings[s] % 12 + 12) % 12
-                                            if (fret in fretMin..fretMax) {
-                                                targetMatch = s to fret
-                                                break
-                                            }
-                                        }
-                                        if (targetMatch == null) {
-                                            for (s in openGuitarStrings.indices) {
-                                                val fret = (activeMidiToken % 12 - openGuitarStrings[s] % 12 + 12) % 12
-                                                if (fret in 0..15) {
-                                                    targetMatch = s to fret
-                                                    break
-                                                }
-                                            }
-                                        }
-                                    }
-                                    targetMatch
-                                } else null
+                                ChordVoicingEngine.resolveActiveFretCoordinate(
+                                    activeMidiToken = activeMidiToken,
+                                    currentPlayingCoordinate = currentPlayingCoordinate,
+                                    openStrings = openGuitarStrings,
+                                    chordFrets = guitarShape.frets,
+                                    fretMin = fretMin,
+                                    fretMax = fretMax,
+                                    isScaleMode = (mode == 1)
+                                )
                             } else null
                         }
 
@@ -1079,33 +959,19 @@ val directionalSteps: List<Triple<Int, Int, Int>> = if (mode == 1 && auditionSte
                     }
                     ChordInstrumentType.UKULELE -> {
                         val activeMidiToken = viewModel.midiPlayingNote.value
+                        // Strings top to bottom: A4 (69), E4 (64), C4 (60), G4 (67)
+                        val openUkuStrings = listOf(69, 64, 60, 67)
                         val highlightedUkuCoordinate = remember(currentPlayingCoordinate, activeMidiToken, ukuShape.frets, isArpeggioRunning, mode) {
                             if (isArpeggioRunning) {
-                                if (currentPlayingCoordinate != null) {
-                                    currentPlayingCoordinate
-                                } else if (activeMidiToken != null) {
-                                    // Strings top to bottom: A4 (69), E4 (64), C4 (60), G4 (67)
-                                    val openUkuStrings = listOf(69, 64, 60, 67)
-                                    var targetMatch: Pair<Int, Int>? = null
-                                    if (mode == 0) {
-                                        for (s in ukuShape.frets.indices) {
-                                            val fret = ukuShape.frets[s]
-                                            if (fret != -1 && (openUkuStrings[s] + fret) % 12 == activeMidiToken % 12) {
-                                                targetMatch = s to fret
-                                                break
-                                            }
-                                        }
-                                    } else {
-                                        for (s in openUkuStrings.indices) {
-                                            val fret = (activeMidiToken % 12 - openUkuStrings[s] % 12 + 12) % 12
-                                            if (fret in 0..5) {
-                                                targetMatch = s to fret
-                                                break
-                                            }
-                                        }
-                                    }
-                                    targetMatch
-                                } else null
+                                ChordVoicingEngine.resolveActiveFretCoordinate(
+                                    activeMidiToken = activeMidiToken,
+                                    currentPlayingCoordinate = currentPlayingCoordinate,
+                                    openStrings = openUkuStrings,
+                                    chordFrets = ukuShape.frets,
+                                    fretMin = 0,
+                                    fretMax = 7,
+                                    isScaleMode = (mode == 1)
+                                )
                             } else null
                         }
 
@@ -1147,32 +1013,21 @@ val directionalSteps: List<Triple<Int, Int, Int>> = if (mode == 1 && auditionSte
                         val activeMidiToken = viewModel.midiPlayingNote.value
                         // 7-string standard tuning: e4(64), B3(59), G3(55), D3(50), A2(45), E2(40), B1(35)
                         val open7Strings = listOf(64, 59, 55, 50, 45, 40, 35)
-                        val (fretMin, fretMax) = remember(selectedFretRange) {
-                            when (selectedFretRange) {
-                                "Open (0-3)" -> 0 to 3
-                                "Low (1-5)" -> 1 to 5
-                                "Mid (5-9)" -> 5 to 9
-                                "High (9-14)" -> 9 to 14
-                                "12+ Frets" -> 12 to 24
-                                else -> 0 to 24
-                            }
+                        val (fretMin, fretMax) = remember(selectedFretRange, selectedStartFret, mode) {
+                            ChordVoicingEngine.resolveFretRangeBounds(selectedFretRange, selectedStartFret, mode == 1)
                         }
 
                         val highlighted7Coordinate = remember(currentPlayingCoordinate, activeMidiToken, isArpeggioRunning, mode, fretMin, fretMax) {
                             if (isArpeggioRunning) {
-                                if (currentPlayingCoordinate != null) {
-                                    currentPlayingCoordinate
-                                } else if (activeMidiToken != null) {
-                                    var targetMatch: Pair<Int, Int>? = null
-                                    for (s in open7Strings.indices) {
-                                        val fret = (activeMidiToken % 12 - open7Strings[s] % 12 + 12) % 12
-                                        if (fret in fretMin..fretMax) {
-                                            targetMatch = s to fret
-                                            break
-                                        }
-                                    }
-                                    targetMatch
-                                } else null
+                                ChordVoicingEngine.resolveActiveFretCoordinate(
+                                    activeMidiToken = activeMidiToken,
+                                    currentPlayingCoordinate = currentPlayingCoordinate,
+                                    openStrings = open7Strings,
+                                    chordFrets = guitarShape.frets,
+                                    fretMin = fretMin,
+                                    fretMax = fretMax,
+                                    isScaleMode = (mode == 1)
+                                )
                             } else null
                         }
 
