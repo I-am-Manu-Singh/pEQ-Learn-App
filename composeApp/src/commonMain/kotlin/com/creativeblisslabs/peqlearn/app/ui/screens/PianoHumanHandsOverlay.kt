@@ -48,13 +48,14 @@ private val LH_ANATOMICAL_REST_SEMITONES = floatArrayOf(0f, +3.5f, +1.8f, 0.0f, 
 private val RH_ANATOMICAL_REST_SEMITONES = floatArrayOf(0f, -3.5f, -1.8f, 0.0f, +1.8f, +3.5f)
 
 // Relative anatomical bone proportions & widths for Fingers 1..5 (index 0 unused)
-private val FINGER_LENGTH_MULT = floatArrayOf(0f, 0.62f, 0.91f, 1.00f, 0.94f, 0.76f)
-private val FINGER_WIDTH_MULT = floatArrayOf(0f, 1.15f, 0.96f, 1.00f, 0.93f, 0.80f)
+private val FINGER_LENGTH_MULT = floatArrayOf(0f, 0.64f, 0.91f, 1.00f, 0.94f, 0.76f)
+private val FINGER_WIDTH_MULT = floatArrayOf(0f, 1.28f, 0.96f, 1.00f, 0.93f, 0.80f)
 private val MCP_ARCH_Y_OFFSET = floatArrayOf(0f, 0.105f, 0.012f, 0.000f, 0.016f, 0.042f)
 
 internal fun resolvePlayableMelodicTrackIndices(
     score: Score?,
-    enabledTrackIndices: Map<Int, Boolean> = emptyMap()
+    enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
+    preferGuitarTracks: Boolean = false
 ): Set<Int> {
     val tracks = score?.tracks
     if (tracks.isNullOrEmpty()) return (0..15).toSet()
@@ -66,6 +67,16 @@ internal fun resolvePlayableMelodicTrackIndices(
         val isExplicitDrumName = nameLow.contains("drum") || nameLow.contains("percussion") || nameLow.contains("kit")
         !isDrumChannel && !isPercussionProg && !isExplicitDrumName &&
             (enabledTrackIndices[tr.trackIndex] ?: tr.isEnabled)
+    }
+
+    if (preferGuitarTracks && nonDrumTracks.isNotEmpty()) {
+        val guitarTracks = nonDrumTracks.filter { tr ->
+            val nameLow = tr.trackName.lowercase()
+            tr.program in 24..31 || nameLow.contains("guitar") || nameLow.contains("gtr") || nameLow.contains("acoustic") || nameLow.contains("electric")
+        }
+        if (guitarTracks.isNotEmpty()) {
+            return guitarTracks.map { it.trackIndex }.toSet()
+        }
     }
 
     if (nonDrumTracks.isNotEmpty()) {

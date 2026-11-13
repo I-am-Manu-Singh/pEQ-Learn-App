@@ -962,7 +962,7 @@ fun Score.dumpGuitarHandsOverlayAsText(
     else if (openStrings.size == 7) listOf("e", "B", "G", "D", "A", "E", "B")
     else listOf("e", "B", "G", "D", "A", "E")
 
-    val effectiveTrackIndices = resolvePlayableMelodicTrackIndices(this, enabledTrackIndices)
+    val effectiveTrackIndices = resolvePlayableMelodicTrackIndices(this, enabledTrackIndices, preferGuitarTracks = true)
 
     sb.appendLine("========================================================================================================================")
     sb.appendLine("               pEQ-LEARN GUITAR TAB & HUMAN HANDS OVERLAY ULTRA-FORENSIC AUDIT DUMP")

@@ -439,8 +439,8 @@ fun GuitarHumanHandsOverlay(
             val thumbWrapBiasY = if (lowestStrPressed >= 4) 5f * s else 0f
             val thumbCenterX = (palmCenterX - 14f * s).coerceIn(leftPad + 8f * s, bridgeX - 24f * s)
             val thumbTopY = (nutTop - 13f * s + thumbWrapBiasY).coerceAtLeast(2f)
-            val thumbW = (18f * s).coerceIn(11f, 28f)
-            val thumbH = (22f * s).coerceIn(14f, 34f)
+            val thumbW = (23f * s).coerceIn(15f, 36f)
+            val thumbH = (26f * s).coerceIn(17f, 40f)
 
             // Thumb drop shadow on top edge of guitar neck
             drawRoundRect(

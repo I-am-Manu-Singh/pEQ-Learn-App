@@ -518,6 +518,21 @@ object BiomechanicalPerformersEngine {
         val safeMaxFret = maxFret.coerceIn(4, 24)
         val safeMinFret = minFret.coerceIn(0, safeMaxFret)
 
+        // Pre-normalize pitches: Octave-transpose any pitches below the lowest open string,
+        // and map raw pitches to their transposed representations.
+        val lowestPlayableMidi = openStringsMidiHighToLow.lastOrNull() ?: 40
+        val transposedToRawMap = HashMap<Int, MutableList<Int>>()
+        for (rawP in uniquePitches) {
+            var transP = rawP
+            while (transP < lowestPlayableMidi) {
+                transP += 12
+            }
+            transposedToRawMap.getOrPut(transP) { ArrayList() }.add(rawP)
+        }
+
+        // Limit the simultaneously fretted notes to at most numStrings distinct pitches
+        val uniqueTransposed = transposedToRawMap.keys.sorted().take(numStrings)
+
         var bestMap = emptyMap<Int, FrettedNotePlacement>()
         var bestCost = Float.MAX_VALUE
         var bestBoxCenter = lastHandBoxCenterFret
@@ -530,21 +545,14 @@ object BiomechanicalPerformersEngine {
             val boxCenter = boxStart + 1.5f
 
             val usedStrings = BooleanArray(numStrings)
-            val tempPlacements = HashMap<Int, Pair<Int, Int>>(uniquePitches.size) // midi -> (stringIdx, fret)
+            val tempPlacements = HashMap<Int, Pair<Int, Int>>(uniqueTransposed.size) // transMidi -> (stringIdx, fret)
 
             // Transition cost from previous hand box + slight preference for lower-neck positions (frets 1..7)
             var cost = abs(boxCenter - lastHandBoxCenterFret) * 4.2f +
                 (if (boxStart <= 7) (boxStart - 1) * 1.8f else 12f + (boxStart - 7) * 4.5f)
 
             // Assign from lowest pitch to highest pitch so bass notes claim wound bass strings first
-            for (rawMidi in uniquePitches) {
-                // Octave-transpose pitches that fall below the lowest playable open string
-                val lowestPlayableMidi = openStringsMidiHighToLow.lastOrNull() ?: 40
-                var midi = rawMidi
-                while (midi < lowestPlayableMidi) {
-                    midi += 12
-                }
-
+            for (midi in uniqueTransposed) {
                 var bestStrForMidi = -1
                 var bestFretForMidi = -1
                 var bestNoteCost = Float.MAX_VALUE
@@ -574,7 +582,7 @@ object BiomechanicalPerformersEngine {
 
                 if (bestStrForMidi >= 0) {
                     usedStrings[bestStrForMidi] = true
-                    tempPlacements[rawMidi] = bestStrForMidi to bestFretForMidi
+                    tempPlacements[midi] = bestStrForMidi to bestFretForMidi
                     cost += bestNoteCost
                 } else {
                     cost += 500f
@@ -585,7 +593,7 @@ object BiomechanicalPerformersEngine {
             val frettedVals = tempPlacements.values.map { it.second }.filter { it > 0 }
             if (frettedVals.size > 1) {
                 val span = frettedVals.max() - frettedVals.min()
-                if (span > 4) cost += (span - 4) * 350f + 100f
+                if (span > 4) cost += (span - 4) * 450f + 350f
                 else if (span == 4) cost += 28f
             }
 
@@ -594,8 +602,8 @@ object BiomechanicalPerformersEngine {
                 val minFretted = frettedVals.minOrNull() ?: boxStart
                 val hasBarre = frettedVals.count { it == minFretted } >= 2 && tempPlacements.values.none { it.second == 0 }
 
-                val finalMap = HashMap<Int, FrettedNotePlacement>(tempPlacements.size)
-                for ((midi, pair) in tempPlacements) {
+                val finalMap = HashMap<Int, FrettedNotePlacement>(uniquePitches.size)
+                for ((transMidi, pair) in tempPlacements) {
                     val (sIdx, fret) = pair
                     val finger = when {
                         fret <= 0 -> 0
@@ -603,7 +611,16 @@ object BiomechanicalPerformersEngine {
                         frettedVals.size > 1 -> (1 + (fret - minFretted)).coerceIn(1, 4)
                         else -> (1 + (fret - boxStart)).coerceIn(1, 4)
                     }
-                    finalMap[midi] = FrettedNotePlacement(stringIndex = sIdx, fret = fret, finger = finger)
+                    val placement = FrettedNotePlacement(stringIndex = sIdx, fret = fret, finger = finger)
+                    // Map back to every raw pitch that transposed to this frequency
+                    val rawList = transposedToRawMap[transMidi]
+                    if (rawList != null) {
+                        for (rawM in rawList) {
+                            finalMap[rawM] = placement
+                        }
+                    } else {
+                        finalMap[transMidi] = placement
+                    }
                 }
                 bestMap = finalMap
                 if (frettedVals.isNotEmpty()) {
