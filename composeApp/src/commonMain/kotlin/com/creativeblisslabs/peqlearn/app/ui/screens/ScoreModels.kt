@@ -953,12 +953,16 @@ fun Score.dumpHandsOverlayAsText(): String {
  *  - Tab articulations (Hammer-on, Pull-off, Slide Up/Down, Bend, Release, Palm Mute, Let Ring)
  *  - Sounding pitch vs open string semitones
  */
-fun Score.dumpGuitarHandsOverlayAsText(): String {
+fun Score.dumpGuitarHandsOverlayAsText(
+    enabledTrackIndices: Map<Int, Boolean> = emptyMap()
+): String {
     val sb = StringBuilder()
     val openStrings = tuningMidi.ifEmpty { listOf(64, 59, 55, 50, 45, 40) }
     val stringLabels = if (openStrings.size == 4) listOf("A", "E", "C", "G")
     else if (openStrings.size == 7) listOf("e", "B", "G", "D", "A", "E", "B")
     else listOf("e", "B", "G", "D", "A", "E")
+
+    val effectiveTrackIndices = resolvePlayableMelodicTrackIndices(this, enabledTrackIndices)
 
     sb.appendLine("========================================================================================================================")
     sb.appendLine("               pEQ-LEARN GUITAR TAB & HUMAN HANDS OVERLAY ULTRA-FORENSIC AUDIT DUMP")
@@ -968,6 +972,7 @@ fun Score.dumpGuitarHandsOverlayAsText(): String {
     sb.appendLine("  • Tuning             : $tuningName [${openStrings.map { getNoteNameFromMidi(it) }.joinToString()}]")
     if (capo > 0) sb.appendLine("  • Capo               : Fret $capo")
     sb.appendLine("  • Total Measures     : ${measures.size}")
+    sb.appendLine("  • Audited Tracks     : ${effectiveTrackIndices.sorted().joinToString { tid -> tracks.find { it.trackIndex == tid }?.trackName ?: "Track $tid" }}")
     sb.appendLine("========================================================================================================================")
     sb.appendLine()
 
@@ -980,7 +985,7 @@ fun Score.dumpGuitarHandsOverlayAsText(): String {
 
     measures.forEachIndexed { mIdx, measure ->
         val mNum = if (measure.measureIndex > 0) measure.measureIndex else mIdx + 1
-        val melodicNotes = measure.notes.filter { !it.isRest && it.voice != 9 }
+        val melodicNotes = measure.notes.filter { !it.isRest && it.voice in effectiveTrackIndices }
         sb.appendLine("------------------------------------------------------------------------------------------------------------------------")
         sb.appendLine("MEASURE #$mNum  |  TimeSig: ${measure.timeSignatureNumerator}/${measure.timeSignatureDenominator}  |  Melodic Notes: ${melodicNotes.size}")
         sb.appendLine("------------------------------------------------------------------------------------------------------------------------")

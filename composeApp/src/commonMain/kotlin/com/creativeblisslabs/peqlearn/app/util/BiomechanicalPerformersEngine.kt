@@ -537,7 +537,14 @@ object BiomechanicalPerformersEngine {
                 (if (boxStart <= 7) (boxStart - 1) * 1.8f else 12f + (boxStart - 7) * 4.5f)
 
             // Assign from lowest pitch to highest pitch so bass notes claim wound bass strings first
-            for (midi in uniquePitches) {
+            for (rawMidi in uniquePitches) {
+                // Octave-transpose pitches that fall below the lowest playable open string
+                val lowestPlayableMidi = openStringsMidiHighToLow.lastOrNull() ?: 40
+                var midi = rawMidi
+                while (midi < lowestPlayableMidi) {
+                    midi += 12
+                }
+
                 var bestStrForMidi = -1
                 var bestFretForMidi = -1
                 var bestNoteCost = Float.MAX_VALUE
@@ -567,7 +574,7 @@ object BiomechanicalPerformersEngine {
 
                 if (bestStrForMidi >= 0) {
                     usedStrings[bestStrForMidi] = true
-                    tempPlacements[midi] = bestStrForMidi to bestFretForMidi
+                    tempPlacements[rawMidi] = bestStrForMidi to bestFretForMidi
                     cost += bestNoteCost
                 } else {
                     cost += 500f
@@ -578,7 +585,7 @@ object BiomechanicalPerformersEngine {
             val frettedVals = tempPlacements.values.map { it.second }.filter { it > 0 }
             if (frettedVals.size > 1) {
                 val span = frettedVals.max() - frettedVals.min()
-                if (span > 4) cost += (span - 4) * 240f
+                if (span > 4) cost += (span - 4) * 350f + 100f
                 else if (span == 4) cost += 28f
             }
 
@@ -593,7 +600,8 @@ object BiomechanicalPerformersEngine {
                     val finger = when {
                         fret <= 0 -> 0
                         hasBarre && fret == minFretted -> 1
-                        else -> (1 + (fret - minFretted)).coerceIn(1, 4)
+                        frettedVals.size > 1 -> (1 + (fret - minFretted)).coerceIn(1, 4)
+                        else -> (1 + (fret - boxStart)).coerceIn(1, 4)
                     }
                     finalMap[midi] = FrettedNotePlacement(stringIndex = sIdx, fret = fret, finger = finger)
                 }

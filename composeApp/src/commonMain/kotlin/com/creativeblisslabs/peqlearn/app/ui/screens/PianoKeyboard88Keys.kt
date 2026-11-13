@@ -1308,8 +1308,9 @@ fun resolveInstrumentWaterfallGeometry(
             val clipboardManager = LocalClipboardManager.current
             var guitarCopied by remember { mutableStateOf(false) }
             val scoreObj = viewModel.currentScore.value as? Score
-            val guitarDumpText = remember(scoreObj) {
-                scoreObj?.dumpGuitarHandsOverlayAsText()
+            val enabledTracksSnapshot = viewModel.enabledTrackIndices.toMap()
+            val guitarDumpText = remember(scoreObj, enabledTracksSnapshot) {
+                scoreObj?.dumpGuitarHandsOverlayAsText(enabledTracksSnapshot)
                     ?: "No active score loaded.\n\nLoad a score or MIDI file first, then tap 'Guitar TXT' to audit fretting hand box, picking, and TAB positions."
             }
             val titleSlugG = scoreObj?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "_") ?: "guitar_score"
@@ -1348,25 +1349,6 @@ fun resolveInstrumentWaterfallGeometry(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Copy to clipboard
-                            Button(
-                                onClick = {
-                                    clipboardManager.setText(AnnotatedString(guitarDumpText))
-                                    guitarCopied = true
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (guitarCopied) Color(0xFF2E7D32) else Color(0xFF37474F)
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    if (guitarCopied) "✓ Copied!" else "Copy All",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
                             // Share file button
                             Button(
                                 onClick = {
@@ -5753,7 +5735,7 @@ fun resolveInstrumentWaterfallGeometry(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    if (exportStudioTab == 0) "Performance Video Studio" else "Sheet Music PDF Export",
+                                    if (exportStudioTab == 0) "Exports" else "Sheet Music PDF Export",
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold
                                 )
