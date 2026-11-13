@@ -7,6 +7,8 @@ interface PermissionManager {
     fun hasMicrophonePermission(): Boolean
     fun requestNotificationPermission()
     fun hasNotificationPermission(): Boolean
+    fun requestBluetoothPermissions()
+    fun hasBluetoothPermissions(): Boolean
     fun getContext(): Any
 }
 

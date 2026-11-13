@@ -52,7 +52,8 @@ fun ChordDictionaryPanel(
     val partColor = Color(0xFFFFB347)
     val scrollState = rememberScrollState()
 
-val roots = remember { NOTE_NAMES_CD } // Uses "C#", "D#", "F#", "G#", "A#" so RealChordsDb lookups never fail!    val chordTypes = remember { CHORD_TYPE_DEFS.map { it.label } }
+val roots = remember { NOTE_NAMES_CD } // Uses "C#", "D#", "F#", "G#", "A#" so RealChordsDb lookups never fail!
+    val chordTypes = remember { CHORD_TYPE_DEFS.map { it.label } }
 
     var mode by remember { mutableStateOf(0) }
     var rootIdx by remember { mutableStateOf(0) }
@@ -272,7 +273,19 @@ val roots = remember { NOTE_NAMES_CD } // Uses "C#", "D#", "F#", "G#", "A#" so R
         )
     }
 
-    LaunchedEffect(activeMidiMap, isArpeggioRunning) {
+    LaunchedEffect(
+        activeMidiMap,
+        isArpeggioRunning,
+        rootIdx,
+        chordTypeIdx,
+        mode,
+        selectedInstrument,
+        selectedVoicingIdx,
+        selectedCagedFilter,
+        selectedFretRange,
+        selectedStartFret,
+        selectedScaleIdx
+    ) {
         if (!isArpeggioRunning) {
             viewModel.midiActiveNotes.clear()
             viewModel.midiActiveNotes.putAll(activeMidiMap)
@@ -776,37 +789,68 @@ Row(
                                     pianoPitches.map { Triple(0, 0, it) }
                                 }
                             }
-
-                            val soundSequencePitches: List<Int> = if (auditionSteps.isNotEmpty()) {
-                                when (activeSoundStyle) {
-                                    InstrumentSoundStyle.SEQUENTIAL -> auditionSteps.map { it.third }
-                                    InstrumentSoundStyle.ALL_AT_ONCE -> auditionSteps.map { it.third }
-                                    InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> {
-                                        val p = auditionSteps.map { it.third }
-                                        if (p.size > 2) p + p.subList(0, p.size - 1).reversed()
-                                        else if (p.size == 2) listOf(p[0], p[1], p[0])
-                                        else p
-                                    }
+val directionalSteps: List<Triple<Int, Int, Int>> = if (mode == 1 && auditionSteps.isNotEmpty()) {
+                                when (scaleDirectionMode) {
+                                    "Descending" -> auditionSteps.reversed()
+                                    "Up & Down" -> if (auditionSteps.size > 2) {
+                                        auditionSteps + auditionSteps.subList(0, auditionSteps.size - 1).reversed()
+                                    } else auditionSteps
+                                    else -> auditionSteps
                                 }
                             } else {
-                                pianoPitches
+                                auditionSteps
                             }
 
-                            val mockNotesList = soundSequencePitches.mapIndexed { idx: Int, midiPitch: Int ->
-                                val step = auditionSteps.getOrNull(idx % auditionSteps.size.coerceAtLeast(1))
-                                ScoreNote(
-                                    midiNote = midiPitch,
-                                    position = idx.toFloat() / soundSequencePitches.size.coerceAtLeast(1).toFloat(),
-                                    duration = 0.25f,
-                                    string = step?.first,
-                                    fret = step?.second
-                                )
+                            val sequenceSteps: List<Triple<Int, Int, Int>> = if (directionalSteps.isNotEmpty()) {
+                                when (activeSoundStyle) {
+                                    InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> {
+                                        if (directionalSteps.size > 2 && scaleDirectionMode != "Up & Down") {
+                                            directionalSteps + directionalSteps.subList(0, directionalSteps.size - 1).reversed()
+                                        } else if (directionalSteps.size == 2) {
+                                            listOf(directionalSteps[0], directionalSteps[1], directionalSteps[0])
+                                        } else directionalSteps
+                                    }
+                                    else -> directionalSteps
+                                }
+                            } else {
+                                pianoPitches.map { Triple(0, 0, it) }
                             }
 
-                            viewModel.currentScore.value = Score(
-                                title = "Live Audition",
+                            val soundSequencePitches: List<Int> = sequenceSteps.map { it.third }
+
+                            // Partition notes across 4/4 measures (max 8 eighth-notes per measure) so 2-octave scales never pile up at beat 3.75!
+                            val notesPerBar = 8
+                            val chunkedSteps = sequenceSteps.chunked(notesPerBar).ifEmpty { listOf(emptyList()) }
+                            val builtMeasures = chunkedSteps.mapIndexed { mIdx, barSteps ->
+                                val barNotes = barSteps.mapIndexed { idxInBar, step ->
+                                    val midiPitch = step.third
+                                    val assignedFinger = pianoFingering.notes.indexOf(midiPitch)
+                                        .takeIf { it >= 0 }
+                                        ?.let { pianoFingering.fingers.getOrNull(it) }
+                                    ScoreNote(
+                                        id = (mIdx * notesPerBar) + idxInBar + 1,
+                                        midiNote = midiPitch,
+                                        position = if (activeSoundStyle == InstrumentSoundStyle.ALL_AT_ONCE && mode == 0) 0f else idxInBar * 0.5f,
+                                        duration = if (activeSoundStyle == InstrumentSoundStyle.ALL_AT_ONCE && mode == 0) 4.0f else 0.5f,
+                                        string = step.first.takeIf { isFretboardInstrument },
+                                        fret = step.second.takeIf { isFretboardInstrument },
+                                        fingering = assignedFinger
+                                    )
+                                }
+                                Measure(measureIndex = mIdx, notes = barNotes)
+                            }
+
+                            val rawMockScore = Score(
+                                title = if (mode == 0) "$chordName Audition" else "${roots[rootIdx]} ${scalePair.first}",
                                 timeSignature = "4/4",
-                                measures = listOf(Measure(notes = mockNotesList))
+                                tuningMidi = openStrings,
+                                capo = capoFret,
+                                measures = builtMeasures
+                            )
+                            viewModel.currentScore.value = BiomechanicalPerformersEngine.enrichScoreWithViterbiFretboardAndFingers(
+                                score = rawMockScore,
+                                tuningMidiHighToLow = openStrings,
+                                capo = capoFret
                             )
 
                             playbackJob = scope.launch {
@@ -815,8 +859,7 @@ Row(
                                 } catch (_: Exception) {}
 
                                 try {
-                                    if (activeSoundStyle == InstrumentSoundStyle.ALL_AT_ONCE) {
-                                        // Sound all notes at once with ample sustain
+                                    if (activeSoundStyle == InstrumentSoundStyle.ALL_AT_ONCE && mode == 0) {
                                         viewModel.scorePlayheadMeasure.value = 0
                                         viewModel.scorePlayheadOffset.value = 0f
                                         viewModel.midiActiveNotes.clear()
@@ -834,41 +877,33 @@ Row(
                                             } catch (_: Exception) {}
                                         }
                                     } else {
-                                        // Relaxed musical speeds: ~280ms for sequential strum, ~340ms for expressive arpeggio
-                                        val stepDelay = if (activeSoundStyle == InstrumentSoundStyle.SEQUENTIAL) 280L else 340L
-                                        val sequenceSteps: List<Triple<Int, Int, Int>> = if (auditionSteps.isNotEmpty()) {
-                                            when (activeSoundStyle) {
-                                                InstrumentSoundStyle.ARPEGGIATE_ROUNDTRIP -> {
-                                                    if (auditionSteps.size > 2) auditionSteps + auditionSteps.subList(0, auditionSteps.size - 1).reversed()
-                                                    else if (auditionSteps.size == 2) listOf(auditionSteps[0], auditionSteps[1], auditionSteps[0])
-                                                    else auditionSteps
-                                                }
-                                                else -> auditionSteps
-                                            }
-                                        } else emptyList()
+                                        val stepDelay = if (activeSoundStyle == InstrumentSoundStyle.SEQUENTIAL) 280L else 330L
+                                        sequenceSteps.forEachIndexed { globalIdx, step ->
+                                            val midiPitch = step.third
+                                            val mIdx = globalIdx / notesPerBar
+                                            val idxInBar = globalIdx % notesPerBar
 
-                                        soundSequencePitches.forEachIndexed { idx: Int, midiPitch: Int ->
-                                            val step = sequenceSteps.getOrNull(idx)
-                                            currentPlayingIdx = idx % pianoPitches.size.coerceAtLeast(1)
-                                            currentPlayingCoordinate = step?.let { it.first to it.second }
-                                            viewModel.scorePlayheadMeasure.value = 0
-                                            viewModel.scorePlayheadOffset.value = idx.toFloat() / soundSequencePitches.size.coerceAtLeast(1).toFloat()
+                                            viewModel.scorePlayheadMeasure.value = mIdx
+                                            viewModel.scorePlayheadOffset.value = (idxInBar * 0.5f) / 4.0f
 
+                                            currentPlayingIdx = noteNames.indexOf(roots[(midiPitch % 12 + 12) % 12])
+                                            currentPlayingCoordinate = if (isFretboardInstrument) (step.first to step.second) else null
                                             viewModel.midiPlayingNote.value = midiPitch
-                                            // Keep all chord/scale notes visible while highlighting the currently sounding note!
-                                            if (viewModel.midiActiveNotes.isEmpty()) {
-                                                viewModel.midiActiveNotes.putAll(activeMidiMap)
-                                            }
-//                                            viewModel.midiActiveNotes[midiPitch] = true
+                                            viewModel.midiActiveNotes.clear()
+                                            viewModel.midiActiveNotes[midiPitch] = true
 
                                             try {
                                                 viewModel.audioEngine.noteOn(midiPitch, 0.85f)
                                             } catch (_: Exception) {}
+
                                             delay(stepDelay)
+
+                                            try {
+                                                viewModel.audioEngine.noteOff(midiPitch)
+                                            } catch (_: Exception) {}
                                         }
                                     }
                                 } finally {
-                                    // Ensure all sounding notes are cleanly silenced even if cancelled
                                     soundSequencePitches.forEach { midiPitch ->
                                         try {
                                             viewModel.audioEngine.noteOff(midiPitch)
@@ -877,7 +912,8 @@ Row(
                                     currentPlayingIdx = -1
                                     currentPlayingCoordinate = null
                                     viewModel.midiPlayingNote.value = null
-                                    viewModel.currentScore.value = null
+                                    viewModel.scorePlayheadMeasure.value = 0
+                                    viewModel.scorePlayheadOffset.value = 0f
                                     viewModel.midiActiveNotes.clear()
                                     viewModel.midiActiveNotes.putAll(activeMidiMap)
                                     isArpeggioRunning = false
@@ -1729,22 +1765,59 @@ fun ImmersiveKeyboardFretboardLabDialog(
     val currentSuffixName = chordSuffixes.getOrElse(labSuffixIdx) { "Major" }
     val inversions = listOf("Root Position", "1st Inversion", "2nd Inversion")
 
-    val activeChordPitches = remember(labRootIdx, labSuffixIdx, labInversion) {
-        val labSuffixMap = listOf("", "m", "7", "maj7", "m7", "dim", "aug", "sus4", "add9")
-        val chosenSuffix = labSuffixMap.getOrElse(labSuffixIdx) { "" }
-        val inv = when (labInversion) {
-            "1st Inversion" -> InversionStyle.FIRST
-            "2nd Inversion" -> InversionStyle.SECOND
-            else -> InversionStyle.ROOT
+    val isSevenStrLab = guitarConfigStr == "7 Str"
+    val labOpenStringsMidi = remember(activeLabTab, isSevenStrLab, tuningOption, capoFretSelected) {
+        val base = if (activeLabTab == "Uke") {
+            when {
+                tuningOption.contains("Low G") -> listOf(69, 64, 60, 55)
+                tuningOption.contains("Baritone") -> listOf(64, 59, 55, 50)
+                else -> listOf(69, 64, 60, 67)
+            }
+        } else if (isSevenStrLab) {
+            listOf(64, 59, 55, 50, 45, 40, 35)
+        } else {
+            when {
+                tuningOption.contains("Drop D") -> listOf(64, 59, 55, 50, 45, 38)
+                tuningOption.contains("Half-Step") -> listOf(63, 58, 54, 49, 44, 39)
+                tuningOption.contains("DADGAD") -> listOf(62, 57, 55, 50, 45, 38)
+                tuningOption.contains("Open G") -> listOf(62, 59, 55, 50, 43, 38)
+                else -> listOf(64, 59, 55, 50, 45, 40)
+            }
         }
-        ChordVoicingEngine.buildPianoShape(
-            rootIdx = labRootIdx,
-            suffix = chosenSuffix,
-            style = PianoVoicingStyle.CLOSE,
-            inversion = inv,
-            octave = 4
+        base.map { it + capoFretSelected }
+    }
+
+    val activeChordPitches = remember(labRootIdx, labSuffixIdx, labInversion, selectedMode, capoFretSelected) {
+        if (selectedMode == 1) {
+            // Scale Mode in Lab: Major or Minor scale based on suffix
+            val pat = if (labSuffixIdx in listOf(1, 4)) SCALE_MINOR_NAT_PATTERN else SCALE_MAJOR_PATTERN
+            (pat + listOf(12)).map { 60 + ((labRootIdx + capoFretSelected) % 12) + it }
+        } else {
+            val labSuffixMap = listOf("", "m", "7", "maj7", "m7", "dim", "aug", "sus4", "add9")
+            val chosenSuffix = labSuffixMap.getOrElse(labSuffixIdx) { "" }
+            val inv = when (labInversion) {
+                "1st Inversion" -> InversionStyle.FIRST
+                "2nd Inversion" -> InversionStyle.SECOND
+                else -> InversionStyle.ROOT
+            }
+            ChordVoicingEngine.buildPianoShape(
+                rootIdx = (labRootIdx + capoFretSelected) % 12,
+                suffix = chosenSuffix,
+                style = PianoVoicingStyle.CLOSE,
+                inversion = inv,
+                octave = 4
+            )
+        }
+    }
+
+    val labPianoFingering = remember(activeChordPitches, selectedMode) {
+        ChordVoicingEngine.computePianoFingering(
+            pitches = activeChordPitches,
+            isScale = (selectedMode == 1)
         )
     }
+
+    val showLabelsInLab = labelOverlay != "Fingers"
 
     val activeMidiMap = remember(activeChordPitches) {
         activeChordPitches.associateWith { true }

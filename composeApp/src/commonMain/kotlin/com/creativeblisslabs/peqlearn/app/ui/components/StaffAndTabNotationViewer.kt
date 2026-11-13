@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.ui.screens.*
 import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.round
@@ -437,9 +438,12 @@ private fun resolveClefForNote(
     if (isLeftHandHidden) return true
     if (isRightHandHidden) return false
 
-    // Strict register split around Middle C (MIDI 60):
-    // Notes < 59 (B3 and below) ALWAYS go on Bass Clef; Notes >= 60 (C4 and above) ALWAYS go on Treble Clef!
-    // This completely eliminates Treble notes and Bass notes overlapping in the inter-staff gap!
+    if (hasDifferentiatedVoices) {
+        return note.voice == 0
+    }
+    if (note.voice == 0 || note.voice == 1) {
+        return note.voice == 0
+    }
     return midiNote >= 60
 }
 
@@ -494,7 +498,9 @@ private fun computeStaffLayout(
             Triple(note, midiNote, isTrebleClef)
         }.sortedWith(compareBy({ it.first.position }, { !it.first.grace }, { it.second }))
 
-    val nonGracePositions = rawVisibleNotes.filter { !it.first.grace }.map { it.first.position }.distinct().sorted()
+    val nonGracePositions = rawVisibleNotes.filter { !it.first.grace }
+        .map { (it.first.position * 20f).roundToInt() / 20f }
+        .distinct().sorted()
     val minNoteGap = 1.85f * lineSpacing
     val computedXByPosition = mutableMapOf<Float, Float>()
 
@@ -536,7 +542,8 @@ private fun computeStaffLayout(
     val naturalCScaleSemitones = intArrayOf(0, 2, 4, 5, 7, 9, 11)
 
     val initialNotes = rawVisibleNotes.map { (note, midiNote, isTrebleClef) ->
-        val baseNx = computedXByPosition[note.position]
+        val quantPos = (note.position * 20f).roundToInt() / 20f
+        val baseNx = computedXByPosition[quantPos] ?: computedXByPosition[note.position]
             ?: (notesStartX + leftNotePad + ((usableMeasureWidth - leftNotePad) * (note.position / beatsPerMeasure))).coerceIn(notesStartX + leftNotePad, endX - rightPad)
         val anchorX = if (note.grace) (baseNx - 1.05f * lineSpacing).coerceAtLeast(notesStartX + 0.35f * lineSpacing) else baseNx
 
@@ -1038,12 +1045,15 @@ private fun computeTabLayout(
             }
             val ny = tBase + (stringIdx * lineSpacing)
 
-            // CRITICAL FIX: Never wrap normal fret numbers in <13> angle brackets or (0) parentheses!
-            // Parser often populates guitarHarmonic = NONE or tieEnd = true on regular notes.
-            val fretText = if (note.articulation == TabArticulation.DEAD_NOTE) {
-                "X"
-            } else {
-                fretValue.toString()
+            // AlphaTab notation parity:
+            // - Dead notes render as "X"
+            // - Ghost notes render as "(fret)"
+            // - Natural / Artificial Harmonics render as "<fret>"
+            val fretText = when {
+                note.articulation == TabArticulation.DEAD_NOTE -> "X"
+                note.articulation == TabArticulation.GHOST_NOTE || note.ghostNote -> "($fretValue)"
+                note.guitarHarmonic != GuitarHarmonicType.NONE -> "<$fretValue>"
+                else -> fretValue.toString()
             }
 
             val circleRadius = lineSpacing * (if (note.grace) 0.26f else 0.34f)
@@ -1384,6 +1394,29 @@ fun StaffAndTabNotationViewer(
         derivedStateOf { activeMidiNotes.filterValues { it }.keys }
     }
 
+    val effectiveScore = remember(score, stableActiveNotes) {
+        if (score != null && score.measures.isNotEmpty()) {
+            score
+        } else if (stableActiveNotes.isNotEmpty()) {
+            val liveNotes = stableActiveNotes.mapIndexed { idx, midi ->
+                ScoreNote(
+                    id = idx + 1,
+                    midiNote = midi,
+                    position = (idx % 4) * 0.5f,
+                    duration = 1.0f,
+                    voice = if (midi >= 60) 0 else 1
+                )
+            }
+            Score(
+                title = fallbackTitle.ifBlank { "Live USB MIDI Piano" },
+                composer = "Interactive Player",
+                tempo = 80f,
+                timeSignature = "4/4",
+                measures = listOf(Measure(measureIndex = 0, notes = liveNotes))
+            )
+        } else null
+    }
+
     val labelCache = remember(textMeasurer, compactStaffMode) {
         val fSize = if (compactStaffMode) 5.8.sp else 6.8.sp
         (0..11).associateWith { i ->
@@ -1436,6 +1469,8 @@ fun StaffAndTabNotationViewer(
 
     val layoutCache = remember(score, transposition, tracksSnapshotKey) { MeasureLayoutCache() }
     var notationZoom by rememberSaveable { mutableFloatStateOf(1.0f) }
+    val activeScore = effectiveScore ?: score
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -1456,11 +1491,11 @@ fun StaffAndTabNotationViewer(
                 }
             }
     ){
-        if (score != null && score.measures.isNotEmpty()) {
-            val hasExtractedNotes = remember(score) { score.measures.any { m -> m.notes.any { !it.isRest } } }
-            if (score.isPdfScore && !hasExtractedNotes && !score.pdfUri.isNullOrBlank()) {
+        if (activeScore != null && activeScore.measures.isNotEmpty()) {
+            val hasExtractedNotes = remember(activeScore) { activeScore.measures.any { m -> m.notes.any { !it.isRest } } }
+            if (activeScore.isPdfScore && !hasExtractedNotes && !activeScore.pdfUri.isNullOrBlank()) {
                 PdfDocumentViewer(
-                    uriString = score.pdfUri,
+                    uriString = activeScore.pdfUri.orEmpty(),
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -1470,19 +1505,19 @@ fun StaffAndTabNotationViewer(
                         .padding(vertical = 6.dp)
                 ) {
                     if (showScoreHeader) {
-                        val resolvedTitle = remember(score.title, fallbackTitle, score.tracks) {
-                            val rawTitle = score.title.trim()
+                        val resolvedTitle = remember(activeScore.title, fallbackTitle, activeScore.tracks) {
+                            val rawTitle = activeScore.title.trim()
                             when {
                                 rawTitle.isNotEmpty() && !rawTitle.equals("Untitled Score", ignoreCase = true) && !rawTitle.equals("Score", ignoreCase = true) -> rawTitle
                                 fallbackTitle.isNotBlank() -> fallbackTitle.substringAfterLast("/").substringBeforeLast(".")
-                                score.tracks.any { it.trackName.isNotBlank() && !it.trackName.equals("Track 1", true) } ->
-                                    score.tracks.first { it.trackName.isNotBlank() }.trackName
+                                activeScore.tracks.any { it.trackName.isNotBlank() && !it.trackName.equals("Track 1", true) } ->
+                                    activeScore.tracks.first { it.trackName.isNotBlank() }.trackName
                                 else -> "Studio Score"
                             }.replace("_", " ")
                         }
-                        val resolvedTempoMark = remember(score.tempo, score.tempoText) {
-                            if (score.tempoText.isNotBlank() && score.tempoText != "Moderato") score.tempoText
-                            else when (score.tempo.toInt()) {
+                        val resolvedTempoMark = remember(activeScore.tempo, activeScore.tempoText) {
+                            if (activeScore.tempoText.isNotBlank() && activeScore.tempoText != "Moderato") activeScore.tempoText
+                            else when (activeScore.tempo.toInt()) {
                                 in 0..59 -> "Largo"
                                 in 60..75 -> "Adagio"
                                 in 76..107 -> "Andante"
@@ -1508,10 +1543,10 @@ fun StaffAndTabNotationViewer(
                                 textAlign = TextAlign.Center
                             )
                             val byline = buildString {
-                                if (score.composer.isNotBlank()) append(score.composer)
-                                if (score.lyricist.isNotBlank()) {
+                                if (activeScore.composer.isNotBlank()) append(activeScore.composer)
+                                if (activeScore.lyricist.isNotBlank()) {
                                     if (isNotEmpty()) append(" • Arranged/Words: ")
-                                    append(score.lyricist)
+                                    append(activeScore.lyricist)
                                 }
                             }
                             if (byline.isNotBlank()) {
@@ -1530,32 +1565,32 @@ fun StaffAndTabNotationViewer(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "𝅘𝅥 = ${score.tempo.toInt()} BPM ($resolvedTempoMark)",
+                                    text = "𝅘𝅥 = ${activeScore.tempo.toInt()} BPM ($resolvedTempoMark)",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = primaryColor
                                 )
                                 Text("•", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                                 Text(
-                                    text = "${score.timeSignature} Time",
+                                    text = "${activeScore.timeSignature} Time",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text("•", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                                 Text(
-                                    text = score.keySignature.keyName,
+                                    text = activeScore.keySignature.keyName,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = primaryColor.copy(alpha = 0.9f)
                                 )
-                                if (score.capo > 0) {
+                                if (activeScore.capo > 0) {
                                     Text("•", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                                    Text("Capo ${score.capo}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = primaryColor)
+                                    Text("Capo ${activeScore.capo}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = primaryColor)
                                 }
                                 Text("•", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                                 Text(
-                                    text = "${score.measures.size} Bars",
+                                    text = "${activeScore.measures.size} Bars",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
@@ -1587,9 +1622,10 @@ fun StaffAndTabNotationViewer(
                             (if (!showStaff) 15.5.dp else if (compactStaffMode) 12.5.dp else 14.2.dp).toPx() * notationZoom
                         }
 
-                        val topMarginSpaces = 4.5f
-                        val bottomMarginSpaces = 2.8f
-                        val staffToTabGapSpaces = 9.2f
+                      val topMarginSpaces = 5.4f       // Was 4.5f: gives dedicated headroom for Chords + Fingerings + Measure Numbers
+                        val bottomMarginSpaces = 4.2f    // Was 2.8f: gives dedicated clearance for Bass Ledger Lines + LH Fingerings + Pedal Bracket
+                        val staffToTabGapSpaces = 10.6f  // Was 9.2f: prevents Bass Fingerings & TAB Chord Symbols from colliding
+
                         val totalStaffSpacesNeeded = when {
                             showStaff && showTab -> topMarginSpaces + (if (effectiveLeftHandHidden) 4f else 12.2f) + staffToTabGapSpaces + (5f * (idealTabSpacingPx / idealStaffSpacingPx)) + bottomMarginSpaces
                             showStaff -> topMarginSpaces + (if (effectiveLeftHandHidden) 4f else 12.2f) + bottomMarginSpaces
@@ -1644,7 +1680,7 @@ fun StaffAndTabNotationViewer(
                         val horizontalScrollState = rememberScrollState()
 
                         val horizontalMeasureBounds = remember(
-                            score.measures,
+                            activeScore.measures,
                             density,
                             notationZoom,
                             tracksSnapshotKey,
@@ -1653,7 +1689,7 @@ fun StaffAndTabNotationViewer(
                         ) {
                             var currentX = 0f
                             val minReadableMeasureW = (viewportWidthDp / measuresPerRow.coerceIn(1, 4).toFloat()).coerceAtLeast(250.dp)
-                            score.measures.mapIndexed { mIdx, measure ->
+                            activeScore.measures.mapIndexed { mIdx, measure ->
                                 val isFirstMeasure = (mIdx == 0)
                                 val distinctPositions = measure.notes
                                     .filter { !it.isRest && (effectiveStaffTrackIndices[it.voice] ?: true) }
@@ -1682,7 +1718,7 @@ fun StaffAndTabNotationViewer(
                             viewportHeightPx,
                             measuresPerRow
                         ) {
-                            if (playheadMeasure >= 0 && score.measures.isNotEmpty()) {
+                            if (playheadMeasure >= 0 && activeScore.measures.isNotEmpty()) {
                                 if (isVerticalScroll) {
                                     val targetRow = playheadMeasure / measuresPerRow.coerceAtLeast(1)
                                     val rowTopPx = targetRow * rowHeightPx
@@ -1711,11 +1747,11 @@ fun StaffAndTabNotationViewer(
                         }
 
                         val safeMeasuresPerRow = measuresPerRow.coerceIn(1, 4)
-                        val rowMeasureChunks = remember(score.measures, isVerticalScroll, safeMeasuresPerRow) {
+                        val rowMeasureChunks = remember(activeScore.measures, isVerticalScroll, safeMeasuresPerRow) {
                             if (isVerticalScroll) {
-                                score.measures.chunked(safeMeasuresPerRow)
+                                activeScore.measures.chunked(safeMeasuresPerRow)
                             } else {
-                                score.measures.chunked(1)
+                                activeScore.measures.chunked(1)
                             }
                         }
 
@@ -1764,8 +1800,8 @@ fun StaffAndTabNotationViewer(
 
                                                 rowMeasures.forEachIndexed { mIdxInRow, measure ->
                                                     val mIdx = (rowIndex * safeMeasuresPerRow) + mIdxInRow
-                                                    val prevMeasure = if (mIdx > 0) score.measures.getOrNull(mIdx - 1) else null
-                                                    val nextMeasure = if (mIdx + 1 < score.measures.size) score.measures.getOrNull(mIdx + 1) else null
+                                                    val prevMeasure = if (mIdx > 0) activeScore.measures.getOrNull(mIdx - 1) else null
+                                                    val nextMeasure = if (mIdx + 1 < activeScore.measures.size) activeScore.measures.getOrNull(mIdx + 1) else null
 
                                                     val isRowStart = (mIdxInRow == 0)
                                                     val keyChanged = prevMeasure != null && prevMeasure.keySignature != measure.keySignature
@@ -1822,6 +1858,16 @@ fun StaffAndTabNotationViewer(
                                                         topLeft = Offset(startX + 4f, if (showStaff) trebleBaseline - (staffLineSpacing * 2.1f) else tabBaseline - (tabLineSpacing * 2.1f))
                                                     )
 
+                                                    if (isPlayheadInThisMeasure) {
+                                                        val glowTopY = if (showStaff) trebleBaseline - 2.2f * staffLineSpacing else tabBaseline - 1.5f * tabLineSpacing
+                                                        val glowBotY = if (showTab) tabBaseline + 6.2f * tabLineSpacing else bassBaseline + 5.2f * staffLineSpacing
+                                                        drawRect(
+                                                            color = Color(0x22FFD700),
+                                                            topLeft = Offset(startX, glowTopY),
+                                                            size = Size(endX - startX, (glowBotY - glowTopY).coerceAtLeast(20f))
+                                                        )
+                                                    }
+
                                                     if (showStaff) {
                                                         drawGrandStaffSystem(
                                                             ds = this,
@@ -1830,7 +1876,7 @@ fun StaffAndTabNotationViewer(
                                                             trebleY = trebleBaseline,
                                                             bassY = bassBaseline,
                                                             spacing = staffLineSpacing,
-                                                            isFinal = (mIdx == score.measures.lastIndex),
+                                                            isFinal = (mIdx == activeScore.measures.lastIndex),
                                                             color = colorScheme.outlineVariant.copy(alpha = 0.55f),
                                                             drawLeftBar = isRowStart,
                                                             config = staffConfig
@@ -1853,7 +1899,7 @@ fun StaffAndTabNotationViewer(
 
                                                         val endBarType = when {
                                                             measure.repeatEnd -> "repeat_end"
-                                                            mIdx == score.measures.lastIndex -> "final"
+                                                            mIdx == activeScore.measures.lastIndex -> "final"
                                                             measure.barline.isNotBlank() -> measure.barline
                                                             else -> "single"
                                                         }
@@ -1901,7 +1947,7 @@ fun StaffAndTabNotationViewer(
                                                             textMeasurer = textMeasurer,
                                                             noteLabels = MusicConstants.NOTE_LABELS,
                                                             diatonicSteps = MusicConstants.CHROMATIC_TO_DIATONIC_STEPS,
-                                                            isFinalBar = (mIdx == score.measures.lastIndex),
+                                                            isFinalBar = (mIdx == activeScore.measures.lastIndex),
                                                             isMeasureActive = isPlayheadInThisMeasure,
                                                             timeSignature = "${measure.timeSignatureNumerator}/${measure.timeSignatureDenominator}",
                                                             drawClefHeader = isRowStart,
@@ -1923,7 +1969,7 @@ fun StaffAndTabNotationViewer(
                                                             trebleY = tabBaseline,
                                                             bassY = tabBaseline,
                                                             spacing = tabLineSpacing,
-                                                            isFinal = (mIdx == score.measures.lastIndex),
+                                                            isFinal = (mIdx == activeScore.measures.lastIndex),
                                                             color = colorScheme.outlineVariant.copy(alpha = 0.55f),
                                                             drawLeftBar = isRowStart,
                                                             config = tabConfig
@@ -1937,8 +1983,8 @@ fun StaffAndTabNotationViewer(
                                                             endX = endX,
                                                             tBase = tabBaseline,
                                                             lineSpacing = tabLineSpacing,
-                                                            tuning = score.tuningMidi,
-                                                            capo = score.capo,
+                                                            tuning = activeScore.tuningMidi,
+                                                            capo = activeScore.capo,
                                                             isLeftHandHidden = effectiveLeftHandHidden,
                                                             isRightHandHidden = isRightHandHidden,
                                                             enabledTrackIndices = effectiveStaffTrackIndices,
@@ -1958,12 +2004,12 @@ fun StaffAndTabNotationViewer(
                                                             labelLayout = labelLayout,
                                                             tBase = tabBaseline,
                                                             textMeasurer = textMeasurer,
-                                                            isFinalBar = (mIdx == score.measures.lastIndex),
+                                                            isFinalBar = (mIdx == activeScore.measures.lastIndex),
                                                             isMeasureActive = isPlayheadInThisMeasure,
                                                             timeSignature = "${measure.timeSignatureNumerator}/${measure.timeSignatureDenominator}",
                                                             drawClefHeader = isRowStart,
                                                             drawTimeHeader = (mIdx == 0) || timeChanged,
-                                                            tuning = score.tuningMidi,
+                                                            tuning = activeScore.tuningMidi,
                                                             tabLayout = tabLayout,
                                                             showRhythmStems = !showStaff
                                                         )
@@ -1988,7 +2034,7 @@ fun StaffAndTabNotationViewer(
                                     .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                score.measures.forEachIndexed { mIdx, measure ->
+                                activeScore.measures.forEachIndexed { mIdx, measure ->
                                     val isFirstMeasure = (mIdx == 0)
                                     val bounds = horizontalMeasureBounds[mIdx]
                                     val measureWidth = bounds.first
@@ -2014,8 +2060,8 @@ fun StaffAndTabNotationViewer(
                                                 val startX = if (isFirstMeasure) 14f else 0f
                                                 val endX = size.width
                                                 val isPlayheadInThisMeasure = (mIdx == playheadMeasure)
-                                                val prevMeasure = if (mIdx > 0) score.measures.getOrNull(mIdx - 1) else null
-                                                val nextMeasure = if (mIdx + 1 < score.measures.size) score.measures.getOrNull(mIdx + 1) else null
+                                                val prevMeasure = if (mIdx > 0) activeScore.measures.getOrNull(mIdx - 1) else null
+                                                val nextMeasure = if (mIdx + 1 < activeScore.measures.size) activeScore.measures.getOrNull(mIdx + 1) else null
                                                 val keyChanged = prevMeasure != null && prevMeasure.keySignature != measure.keySignature
                                                 val timeChanged = prevMeasure != null && (prevMeasure.timeSignatureNumerator != measure.timeSignatureNumerator || prevMeasure.timeSignatureDenominator != measure.timeSignatureDenominator)
 
@@ -2076,6 +2122,16 @@ fun StaffAndTabNotationViewer(
                                                     topLeft = Offset(startX + (if (isFirstMeasure) 6f else 4f), if (showStaff) trebleBaseline - (staffLineSpacing * 2.1f) else tabBaseline - (tabLineSpacing * 2.1f))
                                                 )
 
+                                                if (isPlayheadInThisMeasure) {
+                                                    val glowTopY = if (showStaff) trebleBaseline - 2.2f * staffLineSpacing else tabBaseline - 1.5f * tabLineSpacing
+                                                    val glowBotY = if (showTab) tabBaseline + 6.2f * tabLineSpacing else bassBaseline + 5.2f * staffLineSpacing
+                                                    drawRect(
+                                                        color = Color(0x22FFD700),
+                                                        topLeft = Offset(startX, glowTopY),
+                                                        size = Size(endX - startX, (glowBotY - glowTopY).coerceAtLeast(20f))
+                                                    )
+                                                }
+
                                                 if (showStaff) {
                                                     drawGrandStaffSystem(
                                                         ds = this,
@@ -2084,7 +2140,7 @@ fun StaffAndTabNotationViewer(
                                                         trebleY = trebleBaseline,
                                                         bassY = bassBaseline,
                                                         spacing = staffLineSpacing,
-                                                        isFinal = (mIdx == score.measures.lastIndex),
+                                                        isFinal = (mIdx == activeScore.measures.lastIndex),
                                                         color = colorScheme.outlineVariant.copy(alpha = 0.55f),
                                                         drawLeftBar = isFirstMeasure,
                                                         config = staffConfig
@@ -2107,7 +2163,7 @@ fun StaffAndTabNotationViewer(
 
                                                     val endBarType = when {
                                                         measure.repeatEnd -> "repeat_end"
-                                                        mIdx == score.measures.lastIndex -> "final"
+                                                        mIdx == activeScore.measures.lastIndex -> "final"
                                                         measure.barline.isNotBlank() -> measure.barline
                                                         else -> "single"
                                                     }
@@ -2155,7 +2211,7 @@ fun StaffAndTabNotationViewer(
                                                         textMeasurer = textMeasurer,
                                                         noteLabels = MusicConstants.NOTE_LABELS,
                                                         diatonicSteps = MusicConstants.CHROMATIC_TO_DIATONIC_STEPS,
-                                                        isFinalBar = (mIdx == score.measures.lastIndex),
+                                                        isFinalBar = (mIdx == activeScore.measures.lastIndex),
                                                         isMeasureActive = isPlayheadInThisMeasure,
                                                         timeSignature = "${measure.timeSignatureNumerator}/${measure.timeSignatureDenominator}",
                                                         drawClefHeader = isFirstMeasure,
@@ -2177,7 +2233,7 @@ fun StaffAndTabNotationViewer(
                                                         trebleY = tabBaseline,
                                                         bassY = tabBaseline,
                                                         spacing = tabLineSpacing,
-                                                        isFinal = (mIdx == score.measures.lastIndex),
+                                                        isFinal = (mIdx == activeScore.measures.lastIndex),
                                                         color = colorScheme.outlineVariant.copy(alpha = 0.55f),
                                                         drawLeftBar = isFirstMeasure,
                                                         config = tabConfig
@@ -2191,8 +2247,8 @@ fun StaffAndTabNotationViewer(
                                                         endX = endX,
                                                         tBase = tabBaseline,
                                                         lineSpacing = tabLineSpacing,
-                                                        tuning = score.tuningMidi,
-                                                        capo = score.capo,
+                                                        tuning = activeScore.tuningMidi,
+                                                        capo = activeScore.capo,
                                                         isLeftHandHidden = effectiveLeftHandHidden,
                                                         isRightHandHidden = isRightHandHidden,
                                                         enabledTrackIndices = effectiveStaffTrackIndices,
@@ -2212,12 +2268,12 @@ fun StaffAndTabNotationViewer(
                                                         labelLayout = labelLayout,
                                                         tBase = tabBaseline,
                                                         textMeasurer = textMeasurer,
-                                                        isFinalBar = (mIdx == score.measures.lastIndex),
+                                                        isFinalBar = (mIdx == activeScore.measures.lastIndex),
                                                         isMeasureActive = isPlayheadInThisMeasure,
                                                         timeSignature = "${measure.timeSignatureNumerator}/${measure.timeSignatureDenominator}",
                                                         drawClefHeader = isFirstMeasure,
                                                         drawTimeHeader = isFirstMeasure || timeChanged,
-                                                        tuning = score.tuningMidi,
+                                                        tuning = activeScore.tuningMidi,
                                                         tabLayout = tabLayout,
                                                         showRhythmStems = !showStaff
                                                     )
@@ -2511,11 +2567,16 @@ private fun drawTabMeasureContent(
             )
 
             if (note.chordSymbol.isNotEmpty() && tabNote == notesByPosition[note.position]?.firstOrNull()) {
+                val tabChordFontSp = with(this) { (config.lineSpacing * 0.62f).coerceIn(6.5f, 11.0f).toSp() }
                 val chordLayout = textMeasurer.measure(
                     text = note.chordSymbol,
-                    style = TextStyle(color = config.primaryColor, fontSize = (9.0f * scale).sp, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = config.primaryColor, fontSize = tabChordFontSp, fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    softWrap = false
                 )
-                drawText(chordLayout, topLeft = Offset(nx - chordLayout.size.width / 2f, tBase - 1.8f * config.lineSpacing))
+                val safeTabChordX = (nx - chordLayout.size.width / 2f).coerceIn(startX + 4f, (endX - chordLayout.size.width - 2f).coerceAtLeast(startX + 4f))
+                val safeTabChordY = (tBase - 1.35f * config.lineSpacing - chordLayout.size.height * 0.5f).coerceAtLeast(2f)
+                drawText(chordLayout, topLeft = Offset(safeTabChordX, safeTabChordY))
             }
 
             // Crisp, compact fret number sizing (7.5sp scaled) so 2-digit numbers like "13" never crowd adjacent notes
@@ -2551,6 +2612,17 @@ private fun drawTabMeasureContent(
                 val lyricLayout = textMeasurer.measure(note.lyric, lyricStyle)
                 val lyricY = tBase + 5 * config.lineSpacing + (if (showRhythmStems) 2.1f * config.lineSpacing else 0.8f * config.lineSpacing)
                 drawText(lyricLayout, topLeft = Offset(nx - lyricLayout.size.width / 2f, lyricY))
+            }
+
+            // Strumming Arrow Indicators (Down-strum ↓ / Up-strum ↑)
+            if (note.pickDirection != PickDirection.NONE && tabNote == notesByPosition[note.position]?.firstOrNull()) {
+                val arrowSymbol = if (note.pickDirection == PickDirection.DOWN) MusicSymbols.STRUM_DOWN else MusicSymbols.STRUM_UP
+                val arrowLayout = textMeasurer.measure(
+                    text = arrowSymbol,
+                    style = TextStyle(color = config.primaryColor, fontSize = (11f * scale).sp, fontWeight = FontWeight.Black)
+                )
+                val arrowY = tBase - 1.25f * config.lineSpacing
+                drawText(arrowLayout, topLeft = Offset(nx - arrowLayout.size.width / 2f, arrowY))
             }
 
             // Find the IMMEDIATELY NEXT note on the same string (must be at the very next rhythmic position, never jumping across other notes!)
@@ -2602,7 +2674,15 @@ private fun drawTabMeasureContent(
                     val tLayout = textMeasurer.measure("T", TextStyle(color = config.primaryColor, fontSize = (7.2f * scale).sp, fontWeight = FontWeight.Black))
                     drawText(tLayout, topLeft = Offset(nx - tLayout.size.width / 2f, ny - config.lineSpacing * 0.88f))
                 }
-                TabArticulation.DEAD_NOTE, TabArticulation.NONE -> {}
+                TabArticulation.SLAP -> {
+                    val sLayout = textMeasurer.measure("S", TextStyle(color = config.primaryColor, fontSize = (7.2f * scale).sp, fontWeight = FontWeight.Black))
+                    drawText(sLayout, topLeft = Offset(nx - sLayout.size.width / 2f, ny - config.lineSpacing * 0.88f))
+                }
+                TabArticulation.POP -> {
+                    val pLayout = textMeasurer.measure("P", TextStyle(color = config.primaryColor, fontSize = (7.2f * scale).sp, fontWeight = FontWeight.Black))
+                    drawText(pLayout, topLeft = Offset(nx - pLayout.size.width / 2f, ny - config.lineSpacing * 0.88f))
+                }
+                TabArticulation.DEAD_NOTE, TabArticulation.GHOST_NOTE, TabArticulation.PALM_MUTE, TabArticulation.LET_RING, TabArticulation.NONE -> {}
             }
 
             // CRITICAL FIX FOR TAB TIES/SLURS:
@@ -3330,16 +3410,6 @@ private fun drawStaffMeasureContent(
                 }
             }
 
-            if (note.chordSymbol.isNotEmpty()) {
-                val chordLayout = textMeasurer.measure(
-                    text = note.chordSymbol,
-                    style = TextStyle(color = config.primaryColor, fontSize = (9.0f * noteScale).sp, fontWeight = FontWeight.Bold)
-                )
-                drawText(chordLayout, topLeft = Offset(nx - chordLayout.size.width / 2f, trebleBaseline - 1.8f * config.lineSpacing))
-            }
-
-
-
             if (config.showLabels && !note.grace && duration < 2.0f && config.lineSpacing >= 8.5f) {
                 val labelResult = labelCache[(midiNote % 12 + 12) % 12]
                 if (labelResult != null) {
@@ -3416,6 +3486,66 @@ private fun drawStaffMeasureContent(
                         )
                     }
                 }
+            }
+        }
+        // 3a. Draw Deduplicated, Compact, Collision-Free Chord Symbols (At most 1 per beat position)
+        val chordFontSp = with(this) { (config.lineSpacing * 0.62f).coerceIn(6.5f, 11.5f).toSp() }
+        val chordStyle = TextStyle(
+            color = config.primaryColor,
+            fontSize = chordFontSp,
+            lineHeight = chordFontSp,
+            fontWeight = FontWeight.Bold
+        )
+        var lastChordRightEdgeX = notesStartX + 4f * noteScale
+        val notesByBeatPos = visibleNotes.filter { !it.note.grace }.groupBy { it.note.position }.toSortedMap()
+
+        for ((_, notesAtPos) in notesByBeatPos) {
+            val rawChordSym = notesAtPos.firstNotNullOfOrNull { it.note.chordSymbol.takeIf { s -> s.isNotBlank() } }
+                ?: continue
+            val chordLayout = textMeasurer.measure(
+                text = rawChordSym,
+                style = chordStyle,
+                maxLines = 1,
+                softWrap = false
+            )
+            val anchorX = notesAtPos.first().anchorX
+            // Prevent horizontal clipping into the measure number on beat 0 or adjacent chords
+            val minSafeX = if (drawClefHeader) maxOf(lastChordRightEdgeX, startX + 2.2f * config.lineSpacing) else lastChordRightEdgeX
+            val safeX = (anchorX - chordLayout.size.width * 0.5f)
+                .coerceAtLeast(minSafeX)
+                .coerceAtMost((endX - chordLayout.size.width - 2f).coerceAtLeast(minSafeX))
+
+            // Dynamically lift chord text above high notes, upward stems/beams, and tuplets on this beat
+            val minNoteY = notesAtPos.minOf { it.ny }
+            val minBeamOrStemY = notesAtPos.mapNotNull { n ->
+                val b = noteBeamMap[n.note]
+                if (b != null && b.stemDir < 0) b.noteStemYMap[n.note]
+                else if ((n.polyphonicStemDir ?: -1f) < 0) n.ny - config.lineSpacing * 2.35f
+                else null
+            }.minOrNull() ?: minNoteY
+
+            val highestStaffObstacleY = minOf(trebleBaseline - 0.55f * config.lineSpacing, minNoteY - 0.65f * config.lineSpacing, minBeamOrStemY - 0.35f * config.lineSpacing)
+            val safeChordY = (highestStaffObstacleY - chordLayout.size.height - 0.25f * config.lineSpacing)
+                .coerceAtLeast(2f)
+
+            drawText(
+                textLayoutResult = chordLayout,
+                topLeft = Offset(safeX, safeChordY)
+            )
+            lastChordRightEdgeX = safeX + chordLayout.size.width + (0.45f * config.lineSpacing)
+        }
+        var lowestBassElementY = bassBaseline + 4f * config.lineSpacing
+        for (n in visibleNotes) {
+            if (!n.isTrebleClef) {
+                val beam = noteBeamMap[n.note]
+                val stemBottom = if (beam != null && beam.stemDir > 0) {
+                    beam.noteStemYMap[n.note] ?: (n.ny + config.lineSpacing * 2.4f)
+                } else if ((n.polyphonicStemDir ?: 1f) > 0 && n.note.duration < 4.0f) {
+                    n.ny + config.lineSpacing * 2.4f
+                } else {
+                    n.ny + config.lineSpacing * 0.5f
+                }
+                lowestBassElementY = maxOf(lowestBassElementY, n.ny + config.lineSpacing * 0.5f, stemBottom)
             }
         }
         // 3b. Draw Collision-Free Chord & Note Fingerings (Offsets above Tuplets & Chord Symbols)
@@ -3498,7 +3628,7 @@ private fun drawStaffMeasureContent(
                     val topFingerY = (lowestObstacleY + config.lineSpacing * 0.52f + tupletClearance)
                         .coerceAtMost((maxAllowedBottomY - totalStackH - 6f).coerceAtLeast(staffBottom + 2f))
 
-                    stackedFingers.forEachIndexed { idxFromTop, fingerNum ->
+                 stackedFingers.forEachIndexed { idxFromTop, fingerNum ->
                         val fLayout = fingerGlyphCache[fingerNum] ?: return@forEachIndexed
                         val fy = (topFingerY + (idxFromTop * fingerLineStep) - fLayout.size.height / 2f)
                             .coerceIn(staffBottom + 2f, (maxAllowedBottomY - fLayout.size.height).coerceAtLeast(staffBottom + 3f))
@@ -3506,6 +3636,7 @@ private fun drawStaffMeasureContent(
                             textLayoutResult = fLayout,
                             topLeft = Offset(anchorX - fLayout.size.width / 2f, fy)
                         )
+                        lowestBassElementY = maxOf(lowestBassElementY, fy + fLayout.size.height)
                     }
                 }
             }
@@ -3837,11 +3968,16 @@ private fun drawStaffMeasureContent(
             drawText(endLayout, topLeft = Offset(startX + 5f * noteScale, bY - 1.1f * config.lineSpacing))
         }
         // Engraved Horizontal Sustain Pedal Bracket Line (└────────┘) below Bass Staff (Hidden when Guitar TAB is below)
+        // Engraved Horizontal Sustain Pedal Bracket Line (└────────┘) below Bass Staff
+        // Dynamically pushed below the lowest bass note, stem, or LH fingering so it NEVER clips content!
         if (!config.isLeftHandHidden && !config.isGuitarScore) {
-            val pedBracketY = (bassBaseline + 5.65f * config.lineSpacing).coerceAtMost(size.height - 3f)
             val pedHookH = config.lineSpacing * 0.45f
             val pedStrokeW = (config.lineSpacing * 0.09f).coerceIn(0.85f, 1.4f)
             val pedBracketColor = clefTextColor.copy(alpha = 0.68f)
+
+            val defaultPedY = bassBaseline + 5.35f * config.lineSpacing
+            val clearancePedY = lowestBassElementY + (0.75f * config.lineSpacing)
+            val pedBracketY = maxOf(defaultPedY, clearancePedY).coerceAtMost(size.height - 2.5f)
 
             val bStartX = (notesStartX + 0.4f * config.lineSpacing).coerceAtMost(endX - config.lineSpacing)
             val bEndX = (endX - 0.6f * config.lineSpacing).coerceAtLeast(bStartX + config.lineSpacing)
@@ -3851,8 +3987,16 @@ private fun drawStaffMeasureContent(
                 drawLine(pedBracketColor, Offset(bEndX, pedBracketY), Offset(bEndX, pedBracketY - pedHookH), strokeWidth = pedStrokeW)
             }
         } else if (config.isPedalPressed && isMeasureActive) {
+            val pedH = 11f * noteScale
+            val pedW = 15f * noteScale
+            val safePedTopY = maxOf(bassBaseline + 4.6f * config.lineSpacing, lowestBassElementY + 0.35f * config.lineSpacing)
+                .coerceAtMost(size.height - pedH - 2f)
             with(MusicVectorSymbols) {
-                drawPedal(config.primaryColor.copy(alpha = 0.8f), Size(16f * noteScale, 12f * noteScale), Offset(startX + 5f * noteScale, bassBaseline + 4.8f * config.lineSpacing + 6f * noteScale))
+                drawPedal(
+                    config.primaryColor.copy(alpha = 0.85f),
+                    Size(pedW, pedH),
+                    Offset(startX + 5f * noteScale, safePedTopY)
+                )
             }
         }
 
@@ -3871,65 +4015,6 @@ private fun drawStaffMeasureContent(
         }
     }
 }
-//internal fun drawPlayheadStaffLine(
-//    drawScope: DrawScope,
-//    visibleNotes: List<PrecomputedRenderNote>,
-//    computedXByPosition: Map<Float, Float>,
-//    notesStartX: Float,
-//    usableMeasureWidth: Float,
-//    beatsPerMeasure: Float,
-//    playingNote: Int?,
-//    playheadOffset: Float,
-//    config: DrawingConfig
-//) {
-//    with(drawScope) {
-//        val currentBeat = playheadOffset * beatsPerMeasure
-//        val targetPlayheadX = if (computedXByPosition.isNotEmpty()) {
-//            interpolatePlayheadX(computedXByPosition, currentBeat, notesStartX, usableMeasureWidth, playheadOffset)
-//        } else {
-//            notesStartX + (usableMeasureWidth * playheadOffset)
-//        }
-//
-//        val topStaffY = if (config.isRightHandHidden) config.bassBaseline else config.trebleBaseline
-//        val bottomStaffY = (if (config.isLeftHandHidden) config.trebleBaseline else config.bassBaseline) + (4f * config.lineSpacing)
-//
-//        val capsuleHalfW = (config.lineSpacing * 0.95f).coerceIn(9f, 18f)
-//        val capsulePadY = config.lineSpacing * 0.75f
-//        val capsuleTop = topStaffY - capsulePadY
-//        val capsuleBottom = bottomStaffY + capsulePadY
-//        val capsuleWidth = capsuleHalfW * 2f
-//        val capsuleHeight = (capsuleBottom - capsuleTop).coerceAtLeast(config.lineSpacing * 4f)
-//        val cornerRad = CornerRadius(capsuleHalfW, capsuleHalfW)
-//        val capsuleBlue = Color(0xFF3B82F6)
-//
-//        // 1. Soft translucent blue interior fill
-//        drawRoundRect(
-//            color = capsuleBlue.copy(alpha = if (config.isDark) 0.22f else 0.16f),
-//            topLeft = Offset(targetPlayheadX - capsuleHalfW, capsuleTop),
-//            size = Size(capsuleWidth, capsuleHeight),
-//            cornerRadius = cornerRad
-//        )
-//
-//        // 2. Crisp white inner border ring
-//        val innerInset = 1.6f.dp.toPx()
-//        drawRoundRect(
-//            color = Color.White.copy(alpha = 0.92f),
-//            topLeft = Offset(targetPlayheadX - capsuleHalfW + innerInset, capsuleTop + innerInset),
-//            size = Size(capsuleWidth - innerInset * 2f, capsuleHeight - innerInset * 2f),
-//            cornerRadius = CornerRadius((capsuleHalfW - innerInset).coerceAtLeast(2f), (capsuleHalfW - innerInset).coerceAtLeast(2f)),
-//            style = Stroke(width = 1.5f.dp.toPx())
-//        )
-//
-//        // 3. Vibrant blue outer border capsule
-//        drawRoundRect(
-//            color = capsuleBlue,
-//            topLeft = Offset(targetPlayheadX - capsuleHalfW, capsuleTop),
-//            size = Size(capsuleWidth, capsuleHeight),
-//            cornerRadius = cornerRad,
-//            style = Stroke(width = 2.2f.dp.toPx())
-//        )
-//    }
-//}
 
 internal fun drawPlayheadStaffLine(
     drawScope: DrawScope,

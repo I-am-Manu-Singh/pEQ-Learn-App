@@ -10,5 +10,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
     Learn("LEARN", Icons.Default.School),
     Mixer(pEQStrings.NEURAL_MIXER, Icons.Default.Tune),
     Settings(pEQStrings.SETTINGS_LABEL, Icons.Default.Settings),
-    Player("NOW PLAYING", Icons.Default.GraphicEq)
+    Player("NOW PLAYING", Icons.Default.GraphicEq),
+    Library("LIBRARY", Icons.Default.LibraryMusic),
+
 }

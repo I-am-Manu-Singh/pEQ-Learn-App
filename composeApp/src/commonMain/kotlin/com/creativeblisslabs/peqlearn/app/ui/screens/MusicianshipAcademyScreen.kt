@@ -16,7 +16,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,7 +31,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 @Composable
-fun EarTrainingAcademyScreen(
+fun MusicianshipAcademyScreen(
     viewModel: AppViewModel,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     onBack: () -> Unit = {}

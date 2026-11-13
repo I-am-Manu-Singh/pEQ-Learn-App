@@ -475,12 +475,16 @@ fun ReferenceStudioPanel(
                                 cardBackground = Color(0xFF161A22),
                                 width = 135.dp,
                                 height = 175.dp,
-                                onClick = {
+                            onClick = {
                                     scope.launch {
                                         viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
                                         pos.midi.forEach { midi ->
                                             viewModel.audioEngine.noteOn(midi, 0.85f)
                                             delay(35L)
+                                        }
+                                        delay(650L)
+                                        pos.midi.forEach { midi ->
+                                            runCatching { viewModel.audioEngine.noteOff(midi) }
                                         }
                                     }
                                 }
@@ -617,9 +621,25 @@ fun ReferenceStudioPanel(
                             modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(10.dp))
                         )
                     } else {
+                        val openStringsMidi = if (selectedInstrument == "ukulele") {
+                            listOf(69, 64, 60, 67)
+                        } else {
+                            listOf(64, 59, 55, 50, 45, 40)
+                        }
+                        val playableScaleMidi = remember(rootIdx, scaleIntervals, selectedInstrument) {
+                            com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine
+                                .solvePlayableScaleBoxRun(
+                                    rootIdx = rootIdx,
+                                    scaleIntervals = scaleIntervals,
+                                    openStringsMidiHighToLow = openStringsMidi,
+                                    boxStartFret = 0,
+                                    boxSpanFrets = 4,
+                                    numOctaves = 2
+                                ).map { it.third }
+                        }
                         UnifiedGuitarFretboard(
                             numFrets = 15,
-                            activeNotes = scaleIntervals.map { (rootIdx + it) % 12 },
+                            activeNotes = playableScaleMidi,
                             rootNote = rootIdx,
                             accentColor = Color(0xFF81C784),
                             showNoteNames = true,
@@ -629,10 +649,14 @@ fun ReferenceStudioPanel(
                             openStringsSemis = if (selectedInstrument == "ukulele") listOf(9, 4, 0, 7) else listOf(4, 11, 7, 2, 9, 4),
                             baseFret = 1,
                             onFretTapped = { _, _, midi ->
-                                try {
-                                    viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
-                                    viewModel.audioEngine.noteOn(midi, 0.85f)
-                                } catch (_: Exception) {}
+                                scope.launch {
+                                    try {
+                                        viewModel.audioEngine.setInstrument(selectedInstrumentType.soundEngineName)
+                                        viewModel.audioEngine.noteOn(midi, 0.85f)
+                                        delay(380L)
+                                        viewModel.audioEngine.noteOff(midi)
+                                    } catch (_: Exception) {}
+                                }
                             },
                             modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(10.dp))
                         )

@@ -218,74 +218,95 @@ fun UnifiedGuitarFretboard(
         } else null
     }
 
-   // Stateful hand-box center fret memory so fast melodic runs stay in a smooth, human-playable 4-fret hand box
-    var lastHandBoxCenterFret by remember { mutableFloatStateOf(3f) }
+   // Stateful hand-box center fret memory (initialized to Fret 3 for natural low-neck playability)
+    var lastHandBoxCenterFret by remember { mutableFloatStateOf(3.0f) }
 
-    val activeFretPoints = remember(allUniquePitches, effectiveResolvedChordFrets, defaultOpenStringsMidi, isScaleMode, fretMinConstrain, fretMaxConstrain, safeNumFrets) {
+    val activeFretPoints = remember(
+        allUniquePitches,
+        effectiveResolvedChordFrets,
+        defaultOpenStringsMidi,
+        isScaleMode,
+        fretMinConstrain,
+        fretMaxConstrain,
+        safeNumFrets,
+        safeBaseFret
+    ) {
         if (effectiveResolvedChordFrets != null) {
             emptySet()
+        } else if (allUniquePitches.isEmpty()) {
+            emptySet()
         } else {
-            val set = mutableSetOf<Pair<Int, Int>>()
-            val usedStrings = mutableSetOf<Int>()
             val maxAllowedFret = (safeBaseFret + safeNumFrets - 1).coerceAtMost(fretMaxConstrain)
             val minAllowedFret = fretMinConstrain.coerceAtLeast(0)
-
-            // Sort pitches low-to-high so bass notes claim lower strings (5, 4, 3) first and treble notes claim (2, 1, 0)
             val sortedPitches = allUniquePitches.sorted()
-            var currentChordAnchorFret: Int? = null
 
-            sortedPitches.forEach { midi ->
-                val candidates = mutableListOf<Pair<Int, Int>>()
-                defaultOpenStringsMidi.forEachIndexed { sIdx, openMidi ->
-                    val fret = midi - openMidi
-                    if (fret in minAllowedFret..maxAllowedFret) {
-                        candidates.add(sIdx to fret)
+            // Test candidate 4-fret hand-box windows [boxStart .. boxStart+3] across the neck (frets 1..15)
+            // to find the single hand position that plays the maximum number of notes with zero >4-fret stretches!
+            var bestBoxAssignment = emptySet<Pair<Int, Int>>()
+            var bestBoxCost = Float.MAX_VALUE
+            var bestBoxCenter = lastHandBoxCenterFret
+
+            val maxBoxStart = (maxAllowedFret - 3).coerceAtLeast(1)
+            for (boxStart in 1..maxBoxStart) {
+                val boxEnd = boxStart + 3
+                val boxCenter = boxStart + 1.5f
+                val usedStrings = mutableSetOf<Int>()
+                val assignment = mutableSetOf<Pair<Int, Int>>()
+                var boxCost = abs(boxCenter - lastHandBoxCenterFret) * 4.5f + (boxStart - 1) * 2.2f
+
+                for (midi in sortedPitches) {
+                    // Find all (stringIndex, fret) candidates for this MIDI pitch
+                    val candidates = defaultOpenStringsMidi.mapIndexedNotNull { sIdx, openMidi ->
+                        val fret = midi - openMidi
+                        if (fret in minAllowedFret..maxAllowedFret) sIdx to fret else null
+                    }
+                    if (candidates.isEmpty()) continue
+
+                    val available = candidates.filter { it.first !in usedStrings }.ifEmpty { candidates }
+                    val bestForNote = available.minByOrNull { (sIdx, fret) ->
+                        val stretchOutsideBox = when {
+                            fret == 0 -> if (boxStart <= 4) 0 else 18 // Open strings pair naturally with low positions (frets 1..4)
+                            fret < boxStart -> (boxStart - fret) * 35
+                            fret > boxEnd -> (fret - boxEnd) * 35
+                            else -> 0
+                        }
+                        val woundBassHighFretPenalty = if (sIdx >= 4 && fret > 7) 40 else if (sIdx == 3 && fret > 9) 20 else 0
+                        val stringReusePenalty = if (sIdx in usedStrings) 120 else 0
+                        stretchOutsideBox + woundBassHighFretPenalty + stringReusePenalty + fret
+                    }
+
+                    if (bestForNote != null) {
+                        assignment.add(bestForNote)
+                        usedStrings.add(bestForNote.first)
+                        val f = bestForNote.second
+                        if (f > 0 && (f < boxStart || f > boxEnd)) {
+                            boxCost += abs(f - boxCenter) * 40f // Heavy penalty for stretching outside the 4-fret box
+                        }
                     }
                 }
-                if (candidates.isNotEmpty()) {
-                    // Prefer unused strings so every note in a chord gets its own physical string
-                    val unusedCandidates = candidates.filter { it.first !in usedStrings }
-                    val pool = if (unusedCandidates.isNotEmpty()) unusedCandidates else candidates
 
-                    val chosen = pool.minByOrNull { (sIdx, fret) ->
-                        // 1. Hand-box cohesion penalty: keep chord notes within a 4-fret human finger span!
-                        val anchor = currentChordAnchorFret ?: lastHandBoxCenterFret.roundToInt()
-                        val handSpanDist = if (fret == 0) 0 else abs(fret - anchor)
-                        val stretchPenalty = when {
-                            fret == 0 -> 2 // Open string is easy
-                            handSpanDist <= 3 -> handSpanDist * 3 // Inside 4-fret hand box
-                            else -> 35 + handSpanDist * 14 // Heavy penalty for impossible >4 fret finger stretch!
-                        }
+                // Enforce anatomical 4-finger span across all fretted notes in the chord
+                val fretted = assignment.map { it.second }.filter { it > 0 }
+                val span = if (fretted.size > 1) fretted.max() - fretted.min() else 0
+                if (span > 4) boxCost += (span - 4) * 200f
+                if (span == 4) boxCost += 25f
 
-                        // 2. Register penalty: avoid fretting high frets (>9) on thick wound bass strings (A2, E2)
-                        val woundStringPenalty = if (sIdx >= 4 && fret > 7) 45 else if (sIdx == 3 && fret > 9) 25 else 0
+                // Reward capturing more distinct strings
+                boxCost -= assignment.size * 30f
 
-                        // 3. Position preference: prefer lower/mid neck (frets 1..7) when no prior context requires upper neck
-                        val neckPositionCost = when {
-                            fret in 0..5 -> fret * 2
-                            fret in 6..9 -> 10 + (fret - 5) * 3
-                            fret in 10..12 -> 24 + (fret - 9) * 4
-                            else -> 50 + fret * 6
-                        }
-
-                        stretchPenalty + woundStringPenalty + neckPositionCost
-                    }
-
-                    if (chosen != null) {
-                        set.add(chosen)
-                        usedStrings.add(chosen.first)
-                        if (chosen.second > 0 && currentChordAnchorFret == null) {
-                            currentChordAnchorFret = chosen.second
-                        }
+                if (boxCost < bestBoxCost) {
+                    bestBoxCost = boxCost
+                    bestBoxAssignment = assignment
+                    if (fretted.isNotEmpty()) {
+                        bestBoxCenter = fretted.average().toFloat()
                     }
                 }
             }
 
-            val frettedPositions = set.map { it.second }.filter { it > 0 }
-            if (frettedPositions.isNotEmpty()) {
-                lastHandBoxCenterFret = frettedPositions.average().toFloat().coerceIn(1f, 12f)
+            if (bestBoxAssignment.any { it.second > 0 }) {
+                lastHandBoxCenterFret = bestBoxCenter.coerceIn(1.5f, 12f)
             }
-            set
+            bestBoxAssignment
         }
     }
 
@@ -927,9 +948,11 @@ fun UnifiedPianoKeyboard(
                 // 1. White Keys (3D Ivory Gradient, Depressed Key Shadow, & Neon Key-Strike Tint)
                 whiteMidiNotes.forEachIndexed { index, midiNote ->
                     val customColor = customKeyColors[midiNote]
-                    val belongsToRh = when (customColor) {
-                        rightHandColor -> true
-                        leftHandColor -> false
+                    val belongsToRh = when {
+                        customColor != null && kotlin.math.abs(customColor.red - rightHandColor.red) < 0.15f && kotlin.math.abs(customColor.blue - rightHandColor.blue) < 0.15f -> true
+                        customColor != null && kotlin.math.abs(customColor.red - leftHandColor.red) < 0.15f && kotlin.math.abs(customColor.blue - leftHandColor.blue) < 0.15f -> false
+                        midiNote < 48 -> false
+                        midiNote > 72 -> true
                         else -> midiNote >= 60
                     }
                     val isHandHidden = if (belongsToRh) isRightHandHidden else isLeftHandHidden
@@ -1057,9 +1080,11 @@ fun UnifiedPianoKeyboard(
                         val blackMidiNote = midiNote + 1
                         if (blackMidiNote <= safeEnd) {
                             val customBlackColor = customKeyColors[blackMidiNote]
-                            val belongsToRh = when (customBlackColor) {
-                                rightHandColor -> true
-                                leftHandColor -> false
+                            val belongsToRh = when {
+                                customBlackColor != null && abs(customBlackColor.red - rightHandColor.red) < 0.15f && abs(customBlackColor.blue - rightHandColor.blue) < 0.15f -> true
+                                customBlackColor != null && abs(customBlackColor.red - leftHandColor.red) < 0.15f && abs(customBlackColor.blue - leftHandColor.blue) < 0.15f -> false
+                                blackMidiNote < 48 -> false
+                                blackMidiNote > 72 -> true
                                 else -> blackMidiNote >= 60
                             }
                             val isHandHidden = if (belongsToRh) isRightHandHidden else isLeftHandHidden

@@ -113,12 +113,15 @@ class AndroidMidiHandler(
     private fun requestUsbPermissionIfNeeded(device: UsbDevice) {
         val um = usbManager ?: return
         if (!um.hasPermission(device)) {
+            val permissionIntent = Intent(ACTION_USB_MIDI_PERMISSION).apply {
+                setPackage(context.packageName)
+            }
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             } else {
                 PendingIntent.FLAG_UPDATE_CURRENT
             }
-            val pi = PendingIntent.getBroadcast(context, 0, Intent(ACTION_USB_MIDI_PERMISSION), flags)
+            val pi = PendingIntent.getBroadcast(context, 0, permissionIntent, flags)
             runCatching { um.requestPermission(device, pi) }
         }
     }

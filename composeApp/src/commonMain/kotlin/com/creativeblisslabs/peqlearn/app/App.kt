@@ -387,10 +387,7 @@ fun MainScreen(
         modifier = Modifier.fillMaxSize()
     ) {
 
-        val isWideScreen =
-            maxWidth > 840.dp || maxWidth > maxHeight
-
-
+        val isWideScreen = maxWidth >= 840.dp
 
         val isAnyFullscreen = viewModel.isVideoFullScreen.value ||
                 viewModel.isFullscreenKeyboard.value ||
@@ -425,7 +422,7 @@ fun MainScreen(
                             .fillMaxWidth()
                             .background(Color.Transparent)
                     ) {
-                        if (viewModel.showMiniPlayer.value && viewModel.currentMediaItem.value != null && viewModel.currentTab.value != Tab.Player) {
+                        if (viewModel.showMiniPlayer.value && (viewModel.currentMediaItem.value != null || viewModel.currentScore.value != null) && viewModel.currentTab.value != Tab.Player) {
                             ThinMiniPlayer(viewModel = viewModel)
                         }
                         BottomNavigationBar(
@@ -556,10 +553,13 @@ fun MainScreen(
                                     Tab.Learn -> {
                                         pEQLearnScreen(viewModel)
                                     }
-
+                                    Tab.Library -> {
+                                        PianoKeyboard88Keys(viewModel = viewModel)
+                                    }
                                     Tab.Settings -> {
                                         SettingsPanel(viewModel)
                                     }
+
                                 }
                             }
                         }

@@ -1,6 +1,7 @@
 package com.creativeblisslabs.peqlearn.app.audio
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.AssetFileDescriptor
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
@@ -1182,7 +1183,32 @@ class AndroidAudioEngine(
             stemPlayers.values.forEach { it.stop(); it.release() }
             stemPlayers.clear()
 
-            val uri = if (url.startsWith("http") || url.startsWith("content://")) {
+            val uri = if (url.startsWith("content://")) {
+                try {
+                    val parsedUri = Uri.parse(url)
+                    try {
+                        context.contentResolver.takePersistableUriPermission(
+                            parsedUri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    } catch (_: Exception) {}
+
+                    val cacheFile = File(context.cacheDir, "cached_media_${kotlin.math.abs(url.hashCode())}.tmp")
+                    if (!cacheFile.exists() || cacheFile.length() == 0L) {
+                        context.contentResolver.openInputStream(parsedUri)?.use { input ->
+                            cacheFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    }
+                    if (cacheFile.exists() && cacheFile.length() > 0L) {
+                        Uri.fromFile(cacheFile)
+                    } else {
+                        parsedUri
+                    }
+                } catch (e: Exception) {
+                    println("pEQLearn: [PLAYER] Content URI permission fallback: ${e.message}")
+                    Uri.parse(url)
+                }
+            } else if (url.startsWith("http")) {
                 Uri.parse(url)
             } else {
                 Uri.fromFile(File(cleanLocalPath(url)))
@@ -1570,6 +1596,9 @@ class AndroidAudioEngine(
                 tanpuraEngine = TanpuraSoundFontEngine(player)
                 Log.i("AudioEngine", "[SF2] Tanpura Drone compiled cleanly via FluidSynth.")
                 player
+            } catch (e: java.io.FileNotFoundException) {
+                Log.i("AudioEngine", "[SF2] Tanpura SF2 asset not present; using Tanpura MP3 drone engine.")
+                null
             } catch (e: Exception) {
                 Log.e("AudioEngine", "[SF2] Failed loading Tanpura: ${e.message}")
                 null
@@ -1593,6 +1622,9 @@ class AndroidAudioEngine(
                 parseAndAutoMapSoundFont(tempFile, "TABLA")
                 Log.i("AudioEngine", "[SF2] Tabla compiled & auto-mapped cleanly via FluidSynth.")
                 player
+            } catch (e: java.io.FileNotFoundException) {
+                Log.i("AudioEngine", "[SF2] Tabla SF2 asset not present; using Tabla MP3 sample engine.")
+                null
             } catch (e: Exception) {
                 Log.e("AudioEngine", "[SF2] Failed loading Tabla: ${e.message}")
                 null
@@ -1869,8 +1901,11 @@ class AndroidAudioEngine(
                     }
                 }
                 Log.i("AudioEngine", "Acoustic Piano FluidSynth fully loaded and active.")
+            } catch (e: java.io.FileNotFoundException) {
+                Log.i("AudioEngine", "[SF2] piano.sf2 asset omitted to save space — using Salamander MP3 audio sample engine.")
+                pianoAudioMode = "SalamanderSamples"
             } catch (e: Exception) {
-                Log.e("AudioEngine", "CRITICAL PIANO LOADING EXCEPTION:", e)
+                Log.e("AudioEngine", "Piano SoundFont loading exception: ${e.message}")
             }
         }
     }
@@ -1896,6 +1931,8 @@ class AndroidAudioEngine(
                     }
                     Log.i("AudioEngine", "Clean Guitar FluidSynth fully cached and mounted.")
                 }
+            } catch (e: java.io.FileNotFoundException) {
+                Log.i("AudioEngine", "[SF2] guitar.sf2 asset omitted to save space — using acoustic guitar MP3 sample engine.")
             } catch (e: Exception) {
                 Log.e("AudioEngine", "Guitar SoundFont loading failed: ${e.message}")
             }
@@ -1923,6 +1960,8 @@ class AndroidAudioEngine(
                     }
                     Log.i("AudioEngine", "Harmonium FluidSynth fully loaded and cached.")
                 }
+            } catch (e: java.io.FileNotFoundException) {
+                Log.i("AudioEngine", "[SF2] harmonium.sf2 asset omitted to save space — using Harmonium MP3 sample engine.")
             } catch (e: Exception) {
                 Log.e("AudioEngine", "Harmonium SoundFont loading failed: ${e.message}")
             }

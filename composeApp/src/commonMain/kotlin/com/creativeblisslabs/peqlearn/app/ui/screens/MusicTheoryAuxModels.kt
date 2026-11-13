@@ -18,7 +18,6 @@ enum class TheoryPart(
     CONCEPTS("Theory Concepts", Icons.Default.AutoStories, Color(0xFF29B6F6)),
     GROOVE("Drums", Icons.Default.PlayArrow, Color(0xFF00E676)),
     STRUCTURE("Song Str.", Icons.AutoMirrored.Filled.List, Color(0xFFFF7043)),
-    EAR_SIGHT("Ear & Sight", Icons.Default.Hearing, Color(0xFFE91E63)),
     INDIAN_CLASSICAL("Ind. Class.", Icons.Default.Home, Color(0xFFFF9800)),
     KARNATIC("Karnatic", Icons.Default.Info, Color(0xFF00BCD4))
 }
@@ -168,3 +167,33 @@ data class VisualizerModeItem(
     val label: String,
     val isEnabled: Boolean = true
 )
+
+fun Suggestion.displayLabel(): String = "$title • $subtitle"
+
+fun HarmonicType.displayName(): String = when (this) {
+    HarmonicType.TRIAD -> "Triad"
+    HarmonicType.SEVENTH -> "7th Chord"
+    HarmonicType.EXTENDED -> "Extended Chord"
+    HarmonicType.ALTERED -> "Altered Chord"
+    HarmonicType.SUSPENDED -> "Suspended Chord"
+    HarmonicType.NATURAL -> "Natural Harmonic (N.H.)"
+    HarmonicType.ARTIFICIAL -> "Artificial Harmonic (A.H.)"
+    HarmonicType.PINCH -> "Pinch Harmonic (P.H.)"
+    HarmonicType.TAPPED -> "Tapped Harmonic (T.H.)"
+    HarmonicType.SEMI -> "Semi Harmonic (S.H.)"
+}
+
+fun FretboardViewMode.title(): String = when (this) {
+    FretboardViewMode.SCALE_MAP -> "Scale Map"
+    FretboardViewMode.CAGED_BOX -> "CAGED Box"
+    FretboardViewMode.CHORD_VOICING -> "Chord Voicing"
+    FretboardViewMode.SCALE_DEGREES -> "Scale Degrees"
+    FretboardViewMode.TRIAD_INVERSIONS -> "Triad Inversions"
+    FretboardViewMode.ARPEGGIO_SHAPES -> "Arpeggio Shapes"
+}
+
+fun UnifiedShape.summary(): String = "$name (${pitches.size} pitches)"
+
+fun SparkParticle.isAlive(): Boolean = alpha > 0.05f
+
+fun VisualizerModeItem.displayText(): String = if (isEnabled) label else "$label (Disabled)"

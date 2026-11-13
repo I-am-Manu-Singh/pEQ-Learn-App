@@ -242,6 +242,11 @@ object AndroidVideoExporter {
             // Build Flattened Note Timeline for Audio & Frame Sync
             val flatNotes = ArrayList<ExportFlatNote>()
             val controllerTimelineNotes = ArrayList<ExportTimelineNote>()
+            val totalTransposition = (viewModel?.transposition?.intValue ?: 0) +
+                ((viewModel?.octaveShift?.intValue ?: 0) * 12)
+            val drumTrackSet = score.tracks.filter { it.channel == 9 }.map { it.trackIndex }.toSet()
+            val hasMelodicTracks = score.tracks.isEmpty() || score.tracks.any { it.channel != 9 }
+
             for (mIdx in 0 until totalMeasures) {
                 val measure = score.measures[mIdx]
                 val mStart = measureStartTimes[mIdx]
@@ -251,17 +256,21 @@ object AndroidVideoExporter {
 
                 for (note in measure.notes) {
                     if (note.isRest) continue
+                    if (hasMelodicTracks && note.voice in drumTrackSet) continue
                     if (!(enabledTrackIndices[note.voice] ?: true)) continue
-                    val isRh = if (hasDiffVoices) note.voice == 0 else note.midiNote >= 60
+
+                    val shiftedMidi = (note.midiNote + totalTransposition).coerceIn(21, 108)
+                    val transposedNote = if (totalTransposition != 0) note.copy(midiNote = shiftedMidi) else note
+                    val isRh = if (hasDiffVoices) transposedNote.voice == 0 else shiftedMidi >= 60
                     if (isRh && isRightHandHidden) continue
                     if (!isRh && isLeftHandHidden) continue
 
-                    val nStart = mStart + note.position * secPerBeat
-                    val nDur = (note.duration * secPerBeat).coerceAtLeast(0.08f)
-                    val isChord = (posCounts[(note.position * 20f).toInt()] ?: 0) >= 2
+                    val nStart = mStart + transposedNote.position * secPerBeat
+                    val nDur = (transposedNote.duration * secPerBeat).coerceAtLeast(0.08f)
+                    val isChord = (posCounts[(transposedNote.position * 20f).toInt()] ?: 0) >= 2
                     flatNotes.add(
                         ExportFlatNote(
-                            note = note,
+                            note = transposedNote,
                             measureIndex = mIdx,
                             startSec = nStart,
                             durationSec = nDur,
@@ -272,10 +281,10 @@ object AndroidVideoExporter {
                     )
                     controllerTimelineNotes.add(
                         ExportTimelineNote(
-                            midiNote = note.midiNote,
+                            midiNote = shiftedMidi,
                             startSec = nStart,
                             endSec = nStart + nDur,
-                            voice = note.voice,
+                            voice = transposedNote.voice,
                             isRightHand = isRh
                         )
                     )

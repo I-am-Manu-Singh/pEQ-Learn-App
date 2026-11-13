@@ -387,29 +387,14 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
     }
 
     val detectedName = remember(soundedNotes) {
-        val noteNames = soundedNotes.map { it.first }.distinct()
-        if (noteNames.isEmpty()) "Muted / No Frets Selected"
-        else if (noteNames.size == 1) "${noteNames[0]} Single Note"
-        else {
-            val rootCandidate = soundedNotes.firstOrNull()?.first ?: "C"
-            val allNotePitches = soundedNotes.map { it.second % 12 }.distinct()
-            val rIdx = roots.indexOf(rootCandidate).coerceAtLeast(0)
-            val intervals = allNotePitches.map { (it - rIdx + 12) % 12 }.toSet()
-            
-            when {
-                intervals.contains(4) && intervals.contains(7) && intervals.contains(11) -> "$rootCandidate maj7"
-                intervals.contains(4) && intervals.contains(7) && intervals.contains(10) -> "$rootCandidate 7"
-                intervals.contains(3) && intervals.contains(7) && intervals.contains(10) -> "$rootCandidate m7"
-                intervals.contains(4) && intervals.contains(7) -> "$rootCandidate Major"
-                intervals.contains(3) && intervals.contains(7) -> "$rootCandidate Minor"
-                intervals.contains(5) && intervals.contains(7) -> "$rootCandidate sus4"
-                intervals.contains(2) && intervals.contains(7) -> "$rootCandidate sus2"
-                intervals.contains(3) && intervals.contains(6) -> "$rootCandidate dim"
-                intervals.contains(4) && intervals.contains(8) -> "$rootCandidate aug"
-                else -> "$rootCandidate (" + noteNames.joinToString("-") + ")"
-            }
-        }
-    }
+                    val pitches = soundedNotes.map { it.second }
+                    if (pitches.isEmpty()) {
+                        "Muted / No Frets Selected"
+                    } else {
+                        val live = com.creativeblisslabs.peqlearn.app.util.LiveChordDetector.detect(pitches)
+                        live?.fullName ?: "${soundedNotes.first().first} (${soundedNotes.map { it.first }.distinct().joinToString("-")})"
+                    }
+                }
 
     Column(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
@@ -474,6 +459,7 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
                     markOctaves = true,
                     highlightOctaveC = true,
                     baseFret = 1,
+                    chordFrets = frets.reversed(), // <-- CRITICAL FIX: Lock dots to exact user-selected frets per string!
                     fretMinConstrain = 0,
                     fretMaxConstrain = 15,
                     openStringsSemis = listOf(4, 11, 7, 2, 9, 4),
@@ -485,10 +471,14 @@ private fun ChordFinderTool(viewModel: AppViewModel, roots: List<String>) {
                         val nextFrets = frets.toMutableList()
                         nextFrets[guitarStringIdx] = if (currentFret == fretIdx) -1 else fretIdx
                         frets = nextFrets
-                        try {
-                            viewModel.audioEngine.setInstrument(selectedFinderInstrument.soundEngineName)
-                            viewModel.audioEngine.noteOn(midi, 0.85f)
-                        } catch (_: Exception) {}
+                        scope.launch {
+                            try {
+                                viewModel.audioEngine.setInstrument(selectedFinderInstrument.soundEngineName)
+                                viewModel.audioEngine.noteOn(midi, 0.85f)
+                                delay(350L)
+                                viewModel.audioEngine.noteOff(midi)
+                            } catch (_: Exception) {}
+                        }
                     },
                     modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(8.dp))
                 )
@@ -754,23 +744,38 @@ private fun ScaleFinderTool(viewModel: AppViewModel, roots: List<String>) {
                                 modifier = Modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(8.dp))
                             )
                         } else {
-                            UnifiedGuitarFretboard(
-                                numFrets = 15,
-                                activeNotes = scaleNotes.map { roots.indexOf(it).coerceAtLeast(0) },
-                                rootNote = rootIdx,
-                                accentColor = Color(0xFF81C784),
-                                showNoteNames = true,
-                                markOctaves = true,
-                                highlightOctaveC = true,
-                                baseFret = 1,
-                                onFretTapped = { _: Int, _: Int, midi: Int ->
-                                    try {
-                                        viewModel.audioEngine.setInstrument("GUITAR")
-                                        viewModel.audioEngine.noteOn(midi, 0.85f)
-                                    } catch (_: Exception) {}
-                                },
-                                modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(8.dp))
-                            )
+                     val playableGuitarScaleMidi = remember(rootIdx, scaleNotes) {
+                            val semis = scaleNotes.mapNotNull { n ->
+                                val idx = roots.indexOf(n)
+                                if (idx >= 0) ((idx - rootIdx) % 12 + 12) % 12 else null
+                            }
+                            com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine
+                                .solvePlayableScaleBoxRun(
+                                    rootIdx = rootIdx,
+                                    scaleIntervals = semis,
+                                    openStringsMidiHighToLow = listOf(64, 59, 55, 50, 45, 40),
+                                    boxStartFret = 0,
+                                    boxSpanFrets = 4,
+                                    numOctaves = 2
+                                ).map { it.third }
+                        }
+                        UnifiedGuitarFretboard(
+                            numFrets = 15,
+                            activeNotes = playableGuitarScaleMidi, // <-- FIXED: Real playable MIDI notes, not 0..11!
+                            rootNote = rootIdx,
+                            accentColor = Color(0xFF81C784),
+                            showNoteNames = true,
+                            markOctaves = true,
+                            highlightOctaveC = true,
+                            baseFret = 1,
+                            onFretTapped = { _: Int, _: Int, midi: Int ->
+                                try {
+                                    viewModel.audioEngine.setInstrument("GUITAR")
+                                    viewModel.audioEngine.noteOn(midi, 0.85f)
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(8.dp))
+                        )
                         }
                     }
                 }

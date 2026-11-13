@@ -58,7 +58,6 @@ private fun LearnMainContent(
 
         val tabs = listOf(
             Triple("CHORDS", "Chords", Icons.Default.LibraryMusic),
-            Triple("PIANO & NOTATION", "Piano & Notation", Icons.Default.Piano),
             Triple("STROBE TUNER", "Strobe Tuner", Icons.Default.Mic),
             Triple("DRUMS", "Drums", Icons.Default.Radio),
             Triple("RIYAAZ", "Riyaaz", Icons.Default.SelfImprovement),
@@ -193,10 +192,7 @@ private fun LearnMainContent(
                                     "CHORDS" -> {
                                         ChordDictionaryPanel(viewModel = viewModel)
                                     }
-                                 
-                                    "PIANO & NOTATION" -> {
-                                        PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
-                                    }
+
                                     "STROBE TUNER" -> {
                                         StrobeTunerSection(viewModel)
                                     }
@@ -318,9 +314,6 @@ private fun LearnMainContent(
                         when (currentTab) {
                             "CHORDS" -> {
                                 ChordDictionaryPanel(viewModel = viewModel)
-                            }
-                            "PIANO & NOTATION" -> {
-                                PianoKeyboard88Keys(viewModel = viewModel, primaryColor = primaryColor)
                             }
                             "STROBE TUNER" -> {
                                 StrobeTunerSection(viewModel)

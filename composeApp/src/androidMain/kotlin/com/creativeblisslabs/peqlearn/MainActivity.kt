@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
             requestMediaPermissions()
             requestMicrophonePermission()
             requestNotificationPermission()
+            requestBluetoothPermissions()
         }
 
         performCleanup()

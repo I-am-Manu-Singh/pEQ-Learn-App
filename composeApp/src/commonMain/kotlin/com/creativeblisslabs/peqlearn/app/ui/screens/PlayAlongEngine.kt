@@ -1,14 +1,18 @@
 package com.creativeblisslabs.peqlearn.app.ui.screens
 
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 data class PlayAlongEvaluationNote(
     val id: Int,
     val midiNote: Int,
+    val measureIndex: Int,
+    val beatPosition: Float,
     val expectedTimestampMs: Long,
     val durationMs: Long,
     var status: NoteEvaluationStatus = NoteEvaluationStatus.PENDING,
@@ -18,8 +22,8 @@ data class PlayAlongEvaluationNote(
 
 enum class NoteEvaluationStatus {
     PENDING,
-    HIT_PERFECT,  // within +/- 60ms
-    HIT_GOOD,     // within +/- 150ms
+    HIT_PERFECT,  // within +/- 70ms
+    HIT_GOOD,     // within +/- 180ms
     MISSED,       // window passed without key press
     WRONG_PITCH   // wrong key pressed during window
 }
@@ -41,16 +45,18 @@ class PlayAlongEngine {
     val isPracticeMode = mutableStateOf(false)
     val waitForUserMode = mutableStateOf(false)
 
-    // Notes tracking
+    val practiceHandMode = mutableStateOf("BOTH") // "BOTH", "RIGHT", "LEFT"
+    val loopStartMeasure = mutableIntStateOf(-1) // -1 = disabled
+    val loopEndMeasure = mutableIntStateOf(-1)
+
     val expectedNotes = mutableStateListOf<PlayAlongEvaluationNote>()
     val scorecard = mutableStateOf(PlayAlongScorecard())
 
-    // Connected USB MIDI feedback: Map of midiNote -> Color status
-    // Green (Hit), Red (Wrong), Gold (Expected right now)
-    val liveKeyFeedbacks = androidx.compose.runtime.mutableStateMapOf<Int, Long>() // midiNote -> expiryTimeMs
-    val liveKeyColors = androidx.compose.runtime.mutableStateMapOf<Int, androidx.compose.ui.graphics.Color>()
+    // Connected USB MIDI feedback: Green (Hit), Red (Wrong), Gold (Wait-For-Note Target)
+    val liveKeyFeedbacks = mutableStateMapOf<Int, Long>() // midiNote -> expiryTimeMs
+    val liveKeyColors = mutableStateMapOf<Int, Color>()
+    val activeStepTargetNotes = mutableStateListOf<Int>()
 
-    // Current hit streak
     val streak = mutableIntStateOf(0)
     val bestStreak = mutableIntStateOf(0)
     val hitCount = mutableIntStateOf(0)
@@ -58,7 +64,20 @@ class PlayAlongEngine {
     val wrongCount = mutableIntStateOf(0)
     private val timingErrors = mutableListOf<Long>()
 
-    fun startEvaluation(score: Score, currentTempo: Float) {
+    /**
+     * FIXED:
+     * 1. Uses exact quarter-note beats `(numerator * (4f / denominator))` so 6/8, 3/8, 12/8 never drift!
+     * 2. Excludes GM Channel 10 Drum tracks (`resolvePlayableMelodicTrackIndices`) and respects LH/RH hide flags.
+     * 3. Applies `transposition` so transposed playback grades accurately against USB MIDI input.
+     */
+    fun startEvaluation(
+        score: Score,
+        currentTempo: Float,
+        enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
+        isLeftHandHidden: Boolean = false,
+        isRightHandHidden: Boolean = false,
+        transposition: Int = 0
+    ) {
         expectedNotes.clear()
         timingErrors.clear()
         streak.intValue = 0
@@ -68,27 +87,44 @@ class PlayAlongEngine {
         wrongCount.intValue = 0
         liveKeyFeedbacks.clear()
         liveKeyColors.clear()
+        activeStepTargetNotes.clear()
 
+        val melodicTrackSet = resolvePlayableMelodicTrackIndices(score, enabledTrackIndices)
+        val safeTempo = currentTempo.coerceAtLeast(20f)
+        val secondsPerQuarterBeat = 60f / safeTempo
         var currentTotalMs = 0L
-        val secondsPerBeat = 60f / currentTempo
-
         var noteIdCounter = 0
-        score.measures.forEach { measure ->
-            val beatsPerMeasure = measure.timeSignatureNumerator.toFloat().coerceAtLeast(1f)
-            val measureDurMs = (beatsPerMeasure * secondsPerBeat * 1000).toLong()
 
-            measure.notes.filter { !it.isRest }.forEach { note ->
-                val noteStartMs = currentTotalMs + (note.position * secondsPerBeat * 1000).toLong()
-                val noteDurMs = (note.duration * secondsPerBeat * 1000).toLong().coerceAtLeast(80L)
-                expectedNotes.add(
-                    PlayAlongEvaluationNote(
-                        id = noteIdCounter++,
-                        midiNote = note.midiNote,
-                        expectedTimestampMs = noteStartMs,
-                        durationMs = noteDurMs
+        score.measures.forEachIndexed { mIdx, measure ->
+            val quarterBeatsPerMeasure = (measure.timeSignatureNumerator.toFloat() *
+                (4f / measure.timeSignatureDenominator.coerceAtLeast(1).toFloat())).coerceAtLeast(1f)
+            val measureDurMs = (quarterBeatsPerMeasure * secondsPerQuarterBeat * 1000f).toLong()
+            val hasDifferentiatedVoices = measure.notes.any { it.voice == 0 } && measure.notes.any { it.voice == 1 }
+
+            measure.notes
+                .filter { !it.isRest && it.voice in melodicTrackSet }
+                .sortedWith(compareBy({ it.position }, { it.midiNote }))
+                .forEach { note ->
+                    val shiftedMidi = (note.midiNote + transposition).coerceIn(21, 108)
+                    val isRightHand = if (hasDifferentiatedVoices) note.voice == 0 else shiftedMidi >= 60
+                    if ((isRightHand && isRightHandHidden) || (!isRightHand && isLeftHandHidden)) {
+                        return@forEach
+                    }
+
+                    val noteStartMs = currentTotalMs + (note.position * secondsPerQuarterBeat * 1000f).toLong()
+                    val noteDurMs = (note.duration.coerceAtLeast(0.125f) * secondsPerQuarterBeat * 1000f).toLong().coerceAtLeast(80L)
+
+                    expectedNotes.add(
+                        PlayAlongEvaluationNote(
+                            id = noteIdCounter++,
+                            midiNote = shiftedMidi,
+                            measureIndex = mIdx,
+                            beatPosition = note.position,
+                            expectedTimestampMs = noteStartMs,
+                            durationMs = noteDurMs
+                        )
                     )
-                )
-            }
+                }
             currentTotalMs += measureDurMs
         }
 
@@ -98,47 +134,81 @@ class PlayAlongEngine {
 
     fun stopEvaluation() {
         isEvaluating.value = false
+        activeStepTargetNotes.clear()
+        liveKeyColors.clear()
+        liveKeyFeedbacks.clear()
         updateScorecard()
+    }
+
+    /**
+     * Returns true if playback clock should hold at `currentPlayheadMs` in `WAIT_FOR_NOTE` mode
+     * until the user presses all pending notes in the current chord slice, and highlights target keys in Gold.
+     */
+    fun shouldHoldForStepWait(currentPlayheadMs: Long): Boolean {
+        if (!isEvaluating.value || !waitForUserMode.value) {
+            activeStepTargetNotes.clear()
+            return false
+        }
+
+        val nextPending = expectedNotes.firstOrNull { it.status == NoteEvaluationStatus.PENDING } ?: run {
+            activeStepTargetNotes.clear()
+            return false
+        }
+
+        if (currentPlayheadMs >= nextPending.expectedTimestampMs - 25L) {
+            // Collect all simultaneous chord notes within 35ms of this onset
+            val chordSlice = expectedNotes.filter {
+                it.status == NoteEvaluationStatus.PENDING &&
+                    abs(it.expectedTimestampMs - nextPending.expectedTimestampMs) <= 35L
+            }
+            activeStepTargetNotes.clear()
+            chordSlice.forEach { n ->
+                activeStepTargetNotes.add(n.midiNote)
+                if (!liveKeyFeedbacks.containsKey(n.midiNote)) {
+                    liveKeyColors[n.midiNote] = Color(0xFFFFD700) // Gold target guide
+                }
+            }
+            return true
+        }
+        return false
     }
 
     fun onUserMidiNoteOn(pressedNote: Int, currentPlayheadMs: Long) {
         if (!isEvaluating.value) return
 
-        val toleranceWindowMs = 280L
-        // Find nearest pending note matching pitch
+        val toleranceWindowMs = if (waitForUserMode.value) 2_500L else 280L
         val matchingNote = expectedNotes.firstOrNull { note ->
             note.status == NoteEvaluationStatus.PENDING &&
-            note.midiNote == pressedNote &&
-            kotlin.math.abs(note.expectedTimestampMs - currentPlayheadMs) <= toleranceWindowMs
+                note.midiNote == pressedNote &&
+                abs(note.expectedTimestampMs - currentPlayheadMs) <= toleranceWindowMs
         }
 
         if (matchingNote != null) {
-            val delta = currentPlayheadMs - matchingNote.expectedTimestampMs
+            val delta = if (waitForUserMode.value) 0L else (currentPlayheadMs - matchingNote.expectedTimestampMs)
             matchingNote.hitTimestampMs = currentPlayheadMs
             matchingNote.timingDeltaMs = delta
-            matchingNote.status = if (kotlin.math.abs(delta) <= 80L) NoteEvaluationStatus.HIT_PERFECT else NoteEvaluationStatus.HIT_GOOD
+            matchingNote.status = if (abs(delta) <= 80L) NoteEvaluationStatus.HIT_PERFECT else NoteEvaluationStatus.HIT_GOOD
             hitCount.intValue++
             streak.intValue++
             if (streak.intValue > bestStreak.intValue) {
                 bestStreak.intValue = streak.intValue
             }
-            timingErrors.add(kotlin.math.abs(delta))
+            timingErrors.add(abs(delta))
+            activeStepTargetNotes.remove(pressedNote)
 
-            // Live Green Feedback for correct note
-            val hitColor = if (matchingNote.status == NoteEvaluationStatus.HIT_PERFECT) androidx.compose.ui.graphics.Color(0xFF00E676) else androidx.compose.ui.graphics.Color(0xFF69F0AE)
+            val hitColor = if (matchingNote.status == NoteEvaluationStatus.HIT_PERFECT) Color(0xFF00E676) else Color(0xFF69F0AE)
             liveKeyColors[pressedNote] = hitColor
-            liveKeyFeedbacks[pressedNote] = System.currentTimeMillis() + 400L
+            liveKeyFeedbacks[pressedNote] = System.currentTimeMillis() + 420L
+            com.creativeblisslabs.peqlearn.app.audio.WledKeyLightingEngine.sendKeyLightingEvent(pressedNote, hitColor, isNoteOn = true)
         } else {
-            // Check if there was an expected note around this time with a different pitch
             val anyExpectedNote = expectedNotes.firstOrNull { note ->
                 note.status == NoteEvaluationStatus.PENDING &&
-                kotlin.math.abs(note.expectedTimestampMs - currentPlayheadMs) <= toleranceWindowMs
+                    abs(note.expectedTimestampMs - currentPlayheadMs) <= toleranceWindowMs
             }
             if (anyExpectedNote != null) {
                 wrongCount.intValue++
                 streak.intValue = 0
-                // Live Red Feedback for wrong pitch
-                liveKeyColors[pressedNote] = androidx.compose.ui.graphics.Color(0xFFFF3D00)
+                liveKeyColors[pressedNote] = Color(0xFFFF3D00)
                 liveKeyFeedbacks[pressedNote] = System.currentTimeMillis() + 500L
             }
         }
@@ -149,12 +219,17 @@ class PlayAlongEngine {
         if (!isEvaluating.value) return
 
         val now = System.currentTimeMillis()
-        liveKeyFeedbacks.entries.removeIf { (note, expiry) ->
-            if (now >= expiry) {
-                liveKeyColors.remove(note)
-                true
-            } else false
+        val iter = liveKeyFeedbacks.entries.iterator()
+        while (iter.hasNext()) {
+            val entry = iter.next()
+            if (now >= entry.value) {
+                liveKeyColors.remove(entry.key)
+                iter.remove()
+            }
         }
+
+        // Do not mark notes as MISSED while holding for user input in Step-Wait mode
+        if (waitForUserMode.value) return
 
         val missCutoff = currentPlayheadMs - 280L
         var hasNewMisses = false

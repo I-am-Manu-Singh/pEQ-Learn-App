@@ -91,22 +91,45 @@ fun UnifiedRaagaBrowser(
             if (filtered.isNotEmpty()) filtered else sourceList
         }
     }
-
-    val currentRaga = displayRagas.getOrNull(selectedIdx.coerceIn(0, (displayRagas.size - 1).coerceAtLeast(0)))
+    val rawSelectedRaga = displayRagas.getOrNull(selectedIdx.coerceIn(0, (displayRagas.size - 1).coerceAtLeast(0)))
         ?: sourceList.firstOrNull()
+
+    // Automatically repair any placeholder Swarlipi notations or corrupted Vadi/Samvadi constants!
+    val currentRaga = remember(rawSelectedRaga) {
+        rawSelectedRaga?.let { com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine.resolveAuthenticRaaga(it) }
+    }
 
     val activeTaalFramework = remember(currentRaga, isCarnatic) {
         if (isCarnatic) {
-            CARNATIC_TALAS.find { it.name.equals(currentRaga?.taal, ignoreCase = true) } ?: CARNATIC_TALAS.first()
+            CARNATIC_TALAS.find { it.name.contains(currentRaga?.taal ?: "", ignoreCase = true) } ?: CARNATIC_TALAS.first()
         } else {
-            INDIAN_TAALS.find { it.name.equals(currentRaga?.taal, ignoreCase = true) } ?: INDIAN_TAALS.first()
+            INDIAN_TAALS.find { it.name.contains(currentRaga?.taal ?: "", ignoreCase = true) } ?: INDIAN_TAALS.first()
         }
     }
 
+    var activeConcertStage by remember {
+        mutableStateOf(com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine.RaagaConcertStage.IDLE)
+    }
+    var liveConcertSwara by remember { mutableStateOf("") }
+    var liveConcertLyric by remember { mutableStateOf("") }
+    var liveConcertBol by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(currentRaga, activeTaalFramework) {
-        currentRaga?.let {
-            viewModel?.currentScore?.value = MusicConverter.convertRaagaToScore(it, 60, activeTaalFramework)
-            onSelectRaga(it)
+        isAuditionRunning = false
+        activeConcertStage = com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine.RaagaConcertStage.IDLE
+        currentRaga?.let { raga ->
+            viewModel?.currentScore?.value = com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine.buildCompleteRaagaScore(
+                rawRaga = raga,
+                taal = activeTaalFramework,
+                baseSaMidi = 60
+            )
+            // Highlight all notes of the Raaga on the keyboard/fretboard when idle
+            viewModel?.midiActiveNotes?.clear()
+            raga.semitones.forEach { semi ->
+                viewModel?.midiActiveNotes?.put(60 + semi, true)
+            }
+            viewModel?.midiActiveNotes?.put(72, true)
+            onSelectRaga(raga)
         }
     }
 
@@ -273,51 +296,101 @@ fun UnifiedRaagaBrowser(
                             )
                         }
 
-                    InstrumentPlayButton(
-                        accentColor = accentColor,
-                        label = if (isAuditionRunning) "Playing..." else "Audition Scale",
-                        isPlaying = isAuditionRunning,
-                        onClick = {
-                            if (!isAuditionRunning) {
-                                isAuditionRunning = true
-                                val engine = getAudioEngine()
-                                engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
-                                scope.launch {
-                                    try {
-                                        val scaleNotes = if (raga.semitones.isNotEmpty()) raga.semitones else listOf(0, 2, 4, 5, 7, 9, 11, 12)
-                                        scaleNotes.forEachIndexed { idx, semi ->
-                                            currentPlayingIdx = idx
-                                            val note = 60 + semi
-                                            viewModel?.let {
-                                                it.scorePlayheadMeasure.value = idx / activeTaalFramework.beats
-                                                it.scorePlayheadOffset.value = (idx % activeTaalFramework.beats).toFloat() / activeTaalFramework.beats.toFloat()
-                                                it.midiPlayingNote.value = note
+                        InstrumentPlayButton(
+                            accentColor = accentColor,
+                            label = if (isAuditionRunning) "Stop Demo" else "Raaga Pradarshan",
+                            isPlaying = isAuditionRunning,
+                            onClick = {
+                                if (!isAuditionRunning) {
+                                    isAuditionRunning = true
+                                    val engine = getAudioEngine()
+                                    engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
+                                    scope.launch {
+                                        try {
+                                            val concertSteps = com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine
+                                                .buildAuthenticRaagaConcertSequence(raga, activeTaalFramework, 60)
+
+                                            // Start subtle Tanpura Sa drone
+                                            runCatching { engine.playSample("C", 0, "TANPURA") }
+
+                                            for (idx in concertSteps.indices) {
+                                                if (!isAuditionRunning) break
+                                                val step = concertSteps[idx]
+                                                activeConcertStage = step.stage
+                                                liveConcertSwara = step.swaraLabel
+                                                liveConcertLyric = step.lyricLabel
+                                                liveConcertBol = step.tablaBol
+                                                currentPlayingIdx = idx
+
+                                                viewModel?.let { vm ->
+                                                    val totalNotes = (vm.currentScore.value as? Score)?.measures?.size?.coerceAtLeast(1) ?: 1
+                                                    vm.scorePlayheadMeasure.value = (idx / 8).coerceIn(0, totalNotes - 1)
+                                                    vm.scorePlayheadOffset.value = (idx % 8) / 8f
+                                                    vm.midiPlayingNote.value = step.midiNote
+                                                }
+
+                                                if (step.tablaBol != null) {
+                                                    runCatching { engine.playSample(step.tablaBol, step.matraIndex.coerceAtLeast(0), "TABLA") }
+                                                }
+                                                runCatching { engine.noteOn(step.midiNote, 0.88f) }
+                                                delay(step.durationMs)
+                                                runCatching { engine.noteOff(step.midiNote) }
                                             }
-                                            engine.noteOn(note, 0.85f)
-                                            delay(360L)
-                                            engine.noteOff(note)
+                                        } finally {
+                                            runCatching { engine.playSample("STOP", 0, "TANPURA") }
+                                            activeConcertStage = com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine.RaagaConcertStage.IDLE
+                                            liveConcertSwara = ""
+                                            liveConcertLyric = ""
+                                            liveConcertBol = null
+                                            currentPlayingIdx = -1
+                                            viewModel?.let {
+                                                it.midiPlayingNote.value = null
+                                                it.scorePlayheadMeasure.value = 0
+                                                it.scorePlayheadOffset.value = 0f
+                                            }
+                                            isAuditionRunning = false
                                         }
-                                    } finally {
-                                        currentPlayingIdx = -1
-                                        viewModel?.let {
-                                            it.midiPlayingNote.value = null
-                                            it.scorePlayheadMeasure.value = 0
-                                            it.scorePlayheadOffset.value = 0f
-                                        }
-                                        isAuditionRunning = false
                                     }
+                                } else {
+                                    isAuditionRunning = false
                                 }
-                            } else {
-                                isAuditionRunning = false
-                                currentPlayingIdx = -1
-                                viewModel?.let {
-                                    it.midiPlayingNote.value = null
-                                    it.scorePlayheadMeasure.value = 0
-                                    it.scorePlayheadOffset.value = 0f
+                            }
+                        )
+                    }
+
+                    // Live 6-Stage Raaga Concert Pradarshan Telemetry Banner
+                    AnimatedVisibility(visible = isAuditionRunning && activeConcertStage != com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine.RaagaConcertStage.IDLE) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = accentColor.copy(alpha = 0.14f),
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.55f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "${activeConcertStage.badge} • ${activeConcertStage.title}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = accentColor
+                                    )
+                                    Text(
+                                        text = buildString {
+                                            append("Swara: $liveConcertSwara")
+                                            if (liveConcertLyric.isNotBlank()) append("  •  \"$liveConcertLyric\"")
+                                            if (!liveConcertBol.isNullOrBlank()) append("  •  🥁 Tabla: $liveConcertBol")
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
                             }
                         }
-                    )
                     }
 
                     Row(
@@ -337,24 +410,66 @@ fun UnifiedRaagaBrowser(
                         semitones = raga.semitones,
                         accentColor = accentColor,
                         scope = scope,
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        isDescendingHint = false
                     )
 
                     PlayableInfoRowShared(
                         icon = Icons.Default.TrendingDown,
                         label = if (isCarnatic) "Avarohanam (Descent)" else "Avaroha (Descent)",
                         value = raga.avaroha,
-                        semitones = raga.semitones.reversed(),
+                        semitones = raga.semitones,
                         accentColor = accentColor,
                         scope = scope,
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        isDescendingHint = true
                     )
 
                     if (raga.pakad.isNotEmpty()) {
-                        PlayableInfoRowShared(Icons.Default.Star, "Pakad (Signature Phrase)", raga.pakad, raga.semitones, MaterialTheme.colorScheme.tertiary, scope, viewModel)
+                        PlayableInfoRowShared(
+                            icon = Icons.Default.Star,
+                            label = "Pakad (Signature Catch-Phrase)",
+                            value = raga.pakad,
+                            semitones = raga.semitones,
+                            accentColor = MaterialTheme.colorScheme.tertiary,
+                            scope = scope,
+                            viewModel = viewModel
+                        )
                     }
                     if (raga.chalan.isNotEmpty()) {
-                        PlayableInfoRowShared(Icons.Default.LinearScale, "Chalan (Movement Flow)", raga.chalan, raga.semitones, MaterialTheme.colorScheme.secondary, scope, viewModel)
+                        PlayableInfoRowShared(
+                            icon = Icons.Default.LinearScale,
+                            label = "Chalan (Melodic Elaboration)",
+                            value = raga.chalan,
+                            semitones = raga.semitones,
+                            accentColor = MaterialTheme.colorScheme.secondary,
+                            scope = scope,
+                            viewModel = viewModel
+                        )
+                    }
+
+                    if (raga.alaap.isNotEmpty()) {
+                        PlayableInfoRowShared(
+                            icon = Icons.Default.GraphicEq,
+                            label = "Alaap Phrases (Slow Improvisation)",
+                            value = raga.alaap.joinToString(" , "),
+                            semitones = raga.semitones,
+                            accentColor = MaterialTheme.colorScheme.primary,
+                            scope = scope,
+                            viewModel = viewModel
+                        )
+                    }
+
+                    if (raga.taansPaltas.isNotEmpty()) {
+                        PlayableInfoRowShared(
+                            icon = Icons.Default.Speed,
+                            label = "Taan / Vistaar (Fast Virtuosic Run)",
+                            value = raga.taansPaltas.first(),
+                            semitones = raga.semitones,
+                            accentColor = Color(0xFFFFB300),
+                            scope = scope,
+                            viewModel = viewModel
+                        )
                     }
 
                     if (raga.description.isNotEmpty()) {
@@ -1427,19 +1542,23 @@ fun PlayableInfoRowShared(
     semitones: List<Int>,
     accentColor: Color,
     scope: CoroutineScope,
-    viewModel: AppViewModel?
+    viewModel: AppViewModel?,
+    isDescendingHint: Boolean = false
 ) {
-    var isRowPlaying by remember { mutableStateOf(false) }
-    var currentPlayingRowIdx by remember { mutableIntStateOf(-1) }
+    var isRowPlaying by remember(value) { mutableStateOf(false) }
+    var currentPlayingRowIdx by remember(value) { mutableIntStateOf(-1) }
 
-    // Split value (e.g. "S R1 G2 M1 P D1 N2 Ṡ" or "S - R - G") into tokens for active highlighting
     val tokens = remember(value) {
-        val parts = value.trim().split(Regex("\\s+"))
-        if (parts.size == 1 && value.contains("-")) {
-            value.split("-").map { it.trim() }.filter { it.isNotEmpty() }
-        } else {
-            parts
-        }
+        com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine.tokenizeSargamPhrase(value)
+    }
+
+    val parsedEvents = remember(value, semitones, isDescendingHint) {
+        com.creativeblisslabs.peqlearn.app.util.ClassicalSargamEngine.parseSargamToMidiEvents(
+            phrase = value,
+            ragaSemitones = semitones,
+            baseSaMidi = 60,
+            isDescendingHint = isDescendingHint
+        )
     }
 
     Row(
@@ -1448,30 +1567,35 @@ fun PlayableInfoRowShared(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                 if (tokens.isNotEmpty()) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(top = 3.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         tokens.forEachIndexed { idx, token ->
                             val isHighlighted = isRowPlaying && currentPlayingRowIdx == idx
-                            pEQGlassCard(
-                                modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(5.dp),
+                                color = if (isHighlighted) accentColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                border = if (isHighlighted) BorderStroke(1.dp, Color.White) else null
                             ) {
                                 Text(
-                                    token,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isHighlighted) FontWeight.ExtraBold else FontWeight.Bold,
-                                    color = if (isHighlighted) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(horizontal = if (isHighlighted) 4.dp else 1.dp, vertical = 1.dp)
+                                    text = token,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = if (isHighlighted) FontWeight.Black else FontWeight.Bold,
+                                    color = if (isHighlighted) Color.Black else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -1484,7 +1608,7 @@ fun PlayableInfoRowShared(
 
         InstrumentPlayButton(
             accentColor = accentColor,
-            label = "Play",
+            label = if (isRowPlaying) "Stop" else "Play",
             isPlaying = isRowPlaying,
             onClick = {
                 if (!isRowPlaying) {
@@ -1493,14 +1617,13 @@ fun PlayableInfoRowShared(
                     engine.setInstrument(ChordInstrumentType.HARMONIUM.soundEngineName)
                     scope.launch {
                         try {
-                            val notes = if (semitones.isNotEmpty()) semitones else listOf(0, 2, 4, 5, 7, 9, 11, 12)
-                            notes.forEachIndexed { idx, semi ->
-                                currentPlayingRowIdx = idx
-                                val note = 60 + semi
-                                viewModel?.midiPlayingNote?.value = note
-                                engine.noteOn(note, 0.85f)
-                                delay(350L)
-                                engine.noteOff(note)
+                            for (ev in parsedEvents) {
+                                if (!isRowPlaying) break
+                                currentPlayingRowIdx = ev.tokenIndex
+                                viewModel?.midiPlayingNote?.value = ev.midiNote
+                                engine.noteOn(ev.midiNote, 0.85f)
+                                delay((ev.durationBeats * 340L).toLong().coerceAtLeast(180L))
+                                engine.noteOff(ev.midiNote)
                             }
                         } finally {
                             currentPlayingRowIdx = -1

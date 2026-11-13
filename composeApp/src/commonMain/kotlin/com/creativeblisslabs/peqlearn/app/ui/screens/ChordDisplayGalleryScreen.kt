@@ -216,7 +216,7 @@ fun ChordDisplayGalleryScreen(
         }
     }
 
-    fun playPosition(pos: RealChordPosition) {
+  fun playPosition(pos: RealChordPosition) {
         if (isGalleryPlaying) {
             galleryJob?.cancel()
             pos.midi.forEach { try { viewModel.audioEngine.noteOff(it) } catch (_: Exception) {} }
@@ -227,20 +227,12 @@ fun ChordDisplayGalleryScreen(
             return
         }
         val isUke = selectedInstrument == "ukulele"
-        val openSemis = if (isUke) listOf(9, 4, 0, 7) else listOf(4, 11, 7, 2, 9, 4)
         val defaultOpenMidi = if (isUke) listOf(69, 64, 60, 67) else listOf(64, 59, 55, 50, 45, 40)
-        val reversedFrets = pos.frets.reversed() // string 0 is top
-        // Strum order: lowest string to highest string
-        val stringOrder = if (isUke) listOf(3, 2, 1, 0) else listOf(5, 4, 3, 2, 1, 0)
-        val soundingList = stringOrder.mapNotNull { s ->
-            val f = reversedFrets.getOrNull(s) ?: -1
-            if (f != -1) {
-                val m = defaultOpenMidi[s] + f
-                Triple(s, f, m)
-            } else null
-        }
-        val notes = soundingList.map { it.third }
-        val coords = soundingList.map { it.first to it.second }
+        val (_, _, strumSteps) = com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine
+            .normalizeRealChordPositionTopToBottom(pos, defaultOpenMidi)
+
+        val notes = strumSteps.map { it.third }
+        val coords = strumSteps.map { it.first to it.second }
         playMidiNotes(notes, "GUITAR", coords)
     }
 
@@ -462,24 +454,48 @@ fun ChordDisplayGalleryScreen(
                         )
                     }
 
-                    val activePianoNotes = remember(pianoChord) {
-                        pianoChord?.midi?.associateWith { true } ?: emptyMap()
+                   val baseMidiList = pianoChord?.midi ?: emptyList()
+                    val activeVariationNotes = remember(baseMidiList, selectedPositionIndex) {
+                        if (baseMidiList.isEmpty()) emptyList()
+                        else when (selectedPositionIndex) {
+                            1 -> if (baseMidiList.size >= 2) (baseMidiList.drop(1) + (baseMidiList.first() + 12)).sorted() else baseMidiList
+                            2 -> if (baseMidiList.size >= 3) (baseMidiList.drop(2) + baseMidiList.take(2).map { it + 12 }).sorted() else baseMidiList
+                            3 -> if (baseMidiList.size >= 4) (baseMidiList.drop(3) + baseMidiList.take(3).map { it + 12 }).sorted() else baseMidiList
+                            4 -> if (baseMidiList.size == 4) listOf(baseMidiList[1] - 12, baseMidiList[0], baseMidiList[2], baseMidiList[3]).sorted() else baseMidiList
+                            else -> baseMidiList
+                        }
+                    }
+                    val activePianoNotes = remember(activeVariationNotes) {
+                        activeVariationNotes.associateWith { true }
+                    }
+                    val galleryPianoFingering = remember(activeVariationNotes, selectedSuffix, selectedPositionIndex) {
+                        com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.computePianoFingering(
+                            pitches = activeVariationNotes,
+                            chordSuffix = selectedSuffix,
+                            isScale = false,
+                            voicingIdx = selectedPositionIndex
+                        )
                     }
 
                     com.creativeblisslabs.peqlearn.app.ui.components.UnifiedPianoKeyboard(
                         activeMidiNotes = activePianoNotes,
+                        fingering = galleryPianoFingering,
                         accentColor = Color(0xFFFF9E1B),
                         activeCoordinate = galleryActiveMidi,
                         isPlaying = isGalleryPlaying,
-                        startNote = 48, // C3
-                        endNote = 84,   // C6
+                        startNote = 48,
+                        endNote = 84,
                         fillWidth = true,
                         showNoteNames = true,
                         onKeyTapped = { midiNote ->
-                            try {
-                                viewModel.audioEngine.setInstrument("PIANO")
-                                viewModel.audioEngine.noteOn(midiNote, 0.85f)
-                            } catch (_: Exception) {}
+                            scope.launch {
+                                try {
+                                    viewModel.audioEngine.setInstrument("PIANO")
+                                    viewModel.audioEngine.noteOn(midiNote, 0.85f)
+                                    delay(350L)
+                                    viewModel.audioEngine.noteOff(midiNote)
+                                } catch (_: Exception) {}
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(10.dp))
                     )

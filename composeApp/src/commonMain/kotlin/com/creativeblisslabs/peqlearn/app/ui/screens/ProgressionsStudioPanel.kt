@@ -157,9 +157,13 @@ fun ProgressionsStudioPanel(
                     } else {
                         chordItem.guitarPos?.midi ?: chordItem.pianoMidi
                     }
-                    midiNotes.forEach { midi ->
+                   midiNotes.forEach { midi ->
                         viewModel.audioEngine.noteOn(midi, 0.85f)
                         delay(35L)
+                    }
+                    delay(650L)
+                    midiNotes.forEach { midi ->
+                        runCatching { viewModel.audioEngine.noteOff(midi) }
                     }
                     delay(700L)
                 }

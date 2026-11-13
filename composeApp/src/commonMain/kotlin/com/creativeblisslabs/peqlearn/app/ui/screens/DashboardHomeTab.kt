@@ -291,7 +291,8 @@ fun DashboardHome(viewModel: AppViewModel) {
                         ) {
                             Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("OPEN AUDIO / VIDEO FILE", fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            Text("IMPORT", fontSize = 11.sp, fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp)
                         }
                     }
                 }
@@ -525,7 +526,8 @@ fun DashboardHome(viewModel: AppViewModel) {
                             ) {
                                 Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("OPEN AUDIO / VIDEO FILE", fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                Text("IMPORT", fontSize = 11.sp, fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp)
                             }
                         }
                     }

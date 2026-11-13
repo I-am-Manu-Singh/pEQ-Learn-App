@@ -1665,11 +1665,14 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
         scorePlaybackJob = null
 
         audioEngine.allNotesOff()
+        playAlongEngine.stopEvaluation()
 
         androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
             midiActiveNotes.clear()
             activeNoteTrackColors.clear()
             midiPlayingNote.value = null
+            guidedTargetNotes.clear()
+            guidedSatisfiedNotes.clear()
             firedNotesMap.clear()
             firedPedalsMap.clear()
             notesToReleaseOnSustainUp.clear()
@@ -1706,8 +1709,10 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
     fun toggleUsbMidiInput() {
         val nextState = !isUsbMidiInputEnabled.value
         isUsbMidiInputEnabled.value = nextState
-        if (!nextState) {
-            // Immediately clear any held USB MIDI keys/pedals from visualizer & audio engine
+        if (nextState) {
+            startMidiRecording()
+            toastMessage.value = "🔴 USB/BLE MIDI Recording Started! Play your piano performance..."
+        } else {
             notesToReleaseOnSustainUp.clear()
             sostenutoCapturedNotes.clear()
             sustainPedalActive.value = false
@@ -1716,8 +1721,27 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
             softPedalActive.value = false
             if (!isScorePlaying.value) {
                 midiActiveNotes.clear()
+                activeNoteTrackColors.clear()
                 midiPlayingNote.value = null
                 audioEngine.allNotesOff()
+            }
+            val recordedScore = stopMidiRecording()
+            if (recordedScore != null) {
+                toastMessage.value = "🔴 USB/BLE MIDI Recording Stopped! Exporting Sheet Music PDF & Video..."
+                onPdfExportRequested?.invoke(
+                    recordedScore,
+                    com.creativeblisslabs.peqlearn.app.ui.screens.PdfExportOptions(),
+                    { _ -> },
+                    { _ -> }
+                )
+                onVideoExportRequested?.invoke(
+                    recordedScore,
+                    "1080p",
+                    60,
+                    emptyMap(),
+                    { _ -> },
+                    { _ -> }
+                )
             }
         }
     }
@@ -1996,9 +2020,10 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
 
                 if (!isWaitingForUserStep) {
                     measure.notes.forEachIndexed { index, note ->
-                        if (note.isRest || firedNotesMap[index] == true) return@forEachIndexed
+                        val noteKey = currentMeasureIdx * 10000 + index
+                        if (note.isRest || firedNotesMap[noteKey] == true) return@forEachIndexed
                         if (currentBeatInMeasure >= note.position) {
-                            firedNotesMap[index] = true
+                            firedNotesMap[noteKey] = true
 
                             val isTrackEnabled = enabledTrackIndices[note.voice] ?: true
                             if (!isTrackEnabled) return@forEachIndexed
@@ -2786,12 +2811,140 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
         audioEngine.playSample(label = "STOP", index = 0, string = "TANPURA")
     }
 
+    val isRecordingMidi = mutableStateOf(false)
+    val liveRecordedScore = mutableStateOf<com.creativeblisslabs.peqlearn.app.ui.screens.Score?>(null)
+    private var liveRecStartTimeMs = 0L
+    private var liveRecLastChordOnsetMs = 0L
+    private var liveRecCurrentBeat = 0f
+
+    private data class PendingLiveMidiNote(
+        val midiNote: Int,
+        val velocity: Int,
+        val startMs: Long,
+        val positionBeat: Float
+    )
+    private val livePendingNotes = mutableListOf<PendingLiveMidiNote>()
+    private val liveCompletedNotes = mutableListOf<com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote>()
+
+    fun startMidiRecording() {
+        isRecordingMidi.value = true
+        liveRecStartTimeMs = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        liveRecLastChordOnsetMs = 0L
+        liveRecCurrentBeat = 0f
+        livePendingNotes.clear()
+        liveCompletedNotes.clear()
+        liveRecordedScore.value = null
+    }
+
+    fun stopMidiRecording(): com.creativeblisslabs.peqlearn.app.ui.screens.Score? {
+        isRecordingMidi.value = false
+        val now = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+
+        livePendingNotes.forEach { pending ->
+            val durBeats = ((now - pending.startMs) / 500f).coerceAtLeast(0.5f)
+            liveCompletedNotes.add(
+                com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote(
+                    id = liveCompletedNotes.size + 1,
+                    midiNote = pending.midiNote,
+                    position = pending.positionBeat,
+                    duration = durBeats,
+                    voice = if (pending.midiNote >= 60) 0 else 1
+                )
+            )
+        }
+        livePendingNotes.clear()
+
+        if (liveCompletedNotes.isEmpty()) return null
+
+        val maxBeat = liveCompletedNotes.maxOf { it.position + it.duration }
+        val totalMeasuresNeeded = (maxBeat / 4f).toInt() + 1
+        val measures = (0 until totalMeasuresNeeded).map { mIdx ->
+            val mStart = mIdx * 4f
+            val mEnd = mStart + 4f
+            val mNotes = liveCompletedNotes.filter { it.position >= mStart && it.position < mEnd }.map { n ->
+                n.copy(position = n.position - mStart)
+            }
+            com.creativeblisslabs.peqlearn.app.ui.screens.Measure(measureIndex = mIdx, timeSignatureNumerator = 4, timeSignatureDenominator = 4, notes = mNotes)
+        }
+
+        val finalScore = com.creativeblisslabs.peqlearn.app.ui.screens.Score(
+            title = "USB MIDI Performance ${kotlinx.datetime.Clock.System.now().toEpochMilliseconds() % 10000}",
+            composer = "Live MIDI Recording",
+            tempo = 120f,
+            timeSignature = "4/4",
+            measures = measures
+        )
+
+        liveRecordedScore.value = finalScore
+        currentScore.value = finalScore
+        syncScoreTracks(finalScore)
+        return finalScore
+    }
+
+    private fun updateLiveRecordingScore() {
+        val allNotes = liveCompletedNotes.toList() + livePendingNotes.mapIndexed { idx, pending ->
+            com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote(
+                id = liveCompletedNotes.size + idx + 1,
+                midiNote = pending.midiNote,
+                position = pending.positionBeat,
+                duration = 0.5f,
+                voice = if (pending.midiNote >= 60) 0 else 1
+            )
+        }
+        if (allNotes.isEmpty()) return
+
+        val maxBeat = allNotes.maxOf { it.position + it.duration }
+        val totalMeasuresNeeded = (maxBeat / 4f).toInt() + 1
+        val measures = (0 until totalMeasuresNeeded).map { mIdx ->
+            val mStart = mIdx * 4f
+            val mEnd = mStart + 4f
+            val mNotes = allNotes.filter { it.position >= mStart && it.position < mEnd }.map { n ->
+                n.copy(position = n.position - mStart)
+            }
+            com.creativeblisslabs.peqlearn.app.ui.screens.Measure(measureIndex = mIdx, timeSignatureNumerator = 4, timeSignatureDenominator = 4, notes = mNotes)
+        }
+        val score = com.creativeblisslabs.peqlearn.app.ui.screens.Score(
+            title = "Live USB MIDI Performance",
+            composer = "Live MIDI Input",
+            tempo = 120f,
+            timeSignature = "4/4",
+            measures = measures
+        )
+        liveRecordedScore.value = score
+        currentScore.value = score
+        scorePlayheadMeasure.value = measures.lastIndex
+        scorePlayheadOffset.value = ((maxBeat % 4f) / 4f).coerceIn(0f, 1f)
+    }
+
     fun onMidiNoteOn(note: Int, velocity: Int) {
         midiActiveNotes[note] = true
         midiPlayingNote.value = note
         audioEngine.noteOn(note, velocity.toFloat() / 127f)
         notesToReleaseOnSustainUp.remove(note)
         liveLooper.onLiveNote(note, velocity.toFloat() / 127f, true, Clock.System.now().toEpochMilliseconds())
+
+        if (isRecordingMidi.value) {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val elapsedMs = (now - liveRecStartTimeMs).coerceAtLeast(0L)
+
+            // 50ms chord threshold: If note arrives within 50ms of previous note, assign SAME beat position!
+            if (liveRecLastChordOnsetMs > 0L && (now - liveRecLastChordOnsetMs) <= 50L) {
+                // Same chord slice! Keep liveRecCurrentBeat
+            } else {
+                liveRecCurrentBeat = (elapsedMs / 500f)
+                liveRecLastChordOnsetMs = now
+            }
+
+            livePendingNotes.add(
+                PendingLiveMidiNote(
+                    midiNote = note,
+                    velocity = velocity,
+                    startMs = now,
+                    positionBeat = liveRecCurrentBeat
+                )
+            )
+            updateLiveRecordingScore()
+        }
         
         // FOLLOW MODE: Sync notation playhead to incoming MIDI notes (only when score playback is paused/interactive follow mode)
         if (!isScorePlaying.value) {
@@ -2814,6 +2967,26 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
 
     fun onMidiNoteOff(note: Int) {
         liveLooper.onLiveNote(note, 0f, false, Clock.System.now().toEpochMilliseconds())
+
+        if (isRecordingMidi.value) {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val pending = livePendingNotes.firstOrNull { it.midiNote == note }
+            if (pending != null) {
+                livePendingNotes.remove(pending)
+                val durBeats = ((now - pending.startMs) / 500f).coerceAtLeast(0.25f)
+                liveCompletedNotes.add(
+                    com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote(
+                        id = liveCompletedNotes.size + 1,
+                        midiNote = note,
+                        position = pending.positionBeat,
+                        duration = durBeats,
+                        voice = if (note >= 60) 0 else 1
+                    )
+                )
+                updateLiveRecordingScore()
+            }
+        }
+
         if (sustainActive.value) {
             notesToReleaseOnSustainUp.add(note)
         } else {

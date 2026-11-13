@@ -166,21 +166,26 @@ private fun RadelHardwareEnclosure(
             tanpuraJob?.cancel()
             val basePitch = pitches[selectedPitchIdx]
             viewModel.isTanpuraActive.value = true
-            // Start base continuous drone once
             audioEngine.playSample(basePitch, 0, "TANPURA")
 
             tanpuraJob = scope.launch {
-                val strings = when (stringCount) {
-                    5 -> listOf(0, 1, 1, 2, 0)
-                    6 -> listOf(0, 1, 1, 2, 2, 0)
-                    else -> listOf(0, 1, 1, 2)
+                val firstStrSemi = when (selectedFirstStringMode) {
+                    1 -> 5  // MA (4th)
+                    2 -> 11 // NI (7th)
+                    else -> 7 // PA (5th)
+                }
+                // Authentic Tanpura string semitone offsets relative to Mandra/Madhya Sa
+                val stringSemis = when (stringCount) {
+                    5 -> listOf(firstStrSemi, 12, 12, 12, 0)
+                    6 -> listOf(firstStrSemi, 11, 12, 12, 12, 0)
+                    else -> listOf(firstStrSemi, 12, 12, 0)
                 }
 
                 while (isTanpuraRunning) {
-                    strings.forEachIndexed { sIdx, _ ->
+                    stringSemis.forEachIndexed { sIdx, semiOffset ->
                         if (!isTanpuraRunning) return@forEachIndexed
                         activeStringIndex = sIdx
-                        val stepMs = (60000L / tanpuraTempoBpm.coerceAtLeast(30)) / strings.size
+                        val stepMs = (60000L / tanpuraTempoBpm.coerceAtLeast(30)) / stringSemis.size
                         delay(stepMs)
                     }
                 }
@@ -1055,10 +1060,6 @@ private fun RadelParameterDock(
  */
 private object ClockHelper {
     fun currentTimeMillis(): Long {
-        return try {
-            kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
-        } catch (_: Throwable) {
-            0L
-        }
+        return kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
     }
 }

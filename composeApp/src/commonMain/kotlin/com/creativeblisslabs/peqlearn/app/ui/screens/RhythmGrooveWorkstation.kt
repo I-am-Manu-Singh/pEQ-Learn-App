@@ -241,20 +241,34 @@ fun RiyaazScreen(
                 when (workstationTab) {
                     0 -> {
                         var sigExpanded by remember { mutableStateOf(false) }
-                        val currentSig = ACADEMIC_TIME_SIGNATURES.getOrNull(selectedSigIdx) ?: ACADEMIC_TIME_SIGNATURES.first()
+                        val combinedWesternList = remember {
+                            ACADEMIC_TIME_SIGNATURES.map { Triple(it.name, it.beats, it.description) } +
+                                    com.creativeblisslabs.peqlearn.app.util.WESTERN_TIME_SIGNATURES.map { Triple(it.name, it.beats, it.description) }
+                        }
+                        val currentSig = combinedWesternList.getOrNull(selectedSigIdx) ?: combinedWesternList.first()
+
                         ExposedDropdownMenuBox(expanded = sigExpanded, onExpandedChange = { sigExpanded = it }) {
                             OutlinedTextField(
-                                value = currentSig.name,
+                                value = "${currentSig.first} (${currentSig.second} Beats)",
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("TIME SIGNATURE SCORE") },
+                                label = { Text("SELECT WESTERN & ACADEMIC TIME SIGNATURE") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sigExpanded) },
                                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
                             )
-                            ExposedDropdownMenu(expanded = sigExpanded, onDismissRequest = { sigExpanded = false }) {
-                                ACADEMIC_TIME_SIGNATURES.forEachIndexed { i, signature ->
+                            ExposedDropdownMenu(
+                                expanded = sigExpanded,
+                                onDismissRequest = { sigExpanded = false },
+                                modifier = Modifier.heightIn(max = 260.dp)
+                            ) {
+                                combinedWesternList.forEachIndexed { i, signature ->
                                     DropdownMenuItem(
-                                        text = { Text(signature.name) },
+                                        text = {
+                                            Column {
+                                                Text(signature.first, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                Text(signature.third, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                            }
+                                        },
                                         onClick = {
                                             composableScope.launch(Dispatchers.Default) { viewModel.stopRiyaazEngine() }
                                             selectedSigIdx = i

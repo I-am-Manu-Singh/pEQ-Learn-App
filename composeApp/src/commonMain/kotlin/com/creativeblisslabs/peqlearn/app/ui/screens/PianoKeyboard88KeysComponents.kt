@@ -1734,7 +1734,9 @@ data class FlatWaterfallNote(
     val durationBeats: Float,
     val isRightHand: Boolean,
     val voice: Int,
-    val isChordNote: Boolean
+    val isChordNote: Boolean,
+    val stringIndex: Int? = null, 
+    val fretNumber: Int? = null
 )
 
 data class WaterfallTimeline(
@@ -1790,7 +1792,8 @@ fun SynthesiaWaterfallOverlay(
     onFpsDropDetected: () -> Unit = {},
     exportTimeSec: Float? = null,
     selectedInstrument: String = "Piano",
-    activeNoteColors: Map<Int, Color> = emptyMap()
+    activeNoteColors: Map<Int, Color> = emptyMap(),
+    transposition: Int = 0
 ) {
     val fallingBlocks = remember { ArrayList<PianoWaterfallBlock>(64) }
     val particles = remember { ArrayList<PianoSpark>(128) }
@@ -1799,7 +1802,7 @@ fun SynthesiaWaterfallOverlay(
     var canvasHeightPx by remember { mutableFloatStateOf(500f) }
     val whiteKeyCount = 52
 
-    val waterfallTimeline = remember(score) {
+    val waterfallTimeline = remember(score, transposition, selectedInstrument) {
         if (score == null || score.measures.isEmpty()) {
             null
         } else {
@@ -1813,31 +1816,54 @@ fun SynthesiaWaterfallOverlay(
             }
             cumBeats[score.measures.size] = currentBeatTotal
 
+            val isUke = selectedInstrument.equals("Ukulele", ignoreCase = true)
+            val isSeven = selectedInstrument.contains("7", ignoreCase = true)
+            val openStringsMidi = when {
+                isUke -> listOf(69, 64, 60, 67)
+                isSeven -> listOf(64, 59, 55, 50, 45, 40, 35)
+                else -> score.tuningMidi.ifEmpty { listOf(64, 59, 55, 50, 45, 40) }
+            }
+            var runningGuitarBoxCenter = 3.0f
+
             val flatNotes = ArrayList<FlatWaterfallNote>()
             score.measures.forEachIndexed { mIdx, measure ->
                 val measureStartBeat = cumBeats[mIdx]
                 val hasDifferentiatedVoices =
                     measure.notes.any { it.voice == 0 } && measure.notes.any { it.voice == 1 }
-                val posCounts = measure.notes.filter { !it.isRest }
-                    .groupingBy { (it.position * 20f).toInt() }.eachCount()
 
-                for (note in measure.notes) {
-                    if (!note.isRest && note.midiNote in 21..108) {
+                // Group by beat position so chords are solved together by the Viterbi Fretboard Solver!
+                val byPos = measure.notes.filter { !it.isRest }.groupBy { (it.position * 20f).toInt() }
+
+                for ((_, notesAtSlice) in byPos.entries.sortedBy { it.key }) {
+                    val isChord = notesAtSlice.size >= 2
+                    val transposedSlicePitches = notesAtSlice.map { (it.midiNote + transposition).coerceIn(21, 108) }
+                    val (fretPlacements, nextBoxCenter) = com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine.solveFrettedSliceBiomechanical(
+                        pitches = transposedSlicePitches,
+                        openStringsMidiHighToLow = openStringsMidi,
+                        maxFret = if (isUke) 15 else 24,
+                        lastHandBoxCenterFret = runningGuitarBoxCenter
+                    )
+                    runningGuitarBoxCenter = nextBoxCenter
+
+                    for (note in notesAtSlice) {
+                        val shiftedMidi = (note.midiNote + transposition).coerceIn(21, 108)
                         val isRh = when {
-                            note.midiNote < 48 -> false
-                            note.midiNote > 72 -> true
+                            shiftedMidi < 48 -> false
+                            shiftedMidi > 72 -> true
                             hasDifferentiatedVoices -> note.voice == 0
-                            else -> note.midiNote >= 60
+                            else -> shiftedMidi >= 60
                         }
-                        val isChord = (posCounts[(note.position * 20f).toInt()] ?: 0) >= 2
+                        val placement = fretPlacements[shiftedMidi]
                         flatNotes.add(
                             FlatWaterfallNote(
-                                midiNote = note.midiNote,
+                                midiNote = shiftedMidi,
                                 absoluteBeatStart = measureStartBeat + note.position,
                                 durationBeats = note.duration.coerceAtLeast(0.15f),
                                 isRightHand = isRh,
                                 voice = note.voice,
-                                isChordNote = isChord
+                                isChordNote = isChord,
+                                stringIndex = placement?.stringIndex,
+                                fretNumber = placement?.fret
                             )
                         )
                     }
@@ -2131,7 +2157,7 @@ fun SynthesiaWaterfallOverlay(
         val isHarmoniumMode = inst.equals("Harmonium", true)
         val isDrumOrTablaMode = inst.contains("Drum", true) || inst.equals("Tabla", true)
 
-        // 0. Deep Studio Stage Backdrop + Instrument-Specific Guide Lanes
+      // 0. Deep Studio Stage Backdrop + Instrument-Specific Guide Lanes
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(Color(0xFF06070B), Color(0xFF0B0D14), Color(0xFF10131D))
@@ -2143,14 +2169,12 @@ fun SynthesiaWaterfallOverlay(
         val accentGuideColor = Color(0xFF4A90E2).copy(alpha = 0.18f)
 
         if (isGuitarMode) {
-            // Draw Guitar Hero / Fretboard Logarithmic Fret Wire Highway Guides!
             val isUke = inst.equals("Ukulele", true)
             val numFrets = if (isUke) 15 else 24
             val leftPad = (canvasW * 0.042f).coerceIn(28f, 68f)
             val rightPad = (canvasW * 0.018f).coerceIn(10f, 32f)
             val playableW = (canvasW - leftPad - rightPad).coerceAtLeast(100f)
 
-            // Nut vertical glow line
             drawLine(
                 color = Color(0xFFFFD700).copy(alpha = 0.35f),
                 start = Offset(leftPad, 0f),
@@ -2184,7 +2208,6 @@ fun SynthesiaWaterfallOverlay(
                 )
             }
         } else if (isDrumOrTablaMode) {
-            // Draw 8 Percussion Highway Lanes
             val laneW = canvasW / 8f
             for (i in 0..8) {
                 val lx = i * laneW
@@ -2196,11 +2219,18 @@ fun SynthesiaWaterfallOverlay(
                 )
             }
         } else {
-            // Piano (88-key) or Harmonium (37-key) vertical lane guides
+            // Piano (88-key) or Harmonium (37-key) vertical lane guides using loop variable `midi`
             val startM = if (isHarmoniumMode) 48 else 21
             val endM = if (isHarmoniumMode) 84 else 108
             for (midi in startM..endM) {
-                val lane = resolveInstrumentWaterfallGeometry(midi, selectedInstrument, canvasW, canvasH)
+                val lane = resolveInstrumentWaterfallGeometry(
+                    midiNote = midi,
+                    selectedInstrument = selectedInstrument,
+                    canvasWidth = canvasW,
+                    canvasHeight = canvasH,
+                    preassignedString = null,
+                    preassignedFret = null
+                )
                 val isBlack = isMidiNoteBlack(midi)
                 if (isBlack) {
                     drawRect(
@@ -2378,7 +2408,15 @@ fun SynthesiaWaterfallOverlay(
 
                 if (bottomY < 0f || topY > canvasH) continue
 
-                val lane = resolveInstrumentWaterfallGeometry(note.midiNote, selectedInstrument, canvasW, canvasH)
+     // 2. Draw MIDI Score Lookahead Falling Notes (Aligned to Active Instrument!)
+          val lane = resolveInstrumentWaterfallGeometry(
+                    midiNote = note.midiNote,
+                    selectedInstrument = selectedInstrument,
+                    canvasWidth = canvasW,
+                    canvasHeight = canvasH,
+                    preassignedString = note.stringIndex,
+                    preassignedFret = note.fretNumber
+                )
                 val finalX = lane.centerX - lane.widthPx * 0.5f
 
                 val isCurrentlySounding = noteDistBeats <= 0.05f && (noteDistBeats + note.durationBeats) >= -0.02f

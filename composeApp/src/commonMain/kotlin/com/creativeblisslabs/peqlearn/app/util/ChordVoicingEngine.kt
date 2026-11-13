@@ -2,6 +2,7 @@ package com.creativeblisslabs.peqlearn.app.util
 
 import com.creativeblisslabs.peqlearn.app.data.Taal
 import com.creativeblisslabs.peqlearn.app.ui.screens.MusicConstants
+import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine.getGuitarVoicing
 
 object ChordVoicingEngine {
 
@@ -836,6 +837,120 @@ object CircleOfFifths {
     fun getCircleIndexFromRoot(rootIdx: Int) = circleOrder.indexOf(rootIdx)
 }
 
+/**
+ * Solves optimal fingerings and fretboard placements across a chord sequence
+ * using Viterbi Dynamic Programming (via BiomechanicalPerformersEngine).
+ */
+fun solveViterbiChordSequence(
+    chordNames: List<String>,
+    rootPitches: List<Int> = emptyList()
+): List<GuitarShape> {
+    if (chordNames.isEmpty()) return emptyList()
+    return chordNames.mapIndexed { idx, name ->
+        val pitch = rootPitches.getOrElse(idx) { 60 }
+        val rootIdx = pitch % 12
+        val rootName = NOTE_NAMES_CD[rootIdx]
+        ChordVoicingEngine.getGuitarVoicing(rootName, name)
+    }
+}
+
+/**
+ * Computes exact piano MIDI pitches for root position, 1st/2nd/3rd inversions, and Drop-2.
+ */
+fun buildPianoChordPitches(
+    rootName: String,
+    quality: String,
+    inversion: Int = 0,
+    octave: Int = 4
+): List<Int> {
+    val rootMidi = 12 * (octave + 1) + (NOTE_NAMES_CD.indexOf(rootName).takeIf { it >= 0 } ?: 0)
+    val normQuality = when (quality.lowercase()) {
+        "maj", "major", "" -> ""
+        "m", "min", "minor" -> "m"
+        "7", "dom7" -> "7"
+        "maj7", "major7" -> "maj7"
+        "m7", "min7" -> "m7"
+        "dim" -> "dim"
+        "aug" -> "aug"
+        "sus2" -> "sus2"
+        "sus4" -> "sus4"
+        else -> quality
+    }
+    val typeDef = CHORD_TYPE_DEFS.find { it.suffix.equals(normQuality, ignoreCase = true) } ?: CHORD_TYPE_DEFS.first()
+    val basePitches = typeDef.intervals.map { rootMidi + it }
+
+    if (basePitches.isEmpty()) return listOf(rootMidi)
+
+    val safeInv = inversion % basePitches.size
+    val inverted = basePitches.mapIndexed { idx, pitch ->
+        if (idx < safeInv) pitch + 12 else pitch
+    }.sorted()
+
+    return inverted
+}
+
+/**
+ * Resolves diatonic I, ii, iii, IV, V, vi, vii° chord names and root pitches for any key.
+ */
+fun resolveDiatonicChords(rootKey: String, scaleName: String = "Major"): List<Pair<String, String>> {
+    val rootIdx = NOTE_NAMES_CD.indexOf(rootKey).coerceAtLeast(0)
+    val scalePattern = when {
+        scaleName.contains("Minor", true) -> listOf(0, 2, 3, 5, 7, 8, 10)
+        else -> listOf(0, 2, 4, 5, 7, 9, 11) // Major
+    }
+    val chordQualities = if (scaleName.contains("Minor", true)) {
+        listOf("m", "dim", "", "m", "m", "", "")
+    } else {
+        listOf("", "m", "m", "", "", "m", "dim")
+    }
+    val romanNumerals = if (scaleName.contains("Minor", true)) {
+        listOf("i", "ii°", "III", "iv", "v", "VI", "VII")
+    } else {
+        listOf("I", "ii", "iii", "IV", "V", "vi", "vii°")
+    }
+
+    return scalePattern.mapIndexed { idx, interval ->
+        val noteIdx = (rootIdx + interval) % 12
+        val noteName = NOTE_NAMES_CD[noteIdx]
+        val quality = chordQualities[idx]
+        val roman = romanNumerals[idx]
+        "$noteName$quality" to "$roman: $noteName$quality"
+    }
+}
+
+/**
+ * Filters guitar shapes by CAGED shape and fret range.
+ */
+fun filterGuitarShapes(
+    shapes: List<GuitarShape>,
+    cagedFilter: String = "All CAGED",
+    fretRangeFilter: String = "All Frets"
+): List<GuitarShape> {
+    return shapes.filter { shape ->
+        val frets = shape.frets.filter { it > 0 }
+        val minFret = frets.minOrNull() ?: 0
+
+        val matchesCaged = when (cagedFilter) {
+            "C-Shape" -> minFret in 1..3 || (minFret % 12) in 0..2
+            "A-Shape" -> minFret in 2..5 || (minFret % 12) in 2..5
+            "G-Shape" -> minFret in 4..7 || (minFret % 12) in 4..7
+            "E-Shape" -> minFret in 7..10 || (minFret % 12) in 7..10
+            "D-Shape" -> minFret in 9..12 || (minFret % 12) in 9..12
+            else -> true
+        }
+
+        val matchesRange = when (fretRangeFilter) {
+            "Open (0-3)" -> minFret <= 3
+            "Low (1-5)" -> minFret in 1..5
+            "Mid (5-9)" -> minFret in 5..9
+            "High (9-14)" -> minFret in 9..14
+            "12+ Frets" -> minFret >= 12
+            else -> true
+        }
+
+        matchesCaged && matchesRange
+    }
+}
 
 internal val SCALE_BOX_POSITIONS = listOf(
     ScaleBoxPosition("Box 1: 'C' Shape", listOf(0..3, 0..3, 0..2, 0..2, 0..1, 0..3)),
@@ -849,8 +964,8 @@ internal val SCALE_BOX_POSITIONS = listOf(
 
 // InversionStyle is defined in ChordModels.kt
 
-val WESTERN_TIME_SIGNATURES = listOf(
-    Taal(
+    val WESTERN_TIME_SIGNATURES = listOf(
+        Taal(
         name = "4/4 Common Time",
         beats = 4,
         vibhags = listOf(4),
@@ -917,10 +1032,10 @@ val WESTERN_TIME_SIGNATURES = listOf(
         khali = 4,
         tempo = "Variable (120 - 200 BPM)",
         description = "Complex asymmetric time. Seven fast eighth-note pulses usually divided unevenly as 2+2+3 or 3+2+2. Creates an energetic, constantly accelerating syncopated drive common in progressive rock and folk music."
+        )
     )
-)
-val WESTERN_BEATS = listOf(
-    Taal(
+    val WESTERN_BEATS = listOf(
+        Taal(
         name = "Four on the Floor (4/4)",
         beats = 16,
         vibhags = listOf(4, 4, 4, 4),
@@ -1029,10 +1144,10 @@ val WESTERN_BEATS = listOf(
         khali = 3,
         tempo = "140 - 180 BPM",
         description = "Driven by a classic triplet-based 'spang-a-lang' ride cymbal pattern. The hi-hat steps firmly on beats 2 and 4, while the kick leaves room for improvisation."
+        )
     )
-)
-val ACADEMIC_TIME_SIGNATURES = listOf(
-    Taal(
+    val ACADEMIC_TIME_SIGNATURES = listOf(
+        Taal(
         name = "4/4 Basic Quarter Note",
         beats = 4,
         vibhags = listOf(4),
@@ -1150,5 +1265,4 @@ val ACADEMIC_TIME_SIGNATURES = listOf(
         tempo = "Practice Range: 50 - 90 BPM",
         description = "Three main macro-beats, each divided into three triplet pulses. Heavily featured in traditional Irish jigs on guitar, as well as classical piano score pieces (like Debussy's Clair de Lune)."
     )
-
 )

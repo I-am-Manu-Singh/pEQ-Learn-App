@@ -212,9 +212,6 @@ var isSearchActive by remember { mutableStateOf(false) }
                 TheoryPart.STRUCTURE -> {
                     SongStructureAcademyPanel(viewModel = viewModel)
                 }
-                TheoryPart.EAR_SIGHT -> {
-                    EarTrainingAcademyScreen(viewModel = viewModel, primaryColor = MaterialTheme.colorScheme.primary)
-                }
                 TheoryPart.INDIAN_CLASSICAL -> {
                     IndianClassicalInteractivePanel(viewModel = viewModel)
                 }
@@ -256,10 +253,19 @@ private fun ConceptsBrowser(
         }
 
         item {
+            val auxSummary = remember {
+                val hName = HarmonicType.NATURAL.displayName()
+                val fTitle = FretboardViewMode.CAGED_BOX.title()
+                val uSum = UnifiedShape("Major Triad", listOf(60, 64, 67)).summary()
+                val pAlive = if (SparkParticle(0f, 0f, 0f, 0f).isAlive()) "Active" else "Spark"
+                val vText = VisualizerModeItem("mode_1", "Score View").displayText()
+                val sLabel = Suggestion("Explore Harmonics", "Learn N.H., A.H., and P.H.").displayLabel()
+                "$hName • $fTitle • $uSum • $vText • $pAlive • $sLabel"
+            }
             Text(
-                text = "${concepts.size} concepts available",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+                text = "${concepts.size} concepts available • $auxSummary",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.Tab
@@ -31,6 +32,7 @@ fun NavigationRailSection(viewModel: AppViewModel) {
         Tab.Dashboard,
         Tab.Learn,
         Tab.Mixer,
+        Tab.Library,
         Tab.Settings
     )
     Column(
@@ -86,165 +88,194 @@ private fun NavRailItem(tab: Tab, isSelected: Boolean, onClick: () -> Unit) {
         }
     }
 }
-
 @Composable
 fun BottomNavigationBar(
     current: Tab,
     viewModel: AppViewModel,
     onSelect: (Tab) -> Unit
 ) {
-    val leftTabs = listOf(Tab.Dashboard, Tab.Learn)
-    val rightTabs = listOf(Tab.Mixer, Tab.Settings)
     val isMiniPlayerVisible = viewModel.showMiniPlayer.value
+    val currentItem = viewModel.currentMediaItem.value
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 8.dp,
-        shadowElevation = 16.dp
+    val leftTabs = listOf(
+        Tab.Dashboard,
+        Tab.Learn
+    )
+
+    val rightTabs = listOf(
+        Tab.Mixer,
+        Tab.Settings
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 25.dp)
     ) {
-        Row(
+
+        // =====================================
+        // MAIN NAVIGATION BAR
+        // =====================================
+
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .height(72.dp)
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
+                .align(Alignment.BottomCenter),
+
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            shadowElevation = 16.dp
         ) {
-            // Left Tabs (Dashboard, Learn)
-            leftTabs.forEach { tab ->
-                val isSelected = current == tab || (current == Tab.Player && tab == Tab.Dashboard)
-                val iconColor = if (isSelected)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
 
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(MaterialTheme.shapes.medium)
-                        .clickable { onSelect(tab) }
-                        .padding(horizontal = 4.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = getTabIcon(tab),
-                        contentDescription = tab.label,
-                        tint = iconColor,
-                        modifier = Modifier.size(24.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .height(72.dp)
+                    .padding(horizontal = 8.dp),
+
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                // LEFT TABS
+
+                leftTabs.forEach { tab ->
+
+                    val selected =
+                        current == tab ||
+                                (current == Tab.Player && tab == Tab.Dashboard)
+
+                    BottomNavItem(
+                        tab = tab,
+                        selected = selected,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onSelect(tab) }
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = tab.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
-                        color = iconColor,
-                        maxLines = 1
+                }
+
+                // CENTER LIBRARY TAB
+
+                BottomNavItem(
+                    tab = Tab.Library,
+                    selected = current == Tab.Library,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelect(Tab.Library) }
+                )
+
+                // RIGHT TABS
+
+                rightTabs.forEach { tab ->
+
+                    BottomNavItem(
+                        tab = tab,
+                        selected = current == tab,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onSelect(tab) }
                     )
-                    if (isSelected) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .size(3.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.height(7.dp))
-                    }
                 }
             }
+        }
 
-           // Center Cutout Button: Miniplayer Toggle
-Column(
-    modifier = Modifier
-        .weight(0.9f)
-        .padding(vertical = 4.dp),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.Center
+
+
+        // SMALL UP / DOWN ARROW
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-9).dp)
+                .size(20.dp)
+                .clickable {
+                    viewModel.showMiniPlayer.value =
+                        !viewModel.showMiniPlayer.value
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isMiniPlayerVisible)
+                    Icons.Default.KeyboardArrowDown
+                else
+                    Icons.Default.KeyboardArrowUp,
+                contentDescription = "Toggle Mini Player",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(17.dp)
+            )
+        }
+
+
+    }
+}
+
+
+// =========================================
+// REUSABLE NAVIGATION ITEM
+// =========================================
+
+@Composable
+private fun BottomNavItem(
+    tab: Tab,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
 ) {
-    Surface(
-        onClick = { viewModel.showMiniPlayer.value = !viewModel.showMiniPlayer.value },
-        shape = CircleShape,
-        color = if (isMiniPlayerVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
-        shadowElevation = 6.dp,
-        modifier = Modifier.size(44.dp)
+
+    val iconColor =
+        if (selected)
+            MaterialTheme.colorScheme.primary
+        else
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick)
+            .padding(vertical = 7.dp),
+
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        val currentItem = viewModel.currentMediaItem.value
-        Box(contentAlignment = Alignment.Center) {
-            if (currentItem != null) {
-                pEQImage(
-                    data = currentItem.thumbnail,
-                    fallbackPath = currentItem.path,
-                    modifier = Modifier.fillMaxSize()
+
+        Icon(
+            imageVector = getTabIcon(tab),
+            contentDescription = tab.label,
+            tint = iconColor,
+            modifier = Modifier.size(23.dp)
+        )
+
+        Spacer(Modifier.height(3.dp))
+
+        Text(
+            text = tab.label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected)
+                FontWeight.Bold
+            else
+                FontWeight.Medium,
+            color = iconColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(Modifier.height(4.dp))
+
+        Box(
+            modifier = Modifier
+                .size(width = 14.dp, height = 3.dp)
+                .clip(CircleShape)
+                .background(
+                    if (selected)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        Color.Transparent
                 )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = if (isMiniPlayerVisible) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
+        )
     }
 }
-
-            // Right Tabs (Mixer, Settings)
-            rightTabs.forEach { tab ->
-                val isSelected = current == tab
-                val iconColor = if (isSelected)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(MaterialTheme.shapes.medium)
-                        .clickable { onSelect(tab) }
-                        .padding(horizontal = 4.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = getTabIcon(tab),
-                        contentDescription = tab.label,
-                        tint = iconColor,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = tab.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
-                        color = iconColor,
-                        maxLines = 1
-                    )
-                    if (isSelected) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .size(3.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.height(7.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
 private fun getTabIcon(tab: Tab): ImageVector = when (tab) {
     Tab.Dashboard -> Icons.Default.Dashboard
     Tab.Learn -> Icons.Default.School
     Tab.Mixer -> Icons.Default.Tune
     Tab.Settings -> Icons.Default.Settings
     Tab.Player -> Icons.Default.GraphicEq
+    Tab.Library -> Icons.Default.LibraryMusic
 }

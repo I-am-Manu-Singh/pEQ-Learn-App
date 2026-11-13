@@ -14,9 +14,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private data class HandFingerAssignment(
     val fingerNumber: Int, // 1 = Thumb, 2 = Index, 3 = Middle, 4 = Ring, 5 = Pinky
@@ -24,13 +26,13 @@ private data class HandFingerAssignment(
     val isPressed: Boolean
 )
 
-/**
- * FIXED: Resolves all playable melodic/harmonic tracks for the Piano Human Hands Overlay.
- * - Strictly excludes GM Channel 10 Drums (channel == 9 or 10, or percussion programs 112..119).
- * - Does NOT falsely match "🎸 Bass (prog 33)" as a "Bass Clef Piano" track and drop Guitar/Vocal tracks!
- * - Includes all enabled non-drum tracks so multi-instrument scores (Guitar + Bass + Voice)
- *   are seamlessly arranged across Left Hand and Right Hand without skipping 4,400+ notes.
- */
+// Anatomical resting offsets (in semitones) relative to Middle Finger (F3 = 0.0f)
+// Left-to-Right on Keyboard:
+//   LH: Pinky(5) [-3.5] -> Ring(4) [-1.8] -> Middle(3) [0.0] -> Index(2) [+1.8] -> Thumb(1) [+3.5]
+//   RH: Thumb(1) [-3.5] -> Index(2) [-1.8] -> Middle(3) [0.0] -> Ring(4) [+1.8] -> Pinky(5) [+3.5]
+private val LH_ANATOMICAL_REST_SEMITONES = floatArrayOf(0f, +3.5f, +1.8f, 0.0f, -1.8f, -3.5f)
+private val RH_ANATOMICAL_REST_SEMITONES = floatArrayOf(0f, -3.5f, -1.8f, 0.0f, +1.8f, +3.5f)
+
 internal fun resolvePlayableMelodicTrackIndices(
     score: Score?,
     enabledTrackIndices: Map<Int, Boolean> = emptyMap()
@@ -50,27 +52,25 @@ internal fun resolvePlayableMelodicTrackIndices(
     if (nonDrumTracks.isNotEmpty()) {
         return nonDrumTracks.map { it.trackIndex }.toSet()
     }
-
-    // Fallback if user soloed or all tracks had custom channels: allow all non-channel-9 tracks
     return tracks.filter { it.channel != 9 }.map { it.trackIndex }.toSet()
 }
 
-/**
- * Formats a MIDI pitch and finger assignment cleanly for forensic dumps without leaking '♯' onto the finger label.
- * Fixes the "A#1→F3♯" bug -> produces "A♯1→F5".
- */
-internal fun formatCleanHandOverlayDiagnostic(midiNote: Int, fingerNumber: Int): String {
-    val pitchNames = arrayOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
+internal fun formatCleanHandOverlayDiagnostic(
+    midiNote: Int,
+    fingerNumber: Int,
+    keySignature: String = "C"
+): String {
+    val isFlatKey = keySignature.contains("FLAT", true) || keySignature in listOf("Db", "Bb", "Eb", "Ab", "F", "Gb", "Cb")
+    val pitchNames = if (isFlatKey) {
+        arrayOf("C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B")
+    } else {
+        arrayOf("C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B")
+    }
     val octave = (midiNote / 12) - 1
     val pitchName = "${pitchNames[(midiNote % 12 + 12) % 12]}$octave"
     return "$pitchName→F${fingerNumber.coerceIn(1, 5)}"
 }
 
-/**
- * Clamps a single hand's chord to at most 5 anatomically playable notes within a 12-semitone span (max 14).
- * Preserves the outer shell (lowest bass root + highest melody note) and essential 3rd/7th guide tones,
- * dropping redundant inner octave/fifth doublings from 6-string guitar voicings.
- */
 private fun clampChordToAnatomicalHand(
     sortedAsc: List<Int>,
     isRightHand: Boolean,
@@ -79,7 +79,6 @@ private fun clampChordToAnatomicalHand(
     if (sortedAsc.isEmpty()) return emptyList()
     val distinctAsc = sortedAsc.distinct().sorted()
 
-    // 1. Enforce biomechanical span ceiling anchored on melody top (RH) or bass root (LH)
     val spanFiltered = if (distinctAsc.last() - distinctAsc.first() > maxSpanSemitones) {
         if (isRightHand) {
             val top = distinctAsc.last()
@@ -94,7 +93,6 @@ private fun clampChordToAnatomicalHand(
 
     if (spanFiltered.size <= 5) return spanFiltered
 
-    // 2. Keep lowest and highest notes; score inner notes to drop redundant octave/fifth doublings
     val lowest = spanFiltered.first()
     val highest = spanFiltered.last()
     val outerPitchClasses = setOf(lowest % 12, highest % 12)
@@ -112,13 +110,15 @@ private fun clampChordToAnatomicalHand(
     return (listOf(lowest, highest) + keptInner).distinct().sorted()
 }
 
-/**
- * Strictly partitions all active notes into Disjoint Left Hand (LH) and Right Hand (RH) sets
- * using a Dynamic Programming split-point solver:
- * - Guaranteed: max(LH) < min(RH) whenever both hands are enabled (zero middle-note fighting).
- * - Guaranteed: Neither hand stretches > 12 semitones when the other hand can share the inner notes.
- * - Guaranteed: Drum channel notes (Track #4 / ch 9) are completely stripped.
- */
+private data class HandPartitionResult(
+    val lhPitchesAsc: List<Int>,
+    val rhPitchesAsc: List<Int>,
+    val explicitFingers: Map<Int, Int>,
+    val lookaheadLhPitch: Int?,
+    val lookaheadRhPitch: Int?,
+    val melodicTracks: Set<Int>
+)
+
 private fun partitionPianoNotesStrictDisjoint(
     activeMidiNotes: Map<Int, Boolean>,
     score: Score?,
@@ -130,13 +130,16 @@ private fun partitionPianoNotesStrictDisjoint(
     showLeftHand: Boolean,
     showRightHand: Boolean,
     lastLhCenter: Int,
-    lastRhCenter: Int
-): Triple<List<Int>, List<Int>, Map<Int, Int>> {
+    lastRhCenter: Int,
+    transposition: Int = 0
+): HandPartitionResult {
     val melodicTrackSet = resolvePlayableMelodicTrackIndices(score)
     val currentMeasure = score?.measures?.getOrNull(playheadMeasure)
     val explicitFingers = mutableMapOf<Int, Int>()
     val validScorePitchesAtBeat = mutableSetOf<Int>()
     val drumPitchesAtBeat = mutableSetOf<Int>()
+    var lookaheadLhPitch: Int? = null
+    var lookaheadRhPitch: Int? = null
 
     if (currentMeasure != null) {
         val beatsPerMeasure = (currentMeasure.timeSignatureNumerator.toFloat() *
@@ -148,22 +151,27 @@ private fun partitionPianoNotesStrictDisjoint(
             .sortedBy { abs(it.position - curBeat) }
 
         for (n in sortedByProximity) {
-            val isActiveAtBeat = curBeat >= (n.position - 0.18f) &&
-                curBeat <= (n.position + n.duration.coerceAtLeast(0.125f) + 0.15f)
+            val isActiveAtBeat = curBeat >= (n.position - 0.16f) &&
+                curBeat <= (n.position + n.duration.coerceAtLeast(0.125f) + 0.12f)
+            val transposedDrumPitch = (n.midiNote + transposition).coerceIn(21, 108)
             if (n.voice !in melodicTrackSet) {
-                if (isActiveAtBeat) drumPitchesAtBeat.add(n.midiNote)
+                if (isActiveAtBeat) drumPitchesAtBeat.add(transposedDrumPitch)
                 continue
             }
+            val transposedPitch = transposedDrumPitch
             if (isActiveAtBeat) {
-                validScorePitchesAtBeat.add(n.midiNote)
+                validScorePitchesAtBeat.add(transposedPitch)
+            } else if (n.position > curBeat && n.position <= curBeat + 1.25f) {
+                // Capture immediate upcoming note for thumb-crossing preparation
+                if (transposedPitch < 60 && lookaheadLhPitch == null) lookaheadLhPitch = transposedPitch
+                if (transposedPitch >= 60 && lookaheadRhPitch == null) lookaheadRhPitch = transposedPitch
             }
-            if (n.fingering != null && n.fingering in 1..5 && !explicitFingers.containsKey(n.midiNote)) {
-                explicitFingers[n.midiNote] = n.fingering
+            if (n.fingering != null && n.fingering in 1..5 && !explicitFingers.containsKey(transposedPitch)) {
+                explicitFingers[transposedPitch] = n.fingering
             }
         }
     }
 
-    // Include all active MIDI notes except those that belong ONLY to a drum track at this beat
     val soundingPitches = activeMidiNotes.entries
         .filter { (pitch, isOn) ->
             isOn && pitch in 21..108 && (pitch in validScorePitchesAtBeat || pitch !in drumPitchesAtBeat)
@@ -173,26 +181,37 @@ private fun partitionPianoNotesStrictDisjoint(
         .sorted()
 
     if (soundingPitches.isEmpty()) {
-        return Triple(emptyList(), emptyList(), explicitFingers)
+        return HandPartitionResult(
+            lhPitchesAsc = emptyList(),
+            rhPitchesAsc = emptyList(),
+            explicitFingers = explicitFingers,
+            lookaheadLhPitch = lookaheadLhPitch,
+            lookaheadRhPitch = lookaheadRhPitch,
+            melodicTracks = melodicTrackSet
+        )
     }
 
     if (!showLeftHand && showRightHand) {
-        return Triple(
-            emptyList(),
-            clampChordToAnatomicalHand(soundingPitches, isRightHand = true, maxSpanSemitones = 13),
-            explicitFingers
+        return HandPartitionResult(
+            lhPitchesAsc = emptyList(),
+            rhPitchesAsc = clampChordToAnatomicalHand(soundingPitches, isRightHand = true, maxSpanSemitones = 12),
+            explicitFingers = explicitFingers,
+            lookaheadLhPitch = lookaheadLhPitch,
+            lookaheadRhPitch = lookaheadRhPitch,
+            melodicTracks = melodicTrackSet
         )
     }
     if (!showRightHand && showLeftHand) {
-        return Triple(
-            clampChordToAnatomicalHand(soundingPitches, isRightHand = false, maxSpanSemitones = 13),
-            emptyList(),
-            explicitFingers
+        return HandPartitionResult(
+            lhPitchesAsc = clampChordToAnatomicalHand(soundingPitches, isRightHand = false, maxSpanSemitones = 12),
+            rhPitchesAsc = emptyList(),
+            explicitFingers = explicitFingers,
+            lookaheadLhPitch = lookaheadLhPitch,
+            lookaheadRhPitch = lookaheadRhPitch,
+            melodicTracks = melodicTrackSet
         )
     }
 
-    // Dynamic Programming Split Solver:
-    // Test every split index k in 0..N where LH takes soundingPitches[0 until k] and RH takes soundingPitches[k until N]
     val n = soundingPitches.size
     var bestSplitIndex = 0
     var bestCost = Float.MAX_VALUE
@@ -206,39 +225,35 @@ private fun partitionPianoNotesStrictDisjoint(
 
         var cost = 0f
 
-        // 1. Biomechanical span penalty (comfortable <= 12 semitones, hard wall > 14 semitones)
-        if (lhSpan > 12) cost += (lhSpan - 12) * 65f
-        if (lhSpan > 14) cost += (lhSpan - 14) * 400f
-        if (rhSpan > 12) cost += (rhSpan - 12) * 65f
-        if (rhSpan > 14) cost += (rhSpan - 14) * 400f
+        if (lhSpan > 12) cost += (lhSpan - 12) * 75f
+        if (lhSpan > 13) cost += (lhSpan - 13) * 420f
+        if (rhSpan > 12) cost += (rhSpan - 12) * 75f
+        if (rhSpan > 13) cost += (rhSpan - 13) * 420f
 
-        // 2. Finger count overflow penalty (> 5 notes in one hand)
-        if (candidateLh.size > 5) cost += (candidateLh.size - 5) * 90f
-        if (candidateRh.size > 5) cost += (candidateRh.size - 5) * 90f
+        if (candidateLh.size > 5) cost += (candidateLh.size - 5) * 95f
+        if (candidateRh.size > 5) cost += (candidateRh.size - 5) * 95f
 
-        // 3. Register affinity (LH prefers < 60, RH prefers >= 58) & smooth hand-center continuity
         if (candidateLh.isNotEmpty()) {
             val lhCenter = (candidateLh.first() + candidateLh.last()) * 0.5f
-            cost += abs(lhCenter - lastLhCenter) * 1.4f
+            cost += abs(lhCenter - lastLhCenter) * 1.35f
             for (p in candidateLh) {
                 if (p >= 62) cost += (p - 60) * 16f
-                if (activeNoteColors[p] == rightHandColor && p >= 57) cost += 12f
+                if (activeNoteColors[p] == rightHandColor && p >= 57) cost += 14f
             }
         }
 
         if (candidateRh.isNotEmpty()) {
             val rhCenter = (candidateRh.first() + candidateRh.last()) * 0.5f
-            cost += abs(rhCenter - lastRhCenter) * 1.4f
+            cost += abs(rhCenter - lastRhCenter) * 1.35f
             for (p in candidateRh) {
-                if (p < 53) cost += (55 - p) * 16f
-                if (activeNoteColors[p] == leftHandColor && p <= 60) cost += 12f
+                if (p <= 55) cost += (56 - p) * 35f
+                if (activeNoteColors[p] == leftHandColor && p <= 60) cost += 40f
             }
         }
 
-        // 4. Reward splitting across a wide interval gap (e.g., bass root A#1 + guitar chord A#2..A#4)
         if (candidateLh.isNotEmpty() && candidateRh.isNotEmpty()) {
             val gap = candidateRh.first() - candidateLh.last()
-            cost -= gap.coerceAtMost(18) * 3.5f
+            cost -= gap.coerceAtMost(18) * 3.6f
         }
 
         if (cost < bestCost) {
@@ -247,189 +262,300 @@ private fun partitionPianoNotesStrictDisjoint(
         }
     }
 
-    var rawLh = soundingPitches.subList(0, bestSplitIndex).toMutableList()
-    var rawRh = soundingPitches.subList(bestSplitIndex, n).toMutableList()
+    val rawLh = soundingPitches.subList(0, bestSplitIndex)
+    val rawRh = soundingPitches.subList(bestSplitIndex, n)
 
-    // Rescue pass: if RH still spans > 13 semitones (e.g. a 2-octave guitar chord A#2..A#4 while LH has A#1),
-    // and LH cannot reach A#2 without stretching > 13 semitones from A#1, clamp each hand to its primary 12-semitone octave
     val clampedLh = clampChordToAnatomicalHand(rawLh, isRightHand = false, maxSpanSemitones = 12).toMutableList()
     val clampedRh = clampChordToAnatomicalHand(rawRh, isRightHand = true, maxSpanSemitones = 12).toMutableList()
 
-    // If LH was empty and RH dropped low chord notes during clamping, hand those low chord notes to LH!
     if (clampedLh.isEmpty() && rawRh.size > clampedRh.size) {
         val droppedFromRh = rawRh.filter { it !in clampedRh && it < (clampedRh.firstOrNull() ?: 60) }
         clampedLh.addAll(clampChordToAnatomicalHand(droppedFromRh, isRightHand = false, maxSpanSemitones = 12))
+    } else if (clampedRh.isEmpty() && rawLh.size > clampedLh.size) {
+        val droppedFromLh = rawLh.filter { it !in clampedLh && it > (clampedLh.lastOrNull() ?: 60) }
+        clampedRh.addAll(clampChordToAnatomicalHand(droppedFromLh, isRightHand = true, maxSpanSemitones = 12))
     }
 
-    return Triple(clampedLh.distinct().sorted(), clampedRh.distinct().sorted(), explicitFingers)
+    return HandPartitionResult(
+        lhPitchesAsc = clampedLh.distinct().sorted(),
+        rhPitchesAsc = clampedRh.distinct().sorted(),
+        explicitFingers = explicitFingers,
+        lookaheadLhPitch = lookaheadLhPitch,
+        lookaheadRhPitch = lookaheadRhPitch,
+        melodicTracks = melodicTrackSet
+    )
 }
 
 /**
- * Stateful biomechanical finger solver (1..5) for chords and melodic lines.
- * - Eliminates the "always F3" single-note lock by using directional interval stepping & thumb-crossing rules.
- * - Guarantees strict anatomical finger ordering so fingers never cross over each other.
+ * Biomechanical Single-Note & Chord Finger Solver:
+ *  - Fixes LH/RH Octave Spanning: Any interval >= 8 semitones (Major 6th, 7th, Octave) ALWAYS uses
+ *    Pinky(5)-to-Thumb(1) for Left Hand `[5, 1]` and Thumb(1)-to-Pinky(5) for Right Hand `[1, 5]`,
+ *    NEVER shifting thumb to index finger on black-key octaves!
+ *  - Fixes Scale Thumb-Under & Finger-Over Crossing: Uses genuine crossover rules (`3 -> 1`, `4 -> 1`,
+ *    `1 -> 3`, `1 -> 4`) instead of clamping with `.coerceIn(1, 5)`.
+ *  - Tracks anatomical Palm Center (Middle Finger F3) so single notes played by Thumb(1) or Pinky(5)
+ *    don't yank the wrist horizontally to the outer finger!
  */
+private data class HandSolvedState(
+    val palmCenterMidi: Float,
+    val lastMelodicPitch: Int,
+    val lastMelodicFinger: Int,
+    val assignments: List<HandFingerAssignment>
+)
+
+private fun solveSingleNoteWithThumbCrossing(
+    pitch: Int,
+    isRightHand: Boolean,
+    lastPalmMidi: Float,
+    lastPitch: Int,
+    lastFinger: Int,
+    lookaheadPitch: Int?
+): Int {
+    val delta = pitch - lastPitch
+    if (delta == 0 && lastFinger in 1..5) return lastFinger
+
+    val isBlack = isMidiNoteBlack(pitch)
+    val restOffsets = if (isRightHand) RH_ANATOMICAL_REST_SEMITONES else LH_ANATOMICAL_REST_SEMITONES
+
+    // Wide leap (>= 7 semitones): land on anatomically natural outer finger (5 or 1)
+    if (abs(delta) >= 7) {
+        return if (isRightHand) {
+            if (delta > 0) 5 else 1
+        } else {
+            if (delta > 0) 1 else 5
+        }
+    }
+
+    var bestFinger = 3
+    var bestCost = Float.MAX_VALUE
+
+    for (f in 1..5) {
+        var cost = 0f
+
+        // 1. Proximity to current resting finger slot
+        val fingerNeutralPitch = lastPalmMidi + restOffsets[f]
+        cost += abs(pitch - fingerNeutralPitch) * 1.9f
+
+        // 2. Avoid repeating the exact same finger or 1-2 finger hopping on different pitches
+        if (f == lastFinger && delta != 0) {
+            cost += 75f
+        }
+        if (delta != 0 && ((lastFinger == 2 && f == 1) || (lastFinger == 1 && f == 2))) {
+            // Heavily penalize unnatural 1-2-1-2 repetitive finger hopping on melodic runs!
+            cost += 65f
+        }
+
+        // 3. Directional stepping & Thumb-Under / Finger-Over Crossover Mechanics
+        // In RH: ascending pitch (+delta) normally increases finger number (1 -> 2 -> 3 -> 4 -> 5)
+        // In LH: ascending pitch (+delta) normally decreases finger number (5 -> 4 -> 3 -> 2 -> 1)
+        val anatomicalStep = if (isRightHand) (f - lastFinger) else (lastFinger - f)
+
+        if (delta > 0) {
+            // Ascending pitch (+delta)
+            if (isRightHand) {
+                if (anatomicalStep in 1..2) {
+                    cost -= 28f // Strong anatomical bonus for sequential finger stepping (1->2->3->4->5)
+                } else if (f == 1 && lastFinger in 2..4 && !isBlack && delta in 1..4) {
+                    // RH Ascending Thumb-Under Crossover (e.g. 1-2-3 -> 1-2-3-4-5)
+                    val continuesUp = lookaheadPitch != null && lookaheadPitch > pitch
+                    cost += if (continuesUp || lastFinger >= 3) -15f else 5.0f
+                } else {
+                    cost += 55f
+                }
+            } else {
+                // LH Ascending (5 -> 4 -> 3 -> 2 -> 1, then Finger-Over 1 -> 3 or 1 -> 4!)
+                if (anatomicalStep in 1..2) {
+                    cost -= 28f // Strong bonus for sequential finger stepping
+                } else if (lastFinger == 1 && f in 2..4 && delta in 1..4) {
+                    // LH Ascending Finger-Over Crossover (Thumb 1 -> Middle 3 or Ring 4)
+                    cost -= 15f
+                } else {
+                    cost += 55f
+                }
+            }
+        } else {
+            // Descending pitch (delta < 0)
+            if (isRightHand) {
+                // RH Descending (5 -> 4 -> 3 -> 2 -> 1, then Finger-Over 1 -> 3 or 1 -> 4!)
+                if (anatomicalStep in -2..-1) {
+                    cost -= 28f // Strong bonus for sequential finger stepping
+                } else if (lastFinger == 1 && f in 2..4 && -delta in 1..4) {
+                    // RH Descending Finger-Over Crossover (Thumb 1 -> Middle 3 or Ring 4)
+                    cost -= 15f
+                } else {
+                    cost += 55f
+                }
+            } else {
+                // LH Descending (1 -> 2 -> 3 -> 4 -> 5, or Thumb-Under 3 -> 1 / 4 -> 1!)
+                if (anatomicalStep in -2..-1) {
+                    cost -= 28f // Strong bonus for sequential finger stepping
+                } else if (f == 1 && lastFinger in 2..4 && !isBlack && -delta in 1..4) {
+                    // LH Descending Thumb-Under Crossover (3 -> 1 or 4 -> 1)
+                    val continuesDown = lookaheadPitch != null && lookaheadPitch < pitch
+                    cost += if (continuesDown || lastFinger >= 3) -15f else 5.0f
+                } else {
+                    cost += 55f
+                }
+            }
+        }
+
+        // 4. Black-key thumb avoidance on single notes
+        if (isBlack && f == 1) cost += 18f
+
+        // 5. Lookahead dead-end prevention: don't land on outer finger 5/1 if scale continues in same direction
+        if (lookaheadPitch != null && lookaheadPitch != pitch) {
+            val nextDelta = lookaheadPitch - pitch
+            if (isRightHand) {
+                if (nextDelta > 0 && f == 5) cost += 14f // Leave room to ascend or trigger thumb-under earlier
+                if (nextDelta < 0 && f == 1 && delta > 0) cost -= 2f
+            } else {
+                if (nextDelta < 0 && f == 5) cost += 14f
+                if (nextDelta > 0 && f == 1 && delta < 0) cost -= 2f
+            }
+        }
+
+        if (cost < bestCost) {
+            bestCost = cost
+            bestFinger = f
+        }
+    }
+
+    return bestFinger
+}
+
 private fun solveHumanChordAndMelodyFingers(
     activePitchesAsc: List<Int>,
     explicitFingerMap: Map<Int, Int>,
     isRightHand: Boolean,
-    lastAnchorMidi: Int,
-    lastAnchorFinger: Int,
-    territoryLimitMidi: Int
-): Triple<Int, Int, List<HandFingerAssignment>> {
+    lastPalmMidi: Float,
+    lastMelodicPitch: Int,
+    lastMelodicFinger: Int,
+    territoryLimitMidi: Int,
+    lookaheadPitch: Int?
+): HandSolvedState {
     val minAllowedMidi = if (isRightHand) territoryLimitMidi.coerceIn(21, 96) else 21
     val maxAllowedMidi = if (isRightHand) 108 else territoryLimitMidi.coerceIn(32, 108)
+    val restOffsets = if (isRightHand) RH_ANATOMICAL_REST_SEMITONES else LH_ANATOMICAL_REST_SEMITONES
 
-    val defaultHome = if (isRightHand) 67 else 48
-    val safeAnchor = lastAnchorMidi.coerceIn(
-        minOf(minAllowedMidi + 2, maxAllowedMidi),
-        maxOf(minAllowedMidi, maxAllowedMidi - 2)
+    val safePalm = lastPalmMidi.coerceIn(
+        minOf(minAllowedMidi + 3f, maxAllowedMidi.toFloat()),
+        maxOf(minAllowedMidi.toFloat(), maxAllowedMidi - 3f)
     )
 
     if (activePitchesAsc.isEmpty()) {
-        val thumbMidi = if (isRightHand) {
-            (safeAnchor - 4).coerceAtLeast(minAllowedMidi)
-        } else {
-            (safeAnchor + 4).coerceAtMost(maxAllowedMidi)
-        }
         val idleFingers = (1..5).map { fNum ->
-            val offsetSemis = when (fNum) {
-                1 -> 0
-                2 -> 2
-                3 -> 4
-                4 -> 5
-                else -> 7
-            } * (if (isRightHand) 1 else -1)
+            val restMidi = (safePalm + restOffsets[fNum]).roundToInt().coerceIn(minAllowedMidi, maxAllowedMidi)
             HandFingerAssignment(
                 fingerNumber = fNum,
-                midiNote = (thumbMidi + offsetSemis).coerceIn(minAllowedMidi, maxAllowedMidi),
+                midiNote = restMidi,
                 isPressed = false
             )
         }
-        return Triple(safeAnchor, lastAnchorFinger, idleFingers)
+        return HandSolvedState(
+            palmCenterMidi = safePalm,
+            lastMelodicPitch = lastMelodicPitch,
+            lastMelodicFinger = lastMelodicFinger,
+            assignments = idleFingers
+        )
     }
 
     val sorted = clampChordToAnatomicalHand(activePitchesAsc, isRightHand, maxSpanSemitones = 12)
     val count = sorted.size
     val span = (sorted.last() - sorted.first()).coerceAtLeast(0)
 
-    val rhThumbIsBlack = isRightHand && sorted.isNotEmpty() && isMidiNoteBlack(sorted.first())
-    val lhThumbIsBlack = !isRightHand && sorted.isNotEmpty() && isMidiNoteBlack(sorted.last())
+    // CRITICAL FIX: Only shift thumb off a black key for narrow intervals (span <= 6)!
+    // Wide intervals (7ths & Octaves, span >= 7) MUST use Thumb(1) and Pinky(5)!
+    val rhThumbIsBlackNarrow = isRightHand && span <= 6 && isMidiNoteBlack(sorted.first())
+    val lhThumbIsBlackNarrow = !isRightHand && span <= 6 && isMidiNoteBlack(sorted.last())
 
-    // Safe black-key adjustment that preserves strictly distinct finger numbers
-    fun adjustRhChordFingers(base: List<Int>): List<Int> {
-        if (!rhThumbIsBlack || base.size >= 5) return base
+    fun adjustRhNarrowChord(base: List<Int>): List<Int> {
+        if (!rhThumbIsBlackNarrow || base.size >= 5 || base.contains(5)) return base
         val shifted = base.map { (it + 1).coerceAtMost(5) }.distinct()
         return if (shifted.size == base.size) shifted else base
     }
 
-    fun adjustLhChordFingers(base: List<Int>): List<Int> {
-        if (!lhThumbIsBlack || base.size >= 5) return base
-        // Base is ordered left-to-right (high finger num to low finger num, e.g. [5, 3, 1] -> [5, 3, 2])
+    fun adjustLhNarrowChord(base: List<Int>): List<Int> {
+        if (!lhThumbIsBlackNarrow || base.size >= 5 || base.firstOrNull() == 5) return base
         val shifted = base.mapIndexed { idx, f -> if (idx == base.lastIndex && f == 1) 2 else f }.distinct()
         return if (shifted.size == base.size) shifted else base
     }
 
+    // `fingersLeftToRight` maps `sorted[idx]` (ascending pitch from left to right on keyboard) to finger 1..5
     val fingersLeftToRight: List<Int> = if (isRightHand) {
+        // Right Hand: Left-to-right on keyboard is Thumb(1) -> Index(2) -> Middle(3) -> Ring(4) -> Pinky(5)
         when (count) {
             1 -> {
                 val n = sorted[0]
                 val exp = explicitFingerMap[n]?.takeIf { it in 1..5 }
-                if (exp != null) {
-                    listOf(exp)
-                } else {
-                    val delta = n - safeAnchor
-                    val black = isMidiNoteBlack(n)
-                    val solved = when {
-                        delta == 0 -> lastAnchorFinger.coerceIn(1, 5)
-                        delta > 0 -> {
-                            val step = ((delta + 1) / 2).coerceIn(1, 4)
-                            val candidate = (lastAnchorFinger + step).coerceIn(1, 5)
-                            if (black && candidate == 1) 2 else candidate
-                        }
-                        else -> {
-                            val step = ((-delta + 1) / 2).coerceIn(1, 4)
-                            val candidate = (lastAnchorFinger - step).coerceIn(1, 5)
-                            if (black && candidate == 1) 2 else if (black && candidate == 5 && delta > -6) 4 else candidate
-                        }
-                    }
-                    listOf(solved)
-                }
+                val f = exp ?: solveSingleNoteWithThumbCrossing(
+                    pitch = n,
+                    isRightHand = true,
+                    lastPalmMidi = safePalm,
+                    lastPitch = lastMelodicPitch,
+                    lastFinger = lastMelodicFinger,
+                    lookaheadPitch = lookaheadPitch
+                )
+                listOf(f)
             }
-            2 -> adjustRhChordFingers(
-                when {
-                    span <= 2 -> listOf(1, 2)
-                    span <= 4 -> listOf(1, 3)
-                    span <= 6 -> listOf(1, 4)
-                    else -> listOf(1, 5)
-                }
-            )
+            2 -> when {
+                span >= 8 -> listOf(1, 5) // 6th, 7th, Octave: strictly Thumb(1) to Pinky(5)
+                span >= 6 -> adjustRhNarrowChord(listOf(1, 4))
+                span >= 4 -> adjustRhNarrowChord(listOf(1, 3))
+                else -> adjustRhNarrowChord(listOf(1, 2))
+            }
             3 -> {
                 val lowGap = sorted[1] - sorted[0]
                 val highGap = sorted[2] - sorted[1]
-                adjustRhChordFingers(
-                    when {
-                        span <= 4 -> listOf(1, 2, 3)
-                        lowGap <= 3 && highGap >= 5 -> listOf(1, 2, 5)
-                        lowGap >= 5 && highGap <= 3 -> listOf(1, 4, 5)
-                        else -> listOf(1, 3, 5)
-                    }
-                )
+                when {
+                    span >= 9 -> if (lowGap >= highGap) listOf(1, 3, 5) else listOf(1, 2, 5) // Octave triad
+                    span <= 4 -> adjustRhNarrowChord(listOf(1, 2, 3))
+                    lowGap <= 3 && highGap >= 5 -> listOf(1, 2, 5)
+                    lowGap >= 5 && highGap <= 3 -> listOf(1, 4, 5)
+                    else -> listOf(1, 3, 5)
+                }
             }
             4 -> {
                 val topGap = sorted[3] - sorted[2]
-                adjustRhChordFingers(if (topGap <= 2) listOf(1, 2, 4, 5) else listOf(1, 2, 3, 5))
+                if (topGap <= 2) listOf(1, 2, 4, 5) else listOf(1, 2, 3, 5)
             }
             else -> listOf(1, 2, 3, 4, 5)
         }
     } else {
+        // Left Hand: Left-to-right on keyboard is Pinky(5) -> Ring(4) -> Middle(3) -> Index(2) -> Thumb(1)
         when (count) {
             1 -> {
                 val n = sorted[0]
                 val exp = explicitFingerMap[n]?.takeIf { it in 1..5 }
-                if (exp != null) {
-                    listOf(exp)
-                } else {
-                    val delta = n - safeAnchor
-                    val black = isMidiNoteBlack(n)
-                    // For LH: ascending pitch (+delta) moves from pinky (5) toward thumb (1)
-                    val solved = when {
-                        delta == 0 -> lastAnchorFinger.coerceIn(1, 5)
-                        delta > 0 -> {
-                            val step = ((delta + 1) / 2).coerceIn(1, 4)
-                            val candidate = (lastAnchorFinger - step).coerceIn(1, 5)
-                            if (black && candidate == 1) 2 else candidate
-                        }
-                        else -> {
-                            val step = ((-delta + 1) / 2).coerceIn(1, 4)
-                            val candidate = (lastAnchorFinger + step).coerceIn(1, 5)
-                            if (black && candidate == 5 && n >= 42) 4 else candidate
-                        }
-                    }
-                    listOf(solved)
-                }
+                val f = exp ?: solveSingleNoteWithThumbCrossing(
+                    pitch = n,
+                    isRightHand = false,
+                    lastPalmMidi = safePalm,
+                    lastPitch = lastMelodicPitch,
+                    lastFinger = lastMelodicFinger,
+                    lookaheadPitch = lookaheadPitch
+                )
+                listOf(f)
             }
-            2 -> adjustLhChordFingers(
-                when {
-                    span <= 2 -> listOf(2, 1)
-                    span <= 4 -> listOf(3, 1)
-                    span <= 6 -> listOf(4, 1)
-                    else -> listOf(5, 1)
-                }
-            )
+            2 -> when {
+                span >= 8 -> listOf(5, 1) // 6th, 7th, Octave: strictly Pinky(5) to Thumb(1)
+                span >= 6 -> adjustLhNarrowChord(listOf(4, 1))
+                span >= 4 -> adjustLhNarrowChord(listOf(3, 1))
+                else -> adjustLhNarrowChord(listOf(2, 1))
+            }
             3 -> {
                 val lowGap = sorted[1] - sorted[0]
-                adjustLhChordFingers(
-                    when {
-                        span <= 4 -> listOf(3, 2, 1)
-                        lowGap >= 5 -> listOf(5, 2, 1)
-                        else -> listOf(5, 3, 1)
-                    }
-                )
+                val highGap = sorted[2] - sorted[1]
+                when {
+                    span >= 9 -> if (lowGap >= highGap) listOf(5, 2, 1) else listOf(5, 3, 1) // Octave shell + 5th/3rd
+                    span <= 4 -> adjustLhNarrowChord(listOf(3, 2, 1))
+                    lowGap >= 5 -> listOf(5, 2, 1)
+                    highGap >= 5 -> listOf(5, 4, 1)
+                    else -> listOf(5, 3, 1)
+                }
             }
             4 -> {
                 val lowGap = sorted[1] - sorted[0]
-                adjustLhChordFingers(if (lowGap <= 2) listOf(5, 4, 2, 1) else listOf(5, 3, 2, 1))
+                if (lowGap <= 2) listOf(5, 4, 2, 1) else listOf(5, 3, 2, 1)
             }
             else -> listOf(5, 4, 3, 2, 1)
         }
@@ -441,7 +567,39 @@ private fun solveHumanChordAndMelodyFingers(
         pressedByFinger[fNum] = pitch
     }
 
-    // Compute all 5 fingers in anatomical order and interpolate unpressed fingers cleanly between pressed anchors
+    // Implied Palm Center (Middle Finger F3 position) averaged across all pressed fingers
+    // This prevents playing a single note with Thumb(1) or Pinky(5) from jerking the entire palm center!
+    val impliedPalmCenters = pressedByFinger.map { (fNum, pitch) ->
+        pitch - restOffsets[fNum]
+    }
+    val rawTargetPalm = if (impliedPalmCenters.isNotEmpty()) {
+        impliedPalmCenters.average().toFloat()
+    } else {
+        safePalm
+    }
+
+    // Lookahead wrist pre-shift during single-note scale thumb crossings so the wrist glides smoothly
+    val lookaheadAdjustedPalm = if (count == 1 && lookaheadPitch != null) {
+        val curF = fingersLeftToRight.first()
+        val curP = sorted.first()
+        val deltaNext = lookaheadPitch - curP
+        val isCrossingPrep = (isRightHand && ((curF in 3..4 && deltaNext in 1..4) || (curF == 1 && deltaNext in -4..-1))) ||
+            (!isRightHand && ((curF in 3..4 && deltaNext in -4..-1) || (curF == 1 && deltaNext in 1..4)))
+        if (isCrossingPrep) rawTargetPalm * 0.72f + lookaheadPitch * 0.28f else rawTargetPalm
+    } else {
+        rawTargetPalm
+    }.coerceIn(24f, 104f)
+
+    // Stretch factor for unpressed fingers when spanning an octave
+    val handStretchFactor = if (count >= 2) {
+        val fFirst = fingersLeftToRight.first()
+        val fLast = fingersLeftToRight.last()
+        val naturalRestSpan = abs(restOffsets[fLast] - restOffsets[fFirst]).coerceAtLeast(1.8f)
+        (span.toFloat() / naturalRestSpan).coerceIn(0.85f, 1.65f)
+    } else {
+        1.0f
+    }
+
     val allFiveFingers = (1..5).map { fNum ->
         val pressedPitch = pressedByFinger[fNum]
         if (pressedPitch != null) {
@@ -455,19 +613,11 @@ private fun solveHumanChordAndMelodyFingers(
                     val pLow = pressedByFinger[lowerPressed]!!
                     val pHigh = pressedByFinger[higherPressed]!!
                     val frac = (fNum - lowerPressed).toFloat() / (higherPressed - lowerPressed).toFloat()
-                    (pLow + (pHigh - pLow) * frac).toInt()
+                    (pLow + (pHigh - pLow) * frac).roundToInt()
                 }
-                lowerPressed != null -> {
-                    val pLow = pressedByFinger[lowerPressed]!!
-                    val diff = fNum - lowerPressed
-                    pLow + (if (isRightHand) diff * 2 else -diff * 2)
+                else -> {
+                    (lookaheadAdjustedPalm + restOffsets[fNum] * handStretchFactor).roundToInt()
                 }
-                higherPressed != null -> {
-                    val pHigh = pressedByFinger[higherPressed]!!
-                    val diff = higherPressed - fNum
-                    pHigh - (if (isRightHand) diff * 2 else -diff * 2)
-                }
-                else -> defaultHome
             }
             HandFingerAssignment(
                 fingerNumber = fNum,
@@ -477,9 +627,46 @@ private fun solveHumanChordAndMelodyFingers(
         }
     }
 
-    val centerMidi = ((sorted.first() + sorted.last()) / 2).coerceIn(24, 104)
-    val primaryFinger = fingersLeftToRight.firstOrNull() ?: 3
-    return Triple(centerMidi, primaryFinger, allFiveFingers)
+    val newMelodicPitch = if (isRightHand) sorted.last() else sorted.first()
+    val newMelodicFinger = if (isRightHand) fingersLeftToRight.last() else fingersLeftToRight.first()
+
+    return HandSolvedState(
+        palmCenterMidi = lookaheadAdjustedPalm,
+        lastMelodicPitch = newMelodicPitch,
+        lastMelodicFinger = newMelodicFinger,
+        assignments = allFiveFingers
+    )
+}
+
+private fun computeRepetitiveStrikePulse(
+    score: Score?,
+    playheadMeasure: Int,
+    playheadOffset: Float,
+    melodicTracks: Set<Int>
+): Float {
+    val measure = score?.measures?.getOrNull(playheadMeasure) ?: return 1f
+    val beatsPerMeasure = (measure.timeSignatureNumerator.toFloat() *
+        (4f / measure.timeSignatureDenominator.coerceAtLeast(1).toFloat())).coerceAtLeast(1f)
+    val curBeat = playheadOffset * beatsPerMeasure
+
+    val activeAtBeat = measure.notes.filter { n ->
+        !n.isRest && (melodicTracks.isEmpty() || n.voice in melodicTracks) &&
+            curBeat >= n.position - 0.04f && curBeat <= n.position + n.duration.coerceAtLeast(0.125f)
+    }
+    if (activeAtBeat.isEmpty()) return 0.35f
+
+    val latestOnset = activeAtBeat.maxOf { it.position }
+    val nearestNoteDur = activeAtBeat.filter { abs(it.position - latestOnset) < 0.02f }
+        .minOfOrNull { it.duration.coerceAtLeast(0.125f) } ?: 0.38f
+
+    val elapsedInNote = (curBeat - latestOnset).coerceAtLeast(0f)
+    val phase = (elapsedInNote / nearestNoteDur).coerceIn(0f, 1f)
+
+    return when {
+        phase < 0.12f -> (phase / 0.12f).coerceIn(0.30f, 1f)
+        phase > 0.85f -> (1f - ((phase - 0.85f) / 0.15f) * 0.65f).coerceIn(0.30f, 1f)
+        else -> 1f
+    }
 }
 
 @Composable
@@ -495,6 +682,7 @@ fun PianoHumanHandsOverlay(
     showRightHand: Boolean = true,
     leftHandColor: Color = Color(0xFF6C63FF),
     rightHandColor: Color = Color(0xFF4A90E2),
+    transposition: Int = 0,
     modifier: Modifier = Modifier
 ) {
     if (!showLeftHand && !showRightHand) return
@@ -506,11 +694,13 @@ fun PianoHumanHandsOverlay(
     }
     val whiteCount = whiteNotesInRange.size.coerceAtLeast(1)
 
-    // Use non-reactive refs for historical hand state to prevent 1-frame LaunchedEffect race conditions
-    val lastLhCenterRef = remember { mutableIntStateOf(46) } // A#2 / C3 default LH home
-    val lastRhCenterRef = remember { mutableIntStateOf(68) } // G#4 / A4 default RH home
+    // Persistent biomechanical hand state across frames
+    val lastLhPalmRef = remember { mutableFloatStateOf(48f) } // C3 default LH palm center
+    val lastRhPalmRef = remember { mutableFloatStateOf(67f) } // G4 default RH palm center
+    val lastLhPitchRef = remember { mutableIntStateOf(48) }
+    val lastRhPitchRef = remember { mutableIntStateOf(67) }
     val lastLhFingerRef = remember { mutableIntStateOf(3) }
-    val lastRhFingerRef = remember { mutableIntStateOf(2) }
+    val lastRhFingerRef = remember { mutableIntStateOf(3) }
 
     val activeNotesSnapshot = activeMidiNotes.toMap()
     val activeColorsSnapshot = activeNoteColors.toMap()
@@ -526,7 +716,8 @@ fun PianoHumanHandsOverlay(
         activeNotesSignature,
         activeColorsSnapshot,
         showLeftHand,
-        showRightHand
+        showRightHand,
+        transposition
     ) {
         partitionPianoNotesStrictDisjoint(
             activeMidiNotes = activeNotesSnapshot,
@@ -538,69 +729,106 @@ fun PianoHumanHandsOverlay(
             rightHandColor = rightHandColor,
             showLeftHand = showLeftHand,
             showRightHand = showRightHand,
-            lastLhCenter = lastLhCenterRef.intValue,
-            lastRhCenter = lastRhCenterRef.intValue
+            lastLhCenter = lastLhPalmRef.floatValue.roundToInt(),
+            lastRhCenter = lastRhPalmRef.floatValue.roundToInt(),
+            transposition = transposition
         )
     }
 
-    val disjointLh = partitioned.first
-    val disjointRh = partitioned.second
-    val explicitFingers = partitioned.third
+    val disjointLh = partitioned.lhPitchesAsc
+    val disjointRh = partitioned.rhPitchesAsc
+    val explicitFingers = partitioned.explicitFingers
 
-    // Dynamic territory boundary: only restrict LH ceiling by RH's actual active notes (or a high fallback when RH is idle)
-    val rhLowestBound = disjointRh.firstOrNull() ?: (lastRhCenterRef.intValue - 3).coerceAtLeast(62)
-    val lhHighestBound = disjointLh.lastOrNull() ?: (lastLhCenterRef.intValue + 3).coerceAtMost(57)
-    val lhTerritoryCeiling = if (showRightHand) (rhLowestBound - 1).coerceAtLeast(40) else 108
+    val rhLowestBound = disjointRh.firstOrNull() ?: (lastRhPalmRef.floatValue.roundToInt() - 4).coerceAtLeast(60)
+    val lhHighestBound = disjointLh.lastOrNull() ?: (lastLhPalmRef.floatValue.roundToInt() + 4).coerceAtMost(59)
+    val lhTerritoryCeiling = if (showRightHand) (rhLowestBound - 1).coerceAtLeast(38) else 108
     val rhTerritoryFloor = if (showLeftHand) (lhHighestBound + 1).coerceAtMost(84) else 21
 
-    val lhSolution = remember(disjointLh, explicitFingers, lhTerritoryCeiling) {
+    val lhSolution = remember(disjointLh, explicitFingers, lhTerritoryCeiling, partitioned.lookaheadLhPitch) {
         solveHumanChordAndMelodyFingers(
             activePitchesAsc = disjointLh,
             explicitFingerMap = explicitFingers,
             isRightHand = false,
-            lastAnchorMidi = lastLhCenterRef.intValue,
-            lastAnchorFinger = lastLhFingerRef.intValue,
-            territoryLimitMidi = lhTerritoryCeiling
-        ).also { (newCenter, newFinger, _) ->
+            lastPalmMidi = lastLhPalmRef.floatValue,
+            lastMelodicPitch = lastLhPitchRef.intValue,
+            lastMelodicFinger = lastLhFingerRef.intValue,
+            territoryLimitMidi = lhTerritoryCeiling,
+            lookaheadPitch = partitioned.lookaheadLhPitch
+        ).also { solved ->
             if (disjointLh.isNotEmpty()) {
-                lastLhCenterRef.intValue = newCenter.coerceAtMost(lhTerritoryCeiling)
-                lastLhFingerRef.intValue = newFinger
+                lastLhPalmRef.floatValue = solved.palmCenterMidi.coerceAtMost(lhTerritoryCeiling.toFloat())
+                lastLhPitchRef.intValue = solved.lastMelodicPitch
+                lastLhFingerRef.intValue = solved.lastMelodicFinger
             }
         }
     }
 
-    val rhSolution = remember(disjointRh, explicitFingers, rhTerritoryFloor) {
+    val rhSolution = remember(disjointRh, explicitFingers, rhTerritoryFloor, partitioned.lookaheadRhPitch) {
         solveHumanChordAndMelodyFingers(
             activePitchesAsc = disjointRh,
             explicitFingerMap = explicitFingers,
             isRightHand = true,
-            lastAnchorMidi = lastRhCenterRef.intValue,
-            lastAnchorFinger = lastRhFingerRef.intValue,
-            territoryLimitMidi = rhTerritoryFloor
-        ).also { (newCenter, newFinger, _) ->
+            lastPalmMidi = lastRhPalmRef.floatValue,
+            lastMelodicPitch = lastRhPitchRef.intValue,
+            lastMelodicFinger = lastRhFingerRef.intValue,
+            territoryLimitMidi = rhTerritoryFloor,
+            lookaheadPitch = partitioned.lookaheadRhPitch
+        ).also { solved ->
             if (disjointRh.isNotEmpty()) {
-                lastRhCenterRef.intValue = newCenter.coerceAtLeast(rhTerritoryFloor)
-                lastRhFingerRef.intValue = newFinger
+                lastRhPalmRef.floatValue = solved.palmCenterMidi.coerceAtLeast(rhTerritoryFloor.toFloat())
+                lastRhPitchRef.intValue = solved.lastMelodicPitch
+                lastRhFingerRef.intValue = solved.lastMelodicFinger
             }
         }
     }
 
-    val lhAssignments = lhSolution.third
-    val rhAssignments = rhSolution.third
+    // Critically-damped horizontal wrist glide (no aggressive snapping or overshoot!)
+    val targetLhPalmMidi = lhSolution.palmCenterMidi.coerceAtMost(lhTerritoryCeiling.toFloat())
+    val targetRhPalmMidi = rhSolution.palmCenterMidi.coerceAtLeast(rhTerritoryFloor.toFloat())
 
-    val animatedLhCenterMidi by animateFloatAsState(
-        targetValue = (if (disjointLh.isNotEmpty()) lhSolution.first else lastLhCenterRef.intValue)
-            .coerceAtMost(lhTerritoryCeiling).toFloat(),
-        animationSpec = spring(dampingRatio = 0.88f, stiffness = 1200f),
-        label = "lh_fast_glide"
+    val animatedLhPalmMidi by animateFloatAsState(
+        targetValue = targetLhPalmMidi,
+        animationSpec = spring(dampingRatio = 0.96f, stiffness = 360f),
+        label = "lh_palm_glide"
     )
 
-    val animatedRhCenterMidi by animateFloatAsState(
-        targetValue = (if (disjointRh.isNotEmpty()) rhSolution.first else lastRhCenterRef.intValue)
-            .coerceAtLeast(rhTerritoryFloor).toFloat(),
-        animationSpec = spring(dampingRatio = 0.88f, stiffness = 1200f),
-        label = "rh_fast_glide"
+    val animatedRhPalmMidi by animateFloatAsState(
+        targetValue = targetRhPalmMidi,
+        animationSpec = spring(dampingRatio = 0.96f, stiffness = 360f),
+        label = "rh_palm_glide"
     )
+
+    // Subtle, anatomically realistic wrist tilt in degrees (strictly clamped to [-8.5°, +8.5°])
+    val targetLhTiltDeg = remember(disjointLh, targetLhPalmMidi, animatedLhPalmMidi) {
+        val velocityTilt = ((targetLhPalmMidi - animatedLhPalmMidi) * 0.85f).coerceIn(-5.5f, 5.5f)
+        val thumbUnderBias = if (disjointLh.size == 1 && lhSolution.lastMelodicFinger == 1) -2.2f else 0f
+        // Natural slight inward ulnar angle for Left Hand (-2.0°)
+        (-2.0f + velocityTilt + thumbUnderBias).coerceIn(-8.5f, 8.5f)
+    }
+
+    val targetRhTiltDeg = remember(disjointRh, targetRhPalmMidi, animatedRhPalmMidi) {
+        val velocityTilt = ((targetRhPalmMidi - animatedRhPalmMidi) * 0.85f).coerceIn(-5.5f, 5.5f)
+        val thumbUnderBias = if (disjointRh.size == 1 && rhSolution.lastMelodicFinger == 1) +2.2f else 0f
+        // Natural slight inward ulnar angle for Right Hand (+2.0°)
+        (+2.0f + velocityTilt + thumbUnderBias).coerceIn(-8.5f, 8.5f)
+    }
+
+    val animatedLhTiltDeg by animateFloatAsState(
+        targetValue = targetLhTiltDeg,
+        animationSpec = spring(dampingRatio = 0.94f, stiffness = 280f),
+        label = "lh_wrist_tilt"
+    )
+
+    val animatedRhTiltDeg by animateFloatAsState(
+        targetValue = targetRhTiltDeg,
+        animationSpec = spring(dampingRatio = 0.94f, stiffness = 280f),
+        label = "rh_wrist_tilt"
+    )
+
+    // Compute strike pulse ONCE per frame (instead of 10 times inside the finger loop)
+    val strikePulse = remember(score, playheadMeasure, playheadOffset, partitioned.melodicTracks) {
+        computeRepetitiveStrikePulse(score, playheadMeasure, playheadOffset, partitioned.melodicTracks)
+    }
 
     val fingerBadgePaint = remember {
         android.graphics.Paint().apply {
@@ -626,33 +854,27 @@ fun PianoHumanHandsOverlay(
         val whiteKeyW = totalW / whiteCount.toFloat()
         val blackKeyH = totalH * 0.60f
 
-        /**
-         * FIXED: Computes the exact physical X center for BOTH White Keys and Black Keys!
-         * Previously, black keys used `(relWhiteIdx + 0.5f) * whiteKeyW`, which drew every black key
-         * on top of the white key to its left/right instead of on the boundary between white keys.
-         */
         fun midiToExactX(midi: Int): Float {
             val clamped = midi.coerceIn(safeStart, safeEnd)
             val startGeom = WaterfallKeyGeometryLookup.keyGeometries[safeStart]
-            if (!isMidiNoteBlack(clamped)) {
+            return if (!isMidiNoteBlack(clamped)) {
                 val geom = WaterfallKeyGeometryLookup.keyGeometries[clamped]
                 val relWhiteIdx = geom.whiteKeyIndex - startGeom.whiteKeyIndex
-                return (relWhiteIdx + 0.5f) * whiteKeyW
+                (relWhiteIdx + 0.5f) * whiteKeyW
             } else {
-                // Black key sits on the seam between lowerWhite (clamped - 1) and upperWhite (clamped + 1)
                 val lowerWhiteMidi = (clamped - 1).coerceAtLeast(safeStart)
                 val lowerGeom = WaterfallKeyGeometryLookup.keyGeometries[lowerWhiteMidi]
                 val relWhiteIdx = lowerGeom.whiteKeyIndex - startGeom.whiteKeyIndex
                 val pc = (clamped % 12 + 12) % 12
                 val seamBias = when (pc) {
-                    1 -> -0.04f  // C# slightly left
-                    3 -> 0.04f   // D# slightly right
-                    6 -> -0.05f  // F# slightly left
-                    8 -> 0.0f    // G# centered
-                    10 -> 0.05f  // A# slightly right
+                    1 -> -0.04f
+                    3 -> 0.04f
+                    6 -> -0.05f
+                    8 -> 0.0f
+                    10 -> 0.05f
                     else -> 0f
                 }
-                return (relWhiteIdx + 1.0f + seamBias) * whiteKeyW
+                (relWhiteIdx + 1.0f + seamBias) * whiteKeyW
             }
         }
 
@@ -669,37 +891,43 @@ fun PianoHumanHandsOverlay(
         fun drawOrganicHumanHand(
             assignments: List<HandFingerAssignment>,
             animatedPalmMidi: Float,
+            wristTiltDeg: Float,
             handAccentColor: Color,
             isRightHand: Boolean
         ) {
+            // Left-to-right anatomical finger order on keyboard:
+            //   RH: 1(Thumb) -> 2(Index) -> 3(Middle) -> 4(Ring) -> 5(Pinky)
+            //   LH: 5(Pinky) -> 4(Ring) -> 3(Middle) -> 2(Index) -> 1(Thumb)
             val orderedLeftToRight = if (isRightHand) {
-                assignments.sortedBy { it.fingerNumber } // RH: 1 (Thumb) on Left -> 5 (Pinky) on Right
+                assignments.sortedBy { it.fingerNumber }
             } else {
-                assignments.sortedByDescending { it.fingerNumber } // LH: 5 (Pinky) on Left -> 1 (Thumb) on Right
+                assignments.sortedByDescending { it.fingerNumber }
             }
 
             val pressedIndices = orderedLeftToRight.indices.filter { orderedLeftToRight[it].isPressed }
             val hasPressedNotes = pressedIndices.isNotEmpty()
             val anyBlackPressed = orderedLeftToRight.any { it.isPressed && isMidiNoteBlack(it.midiNote) }
-            val palmShiftY = if (anyBlackPressed) -totalH * 0.05f else 0f
+            val palmShiftY = if (anyBlackPressed) -totalH * 0.045f else 0f
 
-            // Anchor the palm X directly to the centroid of pressed keys when playing so the wrist never lags behind fast chords
-            val targetPalmX = if (hasPressedNotes) {
+            // FIXED: Always use the spring-smoothed `animatedPalmMidi` for horizontal wrist translation
+            // (blended 75% smooth spring + 25% pressed centroid when active) so the hand NEVER teleports!
+            val smoothPalmX = interpolateMidiX(animatedPalmMidi)
+            val rawTargetPalmX = if (hasPressedNotes) {
                 val firstPressedX = midiToExactX(orderedLeftToRight[pressedIndices.first()].midiNote)
                 val lastPressedX = midiToExactX(orderedLeftToRight[pressedIndices.last()].midiNote)
-                (firstPressedX + lastPressedX) * 0.5f
+                val pressedCentroidX = (firstPressedX + lastPressedX) * 0.5f
+                smoothPalmX * 0.72f + pressedCentroidX * 0.28f
             } else {
-                val rawPalmX = interpolateMidiX(animatedPalmMidi)
                 if (showLeftHand && showRightHand) {
-                    if (isRightHand) rawPalmX.coerceAtLeast(territoryBorderX + whiteKeyW * 1.5f)
-                    else rawPalmX.coerceAtMost(territoryBorderX - whiteKeyW * 1.5f)
-                } else rawPalmX
+                    if (isRightHand) smoothPalmX.coerceAtLeast(territoryBorderX + whiteKeyW * 1.3f)
+                    else smoothPalmX.coerceAtMost(territoryBorderX - whiteKeyW * 1.3f)
+                } else smoothPalmX
             }
 
-            val palmX = targetPalmX.coerceIn(whiteKeyW * 1.5f, totalW - whiteKeyW * 1.5f)
+            val palmX = rawTargetPalmX.coerceIn(whiteKeyW * 1.5f, totalW - whiteKeyW * 1.5f)
             val palmY = (totalH * 0.89f + palmShiftY).coerceIn(totalH * 0.72f, totalH * 0.94f)
             val wristY = totalH + 10.dp.toPx()
-            val wristCenterX = palmX + (if (isRightHand) whiteKeyW * 0.50f else -whiteKeyW * 0.50f)
+            val wristCenterX = palmX + (if (isRightHand) whiteKeyW * 0.28f else -whiteKeyW * 0.28f)
 
             data class OrganicFinger(
                 val item: HandFingerAssignment,
@@ -712,31 +940,31 @@ fun PianoHumanHandsOverlay(
             val baseFingerHalfW = (whiteKeyW * 0.27f).coerceIn(4.2f, 10.5.dp.toPx())
             val fingerGeoms = ArrayList<OrganicFinger>(5)
 
-            // FIXED: Compute strictly monotonic left-to-right finger tip X positions.
-            // Pressed fingers lock to their exact key X; unpressed fingers interpolate smoothly between pressed anchors!
             val rawTipXs = FloatArray(5)
-            val naturalSlotStepPx = whiteKeyW * 0.82f
+            val naturalSlotStepPx = whiteKeyW * 0.84f
 
             if (!hasPressedNotes) {
                 for (i in 0 until 5) {
                     rawTipXs[i] = palmX + (i - 2f) * naturalSlotStepPx
                 }
             } else {
-                // 1. Lock all pressed finger slots to their exact physical key centers
+                // 1. Lock all pressed fingers to their exact physical key X
                 for (idx in pressedIndices) {
                     rawTipXs[idx] = midiToExactX(orderedLeftToRight[idx].midiNote)
                 }
-                // 2. Extrapolate unpressed fingers to the LEFT of the first pressed finger
+                // 2. Extrapolate unpressed fingers to the LEFT of the leftmost pressed finger
                 val firstP = pressedIndices.first()
                 for (i in (firstP - 1) downTo 0) {
-                    rawTipXs[i] = rawTipXs[i + 1] - naturalSlotStepPx
+                    val assignedX = midiToExactX(orderedLeftToRight[i].midiNote)
+                    rawTipXs[i] = minOf(assignedX, rawTipXs[i + 1] - naturalSlotStepPx * 0.78f)
                 }
-                // 3. Extrapolate unpressed fingers to the RIGHT of the last pressed finger
+                // 3. Extrapolate unpressed fingers to the RIGHT of the rightmost pressed finger
                 val lastP = pressedIndices.last()
                 for (i in (lastP + 1) until 5) {
-                    rawTipXs[i] = rawTipXs[i - 1] + naturalSlotStepPx
+                    val assignedX = midiToExactX(orderedLeftToRight[i].midiNote)
+                    rawTipXs[i] = maxOf(assignedX, rawTipXs[i - 1] + naturalSlotStepPx * 0.78f)
                 }
-                // 4. Linearly interpolate any unpressed fingers BETWEEN two pressed fingers
+                // 4. Linearly interpolate unpressed fingers BETWEEN pressed fingers (e.g. F2..F4 during a 5-1 octave span)
                 for (pIdx in 0 until pressedIndices.size - 1) {
                     val leftSlot = pressedIndices[pIdx]
                     val rightSlot = pressedIndices[pIdx + 1]
@@ -751,20 +979,25 @@ fun PianoHumanHandsOverlay(
                 }
             }
 
+            // Compute current span stretch ratio so the knuckle arch widens naturally during octaves
+            val currentOuterSpreadPx = (rawTipXs[4] - rawTipXs[0]).coerceAtLeast(whiteKeyW * 2.8f)
+            val archSpreadScale = (currentOuterSpreadPx / (whiteKeyW * 3.4f)).coerceIn(0.88f, 1.45f)
+
             orderedLeftToRight.forEachIndexed { slotIdx, item ->
                 val fNum = item.fingerNumber
                 val tipX = rawTipXs[slotIdx].coerceIn(baseFingerHalfW, totalW - baseFingerHalfW)
                 val isBlack = isMidiNoteBlack(item.midiNote)
 
                 val fingerReachFrac = when (fNum) {
-                    1 -> 0.27f // Thumb
+                    1 -> 0.22f // Thumb (Anatomically lower opposition reach)
                     2 -> 0.44f // Index
-                    3 -> 0.50f // Middle (longest)
+                    3 -> 0.50f // Middle
                     4 -> 0.46f // Ring
-                    else -> 0.36f // Pinky
+                    else -> 0.37f // Pinky
                 }
 
-                val pressCurlY = if (item.isPressed) totalH * 0.03f else 0f
+                val pressCurlY = if (item.isPressed) totalH * 0.024f else 0f
+
                 val tipY = if (isBlack && item.isPressed) {
                     blackKeyH * 0.78f
                 } else if (isBlack) {
@@ -774,13 +1007,14 @@ fun PianoHumanHandsOverlay(
                 }.coerceIn(totalH * 0.14f, totalH * 0.78f)
 
                 val slotFromCenter = (slotIdx - 2f)
-                val archBaseX = palmX + (slotFromCenter * whiteKeyW * 0.56f) + ((tipX - palmX) * 0.38f)
-                val archBaseY = (palmY - totalH * 0.15f) + (slotFromCenter * slotFromCenter * totalH * 0.014f) +
-                    (if (fNum == 1) totalH * 0.07f else 0f)
+                // Gentle knuckle abduction that follows finger tips without shearing the palm
+                val archBaseX = palmX + (slotFromCenter * whiteKeyW * 0.54f * archSpreadScale) + ((tipX - palmX) * 0.26f)
+                val archBaseY = (palmY - totalH * 0.15f) + (slotFromCenter * slotFromCenter * totalH * 0.012f) +
+                    (if (fNum == 1) totalH * 0.085f else 0f)
 
                 val fHalfW = when (fNum) {
                     1 -> baseFingerHalfW * 1.12f
-                    5 -> baseFingerHalfW * 0.84f
+                    5 -> baseFingerHalfW * 0.85f
                     else -> baseFingerHalfW
                 }
 
@@ -795,17 +1029,16 @@ fun PianoHumanHandsOverlay(
                 )
             }
 
-            // Build Unified Continuous Organic Hand Silhouette Path
             val handOutlinePath = Path().apply {
                 val firstF = fingerGeoms.first()
                 val lastF = fingerGeoms.last()
-                val wristHalfW = whiteKeyW * 1.35f
+                val wristHalfW = whiteKeyW * 1.32f
 
                 moveTo(wristCenterX - wristHalfW, wristY)
                 cubicTo(
-                    palmX - whiteKeyW * 1.65f,
+                    palmX - whiteKeyW * 1.55f * archSpreadScale.coerceAtMost(1.22f),
                     (wristY + palmY) * 0.5f,
-                    firstF.baseLeft.x - whiteKeyW * 0.25f,
+                    firstF.baseLeft.x - whiteKeyW * 0.22f,
                     firstF.baseLeft.y + totalH * 0.08f,
                     firstF.baseLeft.x,
                     firstF.baseLeft.y
@@ -818,8 +1051,8 @@ fun PianoHumanHandsOverlay(
                     val tipHw = hw * 0.88f
 
                     cubicTo(
-                        fg.baseLeft.x * 0.55f + (tip.x - tipHw) * 0.45f,
-                        fg.baseLeft.y * 0.55f + tip.y * 0.45f,
+                        fg.baseLeft.x * 0.58f + (tip.x - tipHw) * 0.42f,
+                        fg.baseLeft.y * 0.58f + tip.y * 0.42f,
                         tip.x - tipHw,
                         tip.y + tipHw * 1.3f,
                         tip.x - tipHw,
@@ -836,8 +1069,8 @@ fun PianoHumanHandsOverlay(
                     cubicTo(
                         tip.x + tipHw,
                         tip.y + tipHw * 1.3f,
-                        fg.baseRight.x * 0.55f + (tip.x + tipHw) * 0.45f,
-                        fg.baseRight.y * 0.55f + tip.y * 0.45f,
+                        fg.baseRight.x * 0.58f + (tip.x + tipHw) * 0.42f,
+                        fg.baseRight.y * 0.58f + tip.y * 0.42f,
                         fg.baseRight.x,
                         fg.baseRight.y
                     )
@@ -845,15 +1078,15 @@ fun PianoHumanHandsOverlay(
                     if (i < fingerGeoms.lastIndex) {
                         val nextFg = fingerGeoms[i + 1]
                         val webMidX = (fg.baseRight.x + nextFg.baseLeft.x) * 0.5f
-                        val webMidY = maxOf(fg.baseRight.y, nextFg.baseLeft.y) + totalH * 0.025f
+                        val webMidY = maxOf(fg.baseRight.y, nextFg.baseLeft.y) + totalH * 0.024f
                         quadraticBezierTo(webMidX, webMidY, nextFg.baseLeft.x, nextFg.baseLeft.y)
                     }
                 }
 
                 cubicTo(
-                    lastF.baseRight.x + whiteKeyW * 0.25f,
+                    lastF.baseRight.x + whiteKeyW * 0.22f,
                     lastF.baseRight.y + totalH * 0.08f,
-                    palmX + whiteKeyW * 1.65f,
+                    palmX + whiteKeyW * 1.55f * archSpreadScale.coerceAtMost(1.22f),
                     (wristY + palmY) * 0.5f,
                     wristCenterX + wristHalfW,
                     wristY
@@ -880,26 +1113,32 @@ fun PianoHumanHandsOverlay(
                 alpha = if (hasPressedNotes) 0.72f else 0.40f
             )
 
-            drawPath(
-                path = handOutlinePath,
-                color = Color.Black.copy(alpha = 0.28f),
-                style = Stroke(width = 4.dp.toPx())
-            )
-
-            drawPath(
-                path = handOutlinePath,
-                brush = Brush.radialGradient(
-                    colors = listOf(skinLight, skinMid, skinShadow),
-                    center = Offset(palmX, palmY - totalH * 0.12f),
-                    radius = (whiteKeyW * 4.2f).coerceAtLeast(32f)
+            // Apply subtle wrist rotation only to the palm silhouette around the wrist pivot,
+            // while keeping pressed finger tips locked 1:1 on their target keys!
+            withTransform({
+                rotate(degrees = wristTiltDeg * 0.45f, pivot = Offset(palmX, palmY))
+            }) {
+                drawPath(
+                    path = handOutlinePath,
+                    color = Color.Black.copy(alpha = 0.28f),
+                    style = Stroke(width = 4.dp.toPx())
                 )
-            )
 
-            drawPath(
-                path = handOutlinePath,
-                color = handAccentColor.copy(alpha = 0.88f),
-                style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
-            )
+                drawPath(
+                    path = handOutlinePath,
+                    brush = Brush.radialGradient(
+                        colors = listOf(skinLight, skinMid, skinShadow),
+                        center = Offset(palmX, palmY - totalH * 0.12f),
+                        radius = (whiteKeyW * 4.4f * archSpreadScale).coerceAtLeast(32f)
+                    )
+                )
+
+                drawPath(
+                    path = handOutlinePath,
+                    color = handAccentColor.copy(alpha = 0.88f),
+                    style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
 
             fingerBadgePaint.textSize = (baseFingerHalfW * 1.45f).coerceIn(8.5.dp.toPx(), 13.dp.toPx())
 
@@ -1000,16 +1239,18 @@ fun PianoHumanHandsOverlay(
 
         if (showLeftHand) {
             drawOrganicHumanHand(
-                assignments = lhAssignments,
-                animatedPalmMidi = animatedLhCenterMidi,
+                assignments = lhSolution.assignments,
+                animatedPalmMidi = animatedLhPalmMidi,
+                wristTiltDeg = animatedLhTiltDeg,
                 handAccentColor = leftHandColor,
                 isRightHand = false
             )
         }
         if (showRightHand) {
             drawOrganicHumanHand(
-                assignments = rhAssignments,
-                animatedPalmMidi = animatedRhCenterMidi,
+                assignments = rhSolution.assignments,
+                animatedPalmMidi = animatedRhPalmMidi,
+                wristTiltDeg = animatedRhTiltDeg,
                 handAccentColor = rightHandColor,
                 isRightHand = true
             )

@@ -731,7 +731,7 @@ private fun DrumPadItem(
 }
 @Composable
 fun DrumPadKitGrid(
-    viewModel: AppViewModel, // <-- Pass viewModel here
+    viewModel: AppViewModel,
     labels: List<String>,
     activeIndices: List<Int>,
     guidedIndices: Set<Int>,
@@ -739,33 +739,123 @@ fun DrumPadKitGrid(
     onPadLongClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    var isFullscreen by remember { mutableStateOf(false) }
+
+    if (isFullscreen) {
+        com.creativeblisslabs.peqlearn.app.ui.components.FullscreenDialog(
+            onDismissRequest = { isFullscreen = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            DrumRackLabel("MPC CORE BANK A (4x4)", MaterialTheme.colorScheme.primary)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AnalysisPill("VELOCITY", "127", MaterialTheme.colorScheme.primary)
-                AnalysisPill("LATENCY", "4ms", Color(0xFF00E676))
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color(0xFF0B0D14)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "FULLSCREEN 16-PAD MPC DRUM RACK",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        IconButton(onClick = { isFullscreen = false }) {
+                            Icon(Icons.Default.FullscreenExit, contentDescription = "Exit Fullscreen", tint = Color.White)
+                        }
+                    }
+
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val availH = maxHeight - 12.dp
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(4),
+                            modifier = Modifier.fillMaxWidth().height(availH),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            userScrollEnabled = false
+                        ) {
+                            gridItemsIndexed(labels) { index, label ->
+                                val upperLbl = label.uppercase()
+                                val isTriggered = viewModel.sequencerTriggeredPads[label] == true ||
+                                        viewModel.sequencerTriggeredPads["$index-$upperLbl"] == true ||
+                                        viewModel.sequencerTriggeredPads.entries.any { (k, v) ->
+                                            v && (
+                                                    k.equals(label, ignoreCase = true) ||
+                                                            (upperLbl.contains("KICK") && (k.contains("KICK", true) || k == "KCK")) ||
+                                                            (upperLbl.contains("SNARE") && (k.contains("SNARE", true) || k == "SNR"))
+                                                    )
+                                        }
+                                val isActive = activeIndices.contains(index) || isTriggered
+                                DrumPadItem(
+                                    label = label,
+                                    index = index,
+                                    primaryColor = MaterialTheme.colorScheme.primary,
+                                    isActive = isActive,
+                                    isGuided = guidedIndices.contains(index) || isTriggered,
+                                    onClick = { onPadClick(index) },
+                                    onLongClick = { onPadLongClick(index) },
+                                    modifier = Modifier.height(availH / 4.4f)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
 
-        SpectrumBalanceBar(
-            low = 0.6f,
-            mid = 0.4f,
-            high = 0.3f,
-            primaryColor = MaterialTheme.colorScheme.primary
-        )
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val isLandscape = maxWidth > maxHeight || maxHeight < 520.dp
+        val gridHeight = if (isLandscape) (maxHeight - 40.dp).coerceIn(190.dp, 320.dp) else 420.dp
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = Modifier.fillMaxWidth().height(480.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            userScrollEnabled = false
-        ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DrumRackLabel("MPC CORE BANK A (4x4)", MaterialTheme.colorScheme.primary)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AnalysisPill("VELOCITY", "127", MaterialTheme.colorScheme.primary)
+                    AnalysisPill("LATENCY", "4ms", Color(0xFF00E676))
+                    IconButton(
+                        onClick = { isFullscreen = true },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = "Fullscreen Pads",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            SpectrumBalanceBar(
+                low = 0.6f,
+                mid = 0.4f,
+                high = 0.3f,
+                primaryColor = MaterialTheme.colorScheme.primary
+            )
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier.fillMaxWidth().height(gridHeight),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                userScrollEnabled = false
+            ) {
             gridItemsIndexed(labels) { index, label ->
                 val upperLbl = label.uppercase()
                 val isTriggered = viewModel.sequencerTriggeredPads[label] == true ||
@@ -797,6 +887,7 @@ fun DrumPadKitGrid(
             }
         }
     }
+}
 }
 enum class GrooveStudioTab(val label: String, val icon: ImageVector) {
     STEP_SEQUENCER("16-Step Drum Grid", Icons.Default.GridView),

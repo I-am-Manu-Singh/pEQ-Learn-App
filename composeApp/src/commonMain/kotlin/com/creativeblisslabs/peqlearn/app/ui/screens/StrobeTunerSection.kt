@@ -235,9 +235,13 @@ val currentTargetNote = when {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        val deviationText = when {
-            centsDeviation > 0 -> "+$centsDeviation"
-            else -> "$centsDeviation"
+        val deviationText = when (tuningDisplayType) {
+            "Simple" -> currentTargetNote
+            "Semitones" -> {
+                val st = centsDeviation / 100f
+                if (st > 0f) "+%.1f st".format(st) else "%.1f st".format(st)
+            }
+            else -> if (centsDeviation > 0) "+$centsDeviation ¢" else "$centsDeviation ¢"
         }
 
         Text(
@@ -343,9 +347,17 @@ val currentTargetNote = when {
                                     .clickable {
                                         selectedStringIdx = idx
                                         isAutoMode = false
-                                        if (playSoundOnStringSelect) {
-                                            // Optional sound preview
-                                        }
+                                       if (playSoundOnStringSelect) {
+            val noteNames = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+            val pitchPart = stringNote.dropLastWhile { it.isDigit() || it == '-' }
+            val octPart = stringNote.takeLastWhile { it.isDigit() || it == '-' }.toIntOrNull() ?: 4
+            val pc = noteNames.indexOf(pitchPart).takeIf { it >= 0 } ?: 0
+            val targetMidi = ((octPart + 1) * 12 + pc).coerceIn(21, 108)
+            runCatching {
+                viewModel.audioEngine.setInstrument("GUITAR")
+                viewModel.audioEngine.noteOn(targetMidi, 0.85f)
+            }
+        }
                                     }
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
