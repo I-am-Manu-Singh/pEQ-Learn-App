@@ -556,7 +556,7 @@ fun resolveInstrumentWaterfallGeometry(
             viewModel.transposition.intValue + (viewModel.octaveShift.intValue * 12)
 
         
-        val transposedActiveMidiNotesMap by remember(totalTranspositionSemis) {
+        val transposedActiveMidiNotesMap by remember(totalTranspositionSemis, viewModel.midiActiveNotes.toMap()) {
             derivedStateOf {
                 if (totalTranspositionSemis == 0) {
                     viewModel.midiActiveNotes.toMap()
@@ -573,19 +573,19 @@ fun resolveInstrumentWaterfallGeometry(
             }
         }
 
-        val transposedActiveMidiNoteSet by remember(totalTranspositionSemis) {
+        val transposedActiveMidiNoteSet by remember(totalTranspositionSemis, viewModel.midiActiveNotes.toMap()) {
             derivedStateOf {
                 transposedActiveMidiNotesMap.entries.filter { it.value }.map { it.key }.toSet()
             }
         }
 
-        val transposedActiveList by remember(totalTranspositionSemis) {
+        val transposedActiveList by remember(totalTranspositionSemis, viewModel.midiActiveNotes.toMap()) {
             derivedStateOf {
                 transposedActiveMidiNoteSet.toList().sorted()
             }
         }
 
-        val transposedPlayingNote by remember(totalTranspositionSemis) {
+        val transposedPlayingNote by remember(totalTranspositionSemis, viewModel.midiPlayingNote.value) {
             derivedStateOf {
                 viewModel.midiPlayingNote.value?.let {
                     (it + totalTranspositionSemis).coerceIn(
@@ -596,7 +596,7 @@ fun resolveInstrumentWaterfallGeometry(
             }
         }
 
-        val transposedActiveNoteColors by remember(totalTranspositionSemis) {
+        val transposedActiveNoteColors by remember(totalTranspositionSemis, viewModel.activeNoteTrackColors.toMap(), viewModel.playAlongEngine.liveKeyColors.toMap()) {
             derivedStateOf {
                 val rawMap =
                     viewModel.activeNoteTrackColors + viewModel.playAlongEngine.liveKeyColors

@@ -5,3 +5,5 @@ expect fun clock_time_nanos(): Long
 expect fun deleteLocalFile(path: String): Boolean
 
 expect fun shareTextFile(fileName: String, content: String): Boolean
+
+expect fun shareBinaryFile(fileName: String, bytes: ByteArray, mimeType: String = "application/octet-stream"): Boolean

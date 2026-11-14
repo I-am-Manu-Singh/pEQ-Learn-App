@@ -1,5 +1,6 @@
 package com.creativeblisslabs.peqlearn.app.ui.screens
 
+import com.creativeblisslabs.peqlearn.app.data.ChordInstrumentType
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -623,7 +624,9 @@ fun PlaybackSettingsSheet(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             instruments.forEach { inst ->
-                                val selected = viewModel.selectedInstrument.value == inst
+                                val instType = ChordInstrumentType.fromNameOrNull(inst)
+                                val currentType = ChordInstrumentType.fromNameOrNull(viewModel.selectedInstrument.value)
+                                val selected = (instType != null && instType == currentType) || viewModel.selectedInstrument.value == inst
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
@@ -633,7 +636,16 @@ fun PlaybackSettingsSheet(
                                             )
                                         )
                                         .clickable {
-                                            viewModel.selectedInstrument.value = inst
+                                            val canonicalTitle = instType?.title ?: inst
+                                            viewModel.selectedInstrument.value = canonicalTitle
+                                            val soundName = instType?.soundEngineName
+                                            if (soundName != null) {
+                                                try {
+                                                    viewModel.audioEngine.setInstrument(soundName)
+                                                } catch (e: Exception) {
+                                                    // ignore engine setInstrument error
+                                                }
+                                            }
                                             // Piano88 Screen Rule: Guitar shows Tab, Piano shows Staff notation
                                             if (inst.contains("Guitar") || inst == "Ukulele") {
                                                 viewModel.notationFormat.value = "Tab Only"

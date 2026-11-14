@@ -48,3 +48,38 @@ actual fun shareTextFile(fileName: String, content: String): Boolean {
         false
     }
 }
+
+actual fun shareBinaryFile(fileName: String, bytes: ByteArray, mimeType: String): Boolean {
+    return try {
+        val context = pEQApplication.instance
+        val dumpDir = File(context.cacheDir, "dumps")
+        if (!dumpDir.exists()) {
+            dumpDir.mkdirs()
+        }
+        val file = File(dumpDir, fileName)
+        file.writeBytes(bytes)
+
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, fileName)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        val chooser = android.content.Intent.createChooser(intent, "Share $fileName").apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}

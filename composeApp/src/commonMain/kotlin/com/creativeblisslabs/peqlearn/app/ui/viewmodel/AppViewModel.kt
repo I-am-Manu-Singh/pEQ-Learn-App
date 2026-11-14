@@ -2748,8 +2748,8 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
             writeInt32(trkBytes.size)
             out.write(trkBytes)
 
-            // Also load this exported drum groove into currentScore so the user can view/export it in Staff/Video too!
-            val parsedDrumScore = com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.parse(out.toByteArray(), "pEQ Drum Groove (${bpm} BPM)")
+            val midiBytes = out.toByteArray()
+            val parsedDrumScore = com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.parse(midiBytes, "pEQ Drum Groove (${bpm} BPM)")
             withContext(Dispatchers.Main) {
                 if (parsedDrumScore != null) {
                     currentScore.value = parsedDrumScore
@@ -2757,9 +2757,11 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                 }
                 toastMessage.value = "Exported ${barsToExport.size}-Bar Drum Groove (${bpm} BPM) to Score & MIDI!"
             }
-            com.creativeblisslabs.peqlearn.app.shareTextFile(
-                "pEQ_Drum_Groove_${bpm}BPM.txt",
-                parsedDrumScore?.dumpAsText() ?: "pEQ Drum Groove (${barsToExport.size} Bars @ $bpm BPM)"
+            // Export and share as actual playable standard MIDI file (.mid)
+            com.creativeblisslabs.peqlearn.app.shareBinaryFile(
+                "pEQ_Drum_Groove_${bpm}BPM.mid",
+                midiBytes,
+                "audio/midi"
             )
         }
     }

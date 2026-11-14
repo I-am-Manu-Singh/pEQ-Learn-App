@@ -2127,7 +2127,8 @@ class AndroidAudioEngine(
             }
         }
 
-        if (currentInstrument == "PIANO" && pianoAudioMode == "SalamanderSamples" && salamanderLoaded.get()) {
+        // 2. Salamander Grand Piano multi-velocity fallback for Piano (matches PIANO and PIANO_ACOUSTIC)
+        if ((currentInstrument == "PIANO" || currentInstrument == "PIANO_ACOUSTIC") && salamanderLoaded.get()) {
             // Find closest sampled anchor note
             var closestMidi = 60
             var minDiff = Int.MAX_VALUE
@@ -2188,7 +2189,7 @@ class AndroidAudioEngine(
             return
         }
 
-        if (currentInstrument == "PIANO" && pianoAudioMode == "SalamanderSamples") {
+        if ((currentInstrument == "PIANO" || currentInstrument == "PIANO_ACOUSTIC") && (pianoAudioMode == "SalamanderSamples" || salamanderLoaded.get())) {
             val streamId = salamanderActiveStreamMap.remove(note)
             if (streamId != null) {
                 // Fade down slightly before stopping after release to avoid clicks

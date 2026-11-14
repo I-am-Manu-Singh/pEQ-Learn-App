@@ -518,9 +518,9 @@ object BiomechanicalPerformersEngine {
         val safeMaxFret = maxFret.coerceIn(4, 24)
         val safeMinFret = minFret.coerceIn(0, safeMaxFret)
 
-        // Pre-normalize pitches: Octave-transpose any pitches below the lowest open string,
-        // and map raw pitches to their transposed representations.
-        val lowestPlayableMidi = openStringsMidiHighToLow.lastOrNull() ?: 40
+        // Pre-normalize pitches: Map raw pitches to their representation.
+        // In Drop D or standard guitar, notes down to D2 (MIDI 38) are naturally playable when tuning allows.
+        val lowestPlayableMidi = openStringsMidiHighToLow.lastOrNull() ?: 38
         val transposedToRawMap = HashMap<Int, MutableList<Int>>()
         for (rawP in uniquePitches) {
             var transP = rawP
@@ -585,7 +585,20 @@ object BiomechanicalPerformersEngine {
                     tempPlacements[midi] = bestStrForMidi to bestFretForMidi
                     cost += bestNoteCost
                 } else {
-                    cost += 500f
+                    // Fallback to any string that can physically reach this note in safeMinFret..safeMaxFret
+                    val reachable = (0 until numStrings).mapNotNull { sIdx ->
+                        val fret = midi - openStringsMidiHighToLow[sIdx]
+                        if (fret in safeMinFret..safeMaxFret) sIdx to fret else null
+                    }.minByOrNull { (sIdx, fret) ->
+                        abs(fret - boxCenter) * 10f + (if (usedStrings[sIdx]) 100f else 0f)
+                    }
+                    if (reachable != null) {
+                        usedStrings[reachable.first] = true
+                        tempPlacements[midi] = reachable
+                        cost += 150f
+                    } else {
+                        cost += 500f
+                    }
                 }
             }
 

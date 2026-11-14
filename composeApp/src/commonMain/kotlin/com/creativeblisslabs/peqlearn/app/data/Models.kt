@@ -39,7 +39,34 @@ enum class ChordInstrumentType(
         fun fromNameOrNull(name: String?): ChordInstrumentType? {
             if (name == null) return null
             val upper = name.uppercase().trim()
-            return entries.firstOrNull { it.name == upper || it.soundEngineName == upper || upper.contains(it.name) }
+            // 1. Exact match by enum name, sound engine name, or UI title
+            entries.firstOrNull {
+                it.name == upper ||
+                    it.soundEngineName == upper ||
+                    it.title.uppercase() == upper
+            }?.let { return it }
+
+            // 2. Specialized substring disambiguation (prevent "Guitar" from matching wrong subtypes)
+            if (upper.contains("7") && upper.contains("GUITAR")) return GUITAR_7
+            if (upper.contains("CLASSIC")) return GUITAR_CLASSICAL
+            if (upper.contains("ELECTRIC") && upper.contains("GUITAR")) return GUITAR_ELECTRIC
+            if (upper.contains("ACOUSTIC") && upper.contains("GUITAR")) return GUITAR_ACOUSTIC
+            if (upper == "GUITAR" || upper == "GUITAR_ACOUSTIC") return GUITAR_ACOUSTIC
+
+            if (upper.contains("ELECTRIC") && upper.contains("PIANO")) return PIANO_ELECTRIC
+            if (upper.contains("ACOUSTIC") && upper.contains("PIANO")) return PIANO_ACOUSTIC
+            if (upper == "PIANO" || upper == "PIANO_ACOUSTIC") return PIANO_ACOUSTIC
+
+            if (upper.contains("UKULELE") || upper.contains("UKE")) return UKULELE
+            if (upper.contains("HARMONIUM")) return HARMONIUM
+            if (upper.contains("DRUM")) return DRUM_KIT
+            if (upper.contains("TABLA")) return TABLA
+            if (upper.contains("SITAR")) return SITAR
+            if (upper.contains("FLUTE")) return FLUTE
+            if (upper.contains("VIOLIN")) return VIOLIN
+
+            // 3. Fallback to general substring match
+            return entries.firstOrNull { upper.contains(it.name) || it.name.contains(upper) }
         }
     }
 }

@@ -3,6 +3,7 @@ package com.creativeblisslabs.peqlearn.app.ui.screens
 import com.creativeblisslabs.peqlearn.app.data.Raaga
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,19 +56,7 @@ fun MusicTheoryScreen(
         }
     }
 var isSearchActive by remember { mutableStateOf(false) }
-    var isChordGalleryOpen by remember { mutableStateOf(false) }
 
-    if (isChordGalleryOpen) {
-        com.creativeblisslabs.peqlearn.app.ui.components.FullscreenDialog(
-            onDismissRequest = { isChordGalleryOpen = false },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            ChordDisplayGalleryScreen(
-                viewModel = viewModel,
-                onBack = { isChordGalleryOpen = false }
-            )
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -148,17 +137,6 @@ var isSearchActive by remember { mutableStateOf(false) }
             }
         }
 
-        // All Chords Gallery Button
-        IconButton(
-            onClick = { isChordGalleryOpen = true },
-            modifier = Modifier.padding(start = 4.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.LibraryMusic,
-                contentDescription = "Open Chord Gallery",
-                tint = Color(0xFFFF9E1B)
-            )
-        }
 
         // The single search icon that triggers full width search
         IconButton(
@@ -176,27 +154,25 @@ var isSearchActive by remember { mutableStateOf(false) }
             
         }
     ) { innerPadding ->
-        AnimatedContent(
+        AnimatedContent<TheoryPart>(
             targetState = selectedPart,
             modifier = Modifier.fillMaxSize().padding(innerPadding),
-            transitionSpec = { fadeIn() togetherWith fadeOut() }
+            transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) },
+            label = "theory_part_anim"
         ) { activeSection ->
             when (activeSection) {
                 TheoryPart.CHORDS -> {
                     ChordDictionaryPanel(viewModel = viewModel)
                 }
-                TheoryPart.REFERENCE -> {
-                    ReferenceStudioPanel(
-                        viewModel = viewModel,
-                        onOpenChordGallery = { isChordGalleryOpen = true }
-                    )
-                }
+               TheoryPart.REFERENCE -> {
+
+               }
                 TheoryPart.TOOLS -> {
-                    ToolsStudioPanel(viewModel = viewModel)
+            ToolsStudioPanel(viewModel = viewModel)
                 }
-                TheoryPart.PROGRESSIONS -> {
-                    ProgressionsStudioPanel(viewModel = viewModel)
-                }
+                // TheoryPart.PROGRESSIONS -> {
+                //     ProgressionsStudioPanel(viewModel = viewModel)
+                // }
                 TheoryPart.CONCEPTS -> {
                     ConceptsBrowser(
                         concepts = filteredConcepts,
@@ -209,15 +185,17 @@ var isSearchActive by remember { mutableStateOf(false) }
                 TheoryPart.GROOVE -> {
                     RhythmGrooveWorkstation(viewModel = viewModel)
                 }
-                TheoryPart.STRUCTURE -> {
-                    SongStructureAcademyPanel(viewModel = viewModel)
-                }
+           
                 TheoryPart.INDIAN_CLASSICAL -> {
                     IndianClassicalInteractivePanel(viewModel = viewModel)
                 }
                 TheoryPart.KARNATIC -> {
                     KarnaticClassicalInteractivePanel(viewModel = viewModel)
                 }
+
+                TheoryPart.REFERENCE -> TODO()
+                TheoryPart.PROGRESSIONS -> TODO()
+                TheoryPart.STRUCTURE -> TODO()
             }
         }
     }
@@ -311,11 +289,7 @@ private fun ConceptsBrowser(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Interactive Structure Lab & Timeline Analysis
-                            InteractiveStructureLab(
-                                concept = concept,
-                                accentColor = MaterialTheme.colorScheme.primary
-                            )
+                           
 
                             if (concept.highlightNotes.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(10.dp))
@@ -346,260 +320,4 @@ private fun ConceptsBrowser(
             }
         }
     }
-}
-
-
-@Composable
-private fun SongStructureAcademyPanel(viewModel: AppViewModel? = null) {
-    val importedAnalysis = viewModel?.songStructureAnalysis?.value
-    val currentTrack = viewModel?.selectedMixerItem?.value ?: viewModel?.currentMediaItem?.value
-    val isAnalyzing = viewModel?.isAnalyzingStructure?.value == true
-
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val secondaryColor = MaterialTheme.colorScheme.secondary
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
-    val errorColor = MaterialTheme.colorScheme.error
-    val outlineColor = MaterialTheme.colorScheme.outline
-
-    val sections = remember(importedAnalysis, primaryColor, secondaryColor, tertiaryColor, errorColor, outlineColor) {
-        if (importedAnalysis != null && importedAnalysis.segments.isNotEmpty()) {
-            importedAnalysis.segments.map { segment ->
-                val duration = (segment.end - segment.start).coerceAtLeast(1f)
-                val bars = (duration / 2.0f).toInt().coerceAtLeast(1)
-                Triple(
-                    segment.label.replaceFirstChar { it.uppercase() },
-                    bars,
-                    com.creativeblisslabs.peqlearn.app.ui.components.AllInOneColorPalette.getColorForLabel(segment.label)
-                )
-            }
-        } else {
-            listOf(
-                Triple("Intro", 4, primaryColor),
-                Triple("Verse 1", 16, secondaryColor),
-                Triple("Pre-Chorus", 8, tertiaryColor),
-                Triple("Chorus", 16, errorColor),
-                Triple("Verse 2", 16, secondaryColor),
-                Triple("Chorus 2", 16, errorColor),
-                Triple("Bridge", 8, primaryColor.copy(alpha = 0.7f)),
-                Triple("Chorus 3", 16, errorColor),
-                Triple("Outro", 8, outlineColor)
-            )
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(bottom = 120.dp)
-    ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "SONG STRUCTURE MAP & TIMELINE LAB",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = if (importedAnalysis != null) "All-In-One Model Analysis: ${currentTrack?.displayName ?: "Imported Song"}"
-                               else "Standard Reference Pop/Rock Arrangement",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
-
-                if (viewModel != null) {
-                    FilledTonalButton(
-                        onClick = {
-                            val track = viewModel.selectedMixerItem.value ?: viewModel.currentMediaItem.value
-                            if (track != null) {
-                                viewModel.runAllInOneAnalysis(track.path)
-                            } else {
-                                viewModel.onPickTrackRequested?.invoke { item ->
-                                    viewModel.selectTrackForMixer(item)
-                                }
-                            }
-                        },
-                        enabled = !isAnalyzing,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        if (isAnalyzing) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Analyzing...", fontSize = 11.sp)
-                        } else {
-                            Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (currentTrack != null) "Re-Analyze" else "Import Song", fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
-        }
-
-        if (viewModel != null) {
-            item {
-                com.creativeblisslabs.peqlearn.app.ui.components.SongWritingTimelineScrubber(
-                    viewModel = viewModel
-                )
-            }
-        }
-
-        item {
-            pEQGlassCard(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        if (importedAnalysis != null) "Detected Song Structure (${importedAnalysis.bpm.toInt()} BPM)"
-                        else "Standard Pop/Rock Structure Timeline",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(36.dp).clip(MaterialTheme.shapes.small)
-                    ) {
-                        sections.forEach { (name, bars, col) ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(bars.toFloat())
-                                    .fillMaxHeight()
-                                    .background(col)
-                                    .padding(horizontal = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "$name (${bars}b)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        items(sections) { (name, bars, col) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(16.dp).clip(CircleShape).background(col)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(name, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Text("$bars bars", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-@Composable
-fun InteractiveStructureLab(
-    concept: TheoryConcept,
-    accentColor: Color,
-    modifier: Modifier = Modifier
-) {
-    var selectedBlockIdx by remember { mutableStateOf(0) }
-
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Interactive Structure Blocks / Sections (if present)
-        if (concept.structureBlocks.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Song Structure Timeline & Cadence Analysis",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    itemsIndexed(concept.structureBlocks) { idx, block ->
-                        val isSelected = selectedBlockIdx == idx
-                        Surface(
-                            onClick = { selectedBlockIdx = idx },
-                            shape = MaterialTheme.shapes.medium,
-                            color = if (isSelected) accentColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-                            ),
-                            modifier = Modifier.height(64.dp).defaultMinSize(minWidth = 90.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(8.dp),
-                                verticalArrangement = Arrangement.SpaceBetween,
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    block.label,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Black,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    block.bars,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else accentColor
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Formula Breakdown & Note Interval Mapping (if present)
-        if (concept.formula.isNotEmpty() || concept.noteHighlights.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceContainerLowest, MaterialTheme.shapes.medium)
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("THEORETICAL FORMULA", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                    Text(
-                        concept.formula.ifEmpty { "Traditional Classical Structure" },
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    concept.noteHighlights.forEach { note ->
-                        Surface(
-                            shape = CircleShape,
-                            color = accentColor.copy(alpha = 0.2f),
-                            border = BorderStroke(1.dp, accentColor)
-                        ) {
-                            Box(modifier = Modifier.size(28.dp), contentAlignment = Alignment.Center) {
-                                Text(note, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SongStructureMapPanel(
-    selectedConcept: TheoryConcept? = null,
-    onBack: () -> Unit = {}
-) {
-    SongStructureAcademyPanel()
 }

@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.creativeblisslabs.peqlearn.app.util.RealChordPosition
 
 /**
- * High fidelity SVG-style chord diagram inspired by tombatossals/react-chords and optilude/guitar-practice.
+ * High fidelity SVG-style chord diagram inswred by tombatossals/react-chords and optilude/guitar-practice.
  * Renders vertical string neck grids, nut vs fret labels, barre chords with pills, muted strings ('✕'),
  * open strings ('○'), finger indicators, and tuning notes.
  */

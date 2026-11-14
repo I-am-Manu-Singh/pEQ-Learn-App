@@ -110,7 +110,7 @@ fun RiyaazScreen(
         // Full digital LCD telemetry, fine-tune cents, 4/5/6 strings, string motion
         // visualizer, and 3-channel precision mixer (Tanpura, Tabla, Metronome).
         // =========================================================================
-        RadelTanpuraTablaStudio(
+        TanpuraTablaStudio(
             viewModel = viewModel,
             isCarnatic = (workstationTab == 2),
             accentColor = primaryColor

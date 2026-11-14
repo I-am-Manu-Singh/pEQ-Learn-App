@@ -1054,13 +1054,6 @@ object CompositionEngine {
     }
 }
 
-object CircleOfFifths {
-    private val circleOrder = listOf(0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5)
-
-    fun getCircleNames(names: List<String>) = circleOrder.map { names[it] }
-    fun getRootFromCircleIndex(index: Int) = circleOrder[index]
-    fun getCircleIndexFromRoot(rootIdx: Int) = circleOrder.indexOf(rootIdx)
-}
 
 /**
  * Solves optimal fingerings and fretboard placements across a chord sequence

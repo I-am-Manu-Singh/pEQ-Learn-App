@@ -39,9 +39,11 @@ data class TheoryConcept(
     val noteHighlights: List<String> = emptyList()
 ) {
     val id: String get() = title
+    val icon: String get() = emoji
     val subtitle: String get() = shortDef
     val category: String get() = part.label
     val description: String get() = longDef
+    val intervals: List<Int> get() = highlightNotes
 }
 
 object MusicSymbols {

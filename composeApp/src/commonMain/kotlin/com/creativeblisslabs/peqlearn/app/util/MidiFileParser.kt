@@ -1,11 +1,15 @@
 package com.creativeblisslabs.peqlearn.app.util
 
 import com.creativeblisslabs.peqlearn.app.ui.screens.Accidental
+import com.creativeblisslabs.peqlearn.app.ui.screens.ArpeggioDirection
+import com.creativeblisslabs.peqlearn.app.ui.screens.GuitarHarmonicType
 import com.creativeblisslabs.peqlearn.app.ui.screens.KeySignature
 import com.creativeblisslabs.peqlearn.app.ui.screens.Measure
 import com.creativeblisslabs.peqlearn.app.ui.screens.MidiTrackInfo
 import com.creativeblisslabs.peqlearn.app.ui.screens.MusicalArticulation
+import com.creativeblisslabs.peqlearn.app.ui.screens.OrnamentType
 import com.creativeblisslabs.peqlearn.app.ui.screens.PedalEvent
+import com.creativeblisslabs.peqlearn.app.ui.screens.PickDirection
 import com.creativeblisslabs.peqlearn.app.ui.screens.RestSymbol
 import com.creativeblisslabs.peqlearn.app.ui.screens.Score
 import com.creativeblisslabs.peqlearn.app.ui.screens.ScoreNote
@@ -334,6 +338,7 @@ object MidiFileParser {
                                 val tabFret = xmlTag(body, "fret")?.toIntOrNull()
 
                                 val musArtic = when {
+                                    body.contains("<staccatissimo") -> MusicalArticulation.STACCATISSIMO
                                     body.contains("<staccato") -> MusicalArticulation.STACCATO
                                     body.contains("<accent") -> MusicalArticulation.ACCENT
                                     body.contains("<tenuto") -> MusicalArticulation.TENUTO
@@ -344,8 +349,39 @@ object MidiFileParser {
                                 val tabArtic = when {
                                     body.contains("<hammer-on") -> TabArticulation.HAMMER_ON
                                     body.contains("<pull-off") -> TabArticulation.PULL_OFF
-                                    body.contains("<slide") -> TabArticulation.SLIDE_UP
+                                    body.contains("<slide") || body.contains("<glissando") -> TabArticulation.SLIDE_UP
+                                    body.contains("<tap") -> TabArticulation.TAP
+                                    body.contains("<snap-pizzicato") -> TabArticulation.POP
                                     else -> TabArticulation.NONE
+                                }
+
+                                val ornament = when {
+                                    body.contains("<trill-mark") || body.contains("<wavy-line") -> OrnamentType.TRILL
+                                    body.contains("<mordent") -> OrnamentType.UPPER_MORDENT
+                                    body.contains("<inverted-mordent") -> OrnamentType.LOWER_MORDENT
+                                    body.contains("<turn") && !body.contains("<inverted-turn") -> OrnamentType.TURN
+                                    body.contains("<inverted-turn") -> OrnamentType.INVERTED_TURN
+                                    else -> OrnamentType.NONE
+                                }
+
+                                val guitarHarmonic = when {
+                                    body.contains("<harmonic") || body.contains("<natural-harmonic") -> GuitarHarmonicType.NATURAL
+                                    body.contains("<artificial-harmonic") -> GuitarHarmonicType.ARTIFICIAL
+                                    body.contains("<pinch-harmonic") -> GuitarHarmonicType.PINCH
+                                    else -> GuitarHarmonicType.NONE
+                                }
+
+                                val pickDir = when {
+                                    body.contains("<down-bow") -> PickDirection.DOWN
+                                    body.contains("<up-bow") -> PickDirection.UP
+                                    else -> PickDirection.NONE
+                                }
+
+                                val arpDir = when {
+                                    body.contains("""<arpeggiate[^>]*direction="up"""".toRegex()) -> ArpeggioDirection.UP
+                                    body.contains("""<arpeggiate[^>]*direction="down"""".toRegex()) -> ArpeggioDirection.DOWN
+                                    body.contains("<arpeggiate") -> ArpeggioDirection.UP
+                                    else -> ArpeggioDirection.NONE
                                 }
 
                                 val chordSymToAttach = if (!isChord) pendingChordSymbol.also { pendingChordSymbol = "" } else ""
@@ -376,7 +412,11 @@ object MidiFileParser {
                                         dynamic = dynToAttach,
                                         fingering = fingering,
                                         articulation = tabArtic,
-                                        musicalArticulation = musArtic
+                                        musicalArticulation = musArtic,
+                                        ornament = ornament,
+                                        guitarHarmonic = guitarHarmonic,
+                                        pickDirection = pickDir,
+                                        arpeggio = arpDir
                                     )
                                 )
                                 partNoteCount++

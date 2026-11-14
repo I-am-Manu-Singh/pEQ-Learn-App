@@ -72,7 +72,7 @@ internal fun resolvePlayableMelodicTrackIndices(
     if (preferGuitarTracks && nonDrumTracks.isNotEmpty()) {
         val guitarTracks = nonDrumTracks.filter { tr ->
             val nameLow = tr.trackName.lowercase()
-            tr.program in 24..31 || nameLow.contains("guitar") || nameLow.contains("gtr") || nameLow.contains("acoustic") || nameLow.contains("electric")
+            tr.program in 24..31 || nameLow.contains("guitar") || nameLow.contains("gtr") || nameLow.contains("chitarra") || nameLow.contains("acoustic") || nameLow.contains("electric")
         }
         if (guitarTracks.isNotEmpty()) {
             return guitarTracks.map { it.trackIndex }.toSet()

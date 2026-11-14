@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -205,14 +206,16 @@ fun GuitarHumanHandsOverlay(
     val animF3Press by animateFloatAsState(if (!frettedByFinger[3].isNullOrEmpty()) 1f else 0f, spring(0.85f, 650f), label = "gF3Press")
     val animF4Press by animateFloatAsState(if (!frettedByFinger[4].isNullOrEmpty()) 1f else 0f, spring(0.85f, 650f), label = "gF4Press")
 
-    // Pick strike animation, upstroke/downstroke alternation & target string tracking
+    // Pick strike animation, upstroke/downstroke alternation, strum sweeps & target string tracking
     val pickPluckAnim = remember { Animatable(0f) }
     var lastPluckedString by remember { mutableIntStateOf(2) }
-    var pickStrokeDirection by remember { mutableFloatStateOf(1f) } // +1f = Downstroke, -1f = Upstroke
+    var pickStrokeDirection by remember { mutableFloatStateOf(1f) } // +1f = Downstroke (⊓), -1f = Upstroke (V)
+    var isStrumStroke by remember { mutableStateOf(false) }
 
     LaunchedEffect(soundingPitches) {
         if (soundingPitches.isNotEmpty()) {
             val activeStrs = placementMap.values.map { it.stringIndex }
+            isStrumStroke = activeStrs.distinct().size >= 2
             val targetStr = if (pickStrokeDirection > 0f) {
                 activeStrs.minOrNull() ?: 2
             } else {
@@ -221,7 +224,8 @@ fun GuitarHumanHandsOverlay(
             lastPluckedString = targetStr
             pickStrokeDirection = -pickStrokeDirection
             pickPluckAnim.snapTo(1f)
-            pickPluckAnim.animateTo(0f, animationSpec = tween(145, easing = FastOutSlowInEasing))
+            val dur = if (isStrumStroke) 195 else 125
+            pickPluckAnim.animateTo(0f, animationSpec = tween(dur, easing = FastOutSlowInEasing))
         }
     }
 
@@ -440,13 +444,12 @@ fun GuitarHumanHandsOverlay(
                 .coerceIn(leftPad + 16f * s, bridgeX - 36f * s)
             val palmBaseY = (nutBottom + 24.dp.toPx() * s).coerceAtMost(totalH + 10.dp.toPx())
 
-            // A. Dynamic Thumb Anchor Behind Top Neck Edge (Peeking over near index/middle finger)
-            val lowestStrPressed = placementMap.values.maxOfOrNull { it.stringIndex } ?: 3
-            val thumbWrapBiasY = if (lowestStrPressed >= 4) 5f * s else 0f
-            val thumbCenterX = (palmCenterX - 14f * s).coerceIn(leftPad + 8f * s, bridgeX - 24f * s)
-            val thumbTopY = (nutTop - 13f * s + thumbWrapBiasY).coerceAtLeast(2f)
-            val thumbW = (23f * s).coerceIn(15f, 36f)
-            val thumbH = (26f * s).coerceIn(17f, 40f)
+            // A. Dynamic Anatomical Thumb Anchor Behind Top Neck Edge (Stable at end of LH near index/nut side)
+            // Thumb is distinctly wider and shorter than fingers, stable without jumping erratically
+            val thumbCenterX = (palmCenterX - 18f * s).coerceIn(leftPad + 8f * s, bridgeX - 24f * s)
+            val thumbTopY = (nutTop - 11f * s).coerceAtLeast(2f)
+            val thumbW = (29f * s).coerceIn(20f, 44f) // Anatomically wider than fingers
+            val thumbH = (19f * s).coerceIn(13f, 30f) // Shorter than fingers
 
             // Thumb drop shadow on top edge of guitar neck
             drawRoundRect(
@@ -799,7 +802,7 @@ fun GuitarHumanHandsOverlay(
                 // Floating Note Name Callout above pressed fingertip
                 if (isPressing) {
                     val topPlacement = fingerPlacements.minByOrNull { it.stringIndex }!!
-                    val openSemi = openStringsMidi.getOrNull(topPlacement.stringIndex) ?: 40
+                    val openSemi = effectiveOpenStringsMidi.getOrNull(topPlacement.stringIndex) ?: (openStringsMidi.getOrNull(topPlacement.stringIndex) ?: 40)
                     val computedMidi = openSemi + topPlacement.fret
                     val noteLabel = formatGuitarPitchLabel(computedMidi)
                     val pillW = (badgeRad * 2.35f).coerceAtLeast(22.dp.toPx())
@@ -877,9 +880,10 @@ fun GuitarHumanHandsOverlay(
         if (showPickingHand) {
             val pickX = (bridgeX - 20f * s).coerceIn(leftPad + playableW * 0.72f, totalW - 14f)
             val pluckImpulse = sin(pickPluckAnim.value * PI.toFloat())
-            val pluckDipY = pluckImpulse * (8.5f * s) * pickStrokeDirection
+            val strumSweepSpan = if (isStrumStroke) (14.5f * s) else (8.5f * s)
+            val pluckDipY = pluckImpulse * strumSweepSpan * pickStrokeDirection
             val pickY = getStringYAtX(animatedPickString, pickX) + pluckDipY
-            val pickTiltDeg = (pluckImpulse * 14f * pickStrokeDirection).coerceIn(-16f, 16f)
+            val pickTiltDeg = (pluckImpulse * (if (isStrumStroke) 22f else 14f) * pickStrokeDirection).coerceIn(-24f, 24f)
 
             val pickW = (25f * s).coerceIn(16f, 38f)
             val pickH = (28f * s).coerceIn(18f, 42f)

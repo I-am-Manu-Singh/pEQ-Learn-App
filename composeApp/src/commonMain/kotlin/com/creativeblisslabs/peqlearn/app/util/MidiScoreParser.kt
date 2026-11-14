@@ -1,6 +1,10 @@
 package com.creativeblisslabs.peqlearn.app.util
 
 import com.creativeblisslabs.peqlearn.app.ui.screens.Accidental
+import com.creativeblisslabs.peqlearn.app.ui.screens.BarreInfo
+import com.creativeblisslabs.peqlearn.app.ui.screens.BendInfo
+import com.creativeblisslabs.peqlearn.app.ui.screens.BendType
+import com.creativeblisslabs.peqlearn.app.ui.screens.GuitarHarmonicType
 import com.creativeblisslabs.peqlearn.app.ui.screens.KeySignature
 import com.creativeblisslabs.peqlearn.app.ui.screens.Measure
 import com.creativeblisslabs.peqlearn.app.ui.screens.MidiTrackInfo
@@ -131,6 +135,7 @@ object MidiScoreParser {
         val rawNotes = mutableListOf<RawMidiNote>()
         val rawPedals = mutableListOf<RawPedalEvent>()
         val rawTexts = mutableListOf<RawTextEvent>()
+        val rawBends = mutableListOf<Pair<Long, Int>>() // tick to pitchwheel value (-8192..8191)
         val rawTrackNames = mutableMapOf<Int, String>()
         val channelPrograms = IntArray(16) { 0 }
 
@@ -317,7 +322,15 @@ object MidiScoreParser {
                             }
                             offset += 1
                         }
-                        0xA0, 0xE0 -> offset += 2
+                        0xE0 -> {
+                            if (offset + 1 >= trackEnd) break
+                            val lsb = bytes[offset].toInt() and 0x7F
+                            val msb = bytes[offset + 1].toInt() and 0x7F
+                            offset += 2
+                            val bendVal = ((msb shl 7) or lsb) - 8192
+                            rawBends.add(currentTick to bendVal)
+                        }
+                        0xA0 -> offset += 2
                         0xD0 -> offset += 1
                         else -> offset += 1
                     }
@@ -553,12 +566,53 @@ object MidiScoreParser {
             }
         }
 
-        // Post-process measure notes to assign guitar string, fret, strumming directions & TAB articulations
+        // Post-process measure notes to assign guitar string, fret, strumming directions, bends & TAB articulations
         var runningTabBoxCenter = 3.0f
-        val standardGuitarTuning = listOf(64, 59, 55, 50, 45, 40)
-        measureNotes.forEach { mNotes ->
+        val hasDropDNotes = pitchedRawNotes.any { it.midiNote in 38..39 }
+        val standardGuitarTuning = if (hasDropDNotes) {
+            listOf(64, 59, 55, 50, 45, 38) // Drop D tuning: DADGBE
+        } else {
+            listOf(64, 59, 55, 50, 45, 40) // Standard tuning: EADGBE
+        }
+
+        // Map pitch bends by tick range to correlate with notes
+        fun findBendForNote(mIdx: Int, pos: Float, dur: Float): Pair<BendInfo?, Boolean> {
+            if (rawBends.isEmpty()) return null to false
+            val startTick = (mIdx * ticksPerMeasure) + (pos * ticksPerBeat).toLong()
+            val endTick = startTick + (dur * ticksPerBeat).toLong()
+            val activeBends = rawBends.filter { it.first in startTick..endTick && it.second != 0 }
+            if (activeBends.isEmpty()) return null to false
+
+            val maxBend = activeBends.maxOf { it.second }
+            val minBend = activeBends.minOf { it.second }
+            val vibratoDetected = activeBends.size >= 6 && (maxBend - minBend) > 400
+
+            // Guitar Pro bend scaling (8192 / 3 = 2730 per whole step, or standard 4096 per semitone)
+            val bendSteps = when {
+                maxBend >= 2500 -> 1.0f // Full bend (1 whole step)
+                maxBend >= 1800 -> 0.75f // 3/4 bend
+                maxBend >= 1100 -> 0.5f // Half step bend
+                maxBend >= 500 -> 0.25f // Quarter step bend
+                else -> 0f
+            }
+
+            val bendInfo = if (bendSteps > 0f) {
+                val hasRelease = activeBends.last().second < maxBend * 0.4f && activeBends.size >= 4
+                BendInfo(
+                    bendSteps = bendSteps,
+                    releaseSteps = if (hasRelease) bendSteps else 0f,
+                    type = if (hasRelease) BendType.BEND_RELEASE else BendType.BEND
+                )
+            } else null
+
+            return bendInfo to vibratoDetected
+        }
+
+        measureNotes.forEachIndexed { mIdx, mNotes ->
             val notesByBeat = mNotes.groupBy { it.position }.toSortedMap()
-            notesByBeat.forEach { (_, chordNotes) ->
+            var prevMelodicNote: ScoreNote? = null
+
+            notesByBeat.forEach { (beatPos, chordNotes) ->
                 val isStrum = chordNotes.size >= 2
                 val isDownStrum = isStrum && chordNotes.first().midiNote <= chordNotes.last().midiNote
                 val melodicPitches = chordNotes.filter { !it.isRest }.map { it.midiNote }.distinct().sorted()
@@ -574,24 +628,75 @@ object MidiScoreParser {
                 } else emptyMap<Int, BiomechanicalPerformersEngine.FrettedNotePlacement>() to runningTabBoxCenter
                 runningTabBoxCenter = nextBoxCenter
 
+                // Check for multi-string Barre (Finger 1 fretting multiple strings at same fret)
+                val frettedList = fretMap.values.filter { it.fret > 0 }
+                val minFret = frettedList.minOfOrNull { it.fret } ?: -1
+                val barreCount = if (minFret > 0) frettedList.count { it.fret == minFret } else 0
+                val detectedBarre = if (barreCount >= 2) {
+                    val barreStrings = frettedList.filter { it.fret == minFret }.map { it.stringIndex }
+                    BarreInfo(
+                        fret = minFret,
+                        startString = barreStrings.min(),
+                        endString = barreStrings.max(),
+                        isHalfBarre = barreCount <= 3
+                    )
+                } else null
+
                 chordNotes.forEachIndexed { cIdx, note ->
                     val placement = fretMap[note.midiNote]
                     val (strIdx, fretNum) = if (placement != null) {
                         (placement.stringIndex + 1) to placement.fret
                     } else {
-                        computeGuitarStringAndFret(note.midiNote, runningTabBoxCenter)
+                        computeGuitarStringAndFret(note.midiNote, runningTabBoxCenter, standardGuitarTuning)
                     }
                     val updatedPick = if (isStrum && cIdx == 0) (if (isDownStrum) PickDirection.DOWN else PickDirection.UP) else note.pickDirection
-                    val updatedArtic = if (note.duration <= 0.12f) TabArticulation.DEAD_NOTE else note.articulation
+                    val (detectedBend, detectedVibrato) = findBendForNote(mIdx, note.position, note.duration)
+
+                    // Detect Slurs, Hammer-ons, Pull-offs, Slides, Harmonics & Palm Mutes
+                    var updatedArtic = if (note.duration <= 0.12f && note.musicalArticulation == MusicalArticulation.STACCATO) {
+                        TabArticulation.DEAD_NOTE
+                    } else note.articulation
+
+                    var isSlurStart = false
+                    val prev = prevMelodicNote
+                    if (prev != null && prev.string == strIdx && fretNum > 0 && (prev.fret ?: 0) > 0) {
+                        val deltaFret = fretNum - (prev.fret ?: 0)
+                        val deltaPos = note.position - prev.position
+                        if (deltaPos in 0.05f..0.65f) {
+                            if (deltaFret in 1..4) {
+                                updatedArtic = TabArticulation.HAMMER_ON
+                                isSlurStart = true
+                            } else if (deltaFret in -4..-1) {
+                                updatedArtic = TabArticulation.PULL_OFF
+                                isSlurStart = true
+                            } else if (abs(deltaFret) in 5..9) {
+                                updatedArtic = if (deltaFret > 0) TabArticulation.SLIDE_UP else TabArticulation.SLIDE_DOWN
+                            }
+                        }
+                    }
+
+                    // Natural harmonics at frets 12, 7, 5
+                    val harmonicType = if (fretNum in listOf(12, 7, 5) && !isStrum) {
+                        GuitarHarmonicType.NATURAL
+                    } else GuitarHarmonicType.NONE
+
                     val updatedNote = note.copy(
                         string = strIdx,
                         fret = fretNum,
                         pickDirection = updatedPick,
-                        articulation = updatedArtic
+                        articulation = updatedArtic,
+                        slurStart = isSlurStart || note.slurStart,
+                        bend = detectedBend ?: note.bend,
+                        vibrato = detectedVibrato || note.vibrato,
+                        barre = if (placement?.fret == minFret) detectedBarre else note.barre,
+                        guitarHarmonic = harmonicType
                     )
                     val nIdx = mNotes.indexOf(note)
                     if (nIdx >= 0) {
                         mNotes[nIdx] = updatedNote
+                    }
+                    if (!note.isRest) {
+                        prevMelodicNote = updatedNote
                     }
                 }
             }
@@ -722,6 +827,13 @@ object MidiScoreParser {
             defaultTitle.substringAfterLast("/").substringBeforeLast(".").replace("_", " ")
         }
 
+        val resolvedTuning = if (hasDropDNotes) {
+            listOf(64, 59, 55, 50, 45, 38)
+        } else {
+            listOf(64, 59, 55, 50, 45, 40)
+        }
+        val resolvedTuningName = if (hasDropDNotes) "Drop D (D A D G B E)" else "Standard (E A D G B E)"
+
         return Score(
             title = cleanTitle,
             composer = detectedComposer,
@@ -729,7 +841,9 @@ object MidiScoreParser {
             timeSignature = "$timeNumerator/$timeDenominator",
             keySignature = keySignature,
             measures = measures,
-            tracks = trackInfoList
+            tracks = trackInfoList,
+            tuningMidi = resolvedTuning,
+            tuningName = resolvedTuningName
         )
     }
 
@@ -1070,10 +1184,10 @@ object MidiScoreParser {
      * Snaps beat positions strictly to the 16th-note (0.25b) or 32nd-note (0.125b) binary grid
      * unless the note is unmistakably part of a triplet run. This eliminates the 0.33b vs 0.38b drift!
      */
-    private fun computeGuitarStringAndFret(midiNote: Int, targetBoxCenter: Float = 3.0f): Pair<Int, Int> {
-        val tuningMidi = listOf(64, 59, 55, 50, 45, 40) // High e4 (string 1) to Low E2 (string 6)
+    private fun computeGuitarStringAndFret(midiNote: Int, targetBoxCenter: Float = 3.0f, tuningMidi: List<Int> = listOf(64, 59, 55, 50, 45, 40)): Pair<Int, Int> {
+        val minOpen = tuningMidi.lastOrNull() ?: 38
         var transP = midiNote
-        while (transP < 40) {
+        while (transP < minOpen) {
             transP += 12
         }
         val candidates = tuningMidi.mapIndexedNotNull { sIdx, openMidi ->

@@ -24,3 +24,16 @@ actual fun shareTextFile(fileName: String, content: String): Boolean {
         false
     }
 }
+
+actual fun shareBinaryFile(fileName: String, bytes: ByteArray, mimeType: String): Boolean {
+    return try {
+        val userHome = System.getProperty("user.home") ?: "."
+        val downloads = File(userHome, "Downloads")
+        val targetDir = if (downloads.exists()) downloads else File(userHome)
+        val file = File(targetDir, fileName)
+        file.writeBytes(bytes)
+        true
+    } catch (e: Exception) {
+        false
+    }
+}

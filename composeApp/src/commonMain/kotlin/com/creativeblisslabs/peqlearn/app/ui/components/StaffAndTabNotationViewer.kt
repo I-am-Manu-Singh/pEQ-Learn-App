@@ -105,15 +105,20 @@ private fun isNoteTemporallyActive(
     val pitchMatches = (playingNote != null && note.midiNote == playingNote) || activeMidiNotes.contains(note.midiNote)
     if (!pitchMatches) return false
 
+    // STRICT TEMPORAL ISOLATION:
+    // If playheadOffset is provided, evaluate strictly whether the playhead cursor is CURRENTLY inside this specific note's beat window.
+    // If playheadOffset is null (e.g. inactive measures), never flash arbitrary historical notes in the measure!
     if (playheadOffset != null) {
         val currentBeat = playheadOffset * beatsPerMeasure
         val noteStart = note.position
-        val noteEnd = note.position + note.duration.coerceAtLeast(0.125f)
-        val onsetTolerance = 0.08f
-        val releaseTolerance = 0.04f
-        return currentBeat >= (noteStart - onsetTolerance) && currentBeat <= (noteEnd + releaseTolerance)
+        // Cap note flash window to at most 1 beat or its sounding duration so previous notes never linger/flash when later notes on the same pitch play
+        val activeWindow = note.duration.coerceIn(0.12f, 1.0f)
+        val noteEnd = noteStart + activeWindow
+        val onsetTolerance = 0.04f
+        val releaseTolerance = 0.02f
+        return currentBeat >= (noteStart - onsetTolerance) && currentBeat < (noteEnd + releaseTolerance)
     }
-    return true
+    return false
 }
 
 private fun DrawScope.drawEngravedCurve(
@@ -240,23 +245,15 @@ private fun DrawScope.drawArpeggioRoll(
             toggle = -toggle
         }
     }
-    drawPath(path, color = color, style = Stroke(width = 1.1f * scale))
-    if (direction == ArpeggioDirection.UP) {
-        val arrow = Path().apply {
-            moveTo(x, startY - 2.2f * scale)
-            lineTo(x - 2.2f * scale, startY + 1.8f * scale)
-            lineTo(x + 2.2f * scale, startY + 1.8f * scale)
-            close()
+    drawPath(path, color = color, style = Stroke(width = 1.2f * scale))
+    val arrowW = 6f * scale
+    val arrowH = 6f * scale
+    with(MusicVectorSymbols) {
+        if (direction == ArpeggioDirection.UP) {
+            drawStrumArrowUp(color, Offset(x - arrowW / 2f, startY - arrowH), Size(arrowW, arrowH))
+        } else if (direction == ArpeggioDirection.DOWN) {
+            drawStrumArrowDown(color, Offset(x - arrowW / 2f, endY), Size(arrowW, arrowH))
         }
-        drawPath(arrow, color)
-    } else if (direction == ArpeggioDirection.DOWN) {
-        val arrow = Path().apply {
-            moveTo(x, endY + 2.2f * scale)
-            lineTo(x - 2.2f * scale, endY - 1.8f * scale)
-            lineTo(x + 2.2f * scale, endY - 1.8f * scale)
-            close()
-        }
-        drawPath(arrow, color)
     }
 }
 
@@ -1101,17 +1098,14 @@ private fun DrawScope.drawBend(
     val amount = bendInfo.bendSteps.coerceIn(0.25f, 2.0f)
     val targetY = start.y - (amount * 14f * scale)
     val apexX = start.x + 9f * scale
+    val arrowSize = Size(6.5f * scale, 7.5f * scale)
 
     when (bendInfo.type) {
         BendType.PRE_BEND -> {
-            drawLine(color, Offset(start.x, start.y - 3f * scale), Offset(start.x, targetY), strokeWidth = 1.2f * scale)
-            val arrow = Path().apply {
-                moveTo(start.x, targetY)
-                lineTo(start.x - 2.5f * scale, targetY + 3.8f * scale)
-                lineTo(start.x + 2.5f * scale, targetY + 3.8f * scale)
-                close()
+            drawLine(color, Offset(start.x, start.y - 3f * scale), Offset(start.x, targetY + arrowSize.height * 0.5f), strokeWidth = 1.3f * scale)
+            with(MusicVectorSymbols) {
+                drawStrumArrowUp(color, Offset(start.x - arrowSize.width / 2f, targetY), arrowSize)
             }
-            drawPath(arrow, color)
         }
         BendType.BEND_RELEASE, BendType.PRE_BEND_RELEASE -> {
             val releaseX = apexX + 8f * scale
@@ -1121,28 +1115,20 @@ private fun DrawScope.drawBend(
                 quadraticBezierTo(start.x + 7.0f * scale, start.y - 2f * scale, apexX, targetY)
                 quadraticBezierTo(apexX + 4.0f * scale, targetY, releaseX, releaseY)
             }
-            drawPath(path, color = color, style = Stroke(width = 1.2f * scale))
-            val arrow = Path().apply {
-                moveTo(releaseX, releaseY)
-                lineTo(releaseX - 2.5f * scale, releaseY - 3.8f * scale)
-                lineTo(releaseX + 2.5f * scale, releaseY - 3.8f * scale)
-                close()
+            drawPath(path, color = color, style = Stroke(width = 1.3f * scale))
+            with(MusicVectorSymbols) {
+                drawStrumArrowDown(color, Offset(releaseX - arrowSize.width / 2f, releaseY - arrowSize.height * 0.5f), arrowSize)
             }
-            drawPath(arrow, color)
         }
         else -> {
             val path = Path().apply {
                 moveTo(start.x + 3.5f * scale, start.y - 2f * scale)
                 quadraticBezierTo(start.x + 8.0f * scale, start.y - 2f * scale, apexX, targetY)
             }
-            drawPath(path, color = color, style = Stroke(width = 1.2f * scale))
-            val arrowPath = Path().apply {
-                moveTo(apexX, targetY)
-                lineTo(apexX - 2.6f * scale, targetY + 3.8f * scale)
-                lineTo(apexX + 2.6f * scale, targetY + 3.8f * scale)
-                close()
+            drawPath(path, color = color, style = Stroke(width = 1.3f * scale))
+            with(MusicVectorSymbols) {
+                drawStrumArrowUp(color, Offset(apexX - arrowSize.width / 2f, targetY), arrowSize)
             }
-            drawPath(arrowPath, color = color)
         }
     }
 
@@ -2579,7 +2565,7 @@ private fun drawTabMeasureContent(
             )
 
             if (note.chordSymbol.isNotEmpty() && tabNote == notesByPosition[note.position]?.firstOrNull()) {
-                val tabChordFontSp = with(this) { (config.lineSpacing * 0.62f).coerceIn(6.5f, 11.0f).toSp() }
+                val tabChordFontSp = with(this) { (config.lineSpacing * 0.95f).coerceIn(11.0f, 15.5f).toSp() }
                 val chordLayout = textMeasurer.measure(
                     text = note.chordSymbol,
                     style = TextStyle(color = config.primaryColor, fontSize = tabChordFontSp, fontWeight = FontWeight.Bold),
@@ -2587,7 +2573,7 @@ private fun drawTabMeasureContent(
                     softWrap = false
                 )
                 val safeTabChordX = (nx - chordLayout.size.width / 2f).coerceIn(startX + 4f, (endX - chordLayout.size.width - 2f).coerceAtLeast(startX + 4f))
-                val safeTabChordY = (tBase - 1.35f * config.lineSpacing - chordLayout.size.height * 0.5f).coerceAtLeast(2f)
+                val safeTabChordY = (tBase - 1.85f * config.lineSpacing - chordLayout.size.height * 0.5f).coerceAtLeast(2f)
                 drawText(chordLayout, topLeft = Offset(safeTabChordX, safeTabChordY))
             }
 
@@ -2626,22 +2612,57 @@ private fun drawTabMeasureContent(
                 drawText(lyricLayout, topLeft = Offset(nx - lyricLayout.size.width / 2f, lyricY))
             }
 
-            // Strumming Arrow Indicators (Down-strum ↓ / Up-strum ↑ / Rasgueado / Brush)
+            // Strumming / Picking Indicators (Down-pick ⊓ / Up-pick ∨ / Down-strum ↓ / Up-strum ↑)
             if (note.pickDirection != PickDirection.NONE && tabNote == notesByPosition[note.position]?.firstOrNull()) {
-                val arrowSymbol = when (note.pickDirection) {
-                    PickDirection.DOWN, PickDirection.STRUM_DOWN -> MusicSymbols.STRUM_DOWN
-                    PickDirection.UP, PickDirection.STRUM_UP -> MusicSymbols.STRUM_UP
-                    PickDirection.RASGUEADO -> "Rasg."
-                    PickDirection.SLAP -> "S"
-                    PickDirection.POP -> "P"
-                    else -> MusicSymbols.STRUM_DOWN
+                val pickH = 8.5f * scale
+                val pickW = 8.5f * scale
+                val pickY = tBase - 1.45f * config.lineSpacing
+                with(MusicVectorSymbols) {
+                    when (note.pickDirection) {
+                        PickDirection.DOWN -> {
+                            drawDownPick(config.primaryColor, Offset(nx - pickW / 2f, pickY), Size(pickW, pickH))
+                        }
+                        PickDirection.UP -> {
+                            drawUpPick(config.primaryColor, Offset(nx - pickW / 2f, pickY), Size(pickW, pickH))
+                        }
+                        PickDirection.STRUM_DOWN -> {
+                            val strumW = 7.0f * scale
+                            val strumH = 11.5f * scale
+                            val sy = tBase - 1.60f * config.lineSpacing
+                            drawLine(config.primaryColor, Offset(nx, sy), Offset(nx, sy + strumH - 2f * scale), strokeWidth = 1.4f * scale)
+                            drawStrumArrowDown(config.primaryColor, Offset(nx - strumW / 2f, sy + strumH - strumW), Size(strumW, strumW))
+                        }
+                        PickDirection.STRUM_UP -> {
+                            val strumW = 7.0f * scale
+                            val strumH = 11.5f * scale
+                            val sy = tBase - 1.60f * config.lineSpacing
+                            drawLine(config.primaryColor, Offset(nx, sy + 2f * scale), Offset(nx, sy + strumH), strokeWidth = 1.4f * scale)
+                            drawStrumArrowUp(config.primaryColor, Offset(nx - strumW / 2f, sy), Size(strumW, strumW))
+                        }
+                        PickDirection.RASGUEADO -> {
+                            val rasgLayout = textMeasurer.measure(
+                                text = "Rasg.",
+                                style = TextStyle(color = config.primaryColor, fontSize = (8.5f * scale).sp, fontWeight = FontWeight.Bold)
+                            )
+                            drawText(rasgLayout, topLeft = Offset(nx - rasgLayout.size.width / 2f, pickY))
+                        }
+                        PickDirection.SLAP -> {
+                            val sLayout = textMeasurer.measure(
+                                text = "S",
+                                style = TextStyle(color = config.primaryColor, fontSize = (9f * scale).sp, fontWeight = FontWeight.Black)
+                            )
+                            drawText(sLayout, topLeft = Offset(nx - sLayout.size.width / 2f, pickY))
+                        }
+                        PickDirection.POP -> {
+                            val pLayout = textMeasurer.measure(
+                                text = "P",
+                                style = TextStyle(color = config.primaryColor, fontSize = (9f * scale).sp, fontWeight = FontWeight.Black)
+                            )
+                            drawText(pLayout, topLeft = Offset(nx - pLayout.size.width / 2f, pickY))
+                        }
+                        else -> {}
+                    }
                 }
-                val arrowLayout = textMeasurer.measure(
-                    text = arrowSymbol,
-                    style = TextStyle(color = config.primaryColor, fontSize = (11f * scale).sp, fontWeight = FontWeight.Black)
-                )
-                val arrowY = tBase - 1.35f * config.lineSpacing
-                drawText(arrowLayout, topLeft = Offset(nx - arrowLayout.size.width / 2f, arrowY))
             }
 
             // Find the IMMEDIATELY NEXT note on the same string (must be at the very next rhythmic position, never jumping across other notes!)
@@ -2739,21 +2760,37 @@ private fun drawTabMeasureContent(
                 )
             }
 
-            if (note.pickDirection != PickDirection.NONE && tabNote == notesByPosition[note.position]?.firstOrNull()) {
-                val py = tBase - 0.9f * config.lineSpacing
-                if (note.pickDirection == PickDirection.DOWN) {
-                    drawLine(clefTextColor, Offset(nx - 3f * scale, py), Offset(nx + 3f * scale, py), strokeWidth = 1.3f * scale)
-                    drawLine(clefTextColor, Offset(nx - 3f * scale, py), Offset(nx - 3f * scale, py + 4.5f * scale), strokeWidth = 1.1f * scale)
-                    drawLine(clefTextColor, Offset(nx + 3f * scale, py), Offset(nx + 3f * scale, py + 4.5f * scale), strokeWidth = 1.1f * scale)
-                } else {
-                    drawLine(clefTextColor, Offset(nx - 3f * scale, py), Offset(nx, py + 5f * scale), strokeWidth = 1.2f * scale)
-                    drawLine(clefTextColor, Offset(nx + 3f * scale, py), Offset(nx, py + 5f * scale), strokeWidth = 1.2f * scale)
+            if (note.vibrato) {
+                val vibW = 12f * scale
+                val vibH = 6f * scale
+                with(MusicVectorSymbols) {
+                    drawArpeggioWiggle(config.primaryColor, Offset(nx - vibW / 2f, ny - maskH / 2f - vibH - 1.5f * scale), Size(vibW, vibH))
                 }
             }
 
-            if (note.vibrato) {
+            if (note.ornament != OrnamentType.NONE && tabNote == notesByPosition[note.position]?.firstOrNull()) {
+                val ornSize = Size(11f * scale, 10f * scale)
+                val ornY = tBase - 1.45f * config.lineSpacing
                 with(MusicVectorSymbols) {
-                    drawSmuflSymbol("wiggleArpeggiatoUp", config.primaryColor, Offset(nx - 5f * scale, ny - 10f * scale), Size(10f * scale, 5.5f * scale), 400f)
+                    when (note.ornament) {
+                        OrnamentType.TRILL -> drawTrillOrnament(config.primaryColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                        OrnamentType.UPPER_MORDENT -> drawSmuflSymbol("ornamentMordent", config.primaryColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                        OrnamentType.LOWER_MORDENT -> drawSmuflSymbol("ornamentMordentInverted", config.primaryColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                        OrnamentType.TURN -> drawSmuflSymbol("ornamentTurn", config.primaryColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                        OrnamentType.INVERTED_TURN -> drawSmuflSymbol("ornamentTurnSlash", config.primaryColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                        else -> {}
+                    }
+                }
+            }
+
+            if (note.guitarHarmonic != GuitarHarmonicType.NONE && tabNote == notesByPosition[note.position]?.firstOrNull()) {
+                val harmLabel = note.guitarHarmonic.label
+                if (harmLabel.isNotEmpty()) {
+                    val harmLayout = textMeasurer.measure(
+                        text = harmLabel,
+                        style = TextStyle(color = config.primaryColor, fontSize = (7.5f * scale).sp, fontWeight = FontWeight.Bold)
+                    )
+                    drawText(harmLayout, topLeft = Offset(nx - harmLayout.size.width / 2f, tBase - 1.35f * config.lineSpacing))
                 }
             }
 
@@ -2904,17 +2941,31 @@ private fun drawTabMeasureContent(
             }
         }
         if (measure.dalSegno || measure.daCapo || measure.toCoda || measure.fine) {
-            val navText = when {
-                measure.dalSegno -> "D.S."
-                measure.daCapo -> "D.C."
-                measure.toCoda -> "To Coda 𝄌"
-                else -> "Fine"
+            if (measure.toCoda) {
+                val toLayout = textMeasurer.measure(
+                    text = "To ",
+                    style = TextStyle(color = clefTextColor, fontSize = (8.0f * scale).sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Bold)
+                )
+                val codaSize = Size(10f * scale, 10f * scale)
+                val totalW = toLayout.size.width + codaSize.width + 2f * scale
+                val drawX = endX - totalW - 5f * scale
+                val drawY = tBase - 18f * scale
+                drawText(toLayout, topLeft = Offset(drawX, drawY))
+                with(MusicVectorSymbols) {
+                    drawCoda(clefTextColor, codaSize, topLeft = Offset(drawX + toLayout.size.width + 2f * scale, drawY - 1f * scale))
+                }
+            } else {
+                val navText = when {
+                    measure.dalSegno -> "D.S."
+                    measure.daCapo -> "D.C."
+                    else -> "Fine"
+                }
+                val navLayout = textMeasurer.measure(
+                    text = navText,
+                    style = TextStyle(color = clefTextColor, fontSize = (8.0f * scale).sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Bold)
+                )
+                drawText(navLayout, topLeft = Offset(endX - navLayout.size.width - 5f * scale, tBase - 18f * scale))
             }
-            val navLayout = textMeasurer.measure(
-                text = navText,
-                style = TextStyle(color = clefTextColor, fontSize = (8.0f * scale).sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Bold)
-            )
-            drawText(navLayout, topLeft = Offset(endX - navLayout.size.width - 5f * scale, tBase - 18f * scale))
         }
 
         if (playheadOffset != null) {
@@ -3410,6 +3461,21 @@ private fun drawStaffMeasureContent(
                     MusicalArticulation.TENUTO -> drawTenuto(clefTextColor, Size(0.90f * config.lineSpacing, 0.20f * config.lineSpacing), Offset(nx - 0.45f * config.lineSpacing, articOppositeStemY - 0.10f * config.lineSpacing))
                     MusicalArticulation.MARCATO -> drawSmuflSymbol("articMarcatoAbove", clefTextColor, Offset(nx - 0.38f * config.lineSpacing, ny - noteHeight - 0.90f * config.lineSpacing), Size(0.76f * config.lineSpacing, 0.76f * config.lineSpacing), 400f)
                     MusicalArticulation.NONE -> {}
+                }
+
+                if (note.ornament != OrnamentType.NONE) {
+                    val ornSize = Size(1.1f * config.lineSpacing, 1.0f * config.lineSpacing)
+                    val ornY = ny - noteHeight - 1.25f * config.lineSpacing
+                    with(MusicVectorSymbols) {
+                        when (note.ornament) {
+                            OrnamentType.TRILL -> drawTrillOrnament(clefTextColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                            OrnamentType.UPPER_MORDENT -> drawSmuflSymbol("ornamentMordent", clefTextColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                            OrnamentType.LOWER_MORDENT -> drawSmuflSymbol("ornamentMordentInverted", clefTextColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                            OrnamentType.TURN -> drawSmuflSymbol("ornamentTurn", clefTextColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                            OrnamentType.INVERTED_TURN -> drawSmuflSymbol("ornamentTurnSlash", clefTextColor, Offset(nx - ornSize.width / 2f, ornY), ornSize)
+                            else -> {}
+                        }
+                    }
                 }
 
                 if (note.dynamic.isNotEmpty()) {
@@ -3967,17 +4033,31 @@ private fun drawStaffMeasureContent(
             }
         }
         if (measure.dalSegno || measure.daCapo || measure.toCoda || measure.fine) {
-            val navText = when {
-                measure.dalSegno -> "D.S. al Coda"
-                measure.daCapo -> "D.C. al Fine"
-                measure.toCoda -> "To Coda 𝄌"
-                else -> "Fine"
+            if (measure.toCoda) {
+                val toLayout = textMeasurer.measure(
+                    text = "To ",
+                    style = TextStyle(color = clefTextColor, fontSize = (8.5f * noteScale).sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Black)
+                )
+                val codaSize = Size(11f * noteScale, 11f * noteScale)
+                val totalW = toLayout.size.width + codaSize.width + 2f * noteScale
+                val drawX = endX - totalW - 5f * noteScale
+                val drawY = config.trebleBaseline - 1.9f * config.lineSpacing
+                drawText(toLayout, topLeft = Offset(drawX, drawY))
+                with(MusicVectorSymbols) {
+                    drawCoda(clefTextColor, codaSize, topLeft = Offset(drawX + toLayout.size.width + 2f * noteScale, drawY - 1f * noteScale))
+                }
+            } else {
+                val navText = when {
+                    measure.dalSegno -> "D.S. al Coda"
+                    measure.daCapo -> "D.C. al Fine"
+                    else -> "Fine"
+                }
+                val navLayout = textMeasurer.measure(
+                    text = navText,
+                    style = TextStyle(color = clefTextColor, fontSize = (8.5f * noteScale).sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Black)
+                )
+                drawText(navLayout, topLeft = Offset(endX - navLayout.size.width - 5f * noteScale, config.trebleBaseline - 1.9f * config.lineSpacing))
             }
-            val navLayout = textMeasurer.measure(
-                text = navText,
-                style = TextStyle(color = clefTextColor, fontSize = (8.5f * noteScale).sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Black)
-            )
-            drawText(navLayout, topLeft = Offset(endX - navLayout.size.width - 5f * noteScale, config.trebleBaseline - 1.9f * config.lineSpacing))
         }
         if (measure.rehearsalMark.isNotEmpty()) {
             val rmLayout = textMeasurer.measure(measure.rehearsalMark, TextStyle(color = config.primaryColor, fontSize = (10f * noteScale).sp, fontWeight = FontWeight.Bold))

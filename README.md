@@ -37,7 +37,7 @@
 - **Multiplatform Compose UI**: Shared declarative UI across Android, Desktop (macOS, Windows, Linux), and iOS targets.
 - **Synthesia-Grade Waterfall Piano**: Full 88-key / 61-key / 49-key / 25-key piano with 3D perspective shaders, neon tube bloom, particle spark arcs, and zero-latency key strike visual feedback.
 - **Neural AI Stem Isolation**: Local on-device and cloud-assisted vocal, drum, bass, and accompaniment extraction powered by ONNX Runtime.
-- **Microtonal & Swara Intelligence**: Authentic Hindustani Thaats, Raagas, Carnatic Melakarta talas, and Radel-style digital tanpura & tabla machines with realistic drones and theka patterns.
+- **Microtonal & Swara Intelligence**: Authentic Hindustani Thaats, Raagas, Carnatic Melakarta talas, and digital tanpura & tabla machines with realistic drones and theka patterns.
 - **Hardware Integration & Cast**: Google Cast v2 framework integration, USB MIDI device capture, low-latency audio engine, and biometric authentication.
 
 ---
@@ -117,8 +117,8 @@
 - **Studio Channel Strips**: Individual volume sliders, pan pots, mute/solo toggles, and peak VU metering.
 - **Export Studio**: High-res WAV/MP3 stem mixdown and video visualization renderer.
 
-### 3. Indian Classical Riyaaz & Drone Studio (`RadelTanpuraTablaStudio.kt`)
-- **Digital Radel Hardware Emulation**:
+### 3. Indian Classical Riyaaz & Drone Studio (`TanpuraTablaStudio.kt`)
+- **Digital Hardware Emulation**:
   - Dual 4, 5, or 6-string electronic Tanpura drone synthesis (Pa-Sa-Sa-Sa / Ma-Sa-Sa-Sa / Ni-Sa-Sa-Sa).
   - Microtonal fine pitch offsets (Shruti/cent level tuning) across all 12 swaras.
   - Realistic multi-speed Tabla theka machine (Teentaal, Ektaal, Jhaptaal, Keherwa, Rupak, Dadra, Adi Tala, etc.).

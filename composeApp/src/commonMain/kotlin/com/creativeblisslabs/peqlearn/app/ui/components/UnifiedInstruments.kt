@@ -175,47 +175,18 @@ fun UnifiedGuitarFretboard(
         distinctPitchClasses.size >= 6
     }
 
-    val effectiveResolvedChordFrets = remember(chordFrets, allUniquePitches, distinctPitchClasses, isScaleMode, cagedMode, numStrings) {
-        if (chordFrets != null) {
-            chordFrets
-        } else if (isScaleMode) {
-            null
-        } else if (allUniquePitches.size in 2..5 && numStrings >= 6) {
+    val effectiveResolvedChordFrets = remember(chordFrets) {
+        // Only use explicitly passed chordFrets (e.g. from chord dictionary or manual fret chart).
+        // Never auto-expand chord shapes across strings for live note / MIDI playback.
+        chordFrets
+    }
+
+    val liveChordLabel = remember(allUniquePitches, distinctPitchClasses, isScaleMode, numStrings) {
+        if (!isScaleMode && allUniquePitches.size in 2..5 && numStrings >= 6) {
             val detected = com.creativeblisslabs.peqlearn.app.util.LiveChordDetector.detect(allUniquePitches)
             if (detected != null && detected.chordQuality != "Note") {
                 val root = detected.rootName.replace("♯", "#").replace("♭", "b")
-                val quality = when (detected.chordQuality) {
-                    "Major", "" -> "major"
-                    "Minor", "m" -> "minor"
-                    "7", "Dominant 7th" -> "7"
-                    "maj7", "Major 7th" -> "maj7"
-                    "m7", "Minor 7th" -> "m7"
-                    "dim", "Diminished" -> "dim"
-                    "dim7" -> "dim7"
-                    "sus4", "Suspended 4th" -> "sus4"
-                    "sus2", "Suspended 2nd" -> "sus2"
-                    "5", "Power Chord" -> "5"
-                    else -> detected.chordQuality.lowercase()
-                }
-                val dbPositions = com.creativeblisslabs.peqlearn.app.util.RealChordsDb.getGuitarPositions(root, quality)
-                val filteredByCaged = if (cagedMode != "AUTO" && cagedMode != "ALL") {
-                    dbPositions.filter { pos ->
-                        when (cagedMode) {
-                            "C" -> (pos.frets.getOrNull(1) ?: -1) > 0 && (pos.frets.getOrNull(0) ?: -1) <= 0
-                            "A" -> (pos.frets.getOrNull(1) ?: -1) >= 0 && (pos.frets.getOrNull(2) ?: -1) >= 0
-                            "G" -> (pos.frets.getOrNull(0) ?: -1) > 0 && (pos.frets.getOrNull(5) ?: -1) > 0
-                            "E" -> (pos.frets.getOrNull(0) ?: -1) >= 0 && (pos.frets.getOrNull(1) ?: -1) >= 0
-                            "D" -> (pos.frets.getOrNull(0) ?: -1) < 0 && (pos.frets.getOrNull(1) ?: -1) < 0
-                            else -> true
-                        }
-                    }
-                } else dbPositions
-
-                val bestPos = filteredByCaged.firstOrNull() ?: dbPositions.firstOrNull()
-                if (bestPos != null) {
-                    val base6 = bestPos.frets.reversed()
-                    if (numStrings == 7) base6 + listOf(-1) else base6
-                } else null
+                "$root${detected.chordQuality}"
             } else null
         } else null
     }
@@ -238,72 +209,19 @@ fun UnifiedGuitarFretboard(
         } else if (allUniquePitches.isEmpty()) {
             emptySet()
         } else {
-            val maxAllowedFret = (safeBaseFret + safeNumFrets - 1).coerceAtMost(fretMaxConstrain)
-            val minAllowedFret = fretMinConstrain.coerceAtLeast(0)
-            val sortedPitches = allUniquePitches.sorted()
-
-            var bestBoxAssignment = emptySet<Pair<Int, Int>>()
-            var bestBoxCost = Float.MAX_VALUE
-            var bestBoxCenter = lastHandBoxCenterFret
-
-            val maxBoxStart = (maxAllowedFret - 3).coerceAtLeast(1)
-            for (boxStart in 1..maxBoxStart) {
-                val boxEnd = boxStart + 3
-                val boxCenter = boxStart + 1.5f
-                val usedStrings = mutableSetOf<Int>()
-                val assignment = mutableSetOf<Pair<Int, Int>>()
-                var boxCost = abs(boxCenter - lastHandBoxCenterFret) * 4.5f + (boxStart - 1) * 2.2f
-
-                for (midi in sortedPitches) {
-                    val candidates = defaultOpenStringsMidi.mapIndexedNotNull { sIdx, openMidi ->
-                        val fret = midi - openMidi
-                        if (fret in minAllowedFret..maxAllowedFret) sIdx to fret else null
-                    }
-                    if (candidates.isEmpty()) continue
-
-                    val available = candidates.filter { it.first !in usedStrings }.ifEmpty { candidates }
-                    val bestForNote = available.minByOrNull { (sIdx, fret) ->
-                        val stretchOutsideBox = when {
-                            fret == 0 -> if (boxStart <= 4) 0 else 18
-                            fret < boxStart -> (boxStart - fret) * 35
-                            fret > boxEnd -> (fret - boxEnd) * 35
-                            else -> 0
-                        }
-                        val woundBassHighFretPenalty = if (sIdx >= 4 && fret > 7) 40 else if (sIdx == 3 && fret > 9) 20 else 0
-                        val stringReusePenalty = if (sIdx in usedStrings) 120 else 0
-                        stretchOutsideBox + woundBassHighFretPenalty + stringReusePenalty + fret
-                    }
-
-                    if (bestForNote != null) {
-                        assignment.add(bestForNote)
-                        usedStrings.add(bestForNote.first)
-                        val f = bestForNote.second
-                        if (f > 0 && (f < boxStart || f > boxEnd)) {
-                            boxCost += abs(f - boxCenter) * 40f
-                        }
-                    }
-                }
-
-                val fretted = assignment.map { it.second }.filter { it > 0 }
-                val span = if (fretted.size > 1) fretted.max() - fretted.min() else 0
-                if (span > 4) boxCost += (span - 4) * 200f
-                if (span == 4) boxCost += 25f
-
-                boxCost -= assignment.size * 30f
-
-                if (boxCost < bestBoxCost) {
-                    bestBoxCost = boxCost
-                    bestBoxAssignment = assignment
-                    if (fretted.isNotEmpty()) {
-                        bestBoxCenter = fretted.average().toFloat()
-                    }
-                }
+            val viterbiSolution = com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine.solveFrettedSliceBiomechanical(
+                pitches = allUniquePitches,
+                openStringsMidiHighToLow = defaultOpenStringsMidi,
+                maxFret = safeNumFrets,
+                minFret = 0,
+                lastHandBoxCenterFret = lastHandBoxCenterFret
+            )
+            val solvedMap = viterbiSolution.first
+            val newCenter = viterbiSolution.second
+            if (solvedMap.values.any { it.fret > 0 }) {
+                lastHandBoxCenterFret = newCenter.coerceIn(1.5f, safeNumFrets.toFloat())
             }
-
-            if (bestBoxAssignment.any { it.second > 0 }) {
-                lastHandBoxCenterFret = bestBoxCenter.coerceIn(1.5f, 12f)
-            }
-            bestBoxAssignment
+            solvedMap.values.map { it.stringIndex to it.fret }.toSet()
         }
     }
 
@@ -515,8 +433,158 @@ fun UnifiedGuitarFretboard(
                 )
         ) {
             val w = size.width
+            val h = size.height
             val pillColor = Color(0xFFFF9E1B)
             val stringSpacingAtNut = (nutH / (numStrings - 1).coerceAtLeast(1)).coerceAtLeast(8f)
+
+            // 1. Classical / Acoustic Headstock on Left Side Behind Nut & String Names (Out of fretboard bounds)
+            val headstockW = leftPad.coerceAtLeast(16f)
+            val headstockTop = (nutTop - 12f * s).coerceAtLeast(2f)
+            val headstockBottom = (nutBottom + 12f * s).coerceAtMost(h - 2f)
+            val headstockPath = Path().apply {
+                moveTo(leftPad - 2f, nutTop)
+                lineTo(leftPad * 0.42f, headstockTop)
+                cubicTo(
+                    leftPad * 0.18f, headstockTop - 4f * s,
+                    2f, headstockTop + 6f * s,
+                    2f, (headstockTop + headstockBottom) * 0.5f
+                )
+                cubicTo(
+                    2f, headstockBottom - 6f * s,
+                    leftPad * 0.18f, headstockBottom + 4f * s,
+                    leftPad * 0.42f, headstockBottom
+                )
+                lineTo(leftPad - 2f, nutBottom)
+                close()
+            }
+            // Headstock shadow & mahogany/rosewood wood gradient (stops strictly before leftPad nut)
+            drawPath(
+                path = headstockPath,
+                color = Color.Black.copy(alpha = 0.5f),
+                style = Stroke(width = (4f * s).coerceAtLeast(1.5f))
+            )
+            drawPath(
+                path = headstockPath,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF140D09), Color(0xFF261912), Color(0xFF3B251B)),
+                    startX = 0f,
+                    endX = leftPad - 2f
+                )
+            )
+            drawPath(
+                path = headstockPath,
+                color = Color(0xFF4A3222).copy(alpha = 0.65f),
+                style = Stroke(width = 1.dp.toPx())
+            )
+            // 3+3 Pearloid Tuning Pegs and Posts behind string labels
+            for (pIdx in 0 until 6.coerceAtMost(numStrings)) {
+                val isTop = pIdx < 3
+                val postX = (leftPad - 6f * s) * (0.28f + (pIdx % 3) * 0.22f)
+                val postY = if (isTop) headstockTop + 5f * s else headstockBottom - 5f * s
+                // Peg post
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFFFFFF), Color(0xFFB0B4C0), Color(0xFF4A4C56)),
+                        center = Offset(postX, postY),
+                        radius = 4f * s
+                    ),
+                    radius = (3.2f * s).coerceIn(2.2f, 5.5f),
+                    center = Offset(postX, postY)
+                )
+                // Tuner button / pearloid key
+                val keyY = if (isTop) postY - 5f * s else postY + 5f * s
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFFFFFDE7), Color(0xFFD7CCC8), Color(0xFF8D6E63)),
+                        startY = keyY - 2.5f * s,
+                        endY = keyY + 2.5f * s
+                    ),
+                    topLeft = Offset(postX - 4f * s, keyY - 2f * s),
+                    size = Size(8f * s, 4f * s),
+                    cornerRadius = CornerRadius(2f * s, 2f * s)
+                )
+            }
+
+            // 2. Bottom Guitar Body Outline & Soundboard Contour (Warm Spruce / Mahogany)
+            val bodyStartX = leftPad + playableW * 0.55f
+            val bodyEndX = w + 40f * s
+            val bodyTop = (midY - playableH * 0.72f).coerceAtLeast(1f)
+            val bodyBottom = (midY + playableH * 0.78f).coerceAtMost(h - 1f)
+            val bodyPath = Path().apply {
+                moveTo(bodyStartX, nutBottom)
+                cubicTo(
+                    bodyStartX + playableW * 0.15f, nutBottom + 18f * s,
+                    bodyStartX + playableW * 0.35f, bodyBottom + 8f * s,
+                    bodyEndX, bodyBottom
+                )
+                lineTo(bodyEndX, bodyTop)
+                cubicTo(
+                    bodyStartX + playableW * 0.35f, bodyTop - 8f * s,
+                    bodyStartX + playableW * 0.15f, nutTop - 18f * s,
+                    bodyStartX, nutTop
+                )
+                close()
+            }
+            drawPath(
+                path = bodyPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF382318).copy(alpha = 0.55f),
+                        Color(0xFF24160E).copy(alpha = 0.70f),
+                        Color(0xFF160D08).copy(alpha = 0.85f)
+                    ),
+                    startY = bodyTop,
+                    endY = bodyBottom
+                )
+            )
+            drawPath(
+                path = bodyPath,
+                color = Color(0xFFBCAAA4).copy(alpha = 0.25f),
+                style = Stroke(width = 1.2.dp.toPx())
+            )
+
+            // 3. Circular Acoustic Soundhole & Rosette Rings behind Strings on Right Side (placed beyond last fret wire)
+            val soundholeRad = (bridgeH * 0.38f).coerceIn(16f * s, 42f * s)
+            // Center the soundhole past the end of the fretboard so it never covers the last frets
+            val soundholeCenterX = (w - rightPad + soundholeRad + 10f * s)
+            val soundholeCenterY = midY
+            // Concentric Abalone / Herringbone Rosette rings
+            drawCircle(
+                color = Color(0xFF6D4C41).copy(alpha = 0.55f),
+                radius = soundholeRad * 1.28f,
+                center = Offset(soundholeCenterX, soundholeCenterY),
+                style = Stroke(width = 3.5.dp.toPx())
+            )
+            drawCircle(
+                brush = Brush.sweepGradient(
+                    colors = listOf(
+                        Color(0xFFFFE082).copy(alpha = 0.6f),
+                        Color(0xFF80CBC4).copy(alpha = 0.7f),
+                        Color(0xFFFFD54F).copy(alpha = 0.6f),
+                        Color(0xFF80CBC4).copy(alpha = 0.7f)
+                    ),
+                    center = Offset(soundholeCenterX, soundholeCenterY)
+                ),
+                radius = soundholeRad * 1.16f,
+                center = Offset(soundholeCenterX, soundholeCenterY),
+                style = Stroke(width = 2.dp.toPx())
+            )
+            drawCircle(
+                color = Color(0xFFFFF8E1).copy(alpha = 0.45f),
+                radius = soundholeRad * 1.06f,
+                center = Offset(soundholeCenterX, soundholeCenterY),
+                style = Stroke(width = 1.dp.toPx())
+            )
+            // Deep acoustic soundhole inner cavity
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xFF070504), Color(0xFF140D09), Color(0xFF261912)),
+                    center = Offset(soundholeCenterX, soundholeCenterY),
+                    radius = soundholeRad
+                ),
+                radius = soundholeRad,
+                center = Offset(soundholeCenterX, soundholeCenterY)
+            )
 
             drawPath(
                 path = fretboardPath,
@@ -649,30 +717,48 @@ fun UnifiedGuitarFretboard(
 
             for (strIdx in 0 until numStrings) {
                 val startY = getYForStringAtX(strIdx, leftPad)
-                val endY = getYForStringAtX(strIdx, w - rightPad)
+                val fretboardEndY = getYForStringAtX(strIdx, w - rightPad)
+                val extendedEndY = (fretboardEndY + (fretboardEndY - startY) * 0.15f).coerceIn(1f, h - 1f)
+                val stringStopX = (w - 6f).coerceAtLeast(w - rightPad + 8f * s)
                 val gauge = ((1.05f + strIdx * 0.44f) * s).coerceIn(0.85f, 4.6f)
                 val isWoundString = strIdx >= 3 && numStrings >= 6
 
-                // Cast shadow on fretboard wood
+                // Cast shadow on fretboard wood and extended soundboard
                 drawLine(
                     color = Color.Black.copy(alpha = 0.45f),
                     start = Offset(leftPad, startY + 1.4f),
-                    end = Offset(w - rightPad, endY + 1.4f),
+                    end = Offset(stringStopX, extendedEndY + 1.4f),
                     strokeWidth = gauge
                 )
-                // Main string core
+                // Main string core extending across soundhole to bridge
                 drawLine(
                     color = if (isWoundString) Color(0xFFD7B899) else Color(0xFFDCE0E8),
                     start = Offset(leftPad, startY),
-                    end = Offset(w - rightPad, endY),
+                    end = Offset(stringStopX, extendedEndY),
                     strokeWidth = gauge
                 )
                 // Top cylindrical specular sheen
                 drawLine(
                     color = Color.White.copy(alpha = if (isWoundString) 0.48f else 0.72f),
                     start = Offset(leftPad, startY - gauge * 0.18f),
-                    end = Offset(w - rightPad, endY - gauge * 0.18f),
+                    end = Offset(stringStopX, extendedEndY - gauge * 0.18f),
                     strokeWidth = (gauge * 0.38f).coerceAtLeast(0.5f)
+                )
+
+                // Acoustic Bridge Pin at String Termination
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFFFDE7), Color(0xFF8D6E63), Color(0xFF3E2723)),
+                        center = Offset(stringStopX - 2f * s, extendedEndY),
+                        radius = 3.5f * s
+                    ),
+                    radius = (2.8f * s).coerceIn(1.8f, 4.5f),
+                    center = Offset(stringStopX - 2f * s, extendedEndY)
+                )
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.8f),
+                    radius = (1.1f * s).coerceIn(0.7f, 1.8f),
+                    center = Offset(stringStopX - 2f * s, extendedEndY)
                 )
 
                 drawContext.canvas.nativeCanvas.drawText(
@@ -923,6 +1009,48 @@ fun UnifiedGuitarFretboard(
                     val x = getFretCenterX(relF)
                     drawContext.canvas.nativeCanvas.drawText("$f", x, fretNumY, fretNumPaint)
                 }
+            }
+
+            // Top Floating Chord & Note Name Badge Above Fretboard
+            val detectedChordStr = liveChordLabel
+            if (detectedChordStr != null) {
+                val badgePaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    textAlign = android.graphics.Paint.Align.CENTER
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    textSize = (12f * s).coerceIn(9.dp.toPx(), 15.dp.toPx())
+                    isAntiAlias = true
+                }
+                val badgeText = "CHORD: $detectedChordStr"
+                val textW = badgePaint.measureText(badgeText)
+                val badgeW = (textW + 18f * s).coerceAtLeast(64f)
+                val badgeH = (badgePaint.textSize * 1.55f).coerceAtLeast(16f)
+                val badgeCenterX = (leftPad + playableW * 0.5f).coerceIn(badgeW * 0.5f + 4f, w - badgeW * 0.5f - 4f)
+                val badgeCenterY = (nutTop * 0.45f).coerceIn(badgeH * 0.5f + 2f, nutTop - 3f)
+
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFF1B2333).copy(alpha = 0.92f), Color(0xFF2E3D5C).copy(alpha = 0.96f), Color(0xFF1B2333).copy(alpha = 0.92f)),
+                        startX = badgeCenterX - badgeW * 0.5f,
+                        endX = badgeCenterX + badgeW * 0.5f
+                    ),
+                    topLeft = Offset(badgeCenterX - badgeW * 0.5f, badgeCenterY - badgeH * 0.5f),
+                    size = Size(badgeW, badgeH),
+                    cornerRadius = CornerRadius(badgeH * 0.5f, badgeH * 0.5f)
+                )
+                drawRoundRect(
+                    color = Color(0xFFFFB300).copy(alpha = 0.85f),
+                    topLeft = Offset(badgeCenterX - badgeW * 0.5f, badgeCenterY - badgeH * 0.5f),
+                    size = Size(badgeW, badgeH),
+                    cornerRadius = CornerRadius(badgeH * 0.5f, badgeH * 0.5f),
+                    style = Stroke(width = 1.1.dp.toPx())
+                )
+                drawContext.canvas.nativeCanvas.drawText(
+                    badgeText,
+                    badgeCenterX,
+                    badgeCenterY + badgePaint.textSize * 0.35f,
+                    badgePaint
+                )
             }
         }
     }
