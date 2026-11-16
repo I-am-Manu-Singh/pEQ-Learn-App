@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
@@ -1342,6 +1343,91 @@ fun StaffAndTabNotationViewer(
 }
 
 @Composable
+fun MetronomeQuarterNoteIcon(
+    modifier: Modifier = Modifier,
+    color: Color,
+    size: Dp = 12.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val headW = w * 0.58f
+        val headH = h * 0.42f
+        val stemW = 1.6f
+        val stemH = h * 0.76f
+        val headCenterX = headW * 0.5f + 1f
+        val headCenterY = h - headH * 0.55f
+
+        rotate(degrees = -22f, pivot = Offset(headCenterX, headCenterY)) {
+            drawOval(
+                color = color,
+                topLeft = Offset(headCenterX - headW / 2f, headCenterY - headH / 2f),
+                size = Size(headW, headH)
+            )
+        }
+        val stemX = headCenterX + headW * 0.44f - (stemW / 2f)
+        drawLine(
+            color = color,
+            start = Offset(stemX, headCenterY),
+            end = Offset(stemX, headCenterY - stemH),
+            strokeWidth = stemW
+        )
+    }
+}
+
+fun DrawScope.drawScoreTempoMarking(
+    textMeasurer: TextMeasurer,
+    prefixText: String,
+    tempo: Float,
+    color: Color,
+    topLeft: Offset,
+    scale: Float = 1.0f
+) {
+    var curX = topLeft.x
+    val fontSp = (9.5f * scale).sp
+    if (prefixText.isNotBlank()) {
+        val prefixLayout = textMeasurer.measure(
+            text = "$prefixText  ",
+            style = TextStyle(color = color, fontSize = fontSp, fontWeight = FontWeight.Bold)
+        )
+        drawText(prefixLayout, topLeft = Offset(curX, topLeft.y))
+        curX += prefixLayout.size.width
+    }
+
+    val noteHeadW = 7.5f * scale
+    val noteHeadH = 5.2f * scale
+    val stemH = 15f * scale
+    val stemW = 1.3f * scale
+
+    val headCenterX = curX + (noteHeadW * 0.5f)
+    val headCenterY = topLeft.y + (11.5f * scale)
+
+    rotate(degrees = -22f, pivot = Offset(headCenterX, headCenterY)) {
+        drawOval(
+            color = color,
+            topLeft = Offset(headCenterX - noteHeadW / 2f, headCenterY - noteHeadH / 2f),
+            size = Size(noteHeadW, noteHeadH)
+        )
+    }
+
+    val stemX = headCenterX + (noteHeadW * 0.44f) - (stemW / 2f)
+    drawLine(
+        color = color,
+        start = Offset(stemX, headCenterY),
+        end = Offset(stemX, headCenterY - stemH),
+        strokeWidth = stemW
+    )
+
+    curX += noteHeadW + (3.5f * scale)
+
+    val tempoLayout = textMeasurer.measure(
+        text = "= ${tempo.toInt()}",
+        style = TextStyle(color = color, fontSize = fontSp, fontWeight = FontWeight.Bold)
+    )
+    drawText(tempoLayout, topLeft = Offset(curX, topLeft.y))
+}
+
+@Composable
 fun StaffAndTabNotationViewer(
     score: Score?,
     playheadMeasure: Int,
@@ -1547,11 +1633,12 @@ fun StaffAndTabNotationViewer(
                             }
                             Spacer(Modifier.height(4.dp))
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                MetronomeQuarterNoteIcon(color = primaryColor, size = 12.dp)
                                 Text(
-                                    text = "𝅘𝅥 = ${activeScore.tempo.toInt()} BPM ($resolvedTempoMark)",
+                                    text = "= ${activeScore.tempo.toInt()} BPM ($resolvedTempoMark)",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = primaryColor
@@ -1855,6 +1942,28 @@ fun StaffAndTabNotationViewer(
                                                         topLeft = Offset(startX + 4f, if (showStaff) trebleBaseline - (staffLineSpacing * 2.1f) else tabBaseline - (tabLineSpacing * 2.1f))
                                                     )
 
+                                                    val curMTempo = measure.tempoOverride ?: activeScore.tempo
+                                                    val prevMTempo = prevMeasure?.let { it.tempoOverride ?: activeScore.tempo } ?: activeScore.tempo
+                                                    val mTempoChanged = mIdx > 0 && abs(curMTempo - prevMTempo) >= 0.5f
+                                                    val shouldDrawMTempo = (mIdx == 0) || mTempoChanged || measure.tempoChangeText.isNotBlank()
+                                                    if (shouldDrawMTempo) {
+                                                        val prefix = if (mIdx == 0 && activeScore.tempoText.isNotBlank() && activeScore.tempoText != "Moderato") {
+                                                            activeScore.tempoText
+                                                        } else if (measure.tempoChangeText.isNotBlank()) {
+                                                            measure.tempoChangeText
+                                                        } else ""
+                                                        val tY = if (showStaff) trebleBaseline - (staffLineSpacing * 2.85f) else tabBaseline - (tabLineSpacing * 2.85f)
+                                                        val tX = startX + (if (isRowStart && mIdx == 0) 3.5f * (if (showStaff) staffLineSpacing else tabLineSpacing) else 4f)
+                                                        drawScoreTempoMarking(
+                                                            textMeasurer = textMeasurer,
+                                                            prefixText = prefix,
+                                                            tempo = curMTempo,
+                                                            color = primaryColor,
+                                                            topLeft = Offset(tX, tY),
+                                                            scale = (staffLineSpacing / 12f).coerceIn(0.7f, 1.3f)
+                                                        )
+                                                    }
+
                                                     if (isPlayheadInThisMeasure) {
                                                         val glowTopY = if (showStaff) trebleBaseline - 2.2f * staffLineSpacing else tabBaseline - 1.5f * tabLineSpacing
                                                         val glowBotY = if (showTab) tabBaseline + 6.2f * tabLineSpacing else bassBaseline + 5.2f * staffLineSpacing
@@ -2119,6 +2228,28 @@ fun StaffAndTabNotationViewer(
                                                     textLayoutResult = labelLayout,
                                                     topLeft = Offset(startX + (if (isFirstMeasure) 6f else 4f), if (showStaff) trebleBaseline - (staffLineSpacing * 2.1f) else tabBaseline - (tabLineSpacing * 2.1f))
                                                 )
+
+                                                val curHMTempo = measure.tempoOverride ?: activeScore.tempo
+                                                val prevHMTempo = prevMeasure?.let { it.tempoOverride ?: activeScore.tempo } ?: activeScore.tempo
+                                                val hTempoChanged = mIdx > 0 && abs(curHMTempo - prevHMTempo) >= 0.5f
+                                                val shouldDrawHMTempo = (mIdx == 0) || hTempoChanged || measure.tempoChangeText.isNotBlank()
+                                                if (shouldDrawHMTempo) {
+                                                    val prefix = if (mIdx == 0 && activeScore.tempoText.isNotBlank() && activeScore.tempoText != "Moderato") {
+                                                        activeScore.tempoText
+                                                    } else if (measure.tempoChangeText.isNotBlank()) {
+                                                        measure.tempoChangeText
+                                                    } else ""
+                                                    val htY = if (showStaff) trebleBaseline - (staffLineSpacing * 2.85f) else tabBaseline - (tabLineSpacing * 2.85f)
+                                                    val htX = startX + (if (mIdx == 0) 3.5f * (if (showStaff) staffLineSpacing else tabLineSpacing) else 4f)
+                                                    drawScoreTempoMarking(
+                                                        textMeasurer = textMeasurer,
+                                                        prefixText = prefix,
+                                                        tempo = curHMTempo,
+                                                        color = primaryColor,
+                                                        topLeft = Offset(htX, htY),
+                                                        scale = (staffLineSpacing / 12f).coerceIn(0.7f, 1.3f)
+                                                    )
+                                                }
 
                                                 if (isPlayheadInThisMeasure) {
                                                     val glowTopY = if (showStaff) trebleBaseline - 2.2f * staffLineSpacing else tabBaseline - 1.5f * tabLineSpacing
@@ -2438,6 +2569,77 @@ private fun DrawScope.drawGrandStaffSystemBarline(
     }
 }
 
+internal fun renderDynamicSymbol(
+    drawScope: DrawScope,
+    dynamicText: String,
+    centerOffset: Offset,
+    color: Color,
+    lineSpacing: Float,
+    textMeasurer: TextMeasurer
+) {
+    with(drawScope) {
+        val dynLower = dynamicText.lowercase().trim()
+        val dynW = lineSpacing * 0.92f
+        val dynH = lineSpacing * 1.08f
+        with(MusicVectorSymbols) {
+            when (dynLower) {
+                "p" -> drawDynamic("dynamicPiano", color, Size(dynW, dynH), Offset(centerOffset.x - dynW / 2f, centerOffset.y - dynH / 2f))
+                "pp" -> {
+                    val spacing = dynW * 0.62f
+                    drawDynamic("dynamicPiano", color, Size(dynW, dynH), Offset(centerOffset.x - spacing, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicPiano", color, Size(dynW, dynH), Offset(centerOffset.x, centerOffset.y - dynH / 2f))
+                }
+                "ppp" -> {
+                    val spacing = dynW * 0.58f
+                    drawDynamic("dynamicPiano", color, Size(dynW, dynH), Offset(centerOffset.x - spacing * 1.5f, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicPiano", color, Size(dynW, dynH), Offset(centerOffset.x - spacing * 0.5f, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicPiano", color, Size(dynW, dynH), Offset(centerOffset.x + spacing * 0.5f, centerOffset.y - dynH / 2f))
+                }
+                "f" -> drawDynamic("dynamicForte", color, Size(dynW, dynH), Offset(centerOffset.x - dynW / 2f, centerOffset.y - dynH / 2f))
+                "ff" -> {
+                    val spacing = dynW * 0.62f
+                    drawDynamic("dynamicForte", color, Size(dynW, dynH), Offset(centerOffset.x - spacing, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicForte", color, Size(dynW, dynH), Offset(centerOffset.x, centerOffset.y - dynH / 2f))
+                }
+                "fff" -> {
+                    val spacing = dynW * 0.58f
+                    drawDynamic("dynamicForte", color, Size(dynW, dynH), Offset(centerOffset.x - spacing * 1.5f, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicForte", color, Size(dynW, dynH), Offset(centerOffset.x - spacing * 0.5f, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicForte", color, Size(dynW, dynH), Offset(centerOffset.x + spacing * 0.5f, centerOffset.y - dynH / 2f))
+                }
+                "mp" -> {
+                    val mW = dynW * 1.15f
+                    drawDynamic("dynamicMezzo", color, Size(mW, dynH), Offset(centerOffset.x - mW * 0.85f, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicPiano", color, Size(dynW, dynH), Offset(centerOffset.x + 0.1f * dynW, centerOffset.y - dynH / 2f))
+                }
+                "mf" -> {
+                    val mW = dynW * 1.15f
+                    drawDynamic("dynamicMezzo", color, Size(mW, dynH), Offset(centerOffset.x - mW * 0.85f, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicForte", color, Size(dynW, dynH), Offset(centerOffset.x + 0.1f * dynW, centerOffset.y - dynH / 2f))
+                }
+                "fp" -> {
+                    drawDynamic("dynamicForte", color, Size(dynW, dynH), Offset(centerOffset.x - dynW * 0.75f, centerOffset.y - dynH / 2f))
+                    drawDynamic("dynamicPiano", color, Size(dynW, dynH), Offset(centerOffset.x + 0.15f * dynW, centerOffset.y - dynH / 2f))
+                }
+                "sfz" -> drawDynamic("dynamicSforzando", color, Size(dynW * 1.3f, dynH), Offset(centerOffset.x - dynW * 0.65f, centerOffset.y - dynH / 2f))
+                "rfz" -> drawDynamic("dynamicRinforzando", color, Size(dynW * 1.3f, dynH), Offset(centerOffset.x - dynW * 0.65f, centerOffset.y - dynH / 2f))
+                else -> {
+                    val dynLayout = textMeasurer.measure(
+                        text = dynLower,
+                        style = TextStyle(
+                            color = color.copy(alpha = 0.88f),
+                            fontSize = (lineSpacing * 0.88f).sp,
+                            fontWeight = FontWeight.Bold,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        )
+                    )
+                    drawText(dynLayout, topLeft = Offset(centerOffset.x - dynLayout.size.width / 2f, centerOffset.y - dynLayout.size.height / 2f))
+                }
+            }
+        }
+    }
+}
+
 private fun drawTabMeasureContent(
     drawScope: DrawScope, startX: Float, endX: Float, h: Float, labelLayout: TextLayoutResult,
     tBase: Float,
@@ -2464,15 +2666,6 @@ private fun drawTabMeasureContent(
                     topLeft = Offset(startX + 0.55f * config.lineSpacing, tBase),
                     size = Size(tabClefW, tabClefH)
                 )
-            }
-
-            val pitchNames = arrayOf("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
-            for (sIdx in 0..5) {
-                val midi = tuning.getOrElse(sIdx) { intArrayOf(64, 59, 55, 50, 45, 40)[sIdx] }
-                val sName = pitchNames[((midi % 12) + 12) % 12]
-                val sLayout = textMeasurer.measure(sName, TextStyle(color = clefTextColor.copy(alpha = 0.60f), fontSize = (6.0f * scale).sp, fontWeight = FontWeight.Bold))
-                val sy = tBase + (sIdx * config.lineSpacing) - (sLayout.size.height / 2f)
-                drawText(sLayout, topLeft = Offset((startX + 1.5f * scale).coerceAtLeast(0f), sy))
             }
         }
 
@@ -2551,6 +2744,7 @@ private fun drawTabMeasureContent(
             }
         }
 
+        val drawnBarrePositions = mutableSetOf<Int>()
         layout.notes.forEach { tabNote ->
             val note = tabNote.note
             val nx = tabNote.nx
@@ -2737,10 +2931,53 @@ private fun drawTabMeasureContent(
                 TabArticulation.DEAD_NOTE, TabArticulation.GHOST_NOTE, TabArticulation.NONE -> {}
             }
 
-            // CRITICAL FIX FOR TAB TIES/SLURS:
-            // 1. NEVER draw a tie or slur on TAB if `nextOnString == null` (no dangling curves at end of measure!).
-            // 2. Only draw a melodic slur on TAB when `note.slurStart && !note.tieStart`, `nextOnString != null`,
-            //    `nextOnString.fretValue != tabNote.fretValue`, and the beat has at most 2 notes.
+            // 1. TIES ON TAB: Connect identical fret values on the same string within the measure,
+            // or extend to barline if tied into next measure!
+            if (note.tieStart) {
+                val curveDir = if (tabNote.stringIdx <= 2) -1f else 1f
+                val anchorY = ny + curveDir * (maskH * 0.48f)
+                if (nextOnString != null && nextOnString.fretValue == tabNote.fretValue) {
+                    drawEngravedCurve(
+                        startX = nx + maskW * 0.48f,
+                        startY = anchorY,
+                        endX = nextOnString.nx - maskW * 0.48f,
+                        endY = anchorY,
+                        direction = curveDir,
+                        color = clefTextColor.copy(alpha = 0.85f),
+                        lineSpacing = config.lineSpacing,
+                        isDashed = false
+                    )
+                } else if (note.position + note.duration >= beatsPerMeasure - 0.25f) {
+                    // Outgoing tie extending across barline to next measure
+                    drawEngravedCurve(
+                        startX = nx + maskW * 0.48f,
+                        startY = anchorY,
+                        endX = endX - 1.5f * scale,
+                        endY = anchorY,
+                        direction = curveDir,
+                        color = clefTextColor.copy(alpha = 0.80f),
+                        lineSpacing = config.lineSpacing,
+                        isDashed = false
+                    )
+                }
+            }
+            if (note.tieEnd && note.position <= 0.05f) {
+                // Incoming tie from previous measure
+                val curveDir = if (tabNote.stringIdx <= 2) -1f else 1f
+                val anchorY = ny + curveDir * (maskH * 0.48f)
+                drawEngravedCurve(
+                    startX = startX + (if (drawClefHeader) 3.5f * config.lineSpacing else 1.5f * scale),
+                    startY = anchorY,
+                    endX = nx - maskW * 0.48f,
+                    endY = anchorY,
+                    direction = curveDir,
+                    color = clefTextColor.copy(alpha = 0.80f),
+                    lineSpacing = config.lineSpacing,
+                    isDashed = false
+                )
+            }
+
+            // 2. MELODIC SLURS ON TAB:
             if (note.slurStart && !note.tieStart && nextOnString != null &&
                 nextOnString.fretValue != tabNote.fretValue &&
                 (notesByPosition[note.position]?.size ?: 1) <= 2 &&
@@ -2758,6 +2995,51 @@ private fun drawTabMeasureContent(
                     lineSpacing = config.lineSpacing,
                     isDashed = false
                 )
+            }
+
+            // 3. MUSICAL ARTICULATIONS ON TAB (Staccato, Accent, Tenuto, Marcato)
+            if (note.musicalArticulation != MusicalArticulation.NONE && tabNote == notesByPosition[note.position]?.firstOrNull()) {
+                val chordNotesAtPos = notesByPosition[note.position] ?: emptyList()
+                val topNy = chordNotesAtPos.minOf { it.ny }
+                val articY = if (showRhythmStems) {
+                    tBase + (5f * config.lineSpacing) + (1.85f * config.lineSpacing)
+                } else {
+                    topNy - maskH * 0.55f - (0.35f * config.lineSpacing)
+                }
+                when (note.musicalArticulation) {
+                    MusicalArticulation.STACCATO -> {
+                        with(MusicVectorSymbols) {
+                            drawStaccato(clefTextColor.copy(alpha = 0.85f), Offset(nx, articY), radius = 1.6f * scale)
+                        }
+                    }
+                    MusicalArticulation.STACCATISSIMO -> {
+                        with(MusicVectorSymbols) {
+                            drawStaccato(clefTextColor.copy(alpha = 0.85f), Offset(nx, articY), radius = 1.2f * scale)
+                        }
+                    }
+                    MusicalArticulation.ACCENT -> {
+                        with(MusicVectorSymbols) {
+                            drawAccent(clefTextColor.copy(alpha = 0.85f), Size(8.5f * scale, 5.5f * scale), Offset(nx - 4.25f * scale, articY - 2.5f * scale))
+                        }
+                    }
+                    MusicalArticulation.TENUTO -> {
+                        with(MusicVectorSymbols) {
+                            drawTenuto(clefTextColor.copy(alpha = 0.85f), Size(8.5f * scale, 1.8f * scale), Offset(nx - 4.25f * scale, articY - 0.9f * scale))
+                        }
+                    }
+                    MusicalArticulation.MARCATO -> {
+                        with(MusicVectorSymbols) {
+                            drawSmuflSymbol("articMarcatoAbove", clefTextColor.copy(alpha = 0.85f), Offset(nx - 3.8f * scale, articY - 7f * scale), Size(7.6f * scale, 7.6f * scale), 400f)
+                        }
+                    }
+                    MusicalArticulation.NONE -> {}
+                }
+            }
+
+            // 4. DYNAMICS ON TAB (When showing TAB only or with stems)
+            if (note.dynamic.isNotBlank() && tabNote == notesByPosition[note.position]?.firstOrNull()) {
+                val dynY = tBase + 5f * config.lineSpacing + (if (showRhythmStems) 2.6f * config.lineSpacing else 1.35f * config.lineSpacing)
+                renderDynamicSymbol(drawScope, note.dynamic.trim(), Offset(nx, dynY), clefTextColor, config.lineSpacing, textMeasurer)
             }
 
             if (note.vibrato) {
@@ -2806,9 +3088,13 @@ private fun drawTabMeasureContent(
                 drawBend(Offset(nx, ny), bend, config.primaryColor, textMeasurer, config.lineSpacing)
             }
             note.barre?.let { barre ->
-                val bTop = tBase + (barre.startString.coerceIn(0, 5) * config.lineSpacing)
-                val bBottom = tBase + (barre.endString.coerceIn(0, 5) * config.lineSpacing)
-                drawBarre(barre, nx - 0.85f * config.lineSpacing, bTop, bBottom, config.primaryColor.copy(alpha = 0.65f), textMeasurer, config.lineSpacing)
+                // Deduplicate: only draw barre once per beat position, and only for true multi-string barres (spanning 4+ strings)
+                val posKey = ((note.position * 100f) + 0.5f).toInt()
+                if (drawnBarrePositions.add(posKey) && (barre.endString - barre.startString >= 3)) {
+                    val bTop = tBase + (barre.startString.coerceIn(0, 5) * config.lineSpacing)
+                    val bBottom = tBase + (barre.endString.coerceIn(0, 5) * config.lineSpacing)
+                    drawBarre(barre, nx - 0.85f * config.lineSpacing, bTop, bBottom, config.primaryColor.copy(alpha = 0.65f), textMeasurer, config.lineSpacing)
+                }
             }
         }
 
@@ -3182,6 +3468,23 @@ private fun drawStaffMeasureContent(
                         size = Size(clefW, clefH)
                     )
                 }
+                if (config.isGuitarScore) {
+                    val eightLayout = textMeasurer.measure(
+                        "8",
+                        TextStyle(
+                            color = clefTextColor.copy(alpha = 0.85f),
+                            fontSize = (6.8f * (config.lineSpacing / 12f)).sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    drawText(
+                        eightLayout,
+                        topLeft = Offset(
+                            startX + 0.45f * config.lineSpacing + (clefW - eightLayout.size.width) / 2f,
+                            trebleClefTop + clefH - 1.5f * (config.lineSpacing / 12f)
+                        )
+                    )
+                }
             }
 
             val bassClefTop = (bassBaseline + 1f * config.lineSpacing) - (0.3171f * bassH)
@@ -3483,27 +3786,7 @@ private fun drawStaffMeasureContent(
                     val staffBottomY = staffTopY + 4 * config.lineSpacing
                     val lowestNoteYInCluster = visibleNotes.filter { it.isTrebleClef == isTrebleClef && abs(it.note.position - note.position) <= 0.25f }.maxOfOrNull { it.ny } ?: ny
                     val dynY = maxOf(staffBottomY + 1.0f * config.lineSpacing, lowestNoteYInCluster + 1.15f * config.lineSpacing)
-                    val dynLower = note.dynamic.lowercase().trim()
-                    val dynW = config.lineSpacing * 0.95f
-                    val dynH = config.lineSpacing * 1.10f
-                    when (dynLower) {
-                        "p" -> drawDynamic("dynamicPiano", clefTextColor.copy(alpha = 0.85f), Size(dynW, dynH), Offset(nx - dynW / 2f, dynY))
-                        "f" -> drawDynamic("dynamicForte", clefTextColor.copy(alpha = 0.85f), Size(dynW, dynH), Offset(nx - dynW / 2f, dynY))
-                        "sfz" -> drawDynamic("dynamicSforzando", clefTextColor.copy(alpha = 0.85f), Size(dynW * 1.3f, dynH), Offset(nx - dynW * 0.65f, dynY))
-                        "rfz" -> drawDynamic("dynamicRinforzando", clefTextColor.copy(alpha = 0.85f), Size(dynW * 1.3f, dynH), Offset(nx - dynW * 0.65f, dynY))
-                        else -> {
-                            val dynLayout = textMeasurer.measure(
-                                text = dynLower,
-                                style = TextStyle(
-                                    color = clefTextColor.copy(alpha = 0.88f),
-                                    fontSize = (5.0f * noteScale).sp,
-                                    fontWeight = FontWeight.Black,
-                                    fontStyle = FontStyle.Italic
-                                )
-                            )
-                            drawText(dynLayout, topLeft = Offset(nx - dynLayout.size.width / 2f, dynY - 2f))
-                        }
-                    }
+                    renderDynamicSymbol(drawScope, note.dynamic.trim(), Offset(nx, dynY), clefTextColor, config.lineSpacing, textMeasurer)
                 }
             }
 
@@ -4394,7 +4677,39 @@ internal fun renderScoreSystemToDrawScope(
                 )
             )
 
-            if (showMeasureNumbers) {
+            // -------------------------------------------------------------
+            // TEMPO MARKING: Draw "♩ = 120" on top left of Measure 1,
+            // and again above any measure where tempo changes!
+            // -------------------------------------------------------------
+            val curTempo = measure.tempoOverride ?: score.tempo
+            val prevTempo = prevMeasure?.let { it.tempoOverride ?: score.tempo } ?: score.tempo
+            val tempoChanged = globalIdx > 0 && abs(curTempo - prevTempo) >= 0.5f
+            val hasTempoChangeText = measure.tempoChangeText.isNotBlank() && (prevMeasure == null || prevMeasure.tempoChangeText != measure.tempoChangeText)
+            val shouldDrawTempo = (globalIdx == 0) || tempoChanged || hasTempoChangeText
+
+            if (shouldDrawTempo) {
+                val prefix = if (globalIdx == 0 && score.tempoText.isNotBlank() && score.tempoText != "Moderato") {
+                    score.tempoText
+                } else if (measure.tempoChangeText.isNotBlank()) {
+                    measure.tempoChangeText
+                } else ""
+                val tempoY = if (showStaff) {
+                    trebleBaseline - (staffLineSpacing * 2.85f)
+                } else {
+                    tabBaseline - (tabLineSpacing * 2.85f)
+                }
+                val tempoX = mStartX + (if (isRowStart && globalIdx == 0) 3.5f * (if (showStaff) staffLineSpacing else tabLineSpacing) else 4f * noteScale)
+                drawScoreTempoMarking(
+                    textMeasurer = textMeasurer,
+                    prefixText = prefix,
+                    tempo = curTempo,
+                    color = inkColor,
+                    topLeft = Offset(tempoX, tempoY),
+                    scale = noteScale
+                )
+            }
+
+            if (showMeasureNumbers && (isRowStart || globalIdx == 0)) {
                 val labelY = if (showStaff) {
                     trebleBaseline - (staffLineSpacing * 2.1f)
                 } else {

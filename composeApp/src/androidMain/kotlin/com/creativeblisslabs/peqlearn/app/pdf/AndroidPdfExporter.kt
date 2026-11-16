@@ -65,7 +65,8 @@ object AndroidPdfExporter {
                 val normFormat = options.staffFormat.trim().lowercase()
                 val showStaff = normFormat != "tab" && normFormat != "tab only"
                 val showTab = normFormat == "tab" || normFormat == "tab only" || normFormat == "both" || normFormat == "both viewers"
-                val effectiveLeftHandHidden = isLeftHandHidden || !isSplitStaff
+                val isGuitarScore = showTab || score.tuningMidi.isNotEmpty() || score.tracks.any { it.trackName.contains("guitar", ignoreCase = true) }
+                val effectiveLeftHandHidden = isLeftHandHidden || !isSplitStaff || (isGuitarScore && !showTab)
 
                 val isInverted = options.colorTheme.equals("Inverted Dark", ignoreCase = true)
                 val isMono = options.colorTheme.equals("Monochrome", ignoreCase = true)
@@ -99,11 +100,11 @@ object AndroidPdfExporter {
                 val tabPillBgComposeColor = pageBgComposeColor
 
                 val densityScale = when {
-                    requestedMeasuresPerSystem >= 5 -> 0.96f
-                    requestedMeasuresPerSystem == 4 -> 1.04f
-                    requestedMeasuresPerSystem == 3 -> 1.12f
-                    else -> 1.20f
-                } * (if (isLandscape) 1.10f else 1.0f)
+                    requestedMeasuresPerSystem >= 5 -> 0.94f
+                    requestedMeasuresPerSystem == 4 -> 1.00f
+                    requestedMeasuresPerSystem == 3 -> 1.08f
+                    else -> 1.15f
+                } * (if (isLandscape) 1.05f else 1.0f)
 
                 val pdfDensity = Density(density = densityScale, fontScale = 1.0f)
                 val fontFamilyResolver = createFontFamilyResolver(context)
@@ -115,27 +116,27 @@ object AndroidPdfExporter {
                 val layoutCache = MeasureLayoutCache()
                 val drawScope = CanvasDrawScope()
 
-                // Generous Inter-Staff Vertical Geometry (8.5 spaces Treble->Bass, 9.5 spaces Bass->TAB)
-                val staffLineSpacing = 11.2f * densityScale
-                val tabLineSpacing = 12.0f * densityScale
-                val trebleRelTop = 36f * densityScale
+                // Standard, elegant inter-staff vertical spacing calibrated for 7-9 systems per page
+                val staffLineSpacing = 10.5f * densityScale
+                val tabLineSpacing = 11.0f * densityScale
+                val trebleRelTop = 38f * densityScale
                 val bassRelTop = if (effectiveLeftHandHidden) {
                     trebleRelTop
                 } else {
                     trebleRelTop + (8.5f * staffLineSpacing)
                 }
                 val tabRelTop = if (showStaff) {
-                    (if (effectiveLeftHandHidden) trebleRelTop else bassRelTop) + (9.5f * staffLineSpacing)
+                    (if (effectiveLeftHandHidden) trebleRelTop else bassRelTop) + (9.0f * staffLineSpacing)
                 } else {
-                    34f * densityScale
+                    36f * densityScale
                 }
 
                 val systemHeight = when {
-                    showStaff && showTab -> tabRelTop + (5.0f * tabLineSpacing) + (40f * densityScale)
-                    showStaff -> (if (effectiveLeftHandHidden) trebleRelTop else bassRelTop) + (4.0f * staffLineSpacing) + (44f * densityScale)
-                    else -> tabRelTop + (5.0f * tabLineSpacing) + (44f * densityScale)
+                    showStaff && showTab -> tabRelTop + (5.0f * tabLineSpacing) + (38f * densityScale)
+                    showStaff -> (if (effectiveLeftHandHidden) trebleRelTop else bassRelTop) + (4.0f * staffLineSpacing) + (40f * densityScale)
+                    else -> tabRelTop + (5.0f * tabLineSpacing) + (40f * densityScale)
                 }
-                val systemGap = 34f * densityScale
+                val systemGap = 30f * densityScale
 
                 val bgPaint = Paint().apply { color = pageBgInt; style = Paint.Style.FILL }
                 val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -169,18 +170,31 @@ object AndroidPdfExporter {
                 val titleBlockHeight = if (options.includeTitleHeader) 102f else 0f
                 val footerReserve = 42f
 
-                // Adaptive System Chunking: dense 12-beat triplet measures (like M.24, M.111, M.112)
-                // automatically limit row count so chords never overlap horizontally
+                // Resolve effective melodic track filter for system chunking & rendering
+                val drumTrackIndices = score.tracks.filter { it.channel == 9 }.map { it.trackIndex }.toSet()
+                val hasEnabledMelodicTracks = score.tracks.isEmpty() || score.tracks.any { it.channel != 9 && (enabledTrackIndices[it.trackIndex] ?: it.isEnabled) }
+                val effectiveStaffTrackIndices = run {
+                    val map = enabledTrackIndices.toMutableMap()
+                    if (hasEnabledMelodicTracks) {
+                        drumTrackIndices.forEach { dIdx -> map[dIdx] = false }
+                    }
+                    map.toMap()
+                }
+
+                // Adaptive System Chunking: Standard 4 measures per row, allowing clean 4-page density matching reference MuseScore engraving
                 val systems = mutableListOf<List<Pair<Int, com.creativeblisslabs.peqlearn.app.ui.screens.Measure>>>()
                 var mCursor = 0
+                val maxSlotsPerRow = if (isLandscape) 72 else 48
+
                 while (mCursor < totalMeasures) {
                     val currentRow = mutableListOf<Pair<Int, com.creativeblisslabs.peqlearn.app.ui.screens.Measure>>()
                     var rowNoteSlots = 0
-                    val maxSlotsPerRow = if (isLandscape) 34 else 22
 
                     while (mCursor < totalMeasures && currentRow.size < requestedMeasuresPerSystem) {
                         val m = measures[mCursor]
-                        val distinctPos = m.notes.filter { !it.isRest }.map { it.position }.distinct().size.coerceAtLeast(3)
+                        val visibleNotes = m.notes.filter { !it.isRest && (effectiveStaffTrackIndices[it.voice] ?: true) }
+                        // Quantize position to 16th-note grid to prevent tick micro-variations from falsely multiplying slot count
+                        val distinctPos = visibleNotes.map { ((it.position * 4f) + 0.05f).toInt() }.distinct().size.coerceAtLeast(2)
                         if (currentRow.isNotEmpty() && rowNoteSlots + distinctPos > maxSlotsPerRow) {
                             break
                         }
@@ -204,28 +218,69 @@ object AndroidPdfExporter {
 
                     var currentTopY = marginY
                     if (pageNumber == 1 && options.includeTitleHeader) {
-                        val titleText = options.title.ifBlank { score.title.ifBlank { "Untitled Score" } }
+                        val titleText = listOf(
+                            options.title.takeUnless { it.isBlank() || it.equals("Untitled Score", ignoreCase = true) },
+                            score.title.takeUnless { it.isBlank() || it.equals("Untitled Score", ignoreCase = true) },
+                            score.tracks.firstOrNull { it.trackName.isNotBlank() && !it.trackName.startsWith("Track", ignoreCase = true) }?.trackName
+                        ).firstOrNull { !it.isNullOrBlank() } ?: "pEQ Score Study"
                         pdfCanvas.drawText(titleText, pageWidth / 2f, currentTopY + 32f, titlePaint)
 
-                        val composerText = options.composer.ifBlank {
-                            buildString {
-                                if (score.composer.isNotBlank()) append(score.composer)
-                                if (score.lyricist.isNotBlank()) {
-                                    if (isNotEmpty()) append(" • ")
-                                    append(score.lyricist)
-                                }
-                            }.ifBlank { "pEQ Learn Studio" }
-                        }
+                        val composerText = listOf(
+                            options.composer.takeUnless { it.isBlank() || it.equals("pEQ Learn Studio", ignoreCase = true) },
+                            score.composer.takeUnless { it.isBlank() },
+                            score.lyricist.takeUnless { it.isBlank() }
+                        ).firstOrNull { !it.isNullOrBlank() } ?: "pEQ Learn Studio"
                         pdfCanvas.drawText(composerText, pageWidth - marginX, currentTopY + 66f, composerPaint)
 
+                        val tuningInfo = if (showTab && score.tuningMidi.isNotEmpty()) {
+                            val defaultTuning = listOf(64, 59, 55, 50, 45, 40)
+                            if (score.tuningMidi != defaultTuning) {
+                                if (score.tuningMidi.size == 6 && score.tuningMidi[5] == 38) {
+                                    "Drop D: (6)=D"
+                                } else {
+                                    "Tuning: " + score.tuningMidi.map { com.creativeblisslabs.peqlearn.app.ui.screens.getNoteNameFromMidi(it) }.joinToString(" ")
+                                }
+                            } else null
+                        } else null
+
+                        // Vector quarter note (♩) at header top-left (font-independent & crisp)
+                        val noteX = marginX
+                        val noteCenterY = currentTopY + 61f
+                        val noteW = 10f
+                        val noteH = 7.5f
+                        val stemH = 17f
+                        val stemW = 1.8f
+
+                        val noteFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = subHeaderTextInt
+                            style = Paint.Style.FILL
+                        }
+                        val noteStemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = subHeaderTextInt
+                            style = Paint.Style.STROKE
+                            strokeWidth = stemW
+                            strokeCap = Paint.Cap.ROUND
+                        }
+
+                        pdfCanvas.save()
+                        pdfCanvas.rotate(-22f, noteX + (noteW / 2f), noteCenterY)
+                        val noteOval = android.graphics.RectF(noteX, noteCenterY - (noteH / 2f), noteX + noteW, noteCenterY + (noteH / 2f))
+                        pdfCanvas.drawOval(noteOval, noteFillPaint)
+                        pdfCanvas.restore()
+
+                        val stemX = noteX + (noteW * 0.92f)
+                        pdfCanvas.drawLine(stemX, noteCenterY, stemX, noteCenterY - stemH, noteStemPaint)
+
+                        val textStartX = noteX + noteW + 7f
                         val tempoMeta = buildString {
-                            append("𝅘𝅥 = ${score.tempo.toInt()} BPM")
+                            append("= ${score.tempo.toInt()} BPM")
                             if (score.tempoText.isNotBlank()) append(" (${score.tempoText})")
                             append("   •   ${score.timeSignature}")
                             append("   •   ${score.keySignature.keyName}")
                             if (score.capo > 0) append("   •   Capo ${score.capo}")
+                            if (tuningInfo != null) append("   •   $tuningInfo")
                         }
-                        pdfCanvas.drawText(tempoMeta, marginX, currentTopY + 66f, metaPaint)
+                        pdfCanvas.drawText(tempoMeta, textStartX, currentTopY + 66f, metaPaint)
                         pdfCanvas.drawLine(marginX, currentTopY + 82f, pageWidth - marginX, currentTopY + 82f, headerRulePaint)
                         currentTopY += titleBlockHeight
                     }
@@ -288,7 +343,11 @@ object AndroidPdfExporter {
                         systemsDrawnOnThisPage++
                     }
 
-                    val footerTitle = options.title.ifBlank { score.title.ifBlank { "pEQ Learn Score" } }
+                    val footerTitle = listOf(
+                        options.title.takeUnless { it.isBlank() || it.equals("Untitled Score", ignoreCase = true) },
+                        score.title.takeUnless { it.isBlank() || it.equals("Untitled Score", ignoreCase = true) },
+                        score.tracks.firstOrNull { it.trackName.isNotBlank() && !it.trackName.startsWith("Track", ignoreCase = true) }?.trackName
+                    ).firstOrNull { !it.isNullOrBlank() } ?: "pEQ Learn Score"
                     pdfCanvas.drawText(
                         "$footerTitle  —  Page $pageNumber",
                         pageWidth / 2f,
@@ -305,9 +364,11 @@ object AndroidPdfExporter {
                     }
                 }
 
-                val cleanTitle = options.title.ifBlank { score.title.ifBlank { "Score" } }
-                    .replace(" ", "_")
-                    .replace("[^a-zA-Z0-9_]".toRegex(), "")
+                val cleanTitle = listOf(
+                    options.title.takeUnless { it.isBlank() || it.equals("Untitled Score", ignoreCase = true) },
+                    score.title.takeUnless { it.isBlank() || it.equals("Untitled Score", ignoreCase = true) },
+                    score.tracks.firstOrNull { it.trackName.isNotBlank() && !it.trackName.startsWith("Track", ignoreCase = true) }?.trackName
+                ).firstOrNull { !it.isNullOrBlank() }?.replace(" ", "_")?.replace("[^a-zA-Z0-9_]".toRegex(), "") ?: "Score"
                 val pdfFileName = "pEQ_${cleanTitle}_${System.currentTimeMillis()}.pdf"
 
                 val cachePdfFile = File(context.cacheDir, pdfFileName)

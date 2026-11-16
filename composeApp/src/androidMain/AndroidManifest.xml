@@ -83,7 +83,7 @@
                 <data android:pathPattern=".*\\.webm" />
             </intent-filter>
 
-            <!-- MIDI / MusicXML Intent Filter -->
+            <!-- MIDI / MusicXML / Guitar Pro Intent Filters -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -92,9 +92,17 @@
                 <data android:scheme="file" />
                 <data android:mimeType="audio/midi" />
                 <data android:mimeType="audio/x-midi" />
+                <data android:mimeType="audio/mid" />
+                <data android:mimeType="application/midi" />
                 <data android:mimeType="application/x-midi" />
                 <data android:mimeType="application/xml" />
                 <data android:mimeType="text/xml" />
+                <data android:mimeType="application/vnd.recordare.musicxml+xml" />
+                <data android:mimeType="application/vnd.recordare.musicxml" />
+                <data android:mimeType="application/x-guitar-pro" />
+                <data android:mimeType="audio/x-guitar-pro" />
+                <data android:mimeType="application/x-gtp" />
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
 
             <intent-filter>
@@ -105,8 +113,36 @@
                 <data android:host="*" />
                 <data android:pathPattern=".*\\.mid" />
                 <data android:pathPattern=".*\\.midi" />
+                <data android:pathPattern=".*\\.kar" />
                 <data android:pathPattern=".*\\.musicxml" />
                 <data android:pathPattern=".*\\.xml" />
+                <data android:pathPattern=".*\\.mxl" />
+                <data android:pathPattern=".*\\.gp" />
+                <data android:pathPattern=".*\\.gp3" />
+                <data android:pathPattern=".*\\.gp4" />
+                <data android:pathPattern=".*\\.gp5" />
+                <data android:pathPattern=".*\\.gpx" />
+            </intent-filter>
+
+            <!-- Generic MIME filter for file managers opening score files with */* or octet-stream -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.mid" />
+                <data android:pathPattern=".*\\.midi" />
+                <data android:pathPattern=".*\\.kar" />
+                <data android:pathPattern=".*\\.musicxml" />
+                <data android:pathPattern=".*\\.xml" />
+                <data android:pathPattern=".*\\.mxl" />
+                <data android:pathPattern=".*\\.gp" />
+                <data android:pathPattern=".*\\.gp3" />
+                <data android:pathPattern=".*\\.gp4" />
+                <data android:pathPattern=".*\\.gp5" />
+                <data android:pathPattern=".*\\.gpx" />
             </intent-filter>
 
             <intent-filter>
@@ -120,6 +156,8 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/*" />
             </intent-filter>
 
         </activity>

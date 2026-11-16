@@ -2345,8 +2345,8 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
 
         viewModelScope.launch(Dispatchers.Default) {
             val parsedScore = fileBytes?.let { bytes ->
-                com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(bytes, cleanFallbackTitle)
-                    ?: com.creativeblisslabs.peqlearn.app.util.UniversalScoreParser.parse(bytes, cleanFallbackTitle, uriString)
+                com.creativeblisslabs.peqlearn.app.util.UniversalScoreParser.parse(bytes, fileName, uriString)
+                    ?: com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(bytes, cleanFallbackTitle)
             }
 
             val finalScore = (parsedScore ?: Score(
@@ -2419,6 +2419,10 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                 }
                 updateMostPlayed(scoreItem)
                 persistSession()
+
+                // Route directly to Piano Keyboard & Notation Viewer tab
+                currentTab.value = Tab.Library
+                visualizerLayoutMode.value = "Split"
 
                 pdfImportProgress.value = 1f
                 isImportingPDF.value = false

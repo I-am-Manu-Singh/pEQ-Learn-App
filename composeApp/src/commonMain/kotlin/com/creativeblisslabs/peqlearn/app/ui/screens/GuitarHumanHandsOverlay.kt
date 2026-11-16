@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
 import com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine
+import com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine.FrettedNotePlacement
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.pow
@@ -148,7 +149,36 @@ fun GuitarHumanHandsOverlay(
 
     var lastBoxCenter by remember { mutableFloatStateOf(3.0f) }
 
-    // Solve optimal Viterbi string, fret, and finger placement
+    // If score has active notes with explicit TAB string/fret at this playhead, prioritize them 1:1
+    val activeScorePlacements: Map<Int, FrettedNotePlacement> = remember(score, playheadMeasure, playheadOffset, transposition, numStrings) {
+        if (score != null && playheadMeasure in score.measures.indices) {
+            val measure = score.measures[playheadMeasure]
+            val notesAtPlayhead = measure.notes.filter { !it.isRest && playheadOffset >= (it.position - 0.05f) && playheadOffset < (it.position + it.duration) }
+            val frettedNotes = notesAtPlayhead.filter { it.string != null && it.fret != null }
+            if (frettedNotes.isNotEmpty()) {
+                val map = mutableMapOf<Int, FrettedNotePlacement>()
+                val usedFingers = BooleanArray(5)
+                frettedNotes.sortedWith(compareBy({ it.fret ?: 0 }, { -(it.string ?: 0) })).forEach { n ->
+                    val s = n.string?.let { str ->
+                        if (str in 1..numStrings) str - 1 else str.coerceIn(0, numStrings - 1)
+                    } ?: 0
+                    val f = n.fret ?: 0
+                    var finger = if (f <= 0) 0 else (n.fingering?.coerceIn(1, 4) ?: 0)
+                    if (f > 0 && finger == 0) {
+                        var ideal = 1
+                        while (ideal < 4 && usedFingers[ideal]) ideal++
+                        finger = ideal
+                        usedFingers[ideal] = true
+                    }
+                    val effPitch = n.midiNote + transposition
+                    map[effPitch] = FrettedNotePlacement(stringIndex = s, fret = f, finger = finger)
+                }
+                map
+            } else emptyMap<Int, FrettedNotePlacement>()
+        } else emptyMap<Int, FrettedNotePlacement>()
+    }
+
+    // Solve optimal Viterbi string, fret, and finger placement as fallback
     val viterbiSolution = remember(soundingPitches, effectiveOpenStringsMidi, safeNumFrets, safeBaseFret) {
         BiomechanicalPerformersEngine.solveFrettedSliceBiomechanical(
             pitches = soundingPitches,
@@ -159,8 +189,13 @@ fun GuitarHumanHandsOverlay(
         )
     }
 
-    val placementMap = viterbiSolution.first
-    val currentBoxCenter = viterbiSolution.second.coerceIn(1.5f, (safeNumFrets - 1).toFloat().coerceAtLeast(2f))
+    val placementMap = if (activeScorePlacements.isNotEmpty()) activeScorePlacements else viterbiSolution.first
+    val currentBoxCenter = if (activeScorePlacements.isNotEmpty()) {
+        val frets = activeScorePlacements.values.filter { it.fret > 0 }.map { it.fret }
+        if (frets.isNotEmpty()) frets.average().toFloat().coerceIn(1.0f, safeNumFrets.toFloat()) else lastBoxCenter
+    } else {
+        viterbiSolution.second.coerceIn(1.0f, (safeNumFrets - 1).toFloat().coerceAtLeast(1f))
+    }
 
     LaunchedEffect(currentBoxCenter, placementMap) {
         if (placementMap.values.any { it.fret > 0 }) {
@@ -323,9 +358,8 @@ fun GuitarHumanHandsOverlay(
             val relFret = (absoluteFret - safeBaseFret + 1).coerceIn(1, safeNumFrets)
             val fretWire = getRelativeFretWireX(relFret)
             val prevFretWire = getRelativeFretWireX(relFret - 1)
-            val fretWidth = fretWire - prevFretWire
-            // Biomechanically authentic: guitarist presses just behind the fret wire (~78% of fret span)
-            return fretWire - fretWidth * 0.22f
+            // Center exactly on the fret note position matching UnifiedGuitarFretboard's getFretCenterX
+            return (prevFretWire + fretWire) / 2f
         }
 
         fun interpolateFretTouchpointX(fractionalFret: Float): Float {

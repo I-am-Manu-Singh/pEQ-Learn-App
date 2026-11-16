@@ -30,6 +30,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.creativeblisslabs.peqlearn.app.App
+import com.creativeblisslabs.peqlearn.app.Tab
 import com.creativeblisslabs.peqlearn.app.LocalAppViewModel
 import com.creativeblisslabs.peqlearn.app.ai.AndroidpEQStemSplitter
 import com.creativeblisslabs.peqlearn.app.audio.AndroidAudioEngine
@@ -46,11 +47,13 @@ import com.creativeblisslabs.peqlearn.app.ui.viewmodel.playExternalFile
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.nextTrack
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.previousTrack
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.persistSession
+import com.creativeblisslabs.peqlearn.app.ui.viewmodel.addScanFolder
 import com.creativeblisslabs.peqlearn.app.ui.viewmodel.pEQViewModelProvider
 import com.creativeblisslabs.peqlearn.app.ui.components.initSystemWindowManager
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -105,7 +108,7 @@ class MainActivity : ComponentActivity() {
             midiHandler?.start()
         }
 
-       viewModel.onVideoExportRequested = { score, res, fps, effects, progressCallback, completeCallback ->
+        viewModel.onVideoExportRequested = { score, res, fps, effects, progressCallback, completeCallback ->
             lifecycleScope.launch {
                 com.creativeblisslabs.peqlearn.app.video.AndroidVideoExporter.exportMidiVideo(
                     context = applicationContext,
@@ -113,6 +116,10 @@ class MainActivity : ComponentActivity() {
                     resolution = res,
                     fps = fps,
                     effects = effects,
+                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                    enabledTrackIndices = viewModel.enabledTrackIndices.toMap(),
+                    viewModel = viewModel,
                     onProgress = progressCallback,
                     onComplete = completeCallback
                 )
@@ -125,6 +132,11 @@ class MainActivity : ComponentActivity() {
                     context = applicationContext,
                     score = score,
                     options = options,
+                    isLeftHandHidden = viewModel.isLeftHandHidden.value,
+                    isRightHandHidden = viewModel.isRightHandHidden.value,
+                    isSplitStaff = viewModel.isSplitStaff.value,
+                    enabledTrackIndices = viewModel.enabledTrackIndices.toMap(),
+                    transposition = viewModel.transposition.intValue,
                     onProgress = progressCallback,
                     onComplete = completeCallback
                 )
@@ -289,6 +301,60 @@ class MainActivity : ComponentActivity() {
             )
         }
         viewModel.onRestoreSamplesRequested = { restoreFactorySamples() }
+
+        val folderPickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri?.let {
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        it,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                lifecycleScope.launch(Dispatchers.IO) {
+                    viewModel.addScanFolder(it.toString())
+                    viewModel.scanner?.refresh()
+                }
+            }
+        }
+        viewModel.onPickFolderRequested = {
+            folderPickerLauncher.launch(null)
+        }
+
+        val lyricsPickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                lifecycleScope.launch {
+                    val content = try {
+                        contentResolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() }
+                    } catch (e: Exception) { null }
+                    if (!content.isNullOrBlank()) {
+                        viewModel.currentMediaItem.value = viewModel.currentMediaItem.value?.copy(
+                            lyrics = content
+                        )
+                    }
+                }
+            }
+        }
+        viewModel.onPickLyricsRequested = {
+            lyricsPickerLauncher.launch(arrayOf("text/plain", "*/*"))
+        }
+
+        val subtitlePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                lifecycleScope.launch {
+                    val content = try {
+                        contentResolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() }
+                    } catch (e: Exception) { null }
+                    if (!content.isNullOrBlank()) {
+                        viewModel.isSubtitlesEnabled.value = true
+                    }
+                }
+            }
+        }
+        viewModel.onPickSubtitleRequested = {
+            subtitlePickerLauncher.launch(arrayOf("text/plain", "application/x-subrip", "*/*"))
+        }
 
         // ONNX model management callbacks
         val onnxPrefs = getSharedPreferences("pEQ_onnx_registry", MODE_PRIVATE)
@@ -462,19 +528,56 @@ viewModel.onListMidiAssets = {
         registerReceiver(mediaCommandReceiver, filter, RECEIVER_NOT_EXPORTED)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
     private fun handleIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_VIEW) {
-            intent.data?.let { uri ->
-                lifecycleScope.launch {
-                    viewModel.playExternalFile(
-                        path = uri.toString(),
-                        displayName = getFileName(uri) ?: "Media",
-                        mimeType = null,
-                        sizeBytes = getFileSize(uri),
-                        title = null,
-                        durationMs = getFileDuration(uri)
-                    )
+        if (intent == null) return
+        val action = intent.action
+        if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND) return
+
+        val uri: Uri? = intent.data ?: (intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+        if (uri == null) return
+
+        lifecycleScope.launch {
+            val displayName = getFileName(uri) ?: uri.lastPathSegment ?: "ExternalFile"
+            val ext = displayName.substringAfterLast(".", "").lowercase()
+            val mime = (intent.type ?: contentResolver.getType(uri) ?: "").lowercase()
+
+            val isScoreFile = ext in listOf("mid", "midi", "kar", "musicxml", "xml", "mxl", "gp", "gp3", "gp4", "gp5", "gpx") ||
+                    mime.contains("midi") ||
+                    mime.contains("musicxml") ||
+                    mime.contains("guitar-pro") ||
+                    mime.contains("gtp")
+
+            if (isScoreFile) {
+                val fileBytes = withContext(Dispatchers.IO) {
+                    try {
+                        contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        null
+                    }
                 }
+                viewModel.parseIncomingScoreFile(
+                    uriString = uri.toString(),
+                    fileBytes = fileBytes,
+                    fileName = displayName
+                )
+                viewModel.currentTab.value = Tab.Library
+                viewModel.visualizerLayoutMode.value = "Split"
+            } else {
+                viewModel.playExternalFile(
+                    path = uri.toString(),
+                    displayName = displayName,
+                    mimeType = mime.ifBlank { null },
+                    sizeBytes = getFileSize(uri),
+                    title = null,
+                    durationMs = getFileDuration(uri)
+                )
             }
         }
     }

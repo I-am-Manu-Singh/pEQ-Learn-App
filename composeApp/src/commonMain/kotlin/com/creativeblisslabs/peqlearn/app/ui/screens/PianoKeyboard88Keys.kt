@@ -3519,10 +3519,43 @@ fun resolveInstrumentWaterfallGeometry(
                                             if (isGuitarFamily) {
                                                 val isUkulele = currentInst == "Ukulele"
                                                 val isSevenString = currentInst == "7-String Guitar"
-                                                val activeList =
-                                                    remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
+                                                val currentScoreObj = viewModel.currentScore.value as? Score
+                                                val scoreTuning = currentScoreObj?.tuningMidi
+                                                val effectiveOpenStringsMidi = remember(scoreTuning, isUkulele, isSevenString) {
+                                                    when {
+                                                        isUkulele -> listOf(69, 64, 60, 67)
+                                                        isSevenString -> listOf(64, 59, 55, 50, 45, 40, 35)
+                                                        !scoreTuning.isNullOrEmpty() -> scoreTuning
+                                                        else -> listOf(64, 59, 55, 50, 45, 40)
                                                     }
+                                                }
+                                                val effectiveOpenStringsSemis = remember(effectiveOpenStringsMidi) {
+                                                    effectiveOpenStringsMidi.map { ((it % 12) + 12) % 12 }
+                                                }
+                                                val effectiveStringLabels = remember(effectiveOpenStringsMidi, isUkulele, isSevenString) {
+                                                    if (isUkulele) listOf("A", "E", "C", "G")
+                                                    else if (isSevenString) listOf("e", "B", "G", "D", "A", "E", "B")
+                                                    else effectiveOpenStringsMidi.mapIndexed { idx, midi ->
+                                                        val name = com.creativeblisslabs.peqlearn.app.ui.screens.getNoteNameFromMidi(midi)
+                                                        if (idx == 0) name.lowercase() else name
+                                                    }
+                                                }
+                                                val curMeasureIdx = viewModel.scorePlayheadMeasure.value
+                                                val curOffset = viewModel.scorePlayheadOffset.value
+                                                val scoreActiveFretPoints = remember(currentScoreObj, curMeasureIdx, curOffset, viewModel.isScorePlaying.value, effectiveOpenStringsMidi.size) {
+                                                    if (currentScoreObj != null && viewModel.isScorePlaying.value && curMeasureIdx in currentScoreObj.measures.indices) {
+                                                        val measure = currentScoreObj.measures[curMeasureIdx]
+                                                        val activeNotes = measure.notes.filter { !it.isRest && curOffset >= it.position - 0.05f && curOffset < (it.position + it.duration) }
+                                                        activeNotes.mapNotNull { n ->
+                                                            val s = n.string?.let { str ->
+                                                                if (str in 1..effectiveOpenStringsMidi.size) str - 1 else str.coerceIn(0, effectiveOpenStringsMidi.size - 1)
+                                                            }
+                                                            val f = n.fret
+                                                            if (s != null && f != null) s to f else null
+                                                        }.toSet()
+                                                    } else null
+                                                }
+
                                                 UnifiedGuitarFretboard(
                                                     numFrets = if (isUkulele) 15 else 24,
                                                     activeNotes = guitarFilteredActiveList,
@@ -3531,34 +3564,10 @@ fun resolveInstrumentWaterfallGeometry(
                                                     isRightHandHidden = viewModel.isRightHandHidden.value,
                                                     accentColor = primaryColor,
                                                     showNoteNames = fsShowLetters,
-                                                    stringLabels = when {
-                                                        isUkulele -> listOf("A", "E", "C", "G")
-                                                        isSevenString -> listOf(
-                                                            "e",
-                                                            "B",
-                                                            "G",
-                                                            "D",
-                                                            "A",
-                                                            "E",
-                                                            "B"
-                                                        )
-
-                                                        else -> listOf("e", "B", "G", "D", "A", "E")
-                                                    },
-                                                    openStringsSemis = when {
-                                                        isUkulele -> listOf(9, 4, 0, 7)
-                                                        isSevenString -> listOf(
-                                                            4,
-                                                            11,
-                                                            7,
-                                                            2,
-                                                            9,
-                                                            4,
-                                                            11
-                                                        )
-
-                                                        else -> listOf(4, 11, 7, 2, 9, 4)
-                                                    },
+                                                    stringLabels = effectiveStringLabels,
+                                                    openStringsSemis = effectiveOpenStringsSemis,
+                                                    openStringsMidi = effectiveOpenStringsMidi,
+                                                    activeFretPointsOverride = scoreActiveFretPoints?.takeIf { it.isNotEmpty() },
                                                     onFretTapped = { _, _, midi ->
                                                         if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(
                                                             midi
@@ -3578,14 +3587,10 @@ fun resolveInstrumentWaterfallGeometry(
                                                     score = currentScore,
                                                     playheadMeasure = viewModel.scorePlayheadMeasure.value,
                                                     playheadOffset = viewModel.scorePlayheadOffset.value,
-                                                    numStrings = if (isUkulele) 4 else if (isSevenString) 7 else 6,
+                                                    numStrings = effectiveOpenStringsMidi.size,
                                                     numFrets = if (isUkulele) 15 else 24,
                                                     baseFret = 1,
-                                                    openStringsMidi = when {
-                                                        isUkulele -> listOf(69, 64, 60, 67)
-                                                        isSevenString -> listOf(64, 59, 55, 50, 45, 40, 35)
-                                                        else -> listOf(64, 59, 55, 50, 45, 40)
-                                                    },
+                                                    openStringsMidi = effectiveOpenStringsMidi,
                                                     showFrettingHand = viewModel.showLeftHandGuide.value && !viewModel.isLeftHandHidden.value,
                                                     showPickingHand = viewModel.showRightHandGuide.value && !viewModel.isRightHandHidden.value,
                                                     handAccentColor = primaryColor,
@@ -3926,10 +3931,43 @@ fun resolveInstrumentWaterfallGeometry(
                                             if (isGuitarFamily) {
                                                 val isUkulele = currentInst == "Ukulele"
                                                 val isSevenString = currentInst == "7-String Guitar"
-                                                val activeList =
-                                                    remember(viewModel.midiActiveNotes.keys) {
-                                                        viewModel.midiActiveNotes.keys.toList()
+                                                val currentScoreObj = viewModel.currentScore.value as? Score
+                                                val scoreTuning = currentScoreObj?.tuningMidi
+                                                val effectiveOpenStringsMidi = remember(scoreTuning, isUkulele, isSevenString) {
+                                                    when {
+                                                        isUkulele -> listOf(69, 64, 60, 67)
+                                                        isSevenString -> listOf(64, 59, 55, 50, 45, 40, 35)
+                                                        !scoreTuning.isNullOrEmpty() -> scoreTuning
+                                                        else -> listOf(64, 59, 55, 50, 45, 40)
                                                     }
+                                                }
+                                                val effectiveOpenStringsSemis = remember(effectiveOpenStringsMidi) {
+                                                    effectiveOpenStringsMidi.map { ((it % 12) + 12) % 12 }
+                                                }
+                                                val effectiveStringLabels = remember(effectiveOpenStringsMidi, isUkulele, isSevenString) {
+                                                    if (isUkulele) listOf("A", "E", "C", "G")
+                                                    else if (isSevenString) listOf("e", "B", "G", "D", "A", "E", "B")
+                                                    else effectiveOpenStringsMidi.mapIndexed { idx, midi ->
+                                                        val name = com.creativeblisslabs.peqlearn.app.ui.screens.getNoteNameFromMidi(midi)
+                                                        if (idx == 0) name.lowercase() else name
+                                                    }
+                                                }
+                                                val curMeasureIdx = viewModel.scorePlayheadMeasure.value
+                                                val curOffset = viewModel.scorePlayheadOffset.value
+                                                val scoreActiveFretPoints = remember(currentScoreObj, curMeasureIdx, curOffset, viewModel.isScorePlaying.value, effectiveOpenStringsMidi.size) {
+                                                    if (currentScoreObj != null && viewModel.isScorePlaying.value && curMeasureIdx in currentScoreObj.measures.indices) {
+                                                        val measure = currentScoreObj.measures[curMeasureIdx]
+                                                        val activeNotes = measure.notes.filter { !it.isRest && curOffset >= it.position - 0.05f && curOffset < (it.position + it.duration) }
+                                                        activeNotes.mapNotNull { n ->
+                                                            val s = n.string?.let { str ->
+                                                                if (str in 1..effectiveOpenStringsMidi.size) str - 1 else str.coerceIn(0, effectiveOpenStringsMidi.size - 1)
+                                                            }
+                                                            val f = n.fret
+                                                            if (s != null && f != null) s to f else null
+                                                        }.toSet()
+                                                    } else null
+                                                }
+
                                                 UnifiedGuitarFretboard(
                                                     numFrets = if (isUkulele) 15 else 24,
                                                     activeNotes = guitarFilteredActiveList,
@@ -3938,34 +3976,10 @@ fun resolveInstrumentWaterfallGeometry(
                                                     isRightHandHidden = viewModel.isRightHandHidden.value,
                                                     accentColor = primaryColor,
                                                     showNoteNames = fsShowLetters,
-                                                    stringLabels = when {
-                                                        isUkulele -> listOf("A", "E", "C", "G")
-                                                        isSevenString -> listOf(
-                                                            "e",
-                                                            "B",
-                                                            "G",
-                                                            "D",
-                                                            "A",
-                                                            "E",
-                                                            "B"
-                                                        )
-
-                                                        else -> listOf("e", "B", "G", "D", "A", "E")
-                                                    },
-                                                    openStringsSemis = when {
-                                                        isUkulele -> listOf(9, 4, 0, 7)
-                                                        isSevenString -> listOf(
-                                                            4,
-                                                            11,
-                                                            7,
-                                                            2,
-                                                            9,
-                                                            4,
-                                                            11
-                                                        )
-
-                                                        else -> listOf(4, 11, 7, 2, 9, 4)
-                                                    },
+                                                    stringLabels = effectiveStringLabels,
+                                                    openStringsSemis = effectiveOpenStringsSemis,
+                                                    openStringsMidi = effectiveOpenStringsMidi,
+                                                    activeFretPointsOverride = scoreActiveFretPoints?.takeIf { it.isNotEmpty() },
                                                     onFretTapped = { _, _, midi ->
                                                         if (midi !in fsManualPressedKeys) fsManualPressedKeys.add(
                                                             midi
@@ -3985,14 +3999,10 @@ fun resolveInstrumentWaterfallGeometry(
                                                     score = currentScore,
                                                     playheadMeasure = viewModel.scorePlayheadMeasure.value,
                                                     playheadOffset = viewModel.scorePlayheadOffset.value,
-                                                    numStrings = if (isUkulele) 4 else if (isSevenString) 7 else 6,
+                                                    numStrings = effectiveOpenStringsMidi.size,
                                                     numFrets = if (isUkulele) 15 else 24,
                                                     baseFret = 1,
-                                                    openStringsMidi = when {
-                                                        isUkulele -> listOf(69, 64, 60, 67)
-                                                        isSevenString -> listOf(64, 59, 55, 50, 45, 40, 35)
-                                                        else -> listOf(64, 59, 55, 50, 45, 40)
-                                                    },
+                                                    openStringsMidi = effectiveOpenStringsMidi,
                                                     showFrettingHand = viewModel.showLeftHandGuide.value && !viewModel.isLeftHandHidden.value,
                                                     showPickingHand = viewModel.showRightHandGuide.value && !viewModel.isRightHandHidden.value,
                                                     handAccentColor = primaryColor,

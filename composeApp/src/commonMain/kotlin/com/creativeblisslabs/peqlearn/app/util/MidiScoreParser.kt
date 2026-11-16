@@ -136,6 +136,7 @@ object MidiScoreParser {
         val rawPedals = mutableListOf<RawPedalEvent>()
         val rawTexts = mutableListOf<RawTextEvent>()
         val rawBends = mutableListOf<Pair<Long, Int>>() // tick to pitchwheel value (-8192..8191)
+        val rawTempoEvents = mutableListOf<Pair<Long, Float>>() // tick to BPM
         val rawTrackNames = mutableMapOf<Int, String>()
         val channelPrograms = IntArray(16) { 0 }
 
@@ -242,9 +243,13 @@ object MidiScoreParser {
                                 val micros = ((bytes[offset].toInt() and 0xFF) shl 16) or
                                     ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
                                     (bytes[offset + 2].toInt() and 0xFF)
-                                if (micros > 0 && (!initialTempoParsed || currentTick == 0L)) {
-                                    tempoBpm = (60_000_000f / micros.toFloat()).coerceIn(24f, 280f)
-                                    initialTempoParsed = true
+                                if (micros > 0) {
+                                    val bpm = (60_000_000f / micros.toFloat()).coerceIn(24f, 280f)
+                                    if (!initialTempoParsed || currentTick == 0L) {
+                                        tempoBpm = bpm
+                                        initialTempoParsed = true
+                                    }
+                                    rawTempoEvents.add(currentTick to bpm)
                                 }
                             }
                         }
@@ -808,6 +813,15 @@ object MidiScoreParser {
                 pedals
             } else emptyList()
 
+            val mStartTick = (mIdx.toDouble() * ticksPerMeasure).toLong()
+            val mEndTick = ((mIdx + 1).toDouble() * ticksPerMeasure).toLong()
+            val activeMeasureTempo = rawTempoEvents.filter { it.first in mStartTick until mEndTick }.lastOrNull()?.second
+                ?: rawTempoEvents.filter { it.first <= mStartTick }.lastOrNull()?.second
+                ?: tempoBpm
+            val mTempoOverride = if (abs(activeMeasureTempo - tempoBpm) >= 0.5f) {
+                activeMeasureTempo
+            } else null
+
             Measure(
                 measureIndex = mIdx + 1,
                 timeSignatureNumerator = timeNumerator,
@@ -817,6 +831,7 @@ object MidiScoreParser {
                 rests = synthesizedRests,
                 pedalEvents = effectivePedals,
                 rehearsalMark = measureMarkers[mIdx],
+                tempoOverride = mTempoOverride,
                 barline = if (mIdx == numMeasures - 1) "final" else "single"
             )
         }

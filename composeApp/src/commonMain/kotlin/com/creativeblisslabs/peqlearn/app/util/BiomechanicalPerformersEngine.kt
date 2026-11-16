@@ -413,7 +413,18 @@ object BiomechanicalPerformersEngine {
 
         val restOffsets = if (isRightHand) RH_FINGER_REST_SEMITONES else LH_FINGER_REST_SEMITONES
         val isBlack = isMidiNoteBlack(pitch)
-        val nextPitch = lookaheadPitches.firstOrNull()
+
+        // Count directional run length in lookahead
+        var runLength = 0
+        var curr = pitch
+        for (np in lookaheadPitches) {
+            if ((delta > 0 && np > curr) || (delta < 0 && np < curr)) {
+                runLength++
+                curr = np
+            } else {
+                break
+            }
+        }
 
         var bestFinger = 3
         var bestCost = Float.MAX_VALUE
@@ -421,9 +432,22 @@ object BiomechanicalPerformersEngine {
         for (f in 1..5) {
             var cost = 0f
 
-            // 1. Distance from finger's current resting key position
-            val fingerRestPitch = lastPalmMidi + restOffsets[f]
-            cost += abs(pitch - fingerRestPitch) * 2.2f * FINGER_PENALTY_WEIGHTS[f]
+            val fingerDelta = if (isRightHand) (f - lastFinger) else (lastFinger - f)
+            val allowCrossover = runLength >= 1
+            val isThumbUnder = (delta > 0 && fingerDelta < 0 && allowCrossover &&
+                    ((isRightHand && f == 1 && lastFinger in 2..4 && !isBlack) ||
+                            (!isRightHand && lastFinger == 1 && f in 2..4)))
+            val isFingerOver = (delta < 0 && fingerDelta > 0 && allowCrossover &&
+                    ((isRightHand && lastFinger == 1 && f in 2..4) ||
+                            (!isRightHand && f == 1 && lastFinger in 2..4 && !isBlack)))
+
+            // 1. Distance from resting position or crossover pivot point
+            if (isThumbUnder || isFingerOver) {
+                cost += abs(delta) * 1.5f
+            } else {
+                val fingerRestPitch = lastPalmMidi + restOffsets[f]
+                cost += abs(pitch - fingerRestPitch) * 2.2f * FINGER_PENALTY_WEIGHTS[f]
+            }
 
             // 2. Penalize using the exact same finger on two different consecutive pitches
             if (f == lastFinger && delta != 0) {
@@ -431,17 +455,16 @@ object BiomechanicalPerformersEngine {
             }
 
             // 3. Anatomical step ordering & Thumb-under / Finger-over rules
-            val fingerDelta = if (isRightHand) (f - lastFinger) else (lastFinger - f)
             if (delta > 0) {
                 // Ascending
                 if (fingerDelta > 0) {
                     val expectedSemis = fingerDelta * 2f
                     cost += abs(delta - expectedSemis) * 2.4f
                 } else if (fingerDelta < 0) {
-                    // Thumb-under crossover (e.g. 3 -> 1 or 4 -> 1 when ascending)
-                    val isThumbUnder = (isRightHand && f == 1 && lastFinger in 2..4 && !isBlack) ||
-                        (!isRightHand && lastFinger == 1 && f in 2..4)
-                    cost += if (isThumbUnder && delta <= 4) 5.5f else 48f
+                    val isStandardPivot = (isRightHand && lastFinger in 3..4 && f == 1) ||
+                            (!isRightHand && lastFinger == 1 && f in 3..4)
+                    val pivotCost = if (isStandardPivot) 2.0f else 12.0f
+                    cost += if (isThumbUnder && delta <= 4) pivotCost else 48f
                 }
             } else if (delta < 0) {
                 // Descending
@@ -449,10 +472,10 @@ object BiomechanicalPerformersEngine {
                     val expectedSemis = (-fingerDelta) * 2f
                     cost += abs((-delta) - expectedSemis) * 2.4f
                 } else if (fingerDelta > 0) {
-                    // Finger-over crossover (e.g. 1 -> 3 or 1 -> 2 when descending)
-                    val isFingerOver = (isRightHand && lastFinger == 1 && f in 2..4) ||
-                        (!isRightHand && f == 1 && lastFinger in 2..4 && !isBlack)
-                    cost += if (isFingerOver && (-delta) <= 4) 5.5f else 48f
+                    val isStandardPivot = (isRightHand && lastFinger == 1 && f in 3..4) ||
+                            (!isRightHand && lastFinger in 3..4 && f == 1)
+                    val pivotCost = if (isStandardPivot) 2.0f else 12.0f
+                    cost += if (isFingerOver && (-delta) <= 4) pivotCost else 48f
                 }
             }
 
@@ -462,14 +485,24 @@ object BiomechanicalPerformersEngine {
                 else if (f == 5) cost += 8f
             }
 
-            // 5. Lookahead horizon bonus: if next note continues ascending, reserve higher fingers!
-            if (nextPitch != null && nextPitch != pitch) {
-                val nextDelta = nextPitch - pitch
-                if (isRightHand) {
-                    if (nextDelta > 0 && f == 5) cost += 14f // Don't dead-end on pinky if melody keeps rising
-                    if (nextDelta < 0 && f == 1 && isMidiNoteBlack(nextPitch)) cost += 6f
-                } else {
-                    if (nextDelta < 0 && f == 5) cost += 14f
+            // 5. Lookahead horizon & finger runway reservation
+            if (delta > 0) {
+                val availableRunway = if (isRightHand) (5 - f) else (f - 1)
+                if (availableRunway == 0 && runLength > 0) {
+                    cost += runLength * 16f
+                } else if (isRightHand && f == 1 && lastFinger in 3..4 && runLength >= 2) {
+                    cost -= 6f
+                } else if (!isRightHand && lastFinger == 1 && f in 3..4 && runLength >= 2) {
+                    cost -= 6f
+                }
+            } else if (delta < 0) {
+                val availableRunway = if (isRightHand) (f - 1) else (5 - f)
+                if (availableRunway == 0 && runLength > 0) {
+                    cost += runLength * 16f
+                } else if (!isRightHand && f == 1 && lastFinger in 3..4 && runLength >= 2) {
+                    cost -= 6f
+                } else if (isRightHand && lastFinger == 1 && f in 3..4 && runLength >= 2) {
+                    cost -= 6f
                 }
             }
 
@@ -616,20 +649,54 @@ object BiomechanicalPerformersEngine {
                 val hasBarre = frettedVals.count { it == minFretted } >= 2 && tempPlacements.values.none { it.second == 0 }
 
                 val finalMap = HashMap<Int, FrettedNotePlacement>(uniquePitches.size)
-                for ((transMidi, pair) in tempPlacements) {
+                val clampedPlacements = tempPlacements.mapValues { (_, pair) ->
                     var (sIdx, fret) = pair
-                    // Biomechanical guarantee: Clamp any outlier fret that exceeds 4-fret span from minFretted
                     if (frettedVals.size > 1 && fret > 0 && fret - minFretted > 4) {
                         fret = if (hasBarre) minFretted else minFretted + 4
                     }
-                    val finger = when {
-                        fret <= 0 -> 0
-                        hasBarre && fret == minFretted -> 1
-                        frettedVals.size > 1 -> (1 + (fret - minFretted)).coerceIn(1, 4)
-                        else -> (1 + (fret - boxStart)).coerceIn(1, 4)
+                    sIdx to fret
+                }
+
+                // Non-colliding finger assignment:
+                // Notes on fret 0 are open strings (finger 0).
+                // Fretted notes sorted by fret asc, then stringIndex desc (bass strings first)
+                val frettedEntries = clampedPlacements.entries
+                    .filter { it.value.second > 0 }
+                    .sortedWith(compareBy({ it.value.second }, { -it.value.first }))
+
+                val fingerAssignment = HashMap<Int, Int>()
+                if (hasBarre) {
+                    var nextFinger = 2
+                    for (entry in frettedEntries) {
+                        if (entry.value.second == minFretted) {
+                            fingerAssignment[entry.key] = 1
+                        } else {
+                            fingerAssignment[entry.key] = (nextFinger++).coerceIn(2, 4)
+                        }
                     }
+                } else if (frettedEntries.size == 1) {
+                    val entry = frettedEntries.first()
+                    val fret = entry.value.second
+                    val finger = (1 + (fret - boxStart)).coerceIn(1, 4)
+                    fingerAssignment[entry.key] = finger
+                } else {
+                    val usedFingers = BooleanArray(5)
+                    for (entry in frettedEntries) {
+                        val transM = entry.key
+                        val fret = entry.value.second
+                        var idealFinger = (1 + (fret - minFretted)).coerceIn(1, 4)
+                        while (idealFinger < 4 && usedFingers[idealFinger]) {
+                            idealFinger++
+                        }
+                        usedFingers[idealFinger] = true
+                        fingerAssignment[transM] = idealFinger
+                    }
+                }
+
+                for ((transMidi, pair) in clampedPlacements) {
+                    val (sIdx, fret) = pair
+                    val finger = if (fret <= 0) 0 else (fingerAssignment[transMidi] ?: 1)
                     val placement = FrettedNotePlacement(stringIndex = sIdx, fret = fret, finger = finger)
-                    // Map back to every raw pitch that transposed to this frequency
                     val rawList = transposedToRawMap[transMidi]
                     if (rawList != null) {
                         for (rawM in rawList) {
@@ -641,7 +708,7 @@ object BiomechanicalPerformersEngine {
                 }
                 bestMap = finalMap
                 if (frettedVals.isNotEmpty()) {
-                    bestBoxCenter = frettedVals.average().toFloat().coerceIn(1.5f, 15f)
+                    bestBoxCenter = frettedVals.average().toFloat().coerceIn(1.0f, 15f)
                 }
             }
         }
@@ -739,12 +806,12 @@ object BiomechanicalPerformersEngine {
                         updatedNotes.add(n)
                     } else {
                         val placement = fretMap[n.midiNote]
-                        val solvedPianoFinger = pianoFingerByMidi[n.midiNote] ?: n.fingering ?: 3
+                        val solvedFinger = n.fingering ?: placement?.finger ?: pianoFingerByMidi[n.midiNote] ?: 1
                         updatedNotes.add(
                             n.copy(
                                 string = n.string ?: placement?.stringIndex,
                                 fret = n.fret ?: placement?.fret,
-                                fingering = solvedPianoFinger
+                                fingering = solvedFinger
                             )
                         )
                     }

@@ -121,6 +121,8 @@ fun UnifiedGuitarFretboard(
     onCapoChanged: ((Int) -> Unit)? = null,
     stringLabels: List<String> = listOf("e", "B", "G", "D", "A", "E"),
     openStringsSemis: List<Int> = listOf(4, 11, 7, 2, 9, 4),
+    openStringsMidi: List<Int>? = null,
+    activeFretPointsOverride: Set<Pair<Int, Int>>? = null,
     activeCoordinate: Pair<Int, Int>? = null,
     activeMidiNote: Int? = null,
     isLeftHandHidden: Boolean = false,
@@ -157,11 +159,15 @@ fun UnifiedGuitarFretboard(
         }
     }
 
-    val defaultOpenStringsMidi = remember(numStrings) {
-        when (numStrings) {
-            4 -> listOf(69, 64, 60, 67) // Ukulele A4, E4, C4, G4
-            7 -> listOf(64, 59, 55, 50, 45, 40, 35) // 7-String Guitar: e4, B3, G3, D3, A2, E2, B1
-            else -> listOf(64, 59, 55, 50, 45, 40) // 6-String Guitar: e4, B3, G3, D3, A2, E2
+    val defaultOpenStringsMidi = remember(numStrings, openStringsMidi) {
+        if (!openStringsMidi.isNullOrEmpty() && openStringsMidi.size == numStrings) {
+            openStringsMidi
+        } else {
+            when (numStrings) {
+                4 -> listOf(69, 64, 60, 67) // Ukulele A4, E4, C4, G4
+                7 -> listOf(64, 59, 55, 50, 45, 40, 35) // 7-String Guitar: e4, B3, G3, D3, A2, E2, B1
+                else -> listOf(64, 59, 55, 50, 45, 40) // 6-String Guitar: e4, B3, G3, D3, A2, E2
+            }
         }
     }
 
@@ -198,13 +204,16 @@ fun UnifiedGuitarFretboard(
         allUniquePitches,
         effectiveResolvedChordFrets,
         defaultOpenStringsMidi,
+        activeFretPointsOverride,
         isScaleMode,
         fretMinConstrain,
         fretMaxConstrain,
         safeNumFrets,
         safeBaseFret
     ) {
-        if (effectiveResolvedChordFrets != null) {
+        if (!activeFretPointsOverride.isNullOrEmpty()) {
+            activeFretPointsOverride
+        } else if (effectiveResolvedChordFrets != null) {
             emptySet()
         } else if (allUniquePitches.isEmpty()) {
             emptySet()
@@ -219,7 +228,7 @@ fun UnifiedGuitarFretboard(
             val solvedMap = viterbiSolution.first
             val newCenter = viterbiSolution.second
             if (solvedMap.values.any { it.fret > 0 }) {
-                lastHandBoxCenterFret = newCenter.coerceIn(1.5f, safeNumFrets.toFloat())
+                lastHandBoxCenterFret = newCenter.coerceIn(1.0f, safeNumFrets.toFloat())
             }
             solvedMap.values.map { it.stringIndex to it.fret }.toSet()
         }
