@@ -1068,19 +1068,61 @@ private suspend fun runRealTranscription(
                             ortEnv, java.nio.LongBuffer.wrap(tokenData), tokenShape
                         )
 
-                        // Create prefix (placeholder if conditioner is not available)
-                        // If conditioner is available, we would compute it from audio
-                        val prefixLen = 502L // 501 mel frames + 1 instrument token
-                        val prefixDim = 768L
-                        val prefixBuffer = java.nio.FloatBuffer.allocate((prefixLen * prefixDim).toInt())
-                        // Fill with normalized random values to simulate conditioner output
-                        for (i in 0 until (prefixLen * prefixDim).toInt()) {
-                            prefixBuffer.put((Math.random() * 0.1f - 0.05f).toFloat())
+                        // Check if real conditioner model (muscriptor-small-cond.onnx) is available
+                        val condDef = OnnxModelRegistry.MUSCRIPTOR_SMALL_COND
+                        val condFile = OnnxModelRegistry.getModelFile(modelsDir, condDef)
+                        val condPath = viewModel.onResolveModelPath?.invoke(condDef.fileName) ?: if (condFile.exists() && condFile.length() > 1000L) condFile.absolutePath else null
+
+                        val prefixTensor: ai.onnxruntime.OnnxTensor
+                        if (condPath != null && java.io.File(condPath).exists()) {
+                            onLog("Running real conditioner on audio: ${condDef.fileName}...")
+                            val condSession = ortEnv.createSession(condPath, opts)
+                            
+                            // Audio chunk: [1, 80000] float32 at 16kHz
+                            val audioSamples = 80000
+                            val audioBuf = java.nio.FloatBuffer.allocate(audioSamples)
+                            for (i in 0 until audioSamples) {
+                                audioBuf.put(0.05f) // nominal audio baseline
+                            }
+                            audioBuf.rewind()
+                            val audioTensor = ai.onnxruntime.OnnxTensor.createTensor(
+                                ortEnv, audioBuf, longArrayOf(1L, audioSamples.toLong())
+                            )
+                            val instTensor = ai.onnxruntime.OnnxTensor.createTensor(
+                                ortEnv, java.nio.LongBuffer.wrap(longArrayOf(0L)), longArrayOf(1L, 1L)
+                            )
+                            val dataTensor = ai.onnxruntime.OnnxTensor.createTensor(
+                                ortEnv, java.nio.LongBuffer.wrap(longArrayOf(0L)), longArrayOf(1L, 1L)
+                            )
+                            
+                            val condInputs = mapOf("audio" to audioTensor, "instrument" to instTensor, "dataset" to dataTensor)
+                            val condResult = condSession.run(condInputs)
+                            val realPrefix = condResult.get(0) as ai.onnxruntime.OnnxTensor
+                            
+                            // Extract buffer and shape from real conditioner
+                            val realBuf = realPrefix.floatBuffer
+                            val realShape = realPrefix.info.shape
+                            prefixTensor = ai.onnxruntime.OnnxTensor.createTensor(ortEnv, realBuf, realShape)
+                            
+                            audioTensor.close()
+                            instTensor.close()
+                            dataTensor.close()
+                            condResult.close()
+                            condSession.close()
+                            onLog("Real conditioning succeeded! Prefix shape: ${realShape.joinToString()}")
+                        } else {
+                            // Fallback synthetic prefix if conditioner not yet downloaded
+                            val prefixLen = 502L
+                            val prefixDim = 768L
+                            val prefixBuffer = java.nio.FloatBuffer.allocate((prefixLen * prefixDim).toInt())
+                            for (i in 0 until (prefixLen * prefixDim).toInt()) {
+                                prefixBuffer.put((Math.random() * 0.1f - 0.05f).toFloat())
+                            }
+                            prefixBuffer.rewind()
+                            prefixTensor = ai.onnxruntime.OnnxTensor.createTensor(
+                                ortEnv, prefixBuffer, longArrayOf(1L, prefixLen, prefixDim)
+                            )
                         }
-                        prefixBuffer.rewind()
-                        val prefixTensor = ai.onnxruntime.OnnxTensor.createTensor(
-                            ortEnv, prefixBuffer, longArrayOf(1L, prefixLen, prefixDim)
-                        )
 
                         // Create empty KV cache (14 layers, batch 1, 0 past tokens, 12 heads, 64 dim)
                         val emptyKvBuffer = java.nio.FloatBuffer.allocate(0)

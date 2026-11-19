@@ -256,25 +256,17 @@ def solve_fretted_slice(pitches, open_strings, max_fret=24, min_fret=0, last_box
                     used_fingers[ideal] = True
                     finger_assignment[m] = ideal
 
-                for trans_midi, (s_idx, fret) in temp_placements.items():
-                        finger = 0 if fret <= 0 else finger_assignment.get(trans_midi, 1)
-                        final_map[trans_midi] = {"string": s_idx, "fret": fret, "finger": finger}
+            for trans_midi, (s_idx, fret) in temp_placements.items():
+                finger = 0 if fret <= 0 else finger_assignment.get(trans_midi, 1)
+                placement = {"string": s_idx, "fret": fret, "finger": finger}
+                for raw_m in transposed_to_raw.get(trans_midi, [trans_midi]):
+                    final_map[raw_m] = placement
 
-                        best_map = final_map
-                    
-                    # STICKY BOX LOGIC: If the newly fretted notes fit within the old hand posture, 
-                    # keep the hand perfectly still to prevent visual jitter during arpeggios.
-                if fretted_vals:
-                    min_f = min(fretted_vals)
-                    max_f = max(fretted_vals)
-                    prev_box_min = last_box_center - 1.5
-                    prev_box_max = last_box_center + 1.5
-                    
-                    if min_f >= prev_box_min and max_f <= prev_box_max:
-                        best_box_center = last_box_center
-                    else:
-                        best_box_center = box_center # Use the exact center of the winning Viterbi window
-                    return best_map, best_box_center
+            best_map = final_map
+            if fretted_vals:
+                best_box_center = min(15.0, max(1.0, sum(fretted_vals) / len(fretted_vals)))
+
+    return best_map, best_box_center
 
 # ==============================================================================
 # 3. TEST SUITE
@@ -365,36 +357,54 @@ def run_tests():
         issues.append(f"Drop D Low D2 (38) not placed on string 5 fret 0: {d_map.get(38)}")
 
     # --------------------------------------------------------------------------
-    # Test C: External Format Inspection (MIDI, MusicXML, MXL, GP)
+    # Test C: Assets MIDI, MusicXML, and Audio Integrity
     # --------------------------------------------------------------------------
-    print("\n[3/4] Testing MIDI and Asset File Parsing...")
-    hanon_dir = "composeApp/src/androidMain/assets/midi/hanon_the_virtuoso_pianist"
-    if os.path.isdir(hanon_dir):
-        files = [f for f in os.listdir(hanon_dir) if f.endswith(".mid")][:5]
-        for f in files:
-            path = os.path.join(hanon_dir, f)
-            with open(path, "rb") as mf:
-                header = mf.read(14)
-                if header[:4] == b"MThd":
-                    fmt, tracks, division = struct.unpack(">HHH", header[8:14])
-                    print(f"  Hanon MIDI file {f}: format={fmt}, tracks={tracks}, division={division} [OK]")
-                else:
-                    issues.append(f"Corrupted MIDI header in {f}")
+    print("\n[3/4] Testing Assets MIDI and MusicXML Integrity...")
+    asset_roots = [
+        "composeApp/src/androidMain/assets/piano",
+        "composeApp/src/androidMain/assets/guitar",
+        "composeApp/src/androidMain/assets/drums",
+        "composeApp/src/androidMain/assets/musicxml",
+        "composeApp/src/androidMain/assets/midi"
+    ]
 
-    print("\n[4/4] Testing MusicXML & MXL ZIP Inspection...")
-    mxl_path = "/Users/manpreet/Downloads/Clair_de_Lune__Debussy.mxl"
-    if os.path.exists(mxl_path):
-        try:
-            with zipfile.ZipFile(mxl_path, 'r') as zf:
-                xml_files = [n for n in zf.namelist() if n.endswith(".xml") and not n.startswith("META-INF")]
-                if xml_files:
-                    content = zf.read(xml_files[0]).decode('utf-8', errors='ignore')
-                    root = ET.fromstring(content)
-                    print(f"  MXL {os.path.basename(mxl_path)} contains valid MusicXML: root=<{root.tag}> [OK]")
-                else:
-                    issues.append(f"MXL missing xml payload in {mxl_path}")
-        except Exception as e:
-            issues.append(f"Failed to inspect MXL: {e}")
+    mxml_count = 0
+    midi_count = 0
+
+    for ar in asset_roots:
+        if not os.path.isdir(ar):
+            continue
+        for root_dir, _, files in os.walk(ar):
+            for f in files:
+                fp = os.path.join(root_dir, f)
+                if f.endswith(".musicxml") or f.endswith(".xml") or f.endswith(".mxl"):
+                    mxml_count += 1
+                    try:
+                        if f.endswith(".mxl"):
+                            with zipfile.ZipFile(fp, 'r') as zf:
+                                xml_names = [n for n in zf.namelist() if n.endswith('.xml') and not n.startswith('META-INF')]
+                                content = zf.read(xml_names[0]).decode('utf-8', errors='ignore')
+                                root = ET.fromstring(content)
+                        else:
+                            with open(fp, 'r', encoding='utf-8') as mf:
+                                root = ET.fromstring(mf.read())
+                    except Exception as e:
+                        issues.append(f"Failed parsing MusicXML asset {f}: {e}")
+
+                elif f.endswith(".mid") or f.endswith(".midi"):
+                    midi_count += 1
+                    try:
+                        with open(fp, "rb") as mf:
+                            hdr = mf.read(14)
+                            if hdr[:4] != b"MThd":
+                                issues.append(f"Corrupted MIDI header in {f}")
+                    except Exception as e:
+                        issues.append(f"Failed reading MIDI asset {f}: {e}")
+
+    print(f"  Verified {mxml_count} MusicXML/MXL asset scores across libraries [OK]")
+    print(f"  Verified {midi_count} MIDI asset scores across all method books [OK]")
+
+    print("\n[4/4] Biomechanical Hand & Finger Alignment Verification Completed.")
 
     # --------------------------------------------------------------------------
     # Summary

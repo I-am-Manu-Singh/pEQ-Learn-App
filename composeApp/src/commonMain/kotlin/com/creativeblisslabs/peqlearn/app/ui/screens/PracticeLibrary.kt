@@ -235,8 +235,9 @@ object PracticeLibrary {
         val totalMeasures: Int,
         val description: String,
         val focusAreas: List<String>,
-        val bookCategory: String = "Masterworks", // "Beyer Op. 101", "Burgmüller Op. 100", "Czerny Op. 599", "Czerny Op. 777", "Czerny Op. 299", "Hanon Virtuoso", "MusicXML Scores", "Masterworks"
-        val exerciseNumber: Int = 0
+        val bookCategory: String = "Masterworks", // "Beyer Op. 101", "Burgmüller Op. 100", "Czerny Op. 599", "Czerny Op. 777", "Czerny Op. 299", "Czerny Op. 261", "Hanon Virtuoso", "Guitar Scores", "MusicXML Scores", "Masterworks"
+        val exerciseNumber: Int = 0,
+        val instrument: String = "Piano" // "Piano", "Guitar", "Drums", "All"
     )
 
     private val burgmullerOp100Titles = mapOf(
@@ -270,7 +271,7 @@ object PracticeLibrary {
     val curatedTutorials = listOf(
         BuiltinTutorialMidi(
             id = "bach_prelude",
-            fileName = "midi/scores/bach-prelude-in-c.mid",
+            fileName = "piano/scores/bach-prelude-in-c.mid",
             title = "Prelude in C Major (BWV 846)",
             composer = "J.S. Bach",
             era = "Baroque",
@@ -285,7 +286,7 @@ object PracticeLibrary {
         ),
         BuiltinTutorialMidi(
             id = "satie_gnossienne",
-            fileName = "midi/scores/satie-gnossienne-1.mid",
+            fileName = "piano/scores/satie-gnossienne-1.mid",
             title = "Gnossienne No. 1",
             composer = "Erik Satie",
             era = "Impressionist",
@@ -300,7 +301,7 @@ object PracticeLibrary {
         ),
         BuiltinTutorialMidi(
             id = "chopin_nocturne",
-            fileName = "midi/scores/chopin-nocturne-op9-2.mid",
+            fileName = "piano/scores/chopin-nocturne-op9-2.mid",
             title = "Nocturne in E-flat Major (Op. 9 No. 2)",
             composer = "Frédéric Chopin",
             era = "Romantic",
@@ -315,7 +316,7 @@ object PracticeLibrary {
         ),
         BuiltinTutorialMidi(
             id = "mozart_rondo_alla_turca",
-            fileName = "midi/scores/marche-turque.mid",
+            fileName = "piano/scores/marche-turque.mid",
             title = "Rondo alla Turca (Turkish March)",
             composer = "W.A. Mozart",
             era = "Classical",
@@ -330,7 +331,7 @@ object PracticeLibrary {
         ),
         BuiltinTutorialMidi(
             id = "chopin_fantaisie",
-            fileName = "midi/scores/chopin-fantaisie-impromptu-op66.mid",
+            fileName = "piano/scores/chopin-fantaisie-impromptu-op66.mid",
             title = "Fantaisie-Impromptu in C# Minor (Op. 66)",
             composer = "Frédéric Chopin",
             era = "Romantic",
@@ -357,7 +358,8 @@ object PracticeLibrary {
         val bytes = readBytes(tutorial.fileName)
             ?: readBytes(tutorial.fileName.substringAfterLast("/"))
             ?: return null
-        val baseScore = com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(bytes, tutorial.title) ?: return null
+        val baseScore = com.creativeblisslabs.peqlearn.app.util.UniversalScoreParser.parse(bytes, tutorial.title)
+            ?: com.creativeblisslabs.peqlearn.app.util.MidiFileParser.parse(bytes, tutorial.title) ?: return null
 
         val effectiveTempo = targetTempoBpm ?: when (trainingMode) {
             "SLOW_TEMPO" -> (baseScore.tempo * 0.7f).coerceAtLeast(40f)
@@ -389,15 +391,18 @@ object PracticeLibrary {
     }
 
     /**
-     * Ultra-fast, non-blocking catalog builder for all 8 asset directories:
+     * Ultra-fast, non-blocking catalog builder for all asset directories:
+     * - assets/piano/scores
+     * - assets/piano/beyer_op101 (003.mid .. 106.mid)
+     * - assets/piano/burgmueller_op100 (burgmuller_op100_1.mid .. 25.mid)
+     * - assets/piano/czerny_op261 (Czerny261-001.mid .. 125.mid)
+     * - assets/piano/czerny_op299 (czerny_op299-01.mid .. 20.mid)
+     * - assets/piano/czerny_op599 (Op_599-001.mid .. 100.mid)
+     * - assets/piano/czerny_op777 (Cz777-01.mid .. 09.mid)
+     * - assets/piano/hanon_the_virtuoso_pianist (Exercise_01_Hanon.mid .. 60.mid)
+     * - assets/guitar/scores
+     * - assets/drums
      * - assets/musicxml/scores
-     * - assets/midi/scores
-     * - assets/midi/beyer_op101 (003.mid .. 106.mid)
-     * - assets/midi/burgmuller_op100 (burgmuller_op100_1.mid .. 25.mid)
-     * - assets/midi/czerny_op299 (czerny_op299-01.mid .. 20.mid)
-     * - assets/midi/czerny_op599 (Op_599-001.mid .. 100.mid)
-     * - assets/midi/czerny_op777 (Cz777-01.mid .. 09.mid)
-     * - assets/midi/hanon_the_virtuoso_pianist (Exercise_01_Hanon.mid .. 60.mid)
      */
     fun buildTutorialCatalog(
         assetFileNames: List<String>,
@@ -554,6 +559,81 @@ object PracticeLibrary {
                             focusAreas = listOf("Fingers 4 & 5 Strength", "Parallel Hands", "Metronomic Precision"),
                             bookCategory = "Hanon Virtuoso",
                             exerciseNumber = exNum
+                        )
+                    }
+
+                    lowerPath.contains("czerny_op261") || lowerBare.contains("czerny261") -> {
+                        val exNum = extractedNum.coerceIn(1, 125)
+                        val diff = if (exNum <= 50) "Beginner" else if (exNum <= 90) "Intermediate" else "Advanced"
+                        BuiltinTutorialMidi(
+                            id = "czerny_op261_$exNum",
+                            fileName = fullPath,
+                            title = "Czerny Op. 261 – Passage Study No. $exNum",
+                            composer = "Carl Czerny",
+                            era = "Classical",
+                            difficulty = diff,
+                            timeSignature = "4/4",
+                            tempo = 112,
+                            totalMeasures = 8,
+                            description = "125 Exercises in Passage-Playing (Op. 261), Study No. $exNum. Short, intense technical patterns for finger fluency and precision.",
+                            focusAreas = listOf("Passage Playing", "Finger Fluency", "Rapid Turns"),
+                            bookCategory = "Czerny Op. 261",
+                            exerciseNumber = exNum,
+                            instrument = "Piano"
+                        )
+                    }
+
+                    lowerPath.contains("guitar") || lowerBare.contains("guitar") || lowerBare.contains("tarrega") || lowerBare.contains("asturias") -> {
+                        val cleanTitle = bareFile
+                            .substringBeforeLast(".")
+                            .replace(Regex("[_-]+"), " ")
+                            .replace(Regex("\\s+"), " ")
+                            .trim()
+                            .replaceFirstChar { it.uppercase() }
+                        val comp = if (lowerBare.contains("tarrega") || lowerBare.contains("arabe") || lowerBare.contains("alhambra")) "Francisco Tárrega"
+                        else if (lowerBare.contains("albeniz") || lowerBare.contains("asturias")) "Isaac Albéniz"
+                        else if (lowerBare.contains("giuliani")) "Mauro Giuliani"
+                        else detectComposer(cleanTitle)
+                        BuiltinTutorialMidi(
+                            id = "guitar_${bareFile.substringBeforeLast(".").lowercase().replace(Regex("[^a-z0-9]+"), "_")}",
+                            fileName = fullPath,
+                            title = cleanTitle,
+                            composer = comp,
+                            era = "Guitar Repertoire",
+                            difficulty = if (lowerBare.contains("asturias") || lowerBare.contains("alhambra")) "Advanced" else "Intermediate",
+                            timeSignature = "3/4",
+                            tempo = 84,
+                            totalMeasures = 32,
+                            description = "Classical guitar masterwork: $cleanTitle. Fretboard positioning with TAB notation and anatomical fingering.",
+                            focusAreas = listOf("Fretboard Navigation", "P-I-M-A Fingerpicking", "Barre Chords"),
+                            bookCategory = "Guitar Scores",
+                            exerciseNumber = extractedNum,
+                            instrument = "Guitar"
+                        )
+                    }
+
+                    lowerPath.contains("drum") || lowerBare.contains("drum") -> {
+                        val cleanTitle = bareFile
+                            .substringBeforeLast(".")
+                            .replace(Regex("[_-]+"), " ")
+                            .replace(Regex("\\s+"), " ")
+                            .trim()
+                            .replaceFirstChar { it.uppercase() }
+                        BuiltinTutorialMidi(
+                            id = "drum_${bareFile.substringBeforeLast(".").lowercase().replace(Regex("[^a-z0-9]+"), "_")}",
+                            fileName = fullPath,
+                            title = cleanTitle,
+                            composer = "Percussion Master",
+                            era = "Modern Rhythm",
+                            difficulty = "Intermediate",
+                            timeSignature = "4/4",
+                            tempo = 110,
+                            totalMeasures = 32,
+                            description = "Drum kit and percussion score: $cleanTitle. Visual 16-pad rhythm and groove alignment.",
+                            focusAreas = listOf("Groove Precision", "Limb Independence", "Polyrhythm"),
+                            bookCategory = "Drum Scores",
+                            exerciseNumber = extractedNum,
+                            instrument = "Drums"
                         )
                     }
 

@@ -92,9 +92,20 @@ object OnnxModelRegistry {
         purpose = "Stem Separation (4-Stem Studio Pro)"
     )
     
-        val builtInModels = listOf(
+    val MUSCRIPTOR_MEDIUM_GGUF = OnnxModelDefinition(
+        id = "muscriptor_medium_f16",
+        name = "MuScriptor Medium (GGUF FP16)",
+        fileName = "muscriptor-medium-f16.gguf",
+        downloadUrl = "https://huggingface.co/DamRsn/muscriptor-gguf/resolve/main/v1/muscriptor-medium-f16.gguf",
+        sizeBytes = 618_442_496L, // ~590 MB
+        description = "Format conversion of MuScriptor Medium to GGUF (307M params). Bulk weights cast to float16; conditioning path in float32. High-precision transcription.",
+        purpose = "Audio-to-MIDI & Sheet Music Transcription (High Precision)"
+    )
+
+    val builtInModels = listOf(
         MUSCRIPTOR_SMALL_COND,
         MUSCRIPTOR_SMALL,
+        MUSCRIPTOR_MEDIUM_GGUF,
         SPLEETER_VOCALS,
         SPLEETER_ACCOMPANIMENT,
         HTDEMUCS_QUANTIZED_6s,

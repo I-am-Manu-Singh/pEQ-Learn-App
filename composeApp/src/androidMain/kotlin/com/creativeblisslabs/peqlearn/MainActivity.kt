@@ -395,20 +395,27 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Discover all bundled MIDI files.
+        // Discover all bundled MIDI, MusicXML, Guitar, Piano, and Drum score files.
         val scoreAssetFolders = listOf(
+            "piano/scores",
+            "piano/beyer_op101",
+            "piano/burgmuller_op100",
+            "piano/burgmueller_op100",
+            "piano/czerny_op261",
+            "piano/czerny_op299",
+            "piano/czerny_op599",
+            "piano/czerny_op777",
+            "piano/hanon_the_virtuoso_pianist",
+            "piano",
+            "guitar/scores",
+            "drums",
             "musicxml/scores",
+            "musicxml",
             "midi/scores",
-            "midi/beyer_op101",
-            "midi/burgmuller_op100",
-            "midi/czerny_op299",
-            "midi/czerny_op599",
-            "midi/czerny_op777",
-            "midi/hanon_the_virtuoso_pianist",
             "midi",
             ""
         )
-// Read bundled assets from root, midi/ and tutorials/
+// Read bundled assets from piano, guitar, drums, musicxml, etc.
         viewModel.onReadAssetBytes = { requestedPath ->
             val clean = requestedPath.removePrefix("/").removePrefix("assets/")
             var bytes: ByteArray? = runCatching { assets.open(clean).use { it.readBytes() } }.getOrNull()

@@ -2197,10 +2197,12 @@ fun resolveInstrumentWaterfallGeometry(
                         }
 
                         if (practiceStudioTab == 0) {
+                            var selectedInstrumentFilter by rememberSaveable { mutableStateOf("ALL") }
                             var selectedBookCategory by rememberSaveable { mutableStateOf("All Library") }
-                            val bookCategories = remember {
-                                listOf(
+                            val bookCategories = remember(selectedInstrumentFilter, allTutorials) {
+                                val baseCategories = listOf(
                                     "All Library",
+                                    "Guitar Scores",
                                     "Masterworks",
                                     "MusicXML Scores",
                                     "Beyer Op. 101",
@@ -2208,8 +2210,49 @@ fun resolveInstrumentWaterfallGeometry(
                                     "Czerny Op. 599",
                                     "Czerny Op. 777",
                                     "Czerny Op. 299",
-                                    "Hanon Virtuoso"
+                                    "Czerny Op. 261",
+                                    "Hanon Virtuoso",
+                                    "Drum Scores"
                                 )
+                                when (selectedInstrumentFilter) {
+                                    "Guitar" -> listOf("All Library", "Guitar Scores")
+                                    "Piano" -> listOf("All Library", "Masterworks", "MusicXML Scores", "Beyer Op. 101", "Burgmüller Op. 100", "Czerny Op. 599", "Czerny Op. 777", "Czerny Op. 299", "Czerny Op. 261", "Hanon Virtuoso")
+                                    "Drums" -> listOf("All Library", "Drum Scores")
+                                    else -> baseCategories
+                                }
+                            }
+
+                            // 0. Instrument Filter Bar (Piano, Guitar, Drums, All)
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf(
+                                    "ALL" to "🎼 All Instruments",
+                                    "Piano" to "🎹 Piano",
+                                    "Guitar" to "🎸 Guitar",
+                                    "Drums" to "🥁 Drums"
+                                ).forEach { (instKey, instLabel) ->
+                                    val isSelected = selectedInstrumentFilter == instKey
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = if (isSelected) Color(0xFFFFD700) else Color(0xFF1F1A3A),
+                                        border = BorderStroke(1.dp, if (isSelected) Color(0xFFFFD700) else Color(0xFF392D60)),
+                                        modifier = Modifier.clickable {
+                                            selectedInstrumentFilter = instKey
+                                            selectedBookCategory = "All Library"
+                                        }
+                                    ) {
+                                        Text(
+                                            text = instLabel,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color.Black else Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
                             }
 
                             // 1. Classical Method Book & Score Collection Selector Row
@@ -2391,6 +2434,7 @@ fun resolveInstrumentWaterfallGeometry(
 
                             val filteredTutorials = remember(
                                 allTutorials,
+                                selectedInstrumentFilter,
                                 selectedBookCategory,
                                 midiSearchQuery,
                                 selectedDifficultyFilter
@@ -2398,6 +2442,10 @@ fun resolveInstrumentWaterfallGeometry(
                                 val sourceList =
                                     if (allTutorials.isNotEmpty()) allTutorials else PracticeLibrary.curatedTutorials
                                 sourceList.filter { tutorial ->
+                                    val matchesInstrument = selectedInstrumentFilter == "ALL" ||
+                                            tutorial.instrument.equals(selectedInstrumentFilter, ignoreCase = true) ||
+                                            (selectedInstrumentFilter == "Guitar" && tutorial.bookCategory == "Guitar Scores") ||
+                                            (selectedInstrumentFilter == "Drums" && tutorial.bookCategory == "Drum Scores")
                                     val matchesBook =
                                         selectedBookCategory == "All Library" || tutorial.bookCategory == selectedBookCategory
                                     val matchesSearch = midiSearchQuery.isBlank() ||
@@ -2418,7 +2466,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                 selectedDifficultyFilter,
                                                 ignoreCase = true
                                             )
-                                    matchesBook && matchesSearch && matchesDifficulty
+                                    matchesInstrument && matchesBook && matchesSearch && matchesDifficulty
                                 }
                             }
 
