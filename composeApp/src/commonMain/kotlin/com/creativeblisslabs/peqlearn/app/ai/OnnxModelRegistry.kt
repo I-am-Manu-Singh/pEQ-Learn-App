@@ -73,43 +73,31 @@ object OnnxModelRegistry {
         purpose = "Stem Separation (Backing Instruments)"
     )
 
-    val HTDEMUCS_QUANTIZED_6s = OnnxModelDefinition(
-        id = "htdemucs_quantized_6s",
-        name = "HTDemucs quantized_6s",
-        fileName = "htdemucs_quantized_6s.onnx",
-        downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s.onnx",
-        sizeBytes = 258_000_000L,
-        description = "State-of-the-art hybrid transformer separating Drums, Bass, Vocals, and Other stems.",
-        purpose = "Stem Separation (4-Stem Studio Pro)"
-    )
     val HTDEMUCS_QUANTIZED_fp16 = OnnxModelDefinition(
         id = "htdemucs_quantized_fp16",
-        name = "HTDemucs fp16_6s",
+        name = "HTDemucs 6-Stem FP16 (Fast & Mobile Optimized)",
         fileName = "htdemucs_quantized_fp16.onnx",
         downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx",
-     sizeBytes = 136_000_000L,
-        description = "State-of-the-art hybrid transformer separating Drums, Bass, Vocals, and Other stems.",
-        purpose = "Stem Separation (4-Stem Studio Pro)"
+        sizeBytes = 136_000_000L,
+        description = "High-speed 6-stem separation (Drums, Bass, Vocals, Guitar, Piano, Other) with FP16 weights (130 MB).",
+        purpose = "Stem Separation (6-Stem Mobile Pro)"
     )
-    
-    val MUSCRIPTOR_MEDIUM_GGUF = OnnxModelDefinition(
-        id = "muscriptor_medium_f16",
-        name = "MuScriptor Medium (GGUF FP16)",
-        fileName = "muscriptor-medium-f16.gguf",
-        downloadUrl = "https://huggingface.co/DamRsn/muscriptor-gguf/resolve/main/v1/muscriptor-medium-f16.gguf",
-        sizeBytes = 618_442_496L, // ~590 MB
-        description = "Format conversion of MuScriptor Medium to GGUF (307M params). Bulk weights cast to float16; conditioning path in float32. High-precision transcription.",
-        purpose = "Audio-to-MIDI & Sheet Music Transcription (High Precision)"
+
+    val HTDEMUCS_6S_FULL = OnnxModelDefinition(
+        id = "htdemucs_6s_full",
+        name = "HTDemucs 6-Stem Full FP32 (Maximum Studio Precision)",
+        fileName = "htdemucs_6s.onnx",
+        downloadUrl = "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s.onnx",
+        sizeBytes = 258_000_000L,
+        description = "Unquantized full-precision 32-bit float model for reference-grade studio stem separation across all 6 channels (246 MB).",
+        purpose = "Stem Separation (6-Stem Reference Studio Pro)"
     )
 
     val builtInModels = listOf(
         MUSCRIPTOR_SMALL_COND,
         MUSCRIPTOR_SMALL,
-        MUSCRIPTOR_MEDIUM_GGUF,
-        SPLEETER_VOCALS,
-        SPLEETER_ACCOMPANIMENT,
-        HTDEMUCS_QUANTIZED_6s,
-        HTDEMUCS_QUANTIZED_fp16
+        HTDEMUCS_QUANTIZED_fp16,
+        HTDEMUCS_6S_FULL
     )
 
     // ── State Maps (Observable by Compose UI) ───────────────────────────────

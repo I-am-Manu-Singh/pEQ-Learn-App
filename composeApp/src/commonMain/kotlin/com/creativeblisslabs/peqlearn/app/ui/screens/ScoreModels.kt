@@ -334,6 +334,105 @@ data class Score(
     val isGuitar8vb: Boolean = false
 ) {
     val bpm: Int get() = tempo.toInt()
+
+    /**
+     * Converts this Score into standard MIDI Type 0 file bytes (SMF).
+     */
+    fun toMidiBytes(ppq: Int = 480): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val trk = java.io.ByteArrayOutputStream()
+
+        fun writeVlq(stream: java.io.ByteArrayOutputStream, value: Int) {
+            var v = value
+            val buf = IntArray(4)
+            var i = 0
+            do {
+                buf[i++] = v and 0x7F
+                v = v ushr 7
+            } while (v > 0)
+            while (i > 0) {
+                i--
+                val b = if (i > 0) (buf[i] or 0x80) else buf[i]
+                stream.write(b)
+            }
+        }
+
+        fun writeInt32(v: Int) {
+            out.write((v ushr 24) and 0xFF)
+            out.write((v ushr 16) and 0xFF)
+            out.write((v ushr 8) and 0xFF)
+            out.write(v and 0xFF)
+        }
+
+        fun writeInt16(v: Int) {
+            out.write((v ushr 8) and 0xFF)
+            out.write(v and 0xFF)
+        }
+
+        // Tempo meta event (FF 51 03 tt tt tt)
+        val usPerQuarter = (60_000_000.0 / tempo.coerceIn(20f, 300f)).toInt()
+        writeVlq(trk, 0)
+        trk.write(byteArrayOf(0xFF.toByte(), 0x51, 0x03))
+        trk.write((usPerQuarter ushr 16) and 0xFF)
+        trk.write((usPerQuarter ushr 8) and 0xFF)
+        trk.write(usPerQuarter and 0xFF)
+
+        // Collect all note ON and OFF events
+        data class RawMidiEvt(val tick: Long, val isNoteOn: Boolean, val pitch: Int, val velocity: Int)
+        val events = mutableListOf<RawMidiEvt>()
+
+        var currentMeasureStartTick = 0L
+        for (m in measures) {
+            val num = m.timeSignatureNumerator.coerceAtLeast(1)
+            val den = m.timeSignatureDenominator.coerceAtLeast(1)
+            val beatsPerMeasure = (num.toFloat() / den.toFloat()) * 4.0f
+            val measureTicks = (beatsPerMeasure * ppq).toLong()
+
+            for (note in m.notes) {
+                if (note.isRest || note.midiNote !in 0..127) continue
+                val noteStartTick = currentMeasureStartTick + (note.position * ppq).toLong()
+                val noteDurationTicks = (note.duration.coerceAtLeast(0.125f) * ppq).toLong()
+                val noteEndTick = noteStartTick + noteDurationTicks
+                events.add(RawMidiEvt(noteStartTick, true, note.midiNote, 96))
+                events.add(RawMidiEvt(noteEndTick, false, note.midiNote, 0))
+            }
+            currentMeasureStartTick += measureTicks
+        }
+
+        events.sortWith(compareBy<RawMidiEvt> { it.tick }.thenBy { if (it.isNoteOn) 1 else 0 })
+
+        var lastTick = 0L
+        for (evt in events) {
+            val delta = (evt.tick - lastTick).coerceAtLeast(0L).toInt()
+            writeVlq(trk, delta)
+            val status = if (evt.isNoteOn) 0x90 else 0x80
+            trk.write(status)
+            trk.write(evt.pitch and 0x7F)
+            trk.write(evt.velocity and 0x7F)
+            lastTick = evt.tick
+        }
+
+        // End of Track
+        writeVlq(trk, ppq / 4)
+        trk.write(byteArrayOf(0xFF.toByte(), 0x2F, 0x00))
+        val trkBytes = trk.toByteArray()
+
+        out.write("MThd".encodeToByteArray())
+        writeInt32(6)
+        writeInt16(0) // Format 0
+        writeInt16(1) // 1 track
+        writeInt16(ppq)
+
+        out.write("MTrk".encodeToByteArray())
+        val trkSize = trkBytes.size
+        out.write((trkSize ushr 24) and 0xFF)
+        out.write((trkSize ushr 16) and 0xFF)
+        out.write((trkSize ushr 8) and 0xFF)
+        out.write(trkSize and 0xFF)
+        out.write(trkBytes)
+
+        return out.toByteArray()
+    }
 }
 
 /**

@@ -1226,6 +1226,30 @@ private suspend fun runRealTranscription(
             )
         )
 
+        // Automatically save genuine standard MIDI file (.mid) to app files & device storage
+        try {
+            val midiBytes = transcribedScore.toMidiBytes()
+            val cleanTitle = audioName.substringBeforeLast(".").replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
+            val midiFileName = "${cleanTitle}_transcribed.mid"
+            
+            val modelsDirFile = getModelsDir(viewModel)
+            val parentDir = modelsDirFile.parentFile
+            val midiOutputDir = if (parentDir != null) java.io.File(parentDir, "transcriptions") else java.io.File(modelsDirFile, "transcriptions")
+            if (!midiOutputDir.exists()) midiOutputDir.mkdirs()
+            val savedMidiFile = java.io.File(midiOutputDir, midiFileName)
+            savedMidiFile.writeBytes(midiBytes)
+            onLog("Saved standard MIDI file: ${savedMidiFile.name} (${midiBytes.size} bytes)")
+
+            // Also copy to public Music directory
+            val publicMusicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC)
+            val publicAppDir = java.io.File(publicMusicDir, "pEQ_Transcriptions").apply { if (!exists()) mkdirs() }
+            val publicMidiFile = java.io.File(publicAppDir, midiFileName)
+            savedMidiFile.copyTo(publicMidiFile, overwrite = true)
+            onLog("Exported MIDI to Music/pEQ_Transcriptions/$midiFileName")
+        } catch (e: Exception) {
+            onLog("MIDI export notice: ${e.message}")
+        }
+
         onProgress(1.0f)
         onScore(transcribedScore)
         onState("COMPLETED")

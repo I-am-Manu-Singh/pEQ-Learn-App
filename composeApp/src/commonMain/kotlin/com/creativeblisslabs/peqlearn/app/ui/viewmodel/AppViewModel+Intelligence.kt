@@ -76,10 +76,33 @@ fun AppViewModel.startStemSplit(customInputPath: String? = null) {
                 stemSplitProgress.value = 1.0f
                 stemSplitStatusMessage.value = "Separation Complete! ${stemsResult.size} stems loaded."
                 
+                // Automatically save separated stems as a dedicated Playlist in Library
+                val songTitle = selectedMixerItem.value?.displayName?.substringBeforeLast(".")
+                    ?: currentMediaItem.value?.title
+                    ?: "Stem Session"
+                val playlistName = "Stems: $songTitle"
+                createPlaylist(playlistName)
+                stemsResult.forEach { (stemName, path) ->
+                    val f = java.io.File(path)
+                    val stemItem = com.creativeblisslabs.peqlearn.app.data.pEQMediaItem(
+                        id = "stem_${stemName.lowercase()}_${System.currentTimeMillis()}",
+                        title = "$songTitle ($stemName)",
+                        subtitle = "$stemName Stem",
+                        artist = "pEQ AI Splitter",
+                        album = playlistName,
+                        path = path,
+                        type = com.creativeblisslabs.peqlearn.app.data.MediaType.AUDIO,
+                        format = f.extension.uppercase(),
+                        sizeBytes = f.length(),
+                        durationMs = currentMediaItem.value?.durationMs ?: 0L
+                    )
+                    addToPlaylist(playlistName, stemItem)
+                }
+
                 // Load stems into multi-track engine & start playback
                 audioEngine.loadStems(stemsResult)
                 playStems()
-                toastMessage.value = "Stems ready: ${stemsResult.keys.joinToString(", ")}"
+                toastMessage.value = "Stems ready & saved to playlist '$playlistName'!"
             }
         } catch (e: Exception) {
             log("ERROR during stem separation: ${e.message}")

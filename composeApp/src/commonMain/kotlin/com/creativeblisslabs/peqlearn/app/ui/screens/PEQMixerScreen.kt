@@ -859,22 +859,41 @@ fun pEQMixerScreen(
                     modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Text("PRE-LOADED ASSET MODELS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text("SELECT OR DOWNLOAD DEMUCS 6-STEM ENGINE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     
                     Surface(
                         onClick = {
-                            viewModel.selectModel("Spleeter (2-Stem: Vocals + Accompaniment)")
+                            viewModel.selectModel("HTDemucs 6-Stem FP16 (Fast)")
                             showModelChooserDialog = false
                         },
                         shape = MaterialTheme.shapes.small,
-                        color = if (viewModel.stemSeparationModel.value.contains("Spleeter")) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
+                        color = if (viewModel.stemSeparationModel.value.contains("FP16")) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Spleeter 2-Stem (Bundled ONNX)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                Text("spleeter_vocals.onnx + spleeter_accompaniment.onnx (19.6 MB)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                Text("HTDemucs 6-Stem Mobile (FP16 Weights)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("htdemucs_quantized_fp16.onnx (130 MB) • Fast & Memory Efficient", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                             }
-                            if (viewModel.stemSeparationModel.value.contains("Spleeter")) {
+                            if (viewModel.stemSeparationModel.value.contains("FP16")) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+
+                    Surface(
+                        onClick = {
+                            viewModel.selectModel("HTDemucs 6-Stem Full FP32 (Studio Max)")
+                            showModelChooserDialog = false
+                        },
+                        shape = MaterialTheme.shapes.small,
+                        color = if (viewModel.stemSeparationModel.value.contains("FP32") || viewModel.stemSeparationModel.value.contains("Full")) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("HTDemucs 6-Stem Reference (Full FP32)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("htdemucs_6s.onnx (246 MB) • Maximum Precision & Acoustic Purity", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            }
+                            if (viewModel.stemSeparationModel.value.contains("FP32") || viewModel.stemSeparationModel.value.contains("Full")) {
                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
                         }
@@ -912,19 +931,14 @@ fun pEQMixerScreen(
 
                     val communityModels = listOf(
                         Triple(
-                            "HTDemucs 6s Quantized FP16 (htdemucs_quantized_fp16.onnx)",
+                            "HTDemucs 6-Stem Mobile FP16 (htdemucs_quantized_fp16.onnx)",
                             "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx",
                             "htdemucs_quantized_fp16.onnx"
                         ),
                         Triple(
-                            "Sherpa Spleeter Vocals (spleeter_vocals.onnx)",
-                            "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems/resolve/main/vocals.onnx",
-                            "spleeter_vocals.onnx"
-                        ),
-                        Triple(
-                            "Sherpa Spleeter Accompaniment (spleeter_accompaniment.onnx)",
-                            "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems/resolve/main/accompaniment.onnx",
-                            "spleeter_accompaniment.onnx"
+                            "HTDemucs 6-Stem Full Studio FP32 (htdemucs_6s.onnx)",
+                            "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s.onnx",
+                            "htdemucs_6s.onnx"
                         )
                     )
 
