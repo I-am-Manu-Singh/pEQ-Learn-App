@@ -34,12 +34,16 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
+import com.creativeblisslabs.peqlearn.app.ui.screens.PickDirection
+import com.creativeblisslabs.peqlearn.app.ui.screens.TabArticulation
 import com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine
 import com.creativeblisslabs.peqlearn.app.util.BiomechanicalPerformersEngine.FrettedNotePlacement
 import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.atan2
 import kotlin.math.abs
 import kotlin.math.pow
-import kotlin.math.sin
 
 private val GUITAR_NOTE_NAMES = arrayOf("C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B")
 
@@ -251,13 +255,23 @@ fun GuitarHumanHandsOverlay(
         if (soundingPitches.isNotEmpty()) {
             val activeStrs = placementMap.values.map { it.stringIndex }
             isStrumStroke = activeStrs.distinct().size >= 2
-            val targetStr = if (pickStrokeDirection > 0f) {
-                activeStrs.minOrNull() ?: 2
-            } else {
-                activeStrs.maxOrNull() ?: 2
+            
+            // Extract attributes directly from the actual ScoreNote items in the measure
+            val measureNotes = score?.measures?.getOrNull(playheadMeasure)?.notes.orEmpty()
+            val activeNotesAtPlayhead = measureNotes.filter { !it.isRest && playheadOffset >= (it.position - 0.05f) && playheadOffset < (it.position + it.duration) }
+            val explicitPick = activeNotesAtPlayhead.mapNotNull { it.pickDirection }.firstOrNull { it != PickDirection.NONE }
+
+            if (explicitPick == PickDirection.DOWN || explicitPick == PickDirection.SWEEP_DOWN) {
+                pickStrokeDirection = 1f
+            } else if (explicitPick == PickDirection.UP || explicitPick == PickDirection.SWEEP_UP) {
+                pickStrokeDirection = -1f
+            } else if (!isStrumStroke) {
+                pickStrokeDirection = -pickStrokeDirection 
             }
+
+            val targetStr = if (pickStrokeDirection > 0f) activeStrs.minOrNull() ?: 2 else activeStrs.maxOrNull() ?: 2
             lastPluckedString = targetStr
-            pickStrokeDirection = -pickStrokeDirection
+            
             pickPluckAnim.snapTo(1f)
             val dur = if (isStrumStroke) 195 else 125
             pickPluckAnim.animateTo(0f, animationSpec = tween(dur, easing = FastOutSlowInEasing))
@@ -281,7 +295,15 @@ fun GuitarHumanHandsOverlay(
         ),
         label = "string_phase"
     )
+    // --- ADD THIS HERE (OUTSIDE CANVAS) ---
+    val measureNotes = score?.measures?.getOrNull(playheadMeasure)?.notes.orEmpty()
+    val activeNotesAtPlayhead = measureNotes.filter { !it.isRest && playheadOffset >= (it.position - 0.05f) && playheadOffset < (it.position + it.duration) }
+    val activePMMute = activeNotesAtPlayhead.any { it.palmMute }
+    val activeSlap = activeNotesAtPlayhead.any { it.articulation == TabArticulation.SLAP }
 
+    val palmMuteAnim by animateFloatAsState(if (activePMMute) 1f else 0f, spring(0.9f, 400f), label = "pmAnim")
+    val slapAnim by animateFloatAsState(if (activeSlap) 1f else 0f, spring(0.85f, 600f), label = "slapAnim")
+    // --------------------------------------
     val fingerBadgePaint = remember {
         android.graphics.Paint().apply {
             color = android.graphics.Color.WHITE
@@ -611,6 +633,24 @@ fun GuitarHumanHandsOverlay(
                 val dw = fHalfW * 0.88f
                 val tw = fHalfW * (if (isBarreFinger) 0.94f else 0.82f)
 
+                // Calculate dynamic perpendicular normals to prevent width collapsing when stretched
+                val dx = tipX - mcpX
+                val dy = tipY - mcpY
+                val angle = atan2(dy, dx)
+                val nxL = sin(angle)
+                val nyL = -cos(angle)
+                val nxR = -sin(angle)
+                val nyR = cos(angle)
+
+                val mcpL = Offset(mcpX + nxL * bw, mcpY + nyL * bw)
+                val mcpR = Offset(mcpX + nxR * bw, mcpY + nyR * bw)
+                val pipL = Offset(pipX + nxL * pw, pipY + nyL * pw)
+                val pipR = Offset(pipX + nxR * pw, pipY + nyR * pw)
+                val dipL = Offset(dipX + nxL * dw, dipY + nyL * dw)
+                val dipR = Offset(dipX + nxR * dw, dipY + nyR * dw)
+                val tipL = Offset(tipX + nxL * tw, tipY + nyL * tw)
+                val tipR = Offset(tipX + nxR * tw, tipY + nyR * tw)
+
                 // String Contact Glow & Force Ripple under fretted string(s)
                 if (isPressing) {
                     fingerPlacements.forEach { fp ->
@@ -632,49 +672,21 @@ fun GuitarHumanHandsOverlay(
                 }
 
                 val fingerPath = Path().apply {
-                    moveTo(mcpX - bw, mcpY)
-                    quadraticBezierTo(
-                        (mcpX - bw + pipX - pw) * 0.5f,
-                        (mcpY + pipY) * 0.5f,
-                        pipX - pw,
-                        pipY
-                    )
-                    quadraticBezierTo(
-                        (pipX - pw + dipX - dw) * 0.5f,
-                        (pipY + dipY) * 0.5f,
-                        dipX - dw,
-                        dipY
-                    )
-                    quadraticBezierTo(
-                        dipX - dw,
-                        (dipY + tipY) * 0.5f,
-                        tipX - tw,
-                        tipY
-                    )
-                    // Rounded anatomical distal fingertip dome
+                    moveTo(mcpL.x, mcpL.y)
+                    quadraticBezierTo((mcpL.x + pipL.x) * 0.5f, (mcpL.y + pipL.y) * 0.5f, pipL.x, pipL.y)
+                    quadraticBezierTo((pipL.x + dipL.x) * 0.5f, (pipL.y + dipL.y) * 0.5f, dipL.x, dipL.y)
+                    quadraticBezierTo(dipL.x, (dipL.y + tipL.y) * 0.5f, tipL.x, tipL.y)
+                    
+                    // Rounded anatomical distal fingertip dome tracing the bone trajectory
                     cubicTo(
-                        tipX - tw, tipY - tw * 1.25f,
-                        tipX + tw, tipY - tw * 1.25f,
-                        tipX + tw, tipY
+                        tipL.x + cos(angle) * (tw * 1.25f), tipL.y + sin(angle) * (tw * 1.25f),
+                        tipR.x + cos(angle) * (tw * 1.25f), tipR.y + sin(angle) * (tw * 1.25f),
+                        tipR.x, tipR.y
                     )
-                    quadraticBezierTo(
-                        dipX + dw,
-                        (dipY + tipY) * 0.5f,
-                        dipX + dw,
-                        dipY
-                    )
-                    quadraticBezierTo(
-                        (pipX + pw + dipX + dw) * 0.5f,
-                        (pipY + dipY) * 0.5f,
-                        pipX + pw,
-                        pipY
-                    )
-                    quadraticBezierTo(
-                        (mcpX + bw + pipX + pw) * 0.5f,
-                        (mcpY + pipY) * 0.5f,
-                        mcpX + bw,
-                        mcpY
-                    )
+                    
+                    quadraticBezierTo(dipR.x, (dipR.y + tipR.y) * 0.5f, dipR.x, dipR.y)
+                    quadraticBezierTo((pipR.x + dipR.x) * 0.5f, (pipR.y + dipR.y) * 0.5f, pipR.x, pipR.y)
+                    quadraticBezierTo((mcpR.x + pipR.x) * 0.5f, (mcpR.y + pipR.y) * 0.5f, mcpR.x, mcpR.y)
                     close()
                 }
 
@@ -684,19 +696,16 @@ fun GuitarHumanHandsOverlay(
                 withTransform({
                     translate(left = shadowOffsetLeft, top = shadowOffsetTop)
                 }) {
-                    drawPath(
-                        path = fingerPath,
-                        color = Color.Black.copy(alpha = if (isPressing) 0.42f else 0.24f)
-                    )
+                    drawPath(path = fingerPath, color = Color.Black.copy(alpha = if (isPressing) 0.42f else 0.24f))
                 }
 
-                // 3D Cylindrical Subsurface-Scattered Finger Shading
+                // 3D Cylindrical Subsurface-Scattered Finger Shading using dynamic normals
                 drawPath(
                     path = fingerPath,
                     brush = Brush.linearGradient(
                         colors = listOf(skinHighlight, skinMidtone, skinSubsurface, skinDeepShadow),
-                        start = Offset(pipX - pw * 1.1f, pipY),
-                        end = Offset(pipX + pw * 1.1f, pipY)
+                        start = Offset(pipX + nxL * pw * 1.1f, pipY + nyL * pw * 1.1f),
+                        end = Offset(pipX + nxR * pw * 1.1f, pipY + nyR * pw * 1.1f)
                     )
                 )
 
@@ -716,19 +725,19 @@ fun GuitarHumanHandsOverlay(
                     cap = StrokeCap.Round
                 )
 
-                // PIP & DIP Joint Skin Crease Folds
+                // PIP & DIP Joint Skin Crease Folds rotated to match bone angle
                 val pipCreaseW = pw * 0.65f
                 drawLine(
                     color = skinDeepShadow.copy(alpha = 0.52f),
-                    start = Offset(pipX - pipCreaseW, pipY - 0.8.dp.toPx()),
-                    end = Offset(pipX + pipCreaseW, pipY - 0.8.dp.toPx()),
+                    start = Offset(pipX + nxL * pipCreaseW - cos(angle)*0.8.dp.toPx(), pipY + nyL * pipCreaseW - sin(angle)*0.8.dp.toPx()),
+                    end = Offset(pipX + nxR * pipCreaseW - cos(angle)*0.8.dp.toPx(), pipY + nyR * pipCreaseW - sin(angle)*0.8.dp.toPx()),
                     strokeWidth = 1.dp.toPx(),
                     cap = StrokeCap.Round
                 )
                 drawLine(
                     color = skinDeepShadow.copy(alpha = 0.36f),
-                    start = Offset(pipX - pipCreaseW * 0.8f, pipY + 1.2.dp.toPx()),
-                    end = Offset(pipX + pipCreaseW * 0.8f, pipY + 1.2.dp.toPx()),
+                    start = Offset(pipX + nxL * pipCreaseW * 0.8f + cos(angle)*1.2.dp.toPx(), pipY + nyL * pipCreaseW * 0.8f + sin(angle)*1.2.dp.toPx()),
+                    end = Offset(pipX + nxR * pipCreaseW * 0.8f + cos(angle)*1.2.dp.toPx(), pipY + nyR * pipCreaseW * 0.8f + sin(angle)*1.2.dp.toPx()),
                     strokeWidth = 0.85.dp.toPx(),
                     cap = StrokeCap.Round
                 )
@@ -736,8 +745,8 @@ fun GuitarHumanHandsOverlay(
                 val dipCreaseW = dw * 0.58f
                 drawLine(
                     color = skinDeepShadow.copy(alpha = 0.46f),
-                    start = Offset(dipX - dipCreaseW, dipY),
-                    end = Offset(dipX + dipCreaseW, dipY),
+                    start = Offset(dipX + nxL * dipCreaseW, dipY + nyL * dipCreaseW),
+                    end = Offset(dipX + nxR * dipCreaseW, dipY + nyR * dipCreaseW),
                     strokeWidth = 0.9.dp.toPx(),
                     cap = StrokeCap.Round
                 )
@@ -753,50 +762,54 @@ fun GuitarHumanHandsOverlay(
                     )
                 )
 
-                // Realistic Fingernail Plate (Nail Bed + Lunula + Free Edge + Specular Glint)
+                // Rotated 3D Fingernail Plate using withTransform
                 val nailW = tw * 1.24f
                 val nailH = tw * (1.28f - 0.14f * press)
-                val nailTopY = tipY - tw * 0.72f
-                val nailLeftX = tipX - nailW * 0.5f
-                val nailCorner = CornerRadius(nailW * 0.42f, nailW * 0.42f)
+                val nailDist = tw * 0.1f
+                val nailCenterBase = Offset(tipX - cos(angle) * nailDist, tipY - sin(angle) * nailDist)
 
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = if (isPressing) {
-                            listOf(Color(0xFFFFF6F0), Color(0xFFFFCDD2))
-                        } else {
-                            listOf(Color(0xFFFFEDE4).copy(alpha = 0.84f), Color(0xFFF5C6CB).copy(alpha = 0.78f))
-                        },
-                        startY = nailTopY,
-                        endY = nailTopY + nailH
-                    ),
-                    topLeft = Offset(nailLeftX, nailTopY),
-                    size = Size(nailW, nailH),
-                    cornerRadius = nailCorner
-                )
-                // Distal white free edge
-                drawRoundRect(
-                    color = Color.White.copy(alpha = if (isPressing) 0.92f else 0.72f),
-                    topLeft = Offset(nailLeftX + nailW * 0.08f, nailTopY),
-                    size = Size(nailW * 0.84f, (nailH * 0.22f).coerceAtLeast(1.4.dp.toPx())),
-                    cornerRadius = nailCorner
-                )
-                // Proximal half-moon lunula
-                val lunulaW = nailW * 0.54f
-                val lunulaH = nailH * 0.24f
-                drawRoundRect(
-                    color = Color.White.copy(alpha = if (isPressing) 0.65f else 0.42f),
-                    topLeft = Offset(tipX - lunulaW * 0.5f, nailTopY + nailH - lunulaH * 1.15f),
-                    size = Size(lunulaW, lunulaH),
-                    cornerRadius = CornerRadius(lunulaW * 0.5f, lunulaW * 0.5f)
-                )
-                drawRoundRect(
-                    color = if (isPressing) handAccentColor else skinDeepShadow.copy(alpha = 0.55f),
-                    topLeft = Offset(nailLeftX, nailTopY),
-                    size = Size(nailW, nailH),
-                    cornerRadius = nailCorner,
-                    style = Stroke(width = if (isPressing) 1.4.dp.toPx() else 0.8.dp.toPx())
-                )
+                withTransform({
+                    translate(nailCenterBase.x, nailCenterBase.y)
+                    rotate(degrees = Math.toDegrees(angle.toDouble()).toFloat() + 90f)
+                    translate(-nailW * 0.5f, -nailH * 0.72f) 
+                }) {
+                    val nailCorner = CornerRadius(nailW * 0.42f, nailW * 0.42f)
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = if (isPressing) {
+                                listOf(Color(0xFFFFF6F0), Color(0xFFFFCDD2))
+                            } else {
+                                listOf(Color(0xFFFFEDE4).copy(alpha = 0.84f), Color(0xFFF5C6CB).copy(alpha = 0.78f))
+                            },
+                            startY = 0f,
+                            endY = nailH
+                        ),
+                        topLeft = Offset(0f, 0f),
+                        size = Size(nailW, nailH),
+                        cornerRadius = nailCorner
+                    )
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = if (isPressing) 0.92f else 0.72f),
+                        topLeft = Offset(nailW * 0.08f, 0f),
+                        size = Size(nailW * 0.84f, (nailH * 0.22f).coerceAtLeast(1.4.dp.toPx())),
+                        cornerRadius = nailCorner
+                    )
+                    val lunulaW = nailW * 0.54f
+                    val lunulaH = nailH * 0.24f
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = if (isPressing) 0.65f else 0.42f),
+                        topLeft = Offset((nailW - lunulaW) * 0.5f, nailH - lunulaH * 1.15f),
+                        size = Size(lunulaW, lunulaH),
+                        cornerRadius = CornerRadius(lunulaW * 0.5f, lunulaW * 0.5f)
+                    )
+                    drawRoundRect(
+                        color = if (isPressing) handAccentColor else skinDeepShadow.copy(alpha = 0.55f),
+                        topLeft = Offset(0f, 0f),
+                        size = Size(nailW, nailH),
+                        cornerRadius = nailCorner,
+                        style = Stroke(width = if (isPressing) 1.4.dp.toPx() else 0.8.dp.toPx())
+                    )
+                }
 
                 // Glassmorphic Finger Number Badge (1..4)
                 val badgeY = tipY + tw * 1.45f
@@ -841,6 +854,63 @@ fun GuitarHumanHandsOverlay(
                     val noteLabel = formatGuitarPitchLabel(computedMidi)
                     val pillW = (badgeRad * 2.35f).coerceAtLeast(22.dp.toPx())
                     val pillH = (badgeRad * 1.25f).coerceAtLeast(12.dp.toPx())
+                    
+                    val nailTopY = tipY - tw * 0.72f // Explicitly declare nailTopY for the HUD placement
+                    
+                    val pillY = (nailTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
+
+                    drawRoundRect(
+                        color = Color(0xFF0E131F).copy(alpha = 0.88f),
+                        topLeft = Offset(tipX - pillW * 0.5f, pillY - pillH * 0.5f),
+                        size = Size(pillW, pillH),
+                        cornerRadius = CornerRadius(pillH * 0.5f, pillH * 0.5f)
+                    )
+                    drawRoundRect(
+                        color = handAccentColor.copy(alpha = 0.92f),
+                        topLeft = Offset(tipX - pillW * 0.5f, pillY - pillH * 0.5f),
+                        size = Size(pillW, pillH),
+                        cornerRadius = CornerRadius(pillH * 0.5f, pillH * 0.5f),
+                        style = Stroke(width = 1.1.dp.toPx())
+                    )
+                    drawContext.canvas.nativeCanvas.drawText(
+                        noteLabel,
+                        tipX,
+                        pillY + noteCalloutPaint.textSize * 0.35f,
+                        noteCalloutPaint
+                    )
+                }
+
+                drawCircle(
+                    color = if (isPressing) handAccentColor else Color(0xFF141822).copy(alpha = 0.86f),
+                    radius = badgeRad,
+                    center = Offset(tipX, badgeY)
+                )
+                drawCircle(
+                    color = if (isPressing) Color.White else handAccentColor.copy(alpha = 0.72f),
+                    radius = badgeRad,
+                    center = Offset(tipX, badgeY),
+                    style = Stroke(width = if (isPressing) 1.8.dp.toPx() else 1.0.dp.toPx())
+                )
+
+                drawContext.canvas.nativeCanvas.drawText(
+                    if (isBarreFinger) "1B" else fNum.toString(),
+                    tipX,
+                    badgeY + fingerBadgePaint.textSize * 0.36f,
+                    fingerBadgePaint
+                )
+
+                // Floating Note Name Callout above pressed fingertip
+                if (isPressing) {
+                    val topPlacement = fingerPlacements.minByOrNull { it.stringIndex }!!
+                    val openSemi = effectiveOpenStringsMidi.getOrNull(topPlacement.stringIndex) ?: (openStringsMidi.getOrNull(topPlacement.stringIndex) ?: 40)
+                    val computedMidi = openSemi + topPlacement.fret
+                    val noteLabel = formatGuitarPitchLabel(computedMidi)
+                    val pillW = (badgeRad * 2.35f).coerceAtLeast(22.dp.toPx())
+                    val pillH = (badgeRad * 1.25f).coerceAtLeast(12.dp.toPx())
+                    
+                    // Explicitly calculate the top of the nail here so the HUD knows where to hover
+                    val nailTopY = tipY - tw * 0.72f 
+                    
                     val pillY = (nailTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
 
                     drawRoundRect(
@@ -917,7 +987,10 @@ fun GuitarHumanHandsOverlay(
             val strumSweepSpan = if (isStrumStroke) (14.5f * s) else (8.5f * s)
             val pluckDipY = pluckImpulse * strumSweepSpan * pickStrokeDirection
             val pickY = getStringYAtX(animatedPickString, pickX) + pluckDipY
-            val pickTiltDeg = (pluckImpulse * (if (isStrumStroke) 22f else 14f) * pickStrokeDirection).coerceIn(-24f, 24f)
+            
+            // Just use the pre-calculated slapAnim and palmMuteAnim directly
+            val pickTiltDeg = (pluckImpulse * (if (isStrumStroke) 22f else 14f) * pickStrokeDirection).coerceIn(-24f, 24f) + 
+                      (slapAnim * 90f)
 
             val pickW = (25f * s).coerceIn(16f, 38f)
             val pickH = (28f * s).coerceIn(18f, 42f)
@@ -927,9 +1000,11 @@ fun GuitarHumanHandsOverlay(
             withTransform({
                 rotate(degrees = pickTiltDeg, pivot = Offset(pickX + 10f * s, pickY))
             }) {
-                val rhPalmX = pickX + 28f * s
-                val rhPalmY = pickY - 18f * s
+                val pmBridgeShiftX = palmMuteAnim * (15f * s)
+                val pmStringDropY = palmMuteAnim * (12f * s)
 
+                val rhPalmX = pickX + 28f * s + pmBridgeShiftX
+                val rhPalmY = pickY - 18f * s + pmStringDropY
                 // 1. Curled Ulnar Fingers (Middle 2, Ring 3, Pinky 4) tucked gracefully beneath the index finger
                 for (fIdx in 4 downTo 2) {
                     val curlStep = (fIdx - 1)

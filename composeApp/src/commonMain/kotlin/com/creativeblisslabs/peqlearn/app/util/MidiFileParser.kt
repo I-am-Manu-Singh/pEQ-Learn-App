@@ -222,7 +222,7 @@ object MidiFileParser {
                 var pendingChordSymbol = ""
                 var pendingDynamic = ""
                 var rehearsalMark = ""
-
+                var activePalmMute = false
                 val tokenRegex = Regex("""<(note|backup|forward|harmony|direction)\b[^>]*>(.*?)</\1>""", RegexOption.DOT_MATCHES_ALL)
                 for (match in tokenRegex.findAll(mXml)) {
                     val tagType = match.groupValues[1]
@@ -269,6 +269,11 @@ object MidiFileParser {
                                 val isStart = body.contains("""type="start"""") || body.contains("""type="change"""")
                                 val posB = (cursorDivisions / divisions).coerceAtLeast(0f)
                                 pedalsInPartMeasure.add(PedalEvent(position = posB, pedalType = 64, isPressed = isStart))
+                            }
+                           val words = xmlTag(body, "words")?.lowercase() ?: ""
+                            if (words.contains("p.m.") || body.contains("palm-mute")) {
+                                val type = xmlTag(body, "type")
+                                activePalmMute = type != "stop"
                             }
                         }
                         "note" -> {
@@ -345,13 +350,15 @@ object MidiFileParser {
                                     body.contains("<strong-accent") -> MusicalArticulation.MARCATO
                                     else -> MusicalArticulation.NONE
                                 }
-
-                                val tabArtic = when {
+                                
+                              val tabArtic = when {
+                                    activePalmMute -> TabArticulation.PALM_MUTE // Apply running state
+                                    body.contains("<slap") -> TabArticulation.SLAP
+                                    body.contains("<pop") -> TabArticulation.POP
                                     body.contains("<hammer-on") -> TabArticulation.HAMMER_ON
                                     body.contains("<pull-off") -> TabArticulation.PULL_OFF
                                     body.contains("<slide") || body.contains("<glissando") -> TabArticulation.SLIDE_UP
                                     body.contains("<tap") -> TabArticulation.TAP
-                                    body.contains("<snap-pizzicato") -> TabArticulation.POP
                                     else -> TabArticulation.NONE
                                 }
 
@@ -371,9 +378,12 @@ object MidiFileParser {
                                     else -> GuitarHarmonicType.NONE
                                 }
 
-                                val pickDir = when {
+                               val pickDir = when {
                                     body.contains("<down-bow") -> PickDirection.DOWN
                                     body.contains("<up-bow") -> PickDirection.UP
+                                    // MusicXML occasionally marks sweeps using strums on adjacent arpeggiated single notes
+                                    body.contains("""<arpeggiate[^>]*direction="down"""".toRegex()) -> PickDirection.SWEEP_DOWN
+                                    body.contains("""<arpeggiate[^>]*direction="up"""".toRegex()) -> PickDirection.SWEEP_UP
                                     else -> PickDirection.NONE
                                 }
 
@@ -411,12 +421,13 @@ object MidiFileParser {
                                         chordSymbol = chordSymToAttach,
                                         dynamic = dynToAttach,
                                         fingering = fingering,
+                                        palmMute = activePalmMute || body.contains("palm-mute"),
                                         articulation = tabArtic,
+                                        pickDirection = pickDir,
                                         musicalArticulation = musArtic,
                                         ornament = ornament,
                                         guitarHarmonic = guitarHarmonic,
-                                        pickDirection = pickDir,
-                                        arpeggio = arpDir
+                                        arpeggio = arpDir,
                                     )
                                 )
                                 partNoteCount++

@@ -26,7 +26,7 @@ enum class MusicalArticulation {
     STACCATISSIMO,
     ACCENT,
     TENUTO,
-    MARCATO
+    MARCATO,
 }
 
 @Serializable
@@ -91,6 +91,8 @@ enum class PickDirection {
     UP,
     STRUM_DOWN,
     STRUM_UP,
+    SWEEP_DOWN, // ADDED: Economy/Sweep picking
+    SWEEP_UP,   // ADDED: Economy/Sweep picking
     RASGUEADO,
     SLAP,
     POP

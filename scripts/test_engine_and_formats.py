@@ -256,17 +256,25 @@ def solve_fretted_slice(pitches, open_strings, max_fret=24, min_fret=0, last_box
                     used_fingers[ideal] = True
                     finger_assignment[m] = ideal
 
-            for trans_midi, (s_idx, fret) in temp_placements.items():
-                finger = 0 if fret <= 0 else finger_assignment.get(trans_midi, 1)
-                placement = {"string": s_idx, "fret": fret, "finger": finger}
-                for raw_m in transposed_to_raw.get(trans_midi, [trans_midi]):
-                    final_map[raw_m] = placement
+                for trans_midi, (s_idx, fret) in temp_placements.items():
+                        finger = 0 if fret <= 0 else finger_assignment.get(trans_midi, 1)
+                        final_map[trans_midi] = {"string": s_idx, "fret": fret, "finger": finger}
 
-            best_map = final_map
-            if fretted_vals:
-                best_box_center = min(15.0, max(1.0, sum(fretted_vals) / len(fretted_vals)))
-
-    return best_map, best_box_center
+                        best_map = final_map
+                    
+                    # STICKY BOX LOGIC: If the newly fretted notes fit within the old hand posture, 
+                    # keep the hand perfectly still to prevent visual jitter during arpeggios.
+                if fretted_vals:
+                    min_f = min(fretted_vals)
+                    max_f = max(fretted_vals)
+                    prev_box_min = last_box_center - 1.5
+                    prev_box_max = last_box_center + 1.5
+                    
+                    if min_f >= prev_box_min and max_f <= prev_box_max:
+                        best_box_center = last_box_center
+                    else:
+                        best_box_center = box_center # Use the exact center of the winning Viterbi window
+                    return best_map, best_box_center
 
 # ==============================================================================
 # 3. TEST SUITE

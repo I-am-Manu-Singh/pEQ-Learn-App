@@ -48,7 +48,8 @@ private val LH_ANATOMICAL_REST_SEMITONES = floatArrayOf(0f, +3.5f, +1.8f, 0.0f, 
 private val RH_ANATOMICAL_REST_SEMITONES = floatArrayOf(0f, -3.5f, -1.8f, 0.0f, +1.8f, +3.5f)
 
 // Relative anatomical bone proportions & widths for Fingers 1..5 (index 0 unused)
-private val FINGER_LENGTH_MULT = floatArrayOf(0f, 0.64f, 0.91f, 1.00f, 0.94f, 0.76f)
+// In PianoHumanHandsOverlay.kt
+private val FINGER_LENGTH_MULT = floatArrayOf(0f, 0.72f, 0.91f, 1.00f, 0.94f, 0.76f) // Thumb increased to 0.72f
 private val FINGER_WIDTH_MULT = floatArrayOf(0f, 1.28f, 0.96f, 1.00f, 0.93f, 0.80f)
 private val MCP_ARCH_Y_OFFSET = floatArrayOf(0f, 0.105f, 0.012f, 0.000f, 0.016f, 0.042f)
 
@@ -981,9 +982,14 @@ fun PianoHumanHandsOverlay(
 
             val pressedIndices = orderedLeftToRight.indices.filter { orderedLeftToRight[it].isPressed }
             val hasPressedNotes = pressedIndices.isNotEmpty()
+           val thumbBlackPressed = orderedLeftToRight.any { it.isPressed && isMidiNoteBlack(it.midiNote) && it.fingerNumber == 1 }
             val anyBlackPressed = orderedLeftToRight.any { it.isPressed && isMidiNoteBlack(it.midiNote) }
-            val blackForwardShiftY = if (anyBlackPressed) -totalH * 0.052f else 0f
 
+            val blackForwardShiftY = when {
+                thumbBlackPressed -> -totalH * 0.12f // Shift palm deeper into the keys for the thumb
+                anyBlackPressed -> -totalH * 0.052f
+                else -> 0f
+            }
             val smoothPalmX = interpolateMidiX(animatedPalmMidi)
             val rawTargetPalmX = if (hasPressedNotes) {
                 val firstPressedX = midiToExactX(orderedLeftToRight[pressedIndices.first()].midiNote)
@@ -1053,55 +1059,71 @@ fun PianoHumanHandsOverlay(
 
             // Build 3-Phalanx Inverse Kinematics Bone Chains for all 5 fingers
             val articulatedFingers = ArrayList<ArticulatedFingerBoneChain>(5)
+            
+            val isToneCluster = orderedLeftToRight.count { it.isPressed } >= 4 && 
+                (orderedLeftToRight.maxOf { it.midiNote } - orderedLeftToRight.minOf { it.midiNote } <= 5)
 
             orderedLeftToRight.forEachIndexed { slotIdx, item ->
                 val fNum = item.fingerNumber
-                val pressAnim = (animatedFingerPress[fNum] * (0.65f + 0.35f * strikePulse)).coerceIn(0f, 1f)
-                val isBlack = isMidiNoteBlack(item.midiNote)
-
+                
+                // 1. TONE CLUSTER (MASH) OVERRIDE
+                val pressAnim = if (isToneCluster) 1.0f else (animatedFingerPress[fNum] * (0.65f + 0.35f * strikePulse)).coerceIn(0f, 1f)
+                val clusterMcpDrop = if (isToneCluster) totalH * 0.12f else 0f
+                
                 val fHalfW = baseFingerHalfW * FINGER_WIDTH_MULT[fNum]
                 val tipX = rawTipXs[slotIdx].coerceIn(fHalfW, totalW - fHalfW)
-
+                
                 val reachMult = FINGER_LENGTH_MULT[fNum]
-                val fullReachPx = totalH * 0.51f * reachMult
-
-                // Pressing a key curls the PIP/DIP joints forward and slightly compresses top-down visible length
+                val fullReachPx = totalH * 0.58f * reachMult
                 val flexShorteningPx = pressAnim * totalH * 0.026f
 
+                val isBlack = isMidiNoteBlack(item.midiNote)
                 val tipY = if (isBlack) {
                     val blackTargetY = if (item.isPressed) blackKeyH * 0.77f else blackKeyH * 0.87f
                     blackTargetY + pressAnim * totalH * 0.012f
                 } else {
                     (palmY - fullReachPx + flexShorteningPx)
                 }.coerceIn(totalH * 0.13f, totalH * 0.81f)
-
+                
                 val slotFromCenter = (slotIdx - 2f)
-                // MCP Knuckle Arch Position
                 val mcpX = if (fNum == 1) {
-                    // Thumb originates lower and more laterally from the CMC/MCP opposition joint
                     val thumbSideDir = if (isRightHand) -1f else 1f
                     palmX + thumbSideDir * whiteKeyW * 1.18f * archSpreadScale.coerceAtMost(1.25f) +
                         (tipX - palmX) * 0.22f
                 } else {
                     palmX + (slotFromCenter * whiteKeyW * 0.52f * archSpreadScale) + ((tipX - palmX) * 0.25f)
                 }
-
-                val mcpY = (palmY - totalH * 0.155f) + (totalH * MCP_ARCH_Y_OFFSET[fNum])
+                
+                // 2. DECOUPLE THUMB Y-ORIGIN
+                val mcpY = if (fNum == 1) {
+                    (palmY - totalH * 0.02f) + (totalH * 0.22f) + clusterMcpDrop
+                } else {
+                    (palmY - totalH * 0.155f) + (totalH * MCP_ARCH_Y_OFFSET[fNum]) + clusterMcpDrop
+                }
 
                 val mcpPos = Offset(mcpX, mcpY)
                 val tipPos = Offset(tipX, tipY)
-
-                // Compute natural lateral bow for thumb opposition and 3D joint articulation
                 val dx = tipPos.x - mcpPos.x
                 val dy = tipPos.y - mcpPos.y
-                val axisAngle = atan2(dy, dx)
 
+                // 3. CLAMP DISTAL ROTATION
+                val rawAxisAngle = atan2(dy, dx)
+                val axisAngle = if (fNum == 1) {
+                    rawAxisAngle 
+                } else {
+                    rawAxisAngle.coerceIn(-0.35f, 0.35f) 
+                }
+                
+                // 4. APPLY Z-INDEX SCALING TO THUMB
+                val widthScale = if (fNum == 1 && item.isCrossingUnder) 0.85f else 1.0f
+                val effectiveFHalfW = fHalfW * widthScale
+                
                 val thumbBowX = if (fNum == 1) {
                     val outwardSign = if (isRightHand) -1f else 1f
-                    if (item.isCrossingUnder) -outwardSign * whiteKeyW * 0.18f
-                    else outwardSign * whiteKeyW * 0.20f
+                    if (item.isCrossingUnder) -outwardSign * whiteKeyW * 0.08f
+                    else outwardSign * whiteKeyW * 0.04f 
                 } else {
-                    dx * 0.06f
+                    dx * 0.03f
                 }
 
                 val pipPos = Offset(
@@ -1112,7 +1134,7 @@ fun PianoHumanHandsOverlay(
                     x = mcpPos.x + dx * 0.76f + thumbBowX * 0.45f,
                     y = mcpPos.y + dy * 0.76f - pressAnim * 1.5.dp.toPx()
                 )
-
+                
                 articulatedFingers.add(
                     ArticulatedFingerBoneChain(
                         assignment = item,
@@ -1121,10 +1143,10 @@ fun PianoHumanHandsOverlay(
                         pipJoint = pipPos,
                         dipJoint = dipPos,
                         tipCenter = tipPos,
-                        baseHalfWidth = fHalfW,
-                        pipHalfWidth = fHalfW * 0.92f,
-                        dipHalfWidth = fHalfW * 0.84f,
-                        tipHalfWidth = fHalfW * 0.78f,
+                        baseHalfWidth = effectiveFHalfW,
+                        pipHalfWidth = effectiveFHalfW * 0.92f,
+                        dipHalfWidth = effectiveFHalfW * 0.84f,
+                        tipHalfWidth = effectiveFHalfW * 0.78f,
                         axisAngleRad = axisAngle,
                         isBlackKey = isBlack
                     )
@@ -1187,111 +1209,99 @@ fun PianoHumanHandsOverlay(
 
             // Build Dorsal Palm & Articulated Fingers Silhouette Path
             val handSilhouettePath = Path().apply {
-                val firstF = articulatedFingers.first()
-                val lastF = articulatedFingers.last()
-                val wristHalfW = whiteKeyW * 1.28f
+            val firstF = articulatedFingers.first()
+            val lastF = articulatedFingers.last()
+            val wristHalfW = whiteKeyW * 1.28f
+            
+            val firstAngle = firstF.axisAngleRad
+            val leftMcpEdge = Offset(
+                firstF.mcpJoint.x + sin(firstAngle) * firstF.baseHalfWidth,
+                firstF.mcpJoint.y - cos(firstAngle) * firstF.baseHalfWidth
+            )
+            val lastAngle = lastF.axisAngleRad
+            val rightMcpEdge = Offset(
+                lastF.mcpJoint.x - sin(lastAngle) * lastF.baseHalfWidth,
+                lastF.mcpJoint.y + cos(lastAngle) * lastF.baseHalfWidth
+            )
 
-                val leftMcpEdge = Offset(firstF.mcpJoint.x - firstF.baseHalfWidth, firstF.mcpJoint.y)
-                val rightMcpEdge = Offset(lastF.mcpJoint.x + lastF.baseHalfWidth, lastF.mcpJoint.y)
+            moveTo(wristCenterX - wristHalfW, wristY)
+            cubicTo(
+                palmX - whiteKeyW * 1.62f * archSpreadScale.coerceAtMost(1.25f),
+                (wristY + palmY) * 0.52f,
+                leftMcpEdge.x - whiteKeyW * 0.20f,
+                leftMcpEdge.y + totalH * 0.09f,
+                leftMcpEdge.x,
+                leftMcpEdge.y
+            )
 
-                moveTo(wristCenterX - wristHalfW, wristY)
-                // Outer radial/ulnar contour from wrist to leftmost MCP knuckle
+            for (i in articulatedFingers.indices) {
+                val fg = articulatedFingers[i]
+                val mcp = fg.mcpJoint
+                val pip = fg.pipJoint
+                val dip = fg.dipJoint
+                val tip = fg.tipCenter
+                val angle = fg.axisAngleRad
+
+                // Perpendicular Normals to maintain perfect width at ANY stretch angle
+                val nxL = sin(angle)
+                val nyL = -cos(angle)
+                val nxR = -sin(angle)
+                val nyR = cos(angle)
+
+                val mcpL = Offset(mcp.x + nxL * fg.baseHalfWidth, mcp.y + nyL * fg.baseHalfWidth)
+                val mcpR = Offset(mcp.x + nxR * fg.baseHalfWidth, mcp.y + nyR * fg.baseHalfWidth)
+                val pipL = Offset(pip.x + nxL * fg.pipHalfWidth, pip.y + nyL * fg.pipHalfWidth)
+                val pipR = Offset(pip.x + nxR * fg.pipHalfWidth, pip.y + nyR * fg.pipHalfWidth)
+                val dipL = Offset(dip.x + nxL * fg.dipHalfWidth, dip.y + nyL * fg.dipHalfWidth)
+                val dipR = Offset(dip.x + nxR * fg.dipHalfWidth, dip.y + nyR * fg.dipHalfWidth)
+                val tipL = Offset(tip.x + nxL * fg.tipHalfWidth, tip.y + nyL * fg.tipHalfWidth)
+                val tipR = Offset(tip.x + nxR * fg.tipHalfWidth, tip.y + nyR * fg.tipHalfWidth)
+
+                // Left side of phalanx chain
+                quadraticBezierTo((mcpL.x + pipL.x) * 0.5f, (mcpL.y + pipL.y) * 0.5f, pipL.x, pipL.y)
+                quadraticBezierTo((pipL.x + dipL.x) * 0.5f, (pipL.y + dipL.y) * 0.5f, dipL.x, dipL.y)
+                quadraticBezierTo(dipL.x, (dipL.y + tipL.y) * 0.5f, tipL.x, tipL.y)
+
+                // Anatomical rounded distal fingertip dome tracing the bone trajectory
                 cubicTo(
-                    palmX - whiteKeyW * 1.62f * archSpreadScale.coerceAtMost(1.25f),
-                    (wristY + palmY) * 0.52f,
-                    leftMcpEdge.x - whiteKeyW * 0.20f,
-                    leftMcpEdge.y + totalH * 0.09f,
-                    leftMcpEdge.x,
-                    leftMcpEdge.y
+                    tipL.x + cos(angle) * (fg.tipHalfWidth * 1.28f),
+                    tipL.y + sin(angle) * (fg.tipHalfWidth * 1.28f),
+                    tipR.x + cos(angle) * (fg.tipHalfWidth * 1.28f),
+                    tipR.y + sin(angle) * (fg.tipHalfWidth * 1.28f),
+                    tipR.x,
+                    tipR.y
                 )
 
-                // Trace each 3-joint articulated finger
-                for (i in articulatedFingers.indices) {
-                    val fg = articulatedFingers[i]
-                    val mcp = fg.mcpJoint
-                    val pip = fg.pipJoint
-                    val dip = fg.dipJoint
-                    val tip = fg.tipCenter
+                // Right side of phalanx chain
+                quadraticBezierTo(dipR.x, (dipR.y + tipR.y) * 0.5f, dipR.x, dipR.y)
+                quadraticBezierTo((pipR.x + dipR.x) * 0.5f, (pipR.y + dipR.y) * 0.5f, pipR.x, pipR.y)
+                quadraticBezierTo((mcpR.x + pipR.x) * 0.5f, (mcpR.y + pipR.y) * 0.5f, mcpR.x, mcpR.y)
 
-                    val bw = fg.baseHalfWidth
-                    val pw = fg.pipHalfWidth
-                    val dw = fg.dipHalfWidth
-                    val tw = fg.tipHalfWidth
+                // Webbing
+                if (i < articulatedFingers.lastIndex) {
+                    val nextFg = articulatedFingers[i + 1]
+                    val nextAngle = nextFg.axisAngleRad
+                    val nextLeftX = nextFg.mcpJoint.x + sin(nextAngle) * nextFg.baseHalfWidth
+                    val nextLeftY = nextFg.mcpJoint.y - cos(nextAngle) * nextFg.baseHalfWidth
 
-                    // Left side of phalanx chain: MCP -> PIP -> DIP -> Tip
-                    quadraticBezierTo(
-                        (mcp.x - bw + pip.x - pw) * 0.5f,
-                        (mcp.y + pip.y) * 0.5f,
-                        pip.x - pw,
-                        pip.y
-                    )
-                    quadraticBezierTo(
-                        (pip.x - pw + dip.x - dw) * 0.5f,
-                        (pip.y + dip.y) * 0.5f,
-                        dip.x - dw,
-                        dip.y
-                    )
-                    quadraticBezierTo(
-                        dip.x - dw,
-                        (dip.y + tip.y) * 0.5f,
-                        tip.x - tw,
-                        tip.y
-                    )
-
-                    // Anatomical rounded distal fingertip dome
-                    cubicTo(
-                        tip.x - tw,
-                        tip.y - tw * 1.28f,
-                        tip.x + tw,
-                        tip.y - tw * 1.28f,
-                        tip.x + tw,
-                        tip.y
-                    )
-
-                    // Right side of phalanx chain: Tip -> DIP -> PIP -> MCP
-                    quadraticBezierTo(
-                        dip.x + dw,
-                        (dip.y + tip.y) * 0.5f,
-                        dip.x + dw,
-                        dip.y
-                    )
-                    quadraticBezierTo(
-                        (pip.x + pw + dip.x + dw) * 0.5f,
-                        (pip.y + dip.y) * 0.5f,
-                        pip.x + pw,
-                        pip.y
-                    )
-                    quadraticBezierTo(
-                        (mcp.x + bw + pip.x + pw) * 0.5f,
-                        (mcp.y + pip.y) * 0.5f,
-                        mcp.x + bw,
-                        mcp.y
-                    )
-
-                    // Interdigital skinfold web between adjacent fingers
-                    if (i < articulatedFingers.lastIndex) {
-                        val nextFg = articulatedFingers[i + 1]
-                        val nextLeftX = nextFg.mcpJoint.x - nextFg.baseHalfWidth
-                        val nextLeftY = nextFg.mcpJoint.y
-                        val isThumbWeb = fg.assignment.fingerNumber == 1 || nextFg.assignment.fingerNumber == 1
-                        val webDepth = if (isThumbWeb) totalH * 0.048f else totalH * 0.024f
-                        val webMidX = (mcp.x + bw + nextLeftX) * 0.5f
-                        val webMidY = maxOf(mcp.y, nextLeftY) + webDepth
-                        quadraticBezierTo(webMidX, webMidY, nextLeftX, nextLeftY)
-                    }
+                    val isThumbWeb = fg.assignment.fingerNumber == 1 || nextFg.assignment.fingerNumber == 1
+                    val webDepth = if (isThumbWeb) totalH * 0.048f else totalH * 0.024f
+                    val webMidX = (mcpR.x + nextLeftX) * 0.5f
+                    val webMidY = maxOf(mcpR.y, nextLeftY) + webDepth
+                    quadraticBezierTo(webMidX, webMidY, nextLeftX, nextLeftY)
                 }
-
-                // Outer contour from rightmost MCP knuckle back down to wrist
-                cubicTo(
-                    rightMcpEdge.x + whiteKeyW * 0.20f,
-                    rightMcpEdge.y + totalH * 0.09f,
-                    palmX + whiteKeyW * 1.62f * archSpreadScale.coerceAtMost(1.25f),
-                    (wristY + palmY) * 0.52f,
-                    wristCenterX + wristHalfW,
-                    wristY
-                )
-                close()
             }
+            
+            cubicTo(
+                rightMcpEdge.x + whiteKeyW * 0.20f,
+                rightMcpEdge.y + totalH * 0.09f,
+                palmX + whiteKeyW * 1.62f * archSpreadScale.coerceAtMost(1.25f),
+                (wristY + palmY) * 0.52f,
+                wristCenterX + wristHalfW,
+                wristY
+            )
+            close()
+        }
 
             // 2. Render Shadowed Dorsal Hand Silhouette & Internal Anatomical Shading
             withTransform({
@@ -1424,122 +1434,82 @@ fun PianoHumanHandsOverlay(
             fingerNoteSubPaint.textSize = (baseFingerHalfW * 0.95f).coerceIn(6.5.dp.toPx(), 9.2.dp.toPx())
 
             depthSortedFingers.forEach { fg ->
-                val fNum = fg.assignment.fingerNumber
-                val isPressed = fg.assignment.isPressed
-                val press = fg.pressProgress
-                val mcp = fg.mcpJoint
-                val pip = fg.pipJoint
-                val dip = fg.dipJoint
-                val tip = fg.tipCenter
+            val fNum = fg.assignment.fingerNumber
+            val isThumb = fNum == 1
+            val isPressed = fg.assignment.isPressed
+            val press = fg.pressProgress
+            val tip = fg.tipCenter
+            val angle = fg.axisAngleRad
 
-                // Cylindrical 3D specular ridge along proximal & middle phalanges
-                drawLine(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            skinHighlight.copy(alpha = 0.42f + 0.20f * press),
-                            skinHighlight.copy(alpha = 0.25f)
-                        ),
-                        start = mcp,
-                        end = dip
-                    ),
-                    start = mcp,
-                    end = dip,
-                    strokeWidth = fg.pipHalfWidth * 0.52f,
-                    cap = StrokeCap.Round
-                )
+            // Dynamically project joints to rotate creases
+            val nxL = sin(angle); val nyL = -cos(angle)
+            val nxR = -sin(angle); val nyR = cos(angle)
+            
+            // PIP Wrinkles
+            val pipCreaseW = fg.pipHalfWidth * 0.64f
+            val pipL = Offset(fg.pipJoint.x + nxL * pipCreaseW, fg.pipJoint.y + nyL * pipCreaseW)
+            val pipR = Offset(fg.pipJoint.x + nxR * pipCreaseW, fg.pipJoint.y + nyR * pipCreaseW)
+            drawLine(
+                color = skinDeepShadow.copy(alpha = 0.48f + 0.18f * press),
+                start = Offset(pipL.x - cos(angle)*1.dp.toPx(), pipL.y - sin(angle)*1.dp.toPx()),
+                end = Offset(pipR.x - cos(angle)*1.dp.toPx(), pipR.y - sin(angle)*1.dp.toPx()),
+                strokeWidth = 1.0.dp.toPx(),
+                cap = StrokeCap.Round
+            )
 
-                // PIP Joint Double Skin Crease Wrinkles
-                val pipCreaseW = fg.pipHalfWidth * 0.64f
-                drawLine(
-                    color = skinDeepShadow.copy(alpha = 0.48f + 0.18f * press),
-                    start = Offset(pip.x - pipCreaseW, pip.y - 1.dp.toPx()),
-                    end = Offset(pip.x + pipCreaseW, pip.y - 1.dp.toPx()),
-                    strokeWidth = 1.0.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = skinDeepShadow.copy(alpha = 0.34f + 0.15f * press),
-                    start = Offset(pip.x - pipCreaseW * 0.82f, pip.y + 1.2.dp.toPx()),
-                    end = Offset(pip.x + pipCreaseW * 0.82f, pip.y + 1.2.dp.toPx()),
-                    strokeWidth = 0.85.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
+            // Rotated 3D Fingernails
+            val tw = fg.tipHalfWidth
+            val baseNailW = tw * (if (isThumb) 1.26f else 1.22f)
+            val actualNailW = if (isThumb) baseNailW * 0.75f else baseNailW // Foreshorten thumb nail
+            val nailH = tw * (1.32f - 0.14f * press)
 
-                // DIP Joint Skin Crease Wrinkle
-                val dipCreaseW = fg.dipHalfWidth * 0.56f
-                drawLine(
-                    color = skinDeepShadow.copy(alpha = 0.44f + 0.18f * press),
-                    start = Offset(dip.x - dipCreaseW, dip.y),
-                    end = Offset(dip.x + dipCreaseW, dip.y),
-                    strokeWidth = 0.9.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
+            val nailDist = tw * 0.1f
+            val nailCenterBase = Offset(tip.x - cos(angle) * nailDist, tip.y - sin(angle) * nailDist)
+            
+            // Shift thumb nail laterally down the side of the finger for perspective
+            val nailSideOffsetX = if (isThumb) { if (isRightHand) nxL * tw * 0.35f else nxR * tw * 0.35f } else 0f
+            val nailSideOffsetY = if (isThumb) { if (isRightHand) nyL * tw * 0.35f else nyR * tw * 0.35f } else 0f
 
-                // Ultrarealistic Fingernail Plate (Nail Bed + Lunula + Free Edge + Specular Glint)
-                val tw = fg.tipHalfWidth
-                val nailW = tw * (if (fNum == 1) 1.26f else 1.22f)
-                val nailH = tw * (1.32f - 0.14f * press) // Foreshortens slightly when finger curls on press
-                val nailTopY = tip.y - tw * 0.76f
-                val nailLeftX = tip.x - nailW * 0.5f
-                val nailCorner = CornerRadius(nailW * 0.42f, nailW * 0.42f)
-
-                // Cuticle & lateral nail fold shadow
+            withTransform({
+                translate(nailCenterBase.x + nailSideOffsetX, nailCenterBase.y + nailSideOffsetY)
+                rotate(degrees = Math.toDegrees(angle.toDouble()).toFloat() + 90f)
+                translate(-actualNailW * 0.5f, -nailH * 0.55f)
+            }) {
+                val nailCorner = CornerRadius(actualNailW * 0.42f, actualNailW * 0.42f)
+                
+                // Cuticle shadow
                 drawRoundRect(
                     color = skinDeepShadow.copy(alpha = 0.52f),
-                    topLeft = Offset(nailLeftX - 0.6.dp.toPx(), nailTopY - 0.5.dp.toPx()),
-                    size = Size(nailW + 1.2.dp.toPx(), nailH + 1.2.dp.toPx()),
+                    topLeft = Offset(-0.6.dp.toPx(), -0.5.dp.toPx()),
+                    size = Size(actualNailW + 1.2.dp.toPx(), nailH + 1.2.dp.toPx()),
                     cornerRadius = nailCorner
                 )
-
-                // Pinkish keratin nail bed gradient (flushes warmer when pressed onto key)
-                val nailBedTop = if (isPressed) Color(0xFFFFF4EE) else Color(0xFFFFEDE4).copy(alpha = 0.86f)
-                val nailBedBot = if (isPressed) Color(0xFFFFCDD2) else Color(0xFFF5C6CB).copy(alpha = 0.82f)
+                // Nail Bed
                 drawRoundRect(
                     brush = Brush.verticalGradient(
-                        colors = listOf(nailBedTop, nailBedBot),
-                        startY = nailTopY,
-                        endY = nailTopY + nailH
+                        colors = listOf(
+                            if (isPressed) Color(0xFFFFF4EE) else Color(0xFFFFEDE4).copy(alpha = 0.86f),
+                            if (isPressed) Color(0xFFFFCDD2) else Color(0xFFF5C6CB).copy(alpha = 0.82f)
+                        )
                     ),
-                    topLeft = Offset(nailLeftX, nailTopY),
-                    size = Size(nailW, nailH),
+                    size = Size(actualNailW, nailH),
                     cornerRadius = nailCorner
                 )
-
-                // Distal white free-edge crescent at top of nail
-                val freeEdgeH = (nailH * 0.22f).coerceAtLeast(1.5.dp.toPx())
+                // Free Edge
                 drawRoundRect(
                     color = Color(0xFFFFFBF7).copy(alpha = if (isPressed) 0.95f else 0.78f),
-                    topLeft = Offset(nailLeftX + nailW * 0.06f, nailTopY),
-                    size = Size(nailW * 0.88f, freeEdgeH),
-                    cornerRadius = CornerRadius(nailW * 0.38f, nailW * 0.38f)
+                    topLeft = Offset(actualNailW * 0.06f, 0f),
+                    size = Size(actualNailW * 0.88f, (nailH * 0.22f).coerceAtLeast(1.5.dp.toPx())),
+                    cornerRadius = CornerRadius(actualNailW * 0.38f, actualNailW * 0.38f)
                 )
-
-                // Proximal half-moon Lunula at bottom cuticle of nail
-                val lunulaW = nailW * 0.58f
-                val lunulaH = nailH * 0.24f
-                drawRoundRect(
-                    color = Color.White.copy(alpha = if (isPressed) 0.68f else 0.45f),
-                    topLeft = Offset(tip.x - lunulaW * 0.5f, nailTopY + nailH - lunulaH * 1.15f),
-                    size = Size(lunulaW, lunulaH),
-                    cornerRadius = CornerRadius(lunulaW * 0.5f, lunulaW * 0.5f)
-                )
-
-                // Glossy vertical specular highlight on nail plate
-                drawRoundRect(
-                    color = Color.White.copy(alpha = if (isPressed) 0.72f else 0.42f),
-                    topLeft = Offset(nailLeftX + nailW * 0.22f, nailTopY + nailH * 0.14f),
-                    size = Size(nailW * 0.18f, nailH * 0.58f),
-                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                )
-
-                // Nail border outline (glows with hand accent when pressed)
+                // Outline Border
                 drawRoundRect(
                     color = if (isPressed) handAccentColor else skinDeepShadow.copy(alpha = 0.55f),
-                    topLeft = Offset(nailLeftX, nailTopY),
-                    size = Size(nailW, nailH),
+                    size = Size(actualNailW, nailH),
                     cornerRadius = nailCorner,
                     style = Stroke(width = if (isPressed) 1.5.dp.toPx() else 0.8.dp.toPx())
                 )
+            }
 
                 // Glassmorphic Finger Number Badge & Pitch Telemetry
                 val badgeY = tip.y + tw * 1.48f
@@ -1612,10 +1582,13 @@ fun PianoHumanHandsOverlay(
 
                 // Floating Note Name Callout above pressed fingertip
                 if (isPressed) {
-                    val noteText = buildCompactPitchLabel(fg.assignment.midiNote)
-                    val pillW = (badgeRad * 2.35f).coerceAtLeast(22.dp.toPx())
-                    val pillH = (badgeRad * 1.25f).coerceAtLeast(12.dp.toPx())
-                    val pillCenterY = (nailTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
+                val noteText = buildCompactPitchLabel(fg.assignment.midiNote)
+                val pillW = (badgeRad * 2.35f).coerceAtLeast(22.dp.toPx())
+                val pillH = (badgeRad * 1.25f).coerceAtLeast(12.dp.toPx())
+                
+                val nailTopY = tip.y - tw * 0.76f // <--- ADD THIS LINE
+                
+                val pillCenterY = (nailTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
 
                     drawRoundRect(
                         color = Color(0xFF0E131F).copy(alpha = 0.88f),

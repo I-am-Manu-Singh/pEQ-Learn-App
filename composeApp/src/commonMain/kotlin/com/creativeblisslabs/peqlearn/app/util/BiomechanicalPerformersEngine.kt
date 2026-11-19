@@ -127,6 +127,10 @@ object BiomechanicalPerformersEngine {
             val lhSpan = if (rawLh.size > 1) rawLh.last() - rawLh.first() else 0
             val rhSpan = if (rawRh.size > 1) rawRh.last() - rawRh.first() else 0
 
+            // 0. Detect Tone Clusters (dense chromatic mashing)
+            val lhIsCluster = rawLh.size >= 4 && lhSpan <= 5
+            val rhIsCluster = rawRh.size >= 4 && rhSpan <= 5
+
             var cost = 0f
 
             // 1. Biomechanical span wall (> 12 semitones penalized heavily so wide chords split across both hands)
@@ -135,9 +139,9 @@ object BiomechanicalPerformersEngine {
             if (rhSpan > MAX_COMFORT_HAND_SPAN) cost += (rhSpan - MAX_COMFORT_HAND_SPAN) * 85f
             if (rhSpan > MAX_ABSOLUTE_HAND_SPAN) cost += (rhSpan - MAX_ABSOLUTE_HAND_SPAN) * 450f
 
-            // 2. Finger overflow penalty (> 5 notes in a single hand)
-            if (rawLh.size > 5) cost += (rawLh.size - 5) * 95f
-            if (rawRh.size > 5) cost += (rawRh.size - 5) * 95f
+            // 2. Finger overflow penalty (> 5 notes in a single hand, unless it's a cluster)
+            if (rawLh.size > 5 && !lhIsCluster) cost += (rawLh.size - 5) * 95f
+            if (rawRh.size > 5 && !rhIsCluster) cost += (rawRh.size - 5) * 95f
 
             // 3. Horizontal transport cost (smooth wrist continuity) + Register affinity
             if (rawLh.isNotEmpty()) {
@@ -237,18 +241,20 @@ object BiomechanicalPerformersEngine {
         val count = sorted.size
         val span = (sorted.last() - sorted.first()).coerceAtLeast(0)
 
-// Replace `rhThumbBlack` and `lhThumbBlack` in BiomechanicalPerformersEngine.kt (lines 217-230):
-        // CRITICAL FIX: Never shift thumb (1) to index (2) on wide spans (6ths, 7ths, Octaves: span >= 7)!
+        // CRITICAL FIX: Only avoid black keys with the thumb if the chord span is narrow.
+        // If the span is wide (Octave, 7th), the thumb MUST play the black key to reach the chord!
         val rhThumbBlackNarrow = isRightHand && span <= 6 && isMidiNoteBlack(sorted.first())
         val lhThumbBlackNarrow = !isRightHand && span <= 6 && isMidiNoteBlack(sorted.last())
 
         fun adjustRhChord(fs: List<Int>): List<Int> {
+            // Do not shift fingers if span > 6 (forces thumb onto black key for wide stretches)
             if (!rhThumbBlackNarrow || fs.size >= 5 || fs.contains(5)) return fs
             val shifted = fs.map { (it + 1).coerceAtMost(5) }.distinct()
             return if (shifted.size == fs.size) shifted else fs
         }
 
         fun adjustLhChord(fs: List<Int>): List<Int> {
+            // Do not shift fingers if span > 6
             if (!lhThumbBlackNarrow || fs.size >= 5 || fs.firstOrNull() == 5) return fs
             val shifted = fs.mapIndexed { idx, f -> if (idx == fs.lastIndex && f == 1) 2 else f }.distinct()
             return if (shifted.size == fs.size) shifted else fs
@@ -554,17 +560,9 @@ object BiomechanicalPerformersEngine {
         // Pre-normalize pitches: Map raw pitches to their representation.
         // In Drop D or standard guitar, notes down to D2 (MIDI 38) are naturally playable when tuning allows.
         val lowestPlayableMidi = openStringsMidiHighToLow.lastOrNull() ?: 38
-        val transposedToRawMap = HashMap<Int, MutableList<Int>>()
-        for (rawP in uniquePitches) {
-            var transP = rawP
-            while (transP < lowestPlayableMidi) {
-                transP += 12
-            }
-            transposedToRawMap.getOrPut(transP) { ArrayList() }.add(rawP)
-        }
 
         // Limit the simultaneously fretted notes to at most numStrings distinct pitches
-        val uniqueTransposed = transposedToRawMap.keys.sorted().take(numStrings)
+        val uniqueTransposed = uniquePitches.take(numStrings).toList()
 
         var bestMap = emptyMap<Int, FrettedNotePlacement>()
         var bestCost = Float.MAX_VALUE
@@ -590,22 +588,26 @@ object BiomechanicalPerformersEngine {
                 var bestFretForMidi = -1
                 var bestNoteCost = Float.MAX_VALUE
 
-                for (sIdx in 0 until numStrings) {
+            for (sIdx in 0 until numStrings) {
                     val fret = midi - openStringsMidiHighToLow[sIdx]
                     if (fret !in safeMinFret..safeMaxFret) continue
 
                     val stringAlreadyUsed = usedStrings[sIdx]
                     val stretchPenalty = when {
-                        fret == 0 -> if (preferOpenStrings && boxStart <= 5) 1.5f else 22f
+                        fret == 0 -> if (preferOpenStrings) 0f else 15f
                         fret in boxStart..boxEnd -> (fret - boxStart) * 1.2f
                         fret < boxStart -> (boxStart - fret) * 38f
                         else -> (fret - boxEnd) * 38f
                     }
+                    
                     // Avoid fretting high up on thick wound bass strings when a higher string can play it cleanly
                     val woundStringHighFretPenalty = if (sIdx >= numStrings - 2 && fret > 8) 36f else if (sIdx == numStrings - 3 && fret > 10) 18f else 0f
+                    // COLLISION PENALTY: Prevent two notes on the EXACT SAME STRING
+                    // But DO NOT penalize two notes on DIFFERENT strings at the SAME FRET (that's just a barre/sweep)
                     val collisionPenalty = if (stringAlreadyUsed) 250f else 0f
-
+                    
                     val noteCost = stretchPenalty + woundStringHighFretPenalty + collisionPenalty
+                    
                     if (noteCost < bestNoteCost) {
                         bestNoteCost = noteCost
                         bestStrForMidi = sIdx
@@ -646,13 +648,19 @@ object BiomechanicalPerformersEngine {
             if (cost < bestCost) {
                 bestCost = cost
                 val minFretted = frettedVals.minOrNull() ?: boxStart
-                val hasBarre = frettedVals.count { it == minFretted } >= 2 && tempPlacements.values.none { it.second == 0 }
+                
+                // TRUE BARRE DETECTION: Are the strings on the minimum fret adjacent, or spanning the whole neck?
+                val minFretStrings = tempPlacements.filterValues { it.second == minFretted }.map { it.value.first }
+                val isTrueBarre = frettedVals.count { it == minFretted } >= 2 && 
+                    tempPlacements.values.none { it.second == 0 } &&
+                    (minFretStrings.maxOrNull() ?: 0) - (minFretStrings.minOrNull() ?: 0) >= 2
 
                 val finalMap = HashMap<Int, FrettedNotePlacement>(uniquePitches.size)
+                
                 val clampedPlacements = tempPlacements.mapValues { (_, pair) ->
                     var (sIdx, fret) = pair
                     if (frettedVals.size > 1 && fret > 0 && fret - minFretted > 4) {
-                        fret = if (hasBarre) minFretted else minFretted + 4
+                        fret = if (isTrueBarre) minFretted else minFretted + 4
                     }
                     sIdx to fret
                 }
@@ -665,11 +673,11 @@ object BiomechanicalPerformersEngine {
                     .sortedWith(compareBy({ it.value.second }, { -it.value.first }))
 
                 val fingerAssignment = HashMap<Int, Int>()
-                if (hasBarre) {
+                if (isTrueBarre) {
                     var nextFinger = 2
                     for (entry in frettedEntries) {
                         if (entry.value.second == minFretted) {
-                            fingerAssignment[entry.key] = 1
+                            fingerAssignment[entry.key] = 1 // Lay index finger flat across the barre
                         } else {
                             fingerAssignment[entry.key] = (nextFinger++).coerceIn(2, 4)
                         }
@@ -693,22 +701,29 @@ object BiomechanicalPerformersEngine {
                     }
                 }
 
-                for ((transMidi, pair) in clampedPlacements) {
-                    val (sIdx, fret) = pair
+                // Explicitly define the entry loop to avoid destructuring ambiguity
+                for (entry in clampedPlacements) {
+                    val transMidi = entry.key
+                    val pair = entry.value
+                    val sIdx = pair.first
+                    val fret = pair.second
                     val finger = if (fret <= 0) 0 else (fingerAssignment[transMidi] ?: 1)
                     val placement = FrettedNotePlacement(stringIndex = sIdx, fret = fret, finger = finger)
-                    val rawList = transposedToRawMap[transMidi]
-                    if (rawList != null) {
-                        for (rawM in rawList) {
-                            finalMap[rawM] = placement
-                        }
-                    } else {
-                        finalMap[transMidi] = placement
-                    }
+                    finalMap[transMidi] = placement
                 }
+                
                 bestMap = finalMap
                 if (frettedVals.isNotEmpty()) {
-                    bestBoxCenter = frettedVals.average().toFloat().coerceIn(1.0f, 15f)
+                    val minF = frettedVals.minOrNull() ?: 0
+                    val maxF = frettedVals.maxOrNull() ?: 0
+                    val prevBoxMin = lastHandBoxCenterFret - 1.5f
+                    val prevBoxMax = lastHandBoxCenterFret + 1.5f
+
+                    bestBoxCenter = if (minF >= prevBoxMin && maxF <= prevBoxMax) {
+                        lastHandBoxCenterFret
+                    } else {
+                        boxCenter
+                    }
                 }
             }
         }
