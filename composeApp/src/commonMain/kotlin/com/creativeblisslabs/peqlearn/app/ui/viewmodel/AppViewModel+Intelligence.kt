@@ -45,12 +45,14 @@ fun AppViewModel.startStemSplit(customInputPath: String? = null) {
         log("Model Selected: ${stemSeparationModel.value}")
 
         try {
+            val isContentUri = trackToSplit.startsWith("content://")
             val fileObj = java.io.File(trackToSplit)
-            log("Input File Exists: ${fileObj.exists()}, Size: ${fileObj.length()} bytes")
+            val exists = if (isContentUri) true else fileObj.exists()
+            log("Input File Scheme: ${if (isContentUri) "Android ContentProvider" else "Filesystem Path"}, Exists: $exists")
             log("Executing ONNX Neural Separation inference...")
 
             val outputDirectory = "" // Handled internally by platform splitter or cache
-            val stemsResult = splitter.splitTrack(trackToSplit, outputDirectory)
+            val stemsResult = splitter.splitTrack(trackToSplit, outputDirectory, onLog = { log(it) })
 
             log("Separation finished successfully. Stems generated: ${stemsResult.size}")
             stemsResult.forEach { (stemName, path) ->
@@ -121,8 +123,6 @@ fun AppViewModel.selectTrackForMixer(item: com.creativeblisslabs.peqlearn.app.da
     selectedMixerItem.value = item
     stemSplitStatusMessage.value = "Track selected: ${item.displayName}. Tap 'SPLIT STEMS'."
     toastMessage.value = "Selected: ${item.displayName}"
-    // Auto-analyze structure with All-In-One if available
-    runAllInOneAnalysis(item.path)
 }
 
 fun AppViewModel.runAllInOneAnalysis(trackPath: String? = null) {

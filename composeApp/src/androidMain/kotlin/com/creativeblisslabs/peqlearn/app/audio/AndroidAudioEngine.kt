@@ -362,7 +362,7 @@ class AndroidAudioEngine(
     private val tablaMidiMap = ConcurrentHashMap<String, Int>(percussionMidiMap)
 
     // Direct mapping from Bol name to authentic extracted sample audio file in assets/tabla/
-    private val tablaBolSampleFileMap = mapOf(
+    private val tablaBolSampleFileMap = mapOf(        // Hindustani Bols
         "DHA" to "Tabla_Banya_num1.mp3",
         "DHIN" to "Tabla_Banya_num2.mp3",
         "DHI" to "Tabla_Banya_num2.mp3",
@@ -377,6 +377,7 @@ class AndroidAudioEngine(
         "KDHA" to "Tabla_Banya_num1.mp3",
         "NADHA" to "Tabla_Banya_num1.mp3",
         "NADHI" to "Tabla_Banya_num2.mp3",
+        "NADHIDHINA" to "Tabla_Banya_num2.mp3",
         "GE" to "Banya_num1.mp3",
         "GA" to "Banya_num2.mp3",
         "GHE" to "Banya_num1.mp3",
@@ -413,6 +414,7 @@ class AndroidAudioEngine(
         "TERIKIT" to "Tabla_Slap_num1.mp3",
         "TRAK" to "Tabla_Slap_num5.mp3",
         "KRAN" to "Open_Tabla_Hit.mp3",
+        // Carnatic Solkattu / Konnakol & Mridangam Syllables
         "THA" to "Sharp_Hit.mp3",
         "THI" to "Tabla_Tone_num6.mp3",
         "THOM" to "Banya_num1.mp3",
@@ -420,7 +422,10 @@ class AndroidAudioEngine(
         "NAM" to "Tabla_Tone_num1.mp3",
         "NU" to "Tabla_Tone_num1.mp3",
         "MI" to "Tabla_Tone_num5.mp3",
-        "JO" to "Tabla_Tone_num3.mp3"
+        "JO" to "Tabla_Tone_num3.mp3",
+        "THAKA" to "Sharp_Hit.mp3",
+        "THAKITA" to "Tabla_Slap_num2.mp3",
+        "THAKADHIMI" to "Tabla_Banya_num2.mp3"
     )
 
     private val tablaBolSoundIdMap = ConcurrentHashMap<String, Int>()
@@ -736,9 +741,9 @@ class AndroidAudioEngine(
         loadInstrumentSampleKit("VOICE", "voice")
         loadInstrumentSampleKit("STRINGS", "strings")
         loadInstrumentSampleKit("BRASS", "brass")
+        loadGeneralUserSoundFont()
         loadSf2Piano()
         loadSf2Guitar()
-        loadSf2Harmonium()
 
         engineScope.launch(Dispatchers.IO) {
             loadSf2Tanpura()?.let { sf ->
@@ -1553,7 +1558,13 @@ class AndroidAudioEngine(
                     context.assets.openFd("tanpura/$fileName").use { afd ->
                         val soundId = systemSoundPool.load(afd.fileDescriptor, afd.startOffset, afd.length, 1)
                         tanpuraSoundIds[scaleKey] = soundId
-                        Log.d("AudioEngine", "Loaded Tanpura MP3 fallback for scale: $scaleKey")
+                        // Also index normalized variants (e.g. C# and CS)
+                        if (scaleKey.contains("#")) {
+                            tanpuraSoundIds[scaleKey.replace("#", "S")] = soundId
+                        } else if (scaleKey.endsWith("S") && scaleKey.length > 1) {
+                            tanpuraSoundIds[scaleKey.dropLast(1) + "#"] = soundId
+                        }
+                        Log.d("AudioEngine", "Loaded Tanpura sample for scale: $scaleKey")
                     }
                 }
             } catch (e: Exception) {
@@ -1943,12 +1954,12 @@ class AndroidAudioEngine(
         }
     }
 
-    private fun loadSf2Harmonium() {
+    private fun loadGeneralUserSoundFont() {
         engineScope.launch(Dispatchers.IO) {
             try {
-                val tempFile = File(context.cacheDir, "harmonium_gm.sf2")
+                val tempFile = File(context.cacheDir, "GeneralUser_GS.sf2")
                 if (!tempFile.exists() || tempFile.length() == 0L) {
-                    context.assets.open("harmonium/Wetthasinghe_Harmnium_GM_Ver.sf2").use { input ->
+                    context.assets.open("soundfonts/GeneralUser_GS.sf2").use { input ->
                         tempFile.outputStream().use { output -> input.copyTo(output) }
                     }
                 }
@@ -1957,17 +1968,15 @@ class AndroidAudioEngine(
                 player.loadSoundFont(tempFile.absolutePath)
 
                 synchronized(sf2Lock) {
-                    soundFontPool["HARMONIUM"] = player
-                    if (currentInstrument.contains("HARMONIUM")) {
+                    soundFontPool["GENERALUSER"] = player
+                    if (globalSoundFont == null) {
                         globalSoundFont = player
                         sf2Loaded.set(true)
                     }
-                    Log.i("AudioEngine", "Harmonium FluidSynth fully loaded and cached.")
                 }
-            } catch (e: java.io.FileNotFoundException) {
-                Log.i("AudioEngine", "[SF2] harmonium.sf2 asset omitted to save space — using Harmonium MP3 sample engine.")
+                Log.i("AudioEngine", "GeneralUser_GS SoundFont fully loaded and mounted as comprehensive GM fallback.")
             } catch (e: Exception) {
-                Log.e("AudioEngine", "Harmonium SoundFont loading failed: ${e.message}")
+                Log.e("AudioEngine", "GeneralUser_GS SoundFont loading failed: ${e.message}")
             }
         }
     }
@@ -2074,6 +2083,7 @@ class AndroidAudioEngine(
 
         // 1. Check if the active instrument has audio samples loaded in SoundPool
         val sampleInstrumentKey = when {
+            currentInstrument == "HARMONIUM" -> "HARMONIUM"
             currentInstrument == "SITAR" -> "SITAR"
             currentInstrument == "UKULELE" -> "GUITAR_ACOUSTIC"
             currentInstrument == "PIANO" || currentInstrument == "PIANO_ACOUSTIC" -> {
@@ -2154,6 +2164,19 @@ class AndroidAudioEngine(
                 return
             }
         }
+
+        // 3. Global SoundFont Fallback (GeneralUser_GS.sf2) for missing instruments or unmapped notes
+        synchronized(sf2Lock) {
+            val sf = soundFontPool["GENERALUSER"] ?: globalSoundFont
+            if (sf != null && sf2Loaded.get()) {
+                val midiVel = (clampedVel * 127).toInt().coerceIn(1, 127)
+                try {
+                    sf.noteOn(0, midiNote, midiVel)
+                } catch (e: Exception) {
+                    Log.e("AudioEngine", "Global SF2 noteOn error: ${e.message}")
+                }
+            }
+        }
     }
 
     override fun noteOff(note: Int) {
@@ -2163,6 +2186,7 @@ class AndroidAudioEngine(
         }
 
         val sampleInstrumentKey = when {
+            currentInstrument == "HARMONIUM" -> "HARMONIUM"
             currentInstrument == "SITAR" -> "SITAR"
             currentInstrument == "UKULELE" -> "GUITAR_ACOUSTIC"
             currentInstrument == "PIANO" || currentInstrument == "PIANO_ACOUSTIC" -> {
@@ -2335,63 +2359,18 @@ class AndroidAudioEngine(
         }
 
         val cleanKey = target.replace(Regex("[0-9]"), "").trim().uppercase()
-        val midiNote = tanpuraMidiMap[cleanKey] ?: return
+        val midiNote = tanpuraMidiMap[cleanKey] ?: 60
 
-        // 1. AudioTrack Engine with Crossfading
-        val engine = tanpuraEngine
-        if (engine != null) {
-            engine.noteOn(midiNote)
-            val pcmData: ShortArray? = engine.renderTanpuraDrone(midiNote, velocity = 100)
-            if (pcmData != null) {
-                try {
-                    val normalizedPcm = ShortArray(pcmData.size) { i ->
-                        (pcmData[i] * tanpuraGain).toInt().coerceIn(-32768, 32767).toShort()
-                    }
-                    
-                    val newTrack = AudioTrack(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build(),
-                        AudioFormat.Builder()
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(44100)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                            .build(),
-                        normalizedPcm.size * 2,
-                        AudioTrack.MODE_STATIC,
-                        AudioManager.AUDIO_SESSION_ID_GENERATE
-                    ).apply {
-                        write(normalizedPcm, 0, normalizedPcm.size)
-                        if (normalizedPcm.size >= 2) {
-                            setLoopPoints(0, normalizedPcm.size / 2, -1)
-                        }
-                    }
-
-                    crossfadeTanpuraTracks(newTrack)
-                    currentlyPlayingTanpuraNote = midiNote
-                    
-                    // Kill SoundPool fallback if it was playing
-                    currentlyPlayingTanpuraId?.let { 
-                        systemSoundPool.stop(it)
-                        currentlyPlayingTanpuraId = null
-                    }
-                    return
-                } catch (e: Exception) {
-                    Log.e("AudioEngine", "SoundFont Tanpura Crossfade failed: ${e.message}")
-                }
-            }
-        }
-
-        // 2. Fallback to MP3 via SoundPool (ONLY if AudioTrack engine fails)
-        if (currentlyPlayingTanpuraId == null) {
-            val soundId = tanpuraSoundIds[cleanKey]
-            if (soundId != null) {
-                currentlyPlayingTanpuraId = systemSoundPool.play(soundId, tanpuraGain, tanpuraGain, 1, -1, 1.0f)
-                currentlyPlayingTanpuraNote = midiNote
-            } else {
-                Log.w("AudioEngine", "Tanpura fallback MP3 not found for scale: $cleanKey")
-            }
+        // Play authentic high-fidelity Tanpura drone audio sample via SoundPool
+        val soundId = tanpuraSoundIds[cleanKey] ?: tanpuraSoundIds[cleanKey.replace("#", "S")] ?: tanpuraSoundIds[cleanKey.replace("S", "#")]
+        if (soundId != null) {
+            currentlyPlayingTanpuraId?.let { systemSoundPool.stop(it) }
+            val vol = tanpuraGain.coerceIn(0.1f, 1.0f)
+            currentlyPlayingTanpuraId = systemSoundPool.play(soundId, vol, vol, 1, -1, 1.0f)
+            currentlyPlayingTanpuraNote = midiNote
+            Log.i("AudioEngine", "Tanpura playing authentic sample loop for scale: $cleanKey (soundId=$soundId)")
+        } else {
+            Log.w("AudioEngine", "Tanpura sample not found for scale: $cleanKey")
         }
     }
 
@@ -2696,15 +2675,28 @@ class AndroidAudioEngine(
                         ?: kitSounds["DRUM"]?.entries?.firstOrNull { it.key.contains(cleanLabel, ignoreCase = true) }?.value
                         ?: drumKitLoader.kitSampleMap.values.firstOrNull()
 
-                    val dynamicGain = if (tablaGain > 0.01f) tablaGain else 0.9f
+                    val dynamicGain = if (tablaGain > 0.005f) tablaGain else 0.9f
                     if (fallbackSoundId != null && fallbackSoundId != 0) {
                         val baseVol = if (resolvedPadIdx == 0 || resolvedPadIdx == 1) 0.95f else 0.85f
                         val vol = (baseVol * dynamicGain).coerceIn(0.05f, 1.0f)
                         soundPool.play(fallbackSoundId, vol, vol, 1, 0, 1f)
                         onPadTriggered?.invoke(resolvedPadIdx)
-                    } else if (metronomeStrongId != 0) {
-                        val vol = (0.85f * dynamicGain).coerceIn(0.05f, 1.0f)
-                        systemSoundPool.play(if (resolvedPadIdx == 0) metronomeStrongId else metronomeWeakId, vol, vol, 1, 0, 1f)
+                    } else {
+                        // SoundFont fallback on MIDI channel 9/10 if sample is missing or still loading
+                        synchronized(sf2Lock) {
+                            globalSoundFont?.let { sf ->
+                                try {
+                                    val drumVel = ((dynamicGain.coerceIn(0.1f, 1f)) * 127).toInt()
+                                    sf.noteOn(9, index.coerceIn(35, 82), drumVel)
+                                } catch (e: Throwable) {
+                                    Log.e("AudioEngine", "Drum SoundFont fallback error: ${e.message}")
+                                }
+                            }
+                        }
+                        if (metronomeStrongId != 0) {
+                            val vol = (0.85f * dynamicGain).coerceIn(0.05f, 1.0f)
+                            systemSoundPool.play(if (resolvedPadIdx == 0) metronomeStrongId else metronomeWeakId, vol, vol, 1, 0, 1f)
+                        }
                     }
                 }
             }

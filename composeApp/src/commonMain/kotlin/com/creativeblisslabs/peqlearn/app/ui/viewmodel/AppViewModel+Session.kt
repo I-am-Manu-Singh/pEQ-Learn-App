@@ -112,6 +112,10 @@ fun AppViewModel.restoreSession() {
             isRightHandHidden.value = session.isRightHandHidden
             session.leftHandColor?.let { leftHandColor.value = Color(it.toLong()) }
             session.rightHandColor?.let { rightHandColor.value = Color(it.toLong()) }
+            customTrackColors.clear()
+            session.customTrackColors.forEach { (tIdx, argb) ->
+                customTrackColors[tIdx] = Color(argb.toLong())
+            }
             transposition.intValue = session.notationTransposition
             notationFormat.value = session.notationFormat
             isSplitStaff.value = session.isSplitStaff
@@ -321,6 +325,7 @@ fun AppViewModel.persistSession() {
         isRightHandHidden = isRightHandHidden.value,
         leftHandColor = leftHandColor.value.toArgb(),
         rightHandColor = rightHandColor.value.toArgb(),
+        customTrackColors = customTrackColors.mapValues { it.value.toArgb() },
         notationTransposition = transposition.intValue,
         notationFormat = notationFormat.value,
         isSplitStaff = isSplitStaff.value,

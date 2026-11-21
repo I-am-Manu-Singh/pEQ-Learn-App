@@ -532,15 +532,6 @@ fun GuitarHumanHandsOverlay(
                 cornerRadius = CornerRadius(thumbW * 0.48f, thumbW * 0.48f),
                 style = Stroke(width = 1.dp.toPx())
             )
-            // Realistic thumb nail plate & lunula
-            val tNailW = thumbW * 0.68f
-            val tNailH = thumbH * 0.44f
-            drawRoundRect(
-                color = Color(0xFFFFF0E8).copy(alpha = 0.84f),
-                topLeft = Offset(thumbCenterX - tNailW * 0.5f, thumbTopY + 2.5f * s),
-                size = Size(tNailW, tNailH),
-                cornerRadius = CornerRadius(tNailW * 0.4f, tNailW * 0.4f)
-            )
 
             // B. Dorsal / Palmar Base Arch & Wrist Silhouette below Bottom Neck Edge
             val palmSpreadW = (44f * s).coerceIn(28f, 76f)
@@ -699,7 +690,7 @@ fun GuitarHumanHandsOverlay(
                     drawPath(path = fingerPath, color = Color.Black.copy(alpha = if (isPressing) 0.42f else 0.24f))
                 }
 
-                // 3D Cylindrical Subsurface-Scattered Finger Shading using dynamic normals
+                // 3D Cylindrical Subsurface-Scattered Finger Shading using dynamic normals (NO NAILS)
                 drawPath(
                     path = fingerPath,
                     brush = Brush.linearGradient(
@@ -762,55 +753,6 @@ fun GuitarHumanHandsOverlay(
                     )
                 )
 
-                // Rotated 3D Fingernail Plate using withTransform
-                val nailW = tw * 1.24f
-                val nailH = tw * (1.28f - 0.14f * press)
-                val nailDist = tw * 0.1f
-                val nailCenterBase = Offset(tipX - cos(angle) * nailDist, tipY - sin(angle) * nailDist)
-
-                withTransform({
-                    translate(nailCenterBase.x, nailCenterBase.y)
-                    rotate(degrees = Math.toDegrees(angle.toDouble()).toFloat() + 90f)
-                    translate(-nailW * 0.5f, -nailH * 0.72f) 
-                }) {
-                    val nailCorner = CornerRadius(nailW * 0.42f, nailW * 0.42f)
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            colors = if (isPressing) {
-                                listOf(Color(0xFFFFF6F0), Color(0xFFFFCDD2))
-                            } else {
-                                listOf(Color(0xFFFFEDE4).copy(alpha = 0.84f), Color(0xFFF5C6CB).copy(alpha = 0.78f))
-                            },
-                            startY = 0f,
-                            endY = nailH
-                        ),
-                        topLeft = Offset(0f, 0f),
-                        size = Size(nailW, nailH),
-                        cornerRadius = nailCorner
-                    )
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = if (isPressing) 0.92f else 0.72f),
-                        topLeft = Offset(nailW * 0.08f, 0f),
-                        size = Size(nailW * 0.84f, (nailH * 0.22f).coerceAtLeast(1.4.dp.toPx())),
-                        cornerRadius = nailCorner
-                    )
-                    val lunulaW = nailW * 0.54f
-                    val lunulaH = nailH * 0.24f
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = if (isPressing) 0.65f else 0.42f),
-                        topLeft = Offset((nailW - lunulaW) * 0.5f, nailH - lunulaH * 1.15f),
-                        size = Size(lunulaW, lunulaH),
-                        cornerRadius = CornerRadius(lunulaW * 0.5f, lunulaW * 0.5f)
-                    )
-                    drawRoundRect(
-                        color = if (isPressing) handAccentColor else skinDeepShadow.copy(alpha = 0.55f),
-                        topLeft = Offset(0f, 0f),
-                        size = Size(nailW, nailH),
-                        cornerRadius = nailCorner,
-                        style = Stroke(width = if (isPressing) 1.4.dp.toPx() else 0.8.dp.toPx())
-                    )
-                }
-
                 // Glassmorphic Finger Number Badge (1..4)
                 val badgeY = tipY + tw * 1.45f
                 val badgeRad = (tw * (if (isPressing) 1.15f else 0.90f)).coerceAtLeast(7.dp.toPx())
@@ -855,9 +797,8 @@ fun GuitarHumanHandsOverlay(
                     val pillW = (badgeRad * 2.35f).coerceAtLeast(22.dp.toPx())
                     val pillH = (badgeRad * 1.25f).coerceAtLeast(12.dp.toPx())
                     
-                    val nailTopY = tipY - tw * 0.72f // Explicitly declare nailTopY for the HUD placement
-                    
-                    val pillY = (nailTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
+                    val padTopY = tipY - tw * 0.72f
+                    val pillY = (padTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
 
                     drawRoundRect(
                         color = Color(0xFF0E131F).copy(alpha = 0.88f),
@@ -908,10 +849,8 @@ fun GuitarHumanHandsOverlay(
                     val pillW = (badgeRad * 2.35f).coerceAtLeast(22.dp.toPx())
                     val pillH = (badgeRad * 1.25f).coerceAtLeast(12.dp.toPx())
                     
-                    // Explicitly calculate the top of the nail here so the HUD knows where to hover
-                    val nailTopY = tipY - tw * 0.72f 
-                    
-                    val pillY = (nailTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
+                    val padTopY = tipY - tw * 0.72f 
+                    val pillY = (padTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
 
                     drawRoundRect(
                         color = Color(0xFF0E131F).copy(alpha = 0.88f),
@@ -1136,23 +1075,6 @@ fun GuitarHumanHandsOverlay(
                     path = rhThumbPath,
                     color = skinDeepShadow.copy(alpha = 0.58f),
                     style = Stroke(width = 1.1.dp.toPx())
-                )
-
-                // Right Thumb Nail Plate (viewed in lateral profile gripping pick)
-                val rhNailW = (11f * s).coerceAtLeast(7f)
-                val rhNailH = (7.5f * s).coerceAtLeast(5f)
-                drawRoundRect(
-                    color = Color(0xFFFFF2EA).copy(alpha = 0.88f),
-                    topLeft = Offset(pickX - 1f * s, pickY - 13f * s),
-                    size = Size(rhNailW, rhNailH),
-                    cornerRadius = CornerRadius(rhNailH * 0.45f, rhNailH * 0.45f)
-                )
-                drawRoundRect(
-                    color = skinDeepShadow.copy(alpha = 0.5f),
-                    topLeft = Offset(pickX - 1f * s, pickY - 13f * s),
-                    size = Size(rhNailW, rhNailH),
-                    cornerRadius = CornerRadius(rhNailH * 0.45f, rhNailH * 0.45f),
-                    style = Stroke(width = 0.8.dp.toPx())
                 )
 
                 // Thumb Interphalangeal (IP) knuckle crease lines

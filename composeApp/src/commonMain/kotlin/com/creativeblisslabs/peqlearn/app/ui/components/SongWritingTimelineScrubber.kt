@@ -1,5 +1,11 @@
 package com.creativeblisslabs.peqlearn.app.ui.components
 
+import com.creativeblisslabs.peqlearn.app.network.LrcLibClient
+import com.creativeblisslabs.peqlearn.app.network.SyncedLyricLine
+import com.creativeblisslabs.peqlearn.app.util.RealChordsDb
+import com.creativeblisslabs.peqlearn.app.util.RealChordPosition
+import com.creativeblisslabs.peqlearn.app.util.ChordVoicingEngine
+
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures

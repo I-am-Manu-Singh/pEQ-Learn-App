@@ -126,6 +126,7 @@ private fun HardwareEnclosure(
     var selectedPitchIdx by remember { mutableIntStateOf(1) } // C# (Kali 1) default
     var fineTuneCents by remember { mutableFloatStateOf(0f) } // -50 to +50 cents
     var isFemaleUpperOctave by remember { mutableStateOf(false) } // Male (Oct 3) vs Female (Oct 4)
+    var isSoftwareSynthesizer by remember { mutableStateOf(false) } // Audio Sample-based (MP3) vs Algorithmic Karplus-Strong Waveguide
 
     // --- State: String Tuning Mode (Pa / Ma / Ni / Sa) ---
     val firstStringModes = remember { listOf("PA (5th)", "MA (4th)", "NI (7th)", "SA (Unison)") }
@@ -248,13 +249,20 @@ private fun HardwareEnclosure(
         stringCount,
         tanpuraTempoBpm,
         pluckStyle,
-        isFemaleUpperOctave
+        isFemaleUpperOctave,
+        isSoftwareSynthesizer
     ) {
         if (isTanpuraRunning) {
             tanpuraJob?.cancel()
             val basePitch = pitches[selectedPitchIdx]
             viewModel.isTanpuraActive.value = true
-            runCatching { audioEngine.playSample(basePitch, 0, "TANPURA") }
+            
+            if (!isSoftwareSynthesizer) {
+                // High-fidelity multi-scale acoustic Tanpura drone loop
+                runCatching { audioEngine.playSample(basePitch, 0, "TANPURA") }
+            } else {
+                runCatching { audioEngine.playSample("STOP", 0, "TANPURA") }
+            }
 
             tanpuraJob = scope.launch {
                 while (isActive && isTanpuraRunning) {
@@ -667,6 +675,8 @@ private fun HardwareEnclosure(
                 onJawariChange = { jawariResonance = it },
                 isFemaleUpperOctave = isFemaleUpperOctave,
                 onToggleOctaveRegister = { isFemaleUpperOctave = !isFemaleUpperOctave },
+                isSoftwareSynthesizer = isSoftwareSynthesizer,
+                onToggleEngineMode = { isSoftwareSynthesizer = !isSoftwareSynthesizer },
                 selectedTradition = selectedTradition,
                 onSelectTradition = {
                     selectedTradition = it
@@ -1402,6 +1412,8 @@ private fun ParameterDock(
     onJawariChange: (Float) -> Unit,
     isFemaleUpperOctave: Boolean,
     onToggleOctaveRegister: () -> Unit,
+    isSoftwareSynthesizer: Boolean,
+    onToggleEngineMode: () -> Unit,
     selectedTradition: String,
     onSelectTradition: (String) -> Unit,
     taals: List<Taal>,
@@ -1507,7 +1519,20 @@ private fun ParameterDock(
                 onClick = onToggleOctaveRegister,
                 label = {
                     Text(
-                        text = if (isFemaleUpperOctave) "Female Pitch (Oct 4)" else "Male Pitch (Oct 3)",
+                        text = if (isFemaleUpperOctave) "Female (Oct 4)" else "Male (Oct 3)",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                shape = RoundedCornerShape(8.dp)
+            )
+
+            pEQFilterChip(
+                selected = isSoftwareSynthesizer,
+                onClick = onToggleEngineMode,
+                label = {
+                    Text(
+                        text = if (isSoftwareSynthesizer) "Algo Waveguide" else "Acoustic Sample",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )

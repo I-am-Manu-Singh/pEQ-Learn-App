@@ -664,6 +664,7 @@ data class DrawingConfig(
     val primaryColor: Color = Color(0xFF64B5F6),
     val leftHandColor: Color = Color(0xFF6C63FF),
     val rightHandColor: Color = Color(0xFF4A90E2),
+    val customTrackColors: Map<Int, Color> = emptyMap(),
     val isLeftHandHidden: Boolean = false,
     val isRightHandHidden: Boolean = false,
     val isDark: Boolean = true,

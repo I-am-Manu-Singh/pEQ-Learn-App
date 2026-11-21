@@ -755,6 +755,7 @@ fun resolveInstrumentWaterfallGeometry(
                                 isVerticalScroll = viewModel.isVerticalScroll.value,
                                 leftHandColor = viewModel.leftHandColor.value,
                                 rightHandColor = viewModel.rightHandColor.value,
+                                customTrackColors = viewModel.customTrackColors.toMap(),
                                 isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                 isRightHandHidden = viewModel.isRightHandHidden.value,
                                 transposition = totalTranspositionSemis,
@@ -3470,6 +3471,7 @@ fun resolveInstrumentWaterfallGeometry(
                                         isVerticalScroll = viewModel.isVerticalScroll.value,
                                         leftHandColor = viewModel.leftHandColor.value,
                                         rightHandColor = viewModel.rightHandColor.value,
+                                        customTrackColors = viewModel.customTrackColors.toMap(),
                                         isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                         isRightHandHidden = viewModel.isRightHandHidden.value,
                                         enabledTrackIndices = viewModel.enabledTrackIndices,
@@ -3888,6 +3890,7 @@ fun resolveInstrumentWaterfallGeometry(
                                                     isVerticalScroll = viewModel.isVerticalScroll.value,
                                                     leftHandColor = viewModel.leftHandColor.value,
                                                     rightHandColor = viewModel.rightHandColor.value,
+                                                    customTrackColors = viewModel.customTrackColors.toMap(),
                                                     isLeftHandHidden = viewModel.isLeftHandHidden.value,
                                                     isRightHandHidden = viewModel.isRightHandHidden.value,
                                                     showScoreHeader = false,
@@ -4795,17 +4798,8 @@ fun resolveInstrumentWaterfallGeometry(
                                                     val isEnabled =
                                                         viewModel.enabledTrackIndices[track.trackIndex]
                                                             ?: track.isEnabled
-                                                    val isDrumTrack = track.channel == 9
-                                                    val trackColor = when {
-                                                        isDrumTrack -> Color(0xFFFF5252)
-                                                        track.trackIndex == 0 -> viewModel.rightHandColor.value
-                                                        track.trackIndex == 1 -> viewModel.leftHandColor.value
-                                                        else -> Color(
-                                                            com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX[
-                                                                track.trackIndex % com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX.size
-                                                            ]
-                                                        )
-                                                    }
+                                                    val isDrumTrack = track.channel == 9 || track.channel == 10
+                                                    val trackColor = viewModel.getResolvedTrackColor(track.trackIndex, isDrumTrack)
 
                                                     DropdownMenuItem(
                                                         text = {

@@ -60,8 +60,8 @@ actual fun pEQImage(
                             }
                         } catch (_: Exception) {}
                         
+                        val retriever = MediaMetadataRetriever()
                         try {
-                            val retriever = MediaMetadataRetriever()
                             retriever.setDataSource(context, uri)
                             val art = retriever.embeddedPicture
                             if (art != null) {
@@ -71,7 +71,10 @@ actual fun pEQImage(
                             if (isVideo) {
                                 return retriever.getFrameAtTime(1000000)
                             }
-                        } catch (_: Exception) {}
+                        } catch (_: Exception) {
+                        } finally {
+                            try { retriever.release() } catch (_: Exception) {}
+                        }
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                             try {

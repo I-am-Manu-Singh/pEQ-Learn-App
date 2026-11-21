@@ -1355,17 +1355,8 @@ fun PlaybackSettingsSheet(
                             scoreTracks.forEach { track ->
                                 val isTrackOn = viewModel.enabledTrackIndices[track.trackIndex]
                                     ?: track.isEnabled
-                                val isDrum = track.channel == 9
-                                val swatchColor = when {
-                                    isDrum -> Color(0xFFFF5252)
-                                    track.trackIndex == 0 -> viewModel.rightHandColor.value
-                                    track.trackIndex == 1 -> viewModel.leftHandColor.value
-                                    else -> Color(
-                                        com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX[
-                                            track.trackIndex % com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX.size
-                                        ]
-                                    )
-                                }
+                                val isDrum = track.channel == 9 || track.channel == 10
+                                val swatchColor = viewModel.getResolvedTrackColor(track.trackIndex, isDrum)
 
                                 Row(
                                     modifier = Modifier
@@ -2392,7 +2383,10 @@ fun SynthesiaWaterfallOverlay(
             val mStartBeat = if (playheadMeasure < cumBeats.size) cumBeats[playheadMeasure] else 0f
             val mNextBeat = if (playheadMeasure + 1 < cumBeats.size) cumBeats[playheadMeasure + 1] else (mStartBeat + 4f)
             val measureBeats = (mNextBeat - mStartBeat).coerceAtLeast(1f)
-            val currentPlaybackBeat = mStartBeat + (playheadOffset * measureBeats)
+            // Audio latency lead compensation (~35ms audio buffer pre-roll) aligns falling note laser strike with audio attack
+            val tempoBpm = score?.tempo?.coerceAtLeast(20f) ?: 120f
+            val audioLatencyCompensationBeats = if (isPlaying) (0.035f * (tempoBpm / 60f)) else 0f
+            val currentPlaybackBeat = mStartBeat + (playheadOffset * measureBeats) + audioLatencyCompensationBeats
 
             val maxVisibleLookaheadBeats = (canvasH / pixelsPerBeat) + 0.5f
             val minBeat = currentPlaybackBeat - 0.5f
@@ -2436,6 +2430,8 @@ fun SynthesiaWaterfallOverlay(
                 val clampedTopY = topY.coerceAtLeast(0f)
                 val blockHeight = (clampedBottomY - clampedTopY).coerceAtLeast(14f)
 
+                // Maintain consistent track/hand coloring across falling waterfall notes!
+                // Do NOT override falling note color with transient single-key activeNoteColors to avoid strobe/flashing
                 val noteColor = lane.laneColor ?: when {
                     isDrumNote -> Color(0xFFFF5252)
                     note.voice >= 2 -> Color(

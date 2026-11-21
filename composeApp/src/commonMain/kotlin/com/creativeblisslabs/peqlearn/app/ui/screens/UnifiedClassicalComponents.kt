@@ -671,6 +671,22 @@ fun UnifiedTaalBrowser(
                     )
                 }
 
+                // Interactive Real-Time Tabla Visualizer for Indian & Carnatic Taals
+                val activePlayingBol = if (currentBeatPlayhead in currentTaal.bolSequence.indices) currentTaal.bolSequence[currentBeatPlayhead] else null
+                UnifiedTablaVisualizer(
+                    activeBol = activePlayingBol,
+                    accentColor = accentColor,
+                    showLabels = true,
+                    dayanTonicName = "Sa",
+                    bayanBassName = if (isCarnatic) "Mridangam Left (Thoppi)" else "Bayan (Bass)",
+                    onBolTapped = { tappedBol ->
+                        getAudioEngine().playSample(tappedBol, 0, "TABLA")
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(145.dp)
+                )
+
                 // Devanagari Theka Representation if available
                 if (currentTaal.devanagariTheka.isNotEmpty()) {
                     Surface(

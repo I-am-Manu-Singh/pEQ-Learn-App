@@ -73,20 +73,21 @@ private fun DrawScope.drawLedgerLines(
         color.copy(alpha = 0.88f)
     }
 
-    if (y < topY - halfSpacing * 0.85f) {
+    // Ledger lines only draw strictly outside staff lines (notes on outer lines/spaces do not get ledger lines)
+    if (y <= topY - spacing * 0.85f) {
         var curL = topY - spacing
         var count = 0
-        while (curL >= y - (halfSpacing * 0.60f) && count < 5) {
+        while (curL >= y - (halfSpacing * 0.50f) && count < 6) {
             drawLine(lineColor, Offset(x - lineBoundExt, curL), Offset(x + lineBoundExt, curL), strokeWidth = strokeW)
             curL -= spacing
             count++
         }
-    } else if (y > bottomY + halfSpacing * 0.85f) {
+    } else if (y >= bottomY + spacing * 0.85f) {
         var curL = bottomY + spacing
         var count = 0
-        while (curL <= y + (halfSpacing * 0.60f) && count < 5) {
+        while (curL <= y + (halfSpacing * 0.50f) && count < 6) {
             drawLine(lineColor, Offset(x - lineBoundExt, curL), Offset(x + lineBoundExt, curL), strokeWidth = strokeW)
-            curL += spacing
+            curL -= spacing
             count++
         }
     }
@@ -559,9 +560,9 @@ private fun computeStaffLayout(
             }
         }
         val shiftedMidiForDisplay = if (isTrebleClef) {
-            rawShiftedMidi.coerceIn(55, 96)
+            rawShiftedMidi.coerceIn(53, 96) // Extended down to F3 (MIDI 53) so Treble handles Middle C (60), B3 (59), A3 (57), G3 (55), F3 (53) with clear ledger lines
         } else {
-            rawShiftedMidi.coerceIn(33, 64)
+            rawShiftedMidi.coerceIn(33, 67) // Extended up to G4 (MIDI 67) so Bass handles Middle C (60), D4 (62), E4 (64), F4 (65), G4 (67) with clear ledger lines
         }
 
         val diatonicStep = ChordVoicingEngine.getDiatonicStep(shiftedMidiForDisplay)
@@ -662,7 +663,7 @@ private fun computeStaffLayout(
                 lastDisplaced = isSecond
                 prevStep = item.diatonicStep
                 val offsetDir = if (chordStemDir < 0) 1f else -1f
-                val adjustedX = if (isSecond) item.anchorX + (offsetDir * (stdNoteWidth * 0.88f)) else item.anchorX
+                val adjustedX = if (isSecond) item.anchorX + (offsetDir * (stdNoteWidth * 1.05f)) else item.anchorX
                 val col = if (item.resolvedAccidental != null) (accColCounter++ % 3) else 0
                 visibleNotes.add(
                     item.copy(
@@ -1271,6 +1272,7 @@ data class NotationViewerOptions(
     val onVerticalScrollChange: ((Boolean) -> Unit)? = null,
     val leftHandColor: Color = Color(0xFF6C63FF),
     val rightHandColor: Color = Color(0xFF4A90E2),
+    val customTrackColors: Map<Int, Color> = emptyMap(),
     val isLeftHandHidden: Boolean = false,
     val isRightHandHidden: Boolean = false,
     val enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
@@ -1299,6 +1301,7 @@ fun StaffAndTabNotationViewer(
     onVerticalScrollChange: ((Boolean) -> Unit)? = null,
     leftHandColor: Color = Color(0xFF6C63FF),
     rightHandColor: Color = Color(0xFF4A90E2),
+    customTrackColors: Map<Int, Color> = emptyMap(),
     isLeftHandHidden: Boolean = false,
     isRightHandHidden: Boolean = false,
     enabledTrackIndices: Map<Int, Boolean> = emptyMap(),
@@ -1328,6 +1331,7 @@ fun StaffAndTabNotationViewer(
             onVerticalScrollChange = onVerticalScrollChange,
             leftHandColor = leftHandColor,
             rightHandColor = rightHandColor,
+            customTrackColors = customTrackColors,
             isLeftHandHidden = isLeftHandHidden,
             isRightHandHidden = isRightHandHidden,
             enabledTrackIndices = enabledTrackIndices,
@@ -1449,6 +1453,7 @@ fun StaffAndTabNotationViewer(
     val onVerticalScrollChange = options.onVerticalScrollChange
     val leftHandColor = options.leftHandColor
     val rightHandColor = options.rightHandColor
+    val customTrackColors = options.customTrackColors
     val isLeftHandHidden = options.isLeftHandHidden
     val isRightHandHidden = options.isRightHandHidden
     val enabledTrackIndices = options.enabledTrackIndices
@@ -1489,38 +1494,6 @@ fun StaffAndTabNotationViewer(
         } else null
     }
 
-    val labelCache = remember(textMeasurer, compactStaffMode) {
-        val fSize = if (compactStaffMode) 5.8.sp else 6.8.sp
-        (0..11).associateWith { i ->
-            textMeasurer.measure(
-                text = MusicConstants.NOTE_LABELS[i].take(1),
-                style = TextStyle(
-                    color = Color.White,
-                    fontSize = fSize,
-                    lineHeight = fSize,
-                    fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center,
-                    background = Color.Transparent
-                )
-            )
-        }
-    }
-    val sharpCache = remember(textMeasurer, primaryColor) {
-        textMeasurer.measure("♯", TextStyle(color = primaryColor, fontSize = 14.sp, fontWeight = FontWeight.Bold))
-    }
-    val flatCache = remember(textMeasurer, primaryColor) {
-        textMeasurer.measure("♭", TextStyle(color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Bold))
-    }
-    val measureLabelsCache = remember(textMeasurer, score?.measures?.size, primaryColor) {
-        val count = score?.measures?.size ?: 0
-        (0 until count).associateWith { mIdx ->
-            textMeasurer.measure(
-                text = "${mIdx + 1}",
-                style = TextStyle(color = primaryColor.copy(alpha = 0.72f), fontSize = 9.5.sp, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Bold)
-            )
-        }
-    }
-  
     // Force snapshot observation of enabledTrackIndices so toggling any track switch immediately recomposes the Canvas
     val tracksSnapshotKey = enabledTrackIndices.entries.joinToString(",") { "${it.key}:${it.value}" }
     val drumTrackIndices = remember(score?.tracks) {
@@ -1539,9 +1512,43 @@ fun StaffAndTabNotationViewer(
         map.toMap()
     }
 
-    val layoutCache = remember(score, transposition, tracksSnapshotKey) { MeasureLayoutCache() }
     var notationZoom by rememberSaveable { mutableFloatStateOf(1.0f) }
+    val layoutCache = remember(score, transposition, tracksSnapshotKey) { MeasureLayoutCache() }
     val activeScore = effectiveScore ?: score
+
+    val labelCache = remember(textMeasurer, compactStaffMode, notationZoom) {
+        val baseSp = if (compactStaffMode) 5.8f else 6.8f
+        val fSize = (baseSp * notationZoom.coerceIn(0.65f, 2.4f)).sp
+        (0..11).associateWith { i ->
+            textMeasurer.measure(
+                text = MusicConstants.NOTE_LABELS[i].take(1),
+                style = TextStyle(
+                    color = Color.White,
+                    fontSize = fSize,
+                    lineHeight = fSize,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                    background = Color.Transparent
+                )
+            )
+        }
+    }
+    val sharpCache = remember(textMeasurer, primaryColor, notationZoom) {
+        textMeasurer.measure("♯", TextStyle(color = primaryColor, fontSize = (14f * notationZoom.coerceIn(0.65f, 2.4f)).sp, fontWeight = FontWeight.Bold))
+    }
+    val flatCache = remember(textMeasurer, primaryColor, notationZoom) {
+        textMeasurer.measure("♭", TextStyle(color = primaryColor, fontSize = (11f * notationZoom.coerceIn(0.65f, 2.4f)).sp, fontWeight = FontWeight.Bold))
+    }
+    val measureLabelsCache = remember(textMeasurer, score?.measures?.size, primaryColor, notationZoom) {
+        val count = score?.measures?.size ?: 0
+        val mFontSize = (9.5f * notationZoom.coerceIn(0.65f, 2.4f)).sp
+        (0 until count).associateWith { mIdx ->
+            textMeasurer.measure(
+                text = "${mIdx + 1}",
+                style = TextStyle(color = primaryColor.copy(alpha = 0.72f), fontSize = mFontSize, fontStyle = FontStyle.Italic, fontWeight = FontWeight.Bold)
+            )
+        }
+    }
 
     Box(
         modifier = modifier
@@ -1902,6 +1909,7 @@ fun StaffAndTabNotationViewer(
                                                         primaryColor = primaryColor,
                                                         leftHandColor = leftHandColor,
                                                         rightHandColor = rightHandColor,
+                                                        customTrackColors = customTrackColors,
                                                         isLeftHandHidden = effectiveLeftHandHidden,
                                                         isRightHandHidden = isRightHandHidden,
                                                         isSingleStaff = !isSplitStaff,
@@ -1922,6 +1930,7 @@ fun StaffAndTabNotationViewer(
                                                         primaryColor = primaryColor,
                                                         leftHandColor = leftHandColor,
                                                         rightHandColor = rightHandColor,
+                                                        customTrackColors = customTrackColors,
                                                         isLeftHandHidden = effectiveLeftHandHidden,
                                                         isRightHandHidden = isRightHandHidden,
                                                         isDark = isDark,
@@ -2189,6 +2198,7 @@ fun StaffAndTabNotationViewer(
                                                     primaryColor = primaryColor,
                                                     leftHandColor = leftHandColor,
                                                     rightHandColor = rightHandColor,
+                                                    customTrackColors = customTrackColors,
                                                     isLeftHandHidden = effectiveLeftHandHidden,
                                                     isRightHandHidden = isRightHandHidden,
                                                     isSingleStaff = !isSplitStaff,
@@ -2209,6 +2219,7 @@ fun StaffAndTabNotationViewer(
                                                     primaryColor = primaryColor,
                                                     leftHandColor = leftHandColor,
                                                     rightHandColor = rightHandColor,
+                                                    customTrackColors = customTrackColors,
                                                     isLeftHandHidden = effectiveLeftHandHidden,
                                                     isRightHandHidden = isRightHandHidden,
                                                     isDark = isDark,
@@ -3663,6 +3674,7 @@ private fun drawStaffMeasureContent(
             )
                 val beadColor = when {
                         isSounding -> config.primaryColor
+                        config.customTrackColors.containsKey(note.voice) -> config.customTrackColors[note.voice]!!
                         note.voice == 0 -> config.rightHandColor
                         note.voice == 1 -> config.leftHandColor
                         note.voice >= 2 -> Color(
@@ -3791,6 +3803,7 @@ private fun drawStaffMeasureContent(
             }
 
             if (config.showLabels && !note.grace && duration < 2.0f && config.lineSpacing >= 8.5f) {
+                // Permanently display note name inside notehead when config.showLabels is enabled
                 val labelResult = labelCache[(midiNote % 12 + 12) % 12]
                 if (labelResult != null) {
                     val labelX = nx - (labelResult.size.width / 2f)
@@ -3834,8 +3847,8 @@ private fun drawStaffMeasureContent(
                     Accidental.NONE -> 0f
                 }
 
-                val colShift = info.accidentalColumn * (accW + 0.16f * config.lineSpacing)
-                val accRightEdge = info.anchorX - (noteWidth / 2f) - (0.22f * config.lineSpacing) - colShift
+                val colShift = info.accidentalColumn * (accW + 0.35f * config.lineSpacing)
+                val accRightEdge = info.anchorX - (noteWidth / 2f) - (0.55f * config.lineSpacing) - colShift
                 val accLeftX = accRightEdge - accW
                 val accidentalColor = clefTextColor
              with(MusicVectorSymbols) {
@@ -3869,7 +3882,7 @@ private fun drawStaffMeasureContent(
             }
         }
         // 3a. Draw Deduplicated, Compact, Collision-Free Chord Symbols (At most 1 per beat position)
-        val chordFontSp = with(this) { (config.lineSpacing * 0.88f).coerceIn(10.0f, 15.5f).toSp() }
+        val chordFontSp = with(this) { (config.lineSpacing * 1.25f).coerceIn(13.0f, 21.0f).toSp() }
         val chordStyle = TextStyle(
             color = config.primaryColor,
             fontSize = chordFontSp,
@@ -3905,8 +3918,8 @@ private fun drawStaffMeasureContent(
                 else null
             }.minOrNull() ?: minNoteY
 
-            val highestStaffObstacleY = minOf(trebleBaseline - 0.75f * config.lineSpacing, minNoteY - 0.75f * config.lineSpacing, minBeamOrStemY - 0.45f * config.lineSpacing)
-            val safeChordY = (highestStaffObstacleY - chordLayout.size.height - 0.35f * config.lineSpacing)
+            val highestStaffObstacleY = minOf(trebleBaseline - 1.25f * config.lineSpacing, minNoteY - 1.25f * config.lineSpacing, minBeamOrStemY - 0.85f * config.lineSpacing)
+            val safeChordY = (highestStaffObstacleY - chordLayout.size.height - 0.65f * config.lineSpacing)
                 .coerceAtLeast(2f)
 
             drawText(
@@ -4535,6 +4548,7 @@ internal fun renderScoreSystemToDrawScope(
     primaryColor: Color,
     rightHandColor: Color,
     leftHandColor: Color,
+    customTrackColors: Map<Int, Color> = emptyMap(),
     inkColor: Color,
     staffLineColor: Color,
     tabPillBgColor: Color,
@@ -4637,6 +4651,7 @@ internal fun renderScoreSystemToDrawScope(
                 primaryColor = primaryColor,
                 leftHandColor = leftHandColor,
                 rightHandColor = rightHandColor,
+                customTrackColors = customTrackColors,
                 isLeftHandHidden = effectiveLeftHandHidden,
                 isRightHandHidden = isRightHandHidden,
                 isSingleStaff = !isSplitStaff,
@@ -4657,6 +4672,7 @@ internal fun renderScoreSystemToDrawScope(
                 primaryColor = primaryColor,
                 leftHandColor = leftHandColor,
                 rightHandColor = rightHandColor,
+                customTrackColors = customTrackColors,
                 isLeftHandHidden = effectiveLeftHandHidden,
                 isRightHandHidden = isRightHandHidden,
                 isDark = isDarkTheme,

@@ -168,13 +168,31 @@ object MidiFileParser {
             if (it in 20f..300f) globalTempo = it
         }
 
-        // Parse <score-part> declarations for track list
+        // Parse <score-part> declarations for track list, instrument info, and MIDI channels
         val partNamesById = mutableMapOf<String, String>()
+        val partChannelsById = mutableMapOf<String, Int>()
+        val partProgramsById = mutableMapOf<String, Int>()
         val partListRegex = Regex("""<score-part\b[^>]*id=["']([^"']+)["'][^>]*>(.*?)</score-part>""", RegexOption.DOT_MATCHES_ALL)
         for (pm in partListRegex.findAll(xml)) {
             val pid = pm.groupValues[1]
-            val pName = xmlTag(pm.groupValues[2], "part-name") ?: "Part ${partNamesById.size + 1}"
+            val partXmlBody = pm.groupValues[2]
+            val pName = xmlTag(partXmlBody, "part-name") ?: "Part ${partNamesById.size + 1}"
             partNamesById[pid] = cleanXmlEntities(pName)
+
+            val midiChan = xmlTag(partXmlBody, "midi-channel")?.toIntOrNull()
+            val midiProg = xmlTag(partXmlBody, "midi-program")?.toIntOrNull()
+            val isPercussionName = pName.contains("drum", ignoreCase = true) ||
+                pName.contains("percussion", ignoreCase = true) ||
+                partXmlBody.contains("percussion", ignoreCase = true)
+
+            // MusicXML midi-channel is 1-based (1..16). GM Channel 10 is index 9 (0-based)
+            val zeroIndexedChan = when {
+                midiChan != null -> (midiChan - 1).coerceIn(0, 15)
+                isPercussionName -> 9
+                else -> -1
+            }
+            if (zeroIndexedChan >= 0) partChannelsById[pid] = zeroIndexedChan
+            if (midiProg != null) partProgramsById[pid] = (midiProg - 1).coerceIn(0, 127)
         }
 
         // Extract each <part> block separately so multi-part scores merge by measure index instead of concatenating!
@@ -227,7 +245,9 @@ object MidiFileParser {
                 for (match in tokenRegex.findAll(mXml)) {
                     val tagType = match.groupValues[1]
                     val body = match.groupValues[2]
-                    val quarterScale = 4f / currentBeatType.toFloat().coerceAtLeast(1f)
+                    // In MusicXML, <divisions> is per quarter-note.
+                    // Score note position and duration are expressed in quarter-note beats (matching MidiScoreParser / getMeasureDurationSeconds).
+                    val quarterDiv = divisions.coerceAtLeast(0.001f)
 
                     when (tagType) {
                         "backup" -> {
@@ -267,7 +287,7 @@ object MidiFileParser {
                             }
                             if (body.contains("<pedal")) {
                                 val isStart = body.contains("""type="start"""") || body.contains("""type="change"""")
-                                val posB = (cursorDivisions / divisions).coerceAtLeast(0f)
+                                val posB = (cursorDivisions / quarterDiv).coerceAtLeast(0f)
                                 pedalsInPartMeasure.add(PedalEvent(position = posB, pedalType = 64, isPressed = isStart))
                             }
                            val words = xmlTag(body, "words")?.lowercase() ?: ""
@@ -280,13 +300,14 @@ object MidiFileParser {
                             val isGrace = body.contains("<grace")
                             val isChord = body.contains("<chord")
                             val isRest = body.contains("<rest")
+                            val isUnpitched = body.contains("<unpitched")
                             val durDiv = xmlTag(body, "duration")?.toFloatOrNull() ?: (divisions * 0.25f)
-                            val durBeats = if (isGrace) 0.25f else (durDiv / divisions).coerceAtLeast(0.125f)
+                            val durBeats = if (isGrace) 0.25f else (durDiv / quarterDiv).coerceAtLeast(0.125f)
 
                             val posBeats = if (isChord) {
                                 lastNoteStartPosBeats
                             } else {
-                                (cursorDivisions / divisions).coerceAtLeast(0f)
+                                (cursorDivisions / quarterDiv).coerceAtLeast(0f)
                             }
 
                             val rawVoice = xmlTag(body, "voice")?.toIntOrNull() ?: 1
@@ -302,6 +323,7 @@ object MidiFileParser {
                             }
 
                             if (isRest) {
+                                val quarterScale = 4f / currentBeatType.toFloat().coerceAtLeast(1f)
                                 restsInPartMeasure.add(
                                     RestSymbol(
                                         position = posBeats,
@@ -310,10 +332,25 @@ object MidiFileParser {
                                     )
                                 )
                             } else {
-                                val stepStr = xmlTag(body, "step") ?: xmlTag(body, "display-step") ?: "C"
-                                val octave = xmlTag(body, "octave")?.toIntOrNull() ?: xmlTag(body, "display-octave")?.toIntOrNull() ?: 4
+                                val stepStr = xmlTag(body, "step")
+                                    ?: xmlTag(body, "display-step")
+                                    ?: if (isUnpitched) "E" else "C"
+                                val octave = xmlTag(body, "octave")?.toIntOrNull()
+                                    ?: xmlTag(body, "display-octave")?.toIntOrNull()
+                                    ?: if (isUnpitched) 4 else 4
                                 val alter = xmlTag(body, "alter")?.toFloatOrNull()?.toInt() ?: 0
-                                val midiPitch = stepOctaveAlterToMidi(stepStr, octave, alter)
+                                val midiPitch = if (isUnpitched) {
+                                    // Map unpitched percussion note: default to Snare (38) or Bass Drum (36) based on display octave
+                                    val unpitchedStep = stepStr.uppercase()
+                                    when {
+                                        unpitchedStep in listOf("F", "E", "D") && octave <= 4 -> 36 // Bass Drum / Kick
+                                        unpitchedStep in listOf("C", "B", "A") && octave >= 4 -> 38 // Snare Drum
+                                        unpitchedStep in listOf("G", "A") && octave >= 5 -> 42 // Closed Hi-Hat
+                                        else -> 38
+                                    }
+                                } else {
+                                    stepOctaveAlterToMidi(stepStr, octave, alter)
+                                }
 
                                 val accidental = when (alter) {
                                     2 -> Accidental.DOUBLE_SHARP
@@ -473,13 +510,15 @@ object MidiFileParser {
 
             if (partBlocks.size > 1 && partNoteCount > 0) {
                 val pName = partNamesById[partId] ?: "Part ${partIdx + 1}"
+                val explicitChan = partChannelsById[partId] ?: partIdx.coerceIn(0, 15)
+                val explicitProg = partProgramsById[partId] ?: 0
                 trackInfos.add(
                     MidiTrackInfo(
                         trackIndex = partIdx,
-                        trackName = "🎵 $pName",
-                        channel = partIdx.coerceIn(0, 15),
+                        trackName = if (explicitChan == 9) "🥁 $pName (Drums)" else "🎵 $pName",
+                        channel = explicitChan,
                         noteCount = partNoteCount,
-                        program = 0,
+                        program = explicitProg,
                         isEnabled = true
                     )
                 )
@@ -492,13 +531,19 @@ object MidiFileParser {
 
         if (trackInfos.isEmpty()) {
             val allNotes = finalMeasures.flatMap { it.notes }
-            val rhCount = allNotes.count { it.voice == 0 || it.midiNote >= 60 }
-            val lhCount = allNotes.count { it.voice == 1 || it.midiNote < 60 }
-            if (rhCount > 0) {
-                trackInfos.add(MidiTrackInfo(0, "🎹 Right Hand (Treble)", 0, rhCount, 0, true))
-            }
-            if (lhCount > 0) {
-                trackInfos.add(MidiTrackInfo(1, "🎹 Left Hand (Bass)", 0, lhCount, 0, true))
+            val explicitChan = partChannelsById[partBlocks.firstOrNull()?.first ?: ""] ?: 0
+            val isSinglePartDrum = explicitChan == 9 || partNamesById.values.any { it.contains("drum", ignoreCase = true) }
+            if (isSinglePartDrum) {
+                trackInfos.add(MidiTrackInfo(0, "🥁 Drum Kit (Ch 10)", 9, allNotes.size, 0, true))
+            } else {
+                val rhCount = allNotes.count { it.voice == 0 || it.midiNote >= 60 }
+                val lhCount = allNotes.count { it.voice == 1 || it.midiNote < 60 }
+                if (rhCount > 0) {
+                    trackInfos.add(MidiTrackInfo(0, "🎹 Right Hand (Treble)", 0, rhCount, 0, true))
+                }
+                if (lhCount > 0) {
+                    trackInfos.add(MidiTrackInfo(1, "🎹 Left Hand (Bass)", 0, lhCount, 0, true))
+                }
             }
         }
 

@@ -160,6 +160,25 @@ val client = createHttpClient()
     private val sostenutoCapturedNotes = HashSet<Int>()
     val leftHandColor = mutableStateOf(Color(0xFF6C63FF))
     val rightHandColor = mutableStateOf(Color(0xFF4A90E2))
+    // Custom track colors persisted per track index (e.g. 0 -> RH, 1 -> LH, 2+ -> extra instruments/tracks)
+    val customTrackColors = mutableStateMapOf<Int, Color>()
+
+    /**
+     * Resolves the synchronized color for a given track across Waterfall, Piano, Guitar, Staff/TAB & Dropdowns.
+     */
+    fun getResolvedTrackColor(trackIndex: Int, isDrum: Boolean = false): Color {
+        customTrackColors[trackIndex]?.let { return it }
+        if (isDrum) return Color(0xFFFF5252)
+        return when (trackIndex) {
+            0 -> rightHandColor.value
+            1 -> leftHandColor.value
+            else -> Color(
+                com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX[
+                    trackIndex % com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX.size
+                ]
+            )
+        }
+    }
     
     // Controls whether the articulated 3D/2D Human Left Hand (LH) & Right Hand (RH) Finger Guides are drawn over the Piano Keyboard
     val showLeftHandGuide = mutableStateOf(true)
@@ -579,6 +598,8 @@ val client = createHttpClient()
     var onRestoreOnnxState: (() -> Unit)? = null
     /** Resolves a model file name to its full path on disk (filesDir or assets), null if missing */
     var onResolveModelPath: ((fileName: String) -> String?)? = null
+    /** Decodes an audio file (URI or path) into raw PCM samples for AI analysis (ShortArray, sampleRate) */
+    var onDecodeAudioPcm: ((audioPath: String, maxSeconds: Int) -> Pair<ShortArray, Int>?)? = null
     /** Reads raw bytes of an asset / resource file by name, null if missing */
     var onReadAssetBytes: ((assetName: String) -> ByteArray?)? = null
     var onListMidiAssetsRequested: (() -> List<String>)? = null
@@ -830,6 +851,12 @@ val client = createHttpClient()
 
         scope.launch {
             snapshotFlow { rightHandColor.value }
+                .distinctUntilChanged()
+                .collect { persistSession() }
+        }
+
+        scope.launch {
+            snapshotFlow { customTrackColors.toMap() }
                 .distinctUntilChanged()
                 .collect { persistSession() }
         }
@@ -1508,19 +1535,20 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
     private fun mapGmDrumMidiToLabel(midiNote: Int): String? {
         return when (midiNote) {
             35, 36 -> "KICK"
-            38, 40, 37 -> "SNARE"
+            38, 40 -> "SNARE"
+            37 -> "RIM_CLICK"
             42, 44 -> "HH_CLOSED"
             46 -> "HH_OPEN"
             49, 55 -> "CRASH"
             57, 52 -> "CRASH2"
             51, 53, 59 -> "RIDE"
             41, 43 -> "FLOOR"
-            45, 47 -> "TOM_LO"
+            45, 47 -> "TOM_MID"
             48, 50 -> "TOM_HI"
             39 -> "CLAP"
-            56 -> "PERC"
+            54, 56, 58 -> "PERC"
             69, 70, 82 -> "SHAKER"
-            else -> null
+            else -> "PERC"
         }
     }
 
@@ -1569,8 +1597,14 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
         lhColor: androidx.compose.ui.graphics.Color = leftHandColor.value
     ): Pair<Boolean, androidx.compose.ui.graphics.Color> {
         val trackInfo = score?.tracks?.firstOrNull { it.trackIndex == note.voice }
-        if (trackInfo?.channel == 9) {
-            return true to androidx.compose.ui.graphics.Color(0xFFFF5252) // Drum track crimson
+        val isDrumTrack = trackInfo?.channel == 9 || trackInfo?.channel == 10 ||
+            score?.tracks?.filter { it.channel == 9 || it.channel == 10 }?.any { it.trackIndex == note.voice } == true
+        if (isDrumTrack) {
+            val drumColor = customTrackColors[note.voice] ?: androidx.compose.ui.graphics.Color(0xFFFF5252)
+            return true to drumColor
+        }
+        customTrackColors[note.voice]?.let { customCol ->
+            return (note.midiNote >= 60) to customCol
         }
         if (note.voice >= 2) {
             val paletteHex = com.creativeblisslabs.peqlearn.app.util.MidiScoreParser.TRACK_COLOR_PALETTE_HEX
@@ -2055,10 +2089,11 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                             val instVol = (instrumentVolumes[selectedInstrument.value] ?: 1.0f).coerceIn(0f, 1f)
                             val effectiveMasterVol = (masterVol * trackVol * instVol).coerceIn(0f, 1f)
 
-                            val isDrumNote = note.voice in drumTrackIndices
+                            val noteTrack = score.tracks.firstOrNull { it.trackIndex == note.voice }
+                            val isDrumNote = note.voice in drumTrackIndices || noteTrack?.channel == 9 || noteTrack?.channel == 10
                             if (isDrumNote) {
                                 val drumEffectiveVol = (masterVol * trackVol).coerceIn(0f, 1f)
-                                if (drumEffectiveVol > 0.01f) {
+                                if (drumEffectiveVol > 0.005f) {
                                     val drumLabel = mapGmDrumMidiToLabel(note.midiNote) ?: "SNARE"
                                     audioEngine.setTablaGain(drumEffectiveVol)
                                     audioEngine.playSample(label = drumLabel, index = note.midiNote, string = "DRUM")
@@ -2597,18 +2632,18 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
                 val stepIdx = ((n.position / beatsInM) * 16f).toInt().coerceIn(0, 15)
                 val padLabel = when (n.midiNote) {
                     35, 36 -> "0-KICK"
-                    38, 40, 37 -> "1-SNARE"
+                    38, 40 -> "1-SNARE"
                     42, 44 -> "2-HH_CLOSED"
                     46 -> "3-HH_OPEN"
                     48, 50 -> "4-TOM_HI"
                     45, 47 -> "5-TOM_MID"
                     41, 43 -> "6-FLOOR"
-                    49, 55, 57 -> "7-CRASH"
+                    49, 55 -> "7-CRASH"
                     51, 53, 59 -> "8-RIDE"
                     39 -> "9-CLAP"
-                    56 -> "10-PERC"
+                    54, 56, 58 -> "10-PERC"
                     69, 70, 82 -> "11-SHAKER"
-                    else -> "${(n.midiNote % 12)}-SNARE"
+                    else -> "1-SNARE"
                 }
                 if (padLabel !in steps[stepIdx]) {
                     steps[stepIdx].add(padLabel)
@@ -2962,11 +2997,13 @@ private fun composeColorToArgbInt(color: androidx.compose.ui.graphics.Color): In
             val now = Clock.System.now().toEpochMilliseconds()
             val elapsedMs = (now - liveRecStartTimeMs).coerceAtLeast(0L)
 
-            // 50ms chord threshold: If note arrives within 50ms of previous note, assign SAME beat position!
-            if (liveRecLastChordOnsetMs > 0L && (now - liveRecLastChordOnsetMs) <= 50L) {
-                // Same chord slice! Keep liveRecCurrentBeat
+            // 120ms human-play chord clustering: Stacks notes played simultaneously as vertical chords!
+            if (liveRecLastChordOnsetMs > 0L && (now - liveRecLastChordOnsetMs) <= 120L) {
+                // Same chord slice! Keep liveRecCurrentBeat so all notes in chord share identical measure position
             } else {
-                liveRecCurrentBeat = (elapsedMs / 500f)
+                // Quantize to clean 16th note musical grid (0.25f increments)
+                val rawBeat = (elapsedMs / 500f)
+                liveRecCurrentBeat = (kotlin.math.round(rawBeat * 4f) / 4f)
                 liveRecLastChordOnsetMs = now
             }
 

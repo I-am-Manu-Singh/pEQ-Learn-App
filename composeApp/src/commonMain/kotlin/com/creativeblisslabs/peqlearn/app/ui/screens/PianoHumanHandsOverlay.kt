@@ -307,6 +307,28 @@ private fun partitionPianoNotesStrictDisjoint(
         clampedRh.addAll(clampChordToAnatomicalHand(droppedFromLh, isRightHand = true, maxSpanSemitones = 12))
     }
 
+    // STRICT DISJOINT GUARANTEE: Neither hand should play the same note in the middle.
+    // If an overlap occurs between clampedLh and clampedRh, partition definitively by pitch and hand proximity.
+    val commonPitches = clampedLh.intersect(clampedRh.toSet())
+    if (commonPitches.isNotEmpty()) {
+        for (cp in commonPitches) {
+            val distLh = abs(cp - lastLhCenter)
+            val distRh = abs(cp - lastRhCenter)
+            if (activeNoteColors[cp] == rightHandColor) {
+                clampedLh.remove(cp)
+            } else if (activeNoteColors[cp] == leftHandColor) {
+                clampedRh.remove(cp)
+            } else if (cp < 60) {
+                clampedRh.remove(cp)
+            } else if (cp > 60) {
+                clampedLh.remove(cp)
+            } else {
+                // Exact Middle C (60): assign to closer hand
+                if (distLh <= distRh) clampedRh.remove(cp) else clampedLh.remove(cp)
+            }
+        }
+    }
+
     return HandPartitionResult(
         lhPitchesAsc = clampedLh.distinct().sorted(),
         rhPitchesAsc = clampedRh.distinct().sorted(),
@@ -346,6 +368,13 @@ private fun solveSingleNoteWithThumbCrossing(
         } else {
             if (delta > 0) 1 else 5
         }
+    }
+
+    // Left hand leftmost note rule: if LH is playing into deep bass (pitch <= 50)
+    // or significantly lower than last palm / pitch (pitch <= lastPalmMidi - 4),
+    // prioritize pinky finger (5) as the natural anchor.
+    if (!isRightHand && (pitch <= 48 || pitch <= lastPalmMidi - 4.5f)) {
+        return 5
     }
 
     var bestFinger = 3
@@ -1074,29 +1103,33 @@ fun PianoHumanHandsOverlay(
                 val tipX = rawTipXs[slotIdx].coerceIn(fHalfW, totalW - fHalfW)
                 
                 val reachMult = FINGER_LENGTH_MULT[fNum]
-                val fullReachPx = totalH * 0.58f * reachMult
+                val fullReachPx = if (fNum == 1) totalH * 0.36f else totalH * 0.58f * reachMult
                 val flexShorteningPx = pressAnim * totalH * 0.026f
 
                 val isBlack = isMidiNoteBlack(item.midiNote)
                 val tipY = if (isBlack) {
                     val blackTargetY = if (item.isPressed) blackKeyH * 0.77f else blackKeyH * 0.87f
                     blackTargetY + pressAnim * totalH * 0.012f
+                } else if (fNum == 1) {
+                    // Anatomical thumb tip position: rests lower down towards key edge (closer to player)
+                    (palmY - fullReachPx + flexShorteningPx).coerceIn(totalH * 0.32f, totalH * 0.86f)
                 } else {
-                    (palmY - fullReachPx + flexShorteningPx)
-                }.coerceIn(totalH * 0.13f, totalH * 0.81f)
+                    (palmY - fullReachPx + flexShorteningPx).coerceIn(totalH * 0.13f, totalH * 0.81f)
+                }
                 
                 val slotFromCenter = (slotIdx - 2f)
+                // Anatomical MCP Knuckle Arch Position
                 val mcpX = if (fNum == 1) {
                     val thumbSideDir = if (isRightHand) -1f else 1f
-                    palmX + thumbSideDir * whiteKeyW * 1.18f * archSpreadScale.coerceAtMost(1.25f) +
-                        (tipX - palmX) * 0.22f
+                    palmX + thumbSideDir * whiteKeyW * 1.12f * archSpreadScale.coerceAtMost(1.20f) +
+                        (tipX - palmX) * 0.18f
                 } else {
                     palmX + (slotFromCenter * whiteKeyW * 0.52f * archSpreadScale) + ((tipX - palmX) * 0.25f)
                 }
                 
-                // 2. DECOUPLE THUMB Y-ORIGIN
+                // Natural anatomical MCP Y position - thumb originates from carpometacarpal/thenar saddle joint lower down
                 val mcpY = if (fNum == 1) {
-                    (palmY - totalH * 0.02f) + (totalH * 0.22f) + clusterMcpDrop
+                    (palmY + totalH * 0.025f) + clusterMcpDrop
                 } else {
                     (palmY - totalH * 0.155f) + (totalH * MCP_ARCH_Y_OFFSET[fNum]) + clusterMcpDrop
                 }
@@ -1106,15 +1139,9 @@ fun PianoHumanHandsOverlay(
                 val dx = tipPos.x - mcpPos.x
                 val dy = tipPos.y - mcpPos.y
 
-                // 3. CLAMP DISTAL ROTATION
-                val rawAxisAngle = atan2(dy, dx)
-                val axisAngle = if (fNum == 1) {
-                    rawAxisAngle 
-                } else {
-                    rawAxisAngle.coerceIn(-0.35f, 0.35f) 
-                }
+                // Accurate bone axis angle in canvas coordinates (pointing from MCP upwards to tip: dy < 0, angle ≈ -PI/2)
+                val axisAngle = atan2(dy, dx)
                 
-                // 4. APPLY Z-INDEX SCALING TO THUMB
                 val widthScale = if (fNum == 1 && item.isCrossingUnder) 0.85f else 1.0f
                 val effectiveFHalfW = fHalfW * widthScale
                 
@@ -1419,7 +1446,7 @@ fun PianoHumanHandsOverlay(
                 )
             }
 
-            // 3. Render Detailed Phalanges, PIP/DIP Joint Skin Creases, 3D Fingernails & HUD Badges
+            // 3. Render Detailed Phalanges, PIP/DIP Joint Skin Creases, & HUD Badges
             // Sort so any finger crossing OVER is drawn last (on top), and thumb crossing UNDER is drawn first
             val depthSortedFingers = articulatedFingers.sortedBy { fg ->
                 when {
@@ -1457,59 +1484,7 @@ fun PianoHumanHandsOverlay(
                 cap = StrokeCap.Round
             )
 
-            // Rotated 3D Fingernails
             val tw = fg.tipHalfWidth
-            val baseNailW = tw * (if (isThumb) 1.26f else 1.22f)
-            val actualNailW = if (isThumb) baseNailW * 0.75f else baseNailW // Foreshorten thumb nail
-            val nailH = tw * (1.32f - 0.14f * press)
-
-            val nailDist = tw * 0.1f
-            val nailCenterBase = Offset(tip.x - cos(angle) * nailDist, tip.y - sin(angle) * nailDist)
-            
-            // Shift thumb nail laterally down the side of the finger for perspective
-            val nailSideOffsetX = if (isThumb) { if (isRightHand) nxL * tw * 0.35f else nxR * tw * 0.35f } else 0f
-            val nailSideOffsetY = if (isThumb) { if (isRightHand) nyL * tw * 0.35f else nyR * tw * 0.35f } else 0f
-
-            withTransform({
-                translate(nailCenterBase.x + nailSideOffsetX, nailCenterBase.y + nailSideOffsetY)
-                rotate(degrees = Math.toDegrees(angle.toDouble()).toFloat() + 90f)
-                translate(-actualNailW * 0.5f, -nailH * 0.55f)
-            }) {
-                val nailCorner = CornerRadius(actualNailW * 0.42f, actualNailW * 0.42f)
-                
-                // Cuticle shadow
-                drawRoundRect(
-                    color = skinDeepShadow.copy(alpha = 0.52f),
-                    topLeft = Offset(-0.6.dp.toPx(), -0.5.dp.toPx()),
-                    size = Size(actualNailW + 1.2.dp.toPx(), nailH + 1.2.dp.toPx()),
-                    cornerRadius = nailCorner
-                )
-                // Nail Bed
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            if (isPressed) Color(0xFFFFF4EE) else Color(0xFFFFEDE4).copy(alpha = 0.86f),
-                            if (isPressed) Color(0xFFFFCDD2) else Color(0xFFF5C6CB).copy(alpha = 0.82f)
-                        )
-                    ),
-                    size = Size(actualNailW, nailH),
-                    cornerRadius = nailCorner
-                )
-                // Free Edge
-                drawRoundRect(
-                    color = Color(0xFFFFFBF7).copy(alpha = if (isPressed) 0.95f else 0.78f),
-                    topLeft = Offset(actualNailW * 0.06f, 0f),
-                    size = Size(actualNailW * 0.88f, (nailH * 0.22f).coerceAtLeast(1.5.dp.toPx())),
-                    cornerRadius = CornerRadius(actualNailW * 0.38f, actualNailW * 0.38f)
-                )
-                // Outline Border
-                drawRoundRect(
-                    color = if (isPressed) handAccentColor else skinDeepShadow.copy(alpha = 0.55f),
-                    size = Size(actualNailW, nailH),
-                    cornerRadius = nailCorner,
-                    style = Stroke(width = if (isPressed) 1.5.dp.toPx() else 0.8.dp.toPx())
-                )
-            }
 
                 // Glassmorphic Finger Number Badge & Pitch Telemetry
                 val badgeY = tip.y + tw * 1.48f
@@ -1586,9 +1561,9 @@ fun PianoHumanHandsOverlay(
                 val pillW = (badgeRad * 2.35f).coerceAtLeast(22.dp.toPx())
                 val pillH = (badgeRad * 1.25f).coerceAtLeast(12.dp.toPx())
                 
-                val nailTopY = tip.y - tw * 0.76f // <--- ADD THIS LINE
+                val padTopY = tip.y - tw * 0.76f
                 
-                val pillCenterY = (nailTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
+                val pillCenterY = (padTopY - pillH * 0.72f).coerceAtLeast(pillH * 0.6f)
 
                     drawRoundRect(
                         color = Color(0xFF0E131F).copy(alpha = 0.88f),
@@ -1659,7 +1634,9 @@ fun PianoHumanHandsOverlay(
             )
         }
 
-        if (showLeftHand) {
+        val hasAnyActivePitches = activeNotesSnapshot.values.any { it }
+
+        if (showLeftHand && (hasAnyActivePitches || disjointLh.isNotEmpty())) {
             val lhMidiArr = floatArrayOf(0f, lhF1Midi, lhF2Midi, lhF3Midi, lhF4Midi, lhF5Midi)
             val lhPressArr = floatArrayOf(0f, lhF1Press, lhF2Press, lhF3Press, lhF4Press, lhF5Press)
             drawUltrarealisticHumanHand(
@@ -1674,7 +1651,7 @@ fun PianoHumanHandsOverlay(
             )
         }
 
-        if (showRightHand) {
+        if (showRightHand && (hasAnyActivePitches || disjointRh.isNotEmpty())) {
             val rhMidiArr = floatArrayOf(0f, rhF1Midi, rhF2Midi, rhF3Midi, rhF4Midi, rhF5Midi)
             val rhPressArr = floatArrayOf(0f, rhF1Press, rhF2Press, rhF3Press, rhF4Press, rhF5Press)
             drawUltrarealisticHumanHand(

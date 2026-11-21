@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
@@ -54,7 +55,6 @@ class AudioStemChannel(
         get() = isSoloState.value
         set(s) { isSoloState.value = s }
 }
-
 @Composable
 fun pEQMixerScreen(
     viewModel: AppViewModel,
@@ -112,98 +112,97 @@ fun pEQMixerScreen(
                 color = MaterialTheme.colorScheme.background,
                 tonalElevation = 2.dp
             ) {
-               
-                    
-                                Column(modifier = Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = "AI STEM MIXER",
-                                                fontSize = 16.sp,
-
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = currentTrack?.displayName ?: "No Track Loaded • Tap Import",
-                                style = MaterialTheme.typography.labelSmall,
-                                                fontSize = 11.sp,
-
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                maxLines = 1
-                            )
-                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                       item{
-                        // Track Import Button
-                        OutlinedButton(
-                            onClick = {
-                                if (viewModel.playbackQueue.isNotEmpty()) {
-                                    showTrackSelectDialog = true
-                                } else {
-                                    viewModel.onPickTrackRequested?.invoke { item ->
-                                        viewModel.selectTrackForMixer(item)
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "AI STEM MIXER",
+                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = currentTrack?.displayName ?: "No Track Loaded • Tap Import",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        maxLines = 1
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        item {
+                            OutlinedButton(
+                                onClick = {
+                                    if (viewModel.playbackQueue.isNotEmpty()) {
+                                        showTrackSelectDialog = true
+                                    } else {
+                                        viewModel.onPickTrackRequested?.invoke { item ->
+                                            viewModel.selectTrackForMixer(item)
+                                        }
                                     }
-                                }
-                            },
-                            shape = MaterialTheme.shapes.small,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("IMPORT", style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                    item{
-                        // Split Stems Trigger Button
-                        Button(
-                            onClick = { viewModel.startStemSplit() },
-                            enabled = !isStemSplitting,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            shape = MaterialTheme.shapes.small,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            if (isStemSplitting) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                                Spacer(Modifier.width(6.dp))
-                                Text("SPLITTING...", style = MaterialTheme.typography.labelMedium)
-                            } else {
-                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                shape = MaterialTheme.shapes.small,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("SPLIT STEMS", style = MaterialTheme.typography.labelMedium)
+                                Text("IMPORT", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                        item {
+                            Button(
+                                onClick = { viewModel.startStemSplit() },
+                                enabled = !isStemSplitting,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = MaterialTheme.shapes.small,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                if (isStemSplitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("SPLITTING...", style = MaterialTheme.typography.labelMedium)
+                                } else {
+                                    Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("SPLIT STEMS", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
+                        item {
+                            FilledTonalButton(
+                                onClick = { showExportDialog = true },
+                                shape = MaterialTheme.shapes.small,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("EXPORT", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                        item {
+                            IconButton(
+                                onClick = { viewModel.toggleStemsPlayback() }
+                            ) {
+                                Icon(
+                                    if (isStemsPlaying) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
+                                    contentDescription = "Play/Pause Stems",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
                             }
                         }
                     }
-                    item{
-                        // Export Stems Button
-                        FilledTonalButton(
-                            onClick = { showExportDialog = true },
-                            shape = MaterialTheme.shapes.small,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("EXPORT", style = MaterialTheme.typography.labelMedium)
-                        }
-
-                        // Master Stems Play/Pause
-                        IconButton(
-                            onClick = { viewModel.toggleStemsPlayback() }
-                        ) {
-                            Icon(
-                                if (isStemsPlaying) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
-                                contentDescription = "Play/Pause Stems",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
-                    }
                 }
-                        }
-                     
-
-                  
-                
             }
         }
     ) { innerPadding ->
@@ -220,7 +219,9 @@ fun pEQMixerScreen(
                 if (isStemSplitting || statusMessage.isNotEmpty()) {
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
                         shape = MaterialTheme.shapes.small
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -229,30 +230,64 @@ fun pEQMixerScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Icon(Icons.Default.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                    Text(statusMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Memory,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        statusMessage,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1
+                                    )
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    if (viewModel.stemSplitLog.value.isNotEmpty()) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                com.creativeblisslabs.peqlearn.app.shareTextFile(
-                                                    fileName = "stemsplit_model_log_${System.currentTimeMillis()}.txt",
-                                                    content = viewModel.stemSplitLog.value
-                                                )
-                                            },
-                                            shape = MaterialTheme.shapes.small,
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                            modifier = Modifier.height(26.dp)
-                                        ) {
-                                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Share Log (.txt)", style = MaterialTheme.typography.labelSmall)
-                                        }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            val sb = StringBuilder()
+                                            sb.appendLine("=== pEQ-Learn Stem Separation Detailed Dump ===")
+                                            sb.appendLine("Timestamp: ${System.currentTimeMillis()}")
+                                            sb.appendLine("Status: $statusMessage")
+                                            sb.appendLine("Progress: ${(splitProgress * 100).toInt()}%")
+                                            sb.appendLine("Model Quality: ${viewModel.stemSplitQuality.value}")
+                                            sb.appendLine("Total Stems: ${stems.size}")
+                                            sb.appendLine("\n--- Active Stem Channels & Mix Settings ---")
+                                            stems.forEach { stem ->
+                                                val resolvedPath = viewModel.activeStemMap[stem.name] ?: "Internal Engine Buffer"
+                                                sb.appendLine("• Stem: ${stem.name} | Vol: ${stem.volume} | Pan: ${stem.pan} | Muted: ${stem.isMuted} | Solo: ${stem.isSolo} | Path: $resolvedPath")
+                                            }
+                                            sb.appendLine("\n--- Model Execution Logs ---")
+                                            sb.appendLine(viewModel.stemSplitLog.value.ifBlank { "No log lines recorded." })
+
+                                            com.creativeblisslabs.peqlearn.app.shareTextFile(
+                                                fileName = "stemsplit_export_dump_${System.currentTimeMillis()}.txt",
+                                                content = sb.toString()
+                                            )
+                                        },
+                                        shape = MaterialTheme.shapes.small,
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(26.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Export Dump (.txt)", style = MaterialTheme.typography.labelSmall)
                                     }
                                     if (isStemSplitting) {
-                                        Text("${(splitProgress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        Text(
+                                            "${(splitProgress * 100).toInt()}%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
                                     }
                                 }
                             }
@@ -260,7 +295,10 @@ fun pEQMixerScreen(
                                 Spacer(Modifier.height(6.dp))
                                 LinearProgressIndicator(
                                     progress = { splitProgress },
-                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(CircleShape),
                                     color = MaterialTheme.colorScheme.primary,
                                     trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                                 )
@@ -269,7 +307,6 @@ fun pEQMixerScreen(
                     }
                 }
 
-
                 // Songwriting Timeline Scrubber & Active Track Player
                 SongWritingTimelineScrubber(
                     viewModel = viewModel,
@@ -277,40 +314,36 @@ fun pEQMixerScreen(
                 )
 
                 if (isLandscapeOrWide) {
+                    // LANDSCAPE / WIDE DESKTOP SPLIT LAYOUT
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = 20.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
-                        // LEFT PANEL: Master Bus output fader card, presets, headroom
+                        // LEFT PANEL: Master Bus, Single-Row Model Selector, Presets
                         Column(
                             modifier = Modifier
                                 .width(300.dp)
-                                .height(1000.dp)
                                 .fillMaxHeight()
                                 .verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            pEQGlassCard(
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
+                            pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
                                 Column(
                                     modifier = Modifier.padding(14.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                     Text(
-                text = "MASTER VOLUME",
-        color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Black            )
-
-
-            Text(
-                text = "${(masterVolume * 100).toInt()}% • 24-bit Lossless Engine",
-                                    color = MaterialTheme.colorScheme.onSurface
-            )
-                                 
-
+                                    Text(
+                                        text = "MASTER VOLUME",
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                    Text(
+                                        text = "${(masterVolume * 100).toInt()}% • 24-bit Lossless Engine",
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                     Slider(
                                         value = masterVolume,
                                         onValueChange = {
@@ -319,74 +352,15 @@ fun pEQMixerScreen(
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     )
-                                }
-                            }
 
-                            // AI Stem Model Selection Card (deanturpin / xeon_split_audio architecture)
-                            pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("SEPARATION ENGINE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                        TextButton(
-                                            onClick = { showModelChooserDialog = true },
-                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("MODELS", style = MaterialTheme.typography.labelSmall)
-                                        }
-                                    }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
-                                    Surface(
-                                        shape = MaterialTheme.shapes.small,
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
-                                            Text(
-                                                text = viewModel.stemSeparationModel.value,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(Modifier.height(2.dp))
-                                            Text(
-                                                text = "${stems.size} Channels Active (${stems.joinToString { it.name }})",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                    }
-
-                                    val models = listOf(
-                                        "Spleeter (2-Stem: Vocals + Accompaniment)",
-                                        "Demucs v4 (4-Stem: Vocals, Drums, Bass, Other)",
-                                        "Xeon Multi-Kit (6-Stem: Vocals, Drums, Bass, Piano, Guitar, FX)"
+                                    // SINGLE-ROW MODEL SELECTOR
+                                    SingleRowModelSelector(
+                                        modelName = viewModel.stemSeparationModel.value,
+                                        channelCount = stems.size,
+                                        onOpenChooser = { showModelChooserDialog = true }
                                     )
-                                    models.forEach { m ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(MaterialTheme.shapes.extraSmall)
-                                                .clickable { viewModel.selectModel(m) }
-                                                .background(
-                                                    if (viewModel.stemSeparationModel.value == m) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                                    else Color.Transparent
-                                                )
-                                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(m.substringBefore(" ("), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
-                                            if (viewModel.stemSeparationModel.value == m) {
-                                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                                            }
-                                        }
-                                    }
                                 }
                             }
 
@@ -411,7 +385,7 @@ fun pEQMixerScreen(
                                             it.pan = 0f
                                             viewModel.updateStemVolume(it.name, 0.8f)
                                             viewModel.updateStemPan(it.name, 0f)
-                                            viewModel.toggleStemMute(it.name)
+                                            viewModel.audioEngine.setStemMute(it.name, false)
                                         }
                                     },
                                     label = { Text("Bypass Reset", style = MaterialTheme.typography.labelSmall) }
@@ -504,91 +478,50 @@ fun pEQMixerScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Master Strip Summary
-                        pEQGlassCard(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(
-                                        text = "MASTER BUS OUTPUT",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = "${(masterVolume * 100).toInt()}% • 24-bit Lossless",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                    )
-                                }
-
-                                Slider(
-                                    value = masterVolume,
-                                    onValueChange = {
-                                        masterVolume = it
-                                        viewModel.audioEngine.setVolume(it)
-                                    },
-                                    modifier = Modifier.width(160.dp)
-                                )
-                            }
-                        }
-
-                        // AI Stem Model Selection Card (Portrait Mode Parity)
+                        // Master Strip + Single-Row Model Selector Card
                         pEQGlassCard(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("SEPARATION ENGINE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                    TextButton(
-                                        onClick = { showModelChooserDialog = true },
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("MODELS", style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
-
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = viewModel.stemSeparationModel.value,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Text(
-                                                text = "${stems.size} Channels Active (${stems.joinToString { it.name }})",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                        Icon(
-                                            Icons.Default.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
+                                    Column {
+                                        Text(
+                                            text = "MASTER BUS OUTPUT",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "${(masterVolume * 100).toInt()}% • 24-bit Lossless",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                         )
                                     }
+
+                                    Slider(
+                                        value = masterVolume,
+                                        onValueChange = {
+                                            masterVolume = it
+                                            viewModel.audioEngine.setVolume(it)
+                                        },
+                                        modifier = Modifier.width(150.dp)
+                                    )
                                 }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                // SINGLE-ROW MODEL SELECTOR
+                                SingleRowModelSelector(
+                                    modelName = viewModel.stemSeparationModel.value,
+                                    channelCount = stems.size,
+                                    onOpenChooser = { showModelChooserDialog = true }
+                                )
                             }
                         }
 
@@ -608,6 +541,7 @@ fun pEQMixerScreen(
                                             it.pan = 0f
                                             viewModel.updateStemVolume(it.name, 0.8f)
                                             viewModel.updateStemPan(it.name, 0f)
+                                            viewModel.audioEngine.setStemMute(it.name, false)
                                         }
                                     },
                                     label = { Text("Reset", style = MaterialTheme.typography.labelSmall) }
@@ -654,43 +588,42 @@ fun pEQMixerScreen(
                             }
                         }
 
-                      LazyRow(
-    modifier = Modifier
-        .fillMaxWidth()
-        .weight(1f),
-    // Centers the items horizontally inside the LazyRow viewport
-    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-    contentPadding = PaddingValues(horizontal = 4.dp),
-    verticalAlignment = Alignment.CenterVertically
-) {
-    items(stems) { stem ->
-        StemFaderColumn(
-            stem = stem,
-            onVolumeChange = {
-                stem.volume = it
-                viewModel.updateStemVolume(stem.name, it)
-            },
-            onPanChange = {
-                stem.pan = it
-                viewModel.updateStemPan(stem.name, it)
-            },
-            onMuteToggle = {
-                stem.isMuted = !stem.isMuted
-                viewModel.toggleStemMute(stem.name)
-            },
-            onSoloToggle = {
-                val newSolo = !stem.isSolo
-                stem.isSolo = newSolo
-                viewModel.toggleStemSolo(stem.name, newSolo)
-                if (newSolo) {
-                    stems.forEach { if (it != stem) it.isMuted = true }
-                } else {
-                    stems.forEach { it.isMuted = false }
-                }
-            }
-        )
-    }
-}
+                        // Multi-Channel Stem Faders Row
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
+                        ) {
+                            items(stems) { stem ->
+                                StemFaderColumn(
+                                    stem = stem,
+                                    onVolumeChange = {
+                                        stem.volume = it
+                                        viewModel.updateStemVolume(stem.name, it)
+                                    },
+                                    onPanChange = {
+                                        stem.pan = it
+                                        viewModel.updateStemPan(stem.name, it)
+                                    },
+                                    onMuteToggle = {
+                                        stem.isMuted = !stem.isMuted
+                                        viewModel.toggleStemMute(stem.name)
+                                    },
+                                    onSoloToggle = {
+                                        val newSolo = !stem.isSolo
+                                        stem.isSolo = newSolo
+                                        viewModel.toggleStemSolo(stem.name, newSolo)
+                                        if (newSolo) {
+                                            stems.forEach { if (it != stem) it.isMuted = true }
+                                        } else {
+                                            stems.forEach { it.isMuted = false }
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -704,7 +637,10 @@ fun pEQMixerScreen(
             title = { Text("Select Song for Stem Separation", style = MaterialTheme.typography.titleMedium) },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     viewModel.playbackQueue.forEach { item ->
@@ -719,16 +655,32 @@ fun pEQMixerScreen(
                             else MaterialTheme.colorScheme.surfaceVariant
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(item.displayName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-                                    Text(item.artist ?: "Unknown Artist", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                    Text(
+                                        item.displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        item.artist ?: "Unknown Artist",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
                                 }
                                 if (viewModel.selectedMixerItem.value?.path == item.path) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                         }
@@ -753,7 +705,7 @@ fun pEQMixerScreen(
         )
     }
 
-    // ADVANCED EXPORT STEMS DIALOG (xeon_split_audio & deanturpin inspired)
+    // ADVANCED EXPORT STEMS DIALOG
     if (showExportDialog) {
         AlertDialog(
             onDismissRequest = { showExportDialog = false },
@@ -765,7 +717,9 @@ fun pEQMixerScreen(
             },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text("FORMAT & BIT DEPTH", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
@@ -844,7 +798,7 @@ fun pEQMixerScreen(
         )
     }
 
-    // AI MODEL CHOOSER & DOWNLOADER MODAL (deanturpin & sherpa-onnx repositories)
+    // AI MODEL CHOOSER & DOWNLOADER MODAL
     if (showModelChooserDialog) {
         AlertDialog(
             onDismissRequest = { showModelChooserDialog = false },
@@ -856,20 +810,30 @@ fun pEQMixerScreen(
             },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text("SELECT OR DOWNLOAD DEMUCS 6-STEM ENGINE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    
+
                     Surface(
                         onClick = {
                             viewModel.selectModel("HTDemucs 6-Stem FP16 (Fast)")
                             showModelChooserDialog = false
                         },
                         shape = MaterialTheme.shapes.small,
-                        color = if (viewModel.stemSeparationModel.value.contains("FP16")) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
+                        color = if (viewModel.stemSeparationModel.value.contains("FP16"))
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else MaterialTheme.colorScheme.surfaceVariant
                     ) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("HTDemucs 6-Stem Mobile (FP16 Weights)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                 Text("htdemucs_quantized_fp16.onnx (130 MB) • Fast & Memory Efficient", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
@@ -886,9 +850,17 @@ fun pEQMixerScreen(
                             showModelChooserDialog = false
                         },
                         shape = MaterialTheme.shapes.small,
-                        color = if (viewModel.stemSeparationModel.value.contains("FP32") || viewModel.stemSeparationModel.value.contains("Full")) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
+                        color = if (viewModel.stemSeparationModel.value.contains("FP32") || viewModel.stemSeparationModel.value.contains("Full"))
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else MaterialTheme.colorScheme.surfaceVariant
                     ) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("HTDemucs 6-Stem Reference (Full FP32)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                 Text("htdemucs_6s.onnx (246 MB) • Maximum Precision & Acoustic Purity", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
@@ -920,8 +892,17 @@ fun pEQMixerScreen(
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Active: ${viewModel.customOnnxModelName.value}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Active: ${viewModel.customOnnxModelName.value}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
                                 Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
                             }
                         }
@@ -949,7 +930,9 @@ fun pEQMixerScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
-                                modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                                modifier = Modifier
+                                    .padding(10.dp)
+                                    .fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
@@ -980,6 +963,60 @@ fun pEQMixerScreen(
     }
 }
 
+@Composable
+private fun SingleRowModelSelector(
+    modelName: String,
+    channelCount: Int,
+    onOpenChooser: () -> Unit
+) {
+    Surface(
+        onClick = onOpenChooser,
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                Icons.Default.AutoAwesome,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = "$modelName • $channelCount Ch",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    Icons.Default.Tune,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    text = "MODELS",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
 @Composable
 fun StemFaderColumn(
     stem: AudioStemChannel,

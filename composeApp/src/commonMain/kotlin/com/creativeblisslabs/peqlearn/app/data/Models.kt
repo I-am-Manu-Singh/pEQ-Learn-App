@@ -210,6 +210,7 @@ data class SessionState(
     val isRightHandHidden: Boolean = false,
     val leftHandColor: Int? = null,
     val rightHandColor: Int? = null,
+    val customTrackColors: Map<Int, Int> = emptyMap(),
     val notationTransposition: Int = 0,
     val scanFolders: List<String> = emptyList(),
     val playCounts: Map<String, Int> = emptyMap(),

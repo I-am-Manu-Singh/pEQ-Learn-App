@@ -534,11 +534,13 @@ object BiomechanicalPerformersEngine {
     /**
      * Solves a chord or single-note slice on ANY fretted/fingered string instrument
      * (6-String Guitar, 7-String Guitar, Ukulele, Violin, Sitar) using a constrained
-     * 4-Fret Hand-Box Viterbi transition model:
+     * 4-Fret Hand-Box Viterbi transition model (inspired by fretpath / guitar_dp):
      *  - Guaranteed: Every note in a simultaneous chord is placed on a DISTINCT physical string!
      *  - Guaranteed: Fretted notes in a chord stay within a human-playable 4-fret hand box (`maxFret - minFret <= 3..4`)!
      *  - Guaranteed: Smooth horizontal hand-box continuity (`lastHandBoxCenterFret`) so fast melodies and
      *    waterfall notes never teleport wildly across the neck!
+     *  - Natural ergonomics: Prefers open strings for rapid lines, penalizes awkward finger stretches,
+     *    and guarantees playable finger assignments (1=Index, 2=Middle, 3=Ring, 4=Pinky).
      */
     fun solveFrettedSliceBiomechanical(
         pitches: Collection<Int>,
@@ -919,6 +921,118 @@ object BiomechanicalPerformersEngine {
         }
         val maxCount = if (numOctaves >= 2) 15 else 8
         return fromRoot.take(maxCount)
+    }
+
+    // =========================================================================================
+    // PART C: EXTENDED PIANO & GUITAR PERFORMANCE ARTICULATION & TECHNIQUE MODELING
+    // =========================================================================================
+
+    /**
+     * Comprehensive Piano Playing Techniques and Articulations.
+     */
+    enum class PianoPlayingTechnique(val displayName: String, val touchType: String) {
+        LEGATO("Legato", "Smooth overlapping finger transfer"),
+        STACCATO("Staccato", "Crisp detached wrist/finger release"),
+        STACCATISSIMO("Staccatissimo", "Extremely sharp pin-point bounce"),
+        PORTATO("Portato / Non-Legato", "Articulated pulsation with gentle separation"),
+        TENUTO("Tenuto", "Held to full duration with subtle weight lean"),
+        MARCATO("Marcato", "Heavy vertical accent strike"),
+        MARTELLATO("Martellato", "Hammered percussive attack"),
+        ARPEGGIO("Arpeggio", "Sequential broken chord wave"),
+        GLISSANDO("Glissando", "Rapid continuous lateral thumb/nail slide"),
+        TREMOLO("Tremolo", "Rapid alternating oscillation between fingers"),
+        TRILL("Trill", "High-frequency alternation between adjacent fingers"),
+        MORDENT("Mordent", "Rapid single-turn upper or lower auxiliary dip"),
+        TURN("Turn (Gruppetto)", "Four-note contour wrapping around principal note"),
+        GRACE_NOTES("Grace Notes (Acciaccatura / Appoggiatura)", "Instantaneous leading strike into principal note"),
+        ALBERTI_BASS("Alberti Bass", "Classic 1-5-3-5 undulating accompaniment pattern"),
+        STRIDE("Stride", "Low bass root jump followed by mid-register chord stab"),
+        BOOGIE_WOOGIE("Boogie-Woogie Bass", "Driving rolling 8-to-the-bar ostinato"),
+        WALKING_BASS("Walking Bass", "Smooth stepwise ascending/descending counter-melody"),
+        OSTINATO("Ostinato", "Tenacious repeating rhythmic/melodic figure"),
+        VOICING("Voicing", "Selective dynamic balance highlighting melodic voices"),
+        CROSS_HAND("Cross-Hand", "One arm crossing over the other across registers"),
+        FINGER_SUBSTITUTION("Finger Substitution", "Silent swapping of fingers while holding key"),
+        PEDALING_SUSTAIN("Sustain Pedaling", "Right damper pedal hold with synchronous catch"),
+        HALF_PEDALING("Half-Pedaling", "Partial damper damping to retain harmonic resonance"),
+        FLUTTER_PEDALING("Flutter Pedaling", "Rapid surface pumping to clear sonic buildup"),
+        UNA_CORDA("Una Corda (Soft)", "Shifted keyboard action softening timbre"),
+        OCTAVE_PLAYING("Octave Playing", "Locked thumb-pinky bridge moving in unison"),
+        DOUBLE_THIRDS_SIXTHS("Double Thirds / Sixths", "Parallel multi-digit paired articulation"),
+        TONE_CLUSTERS("Tone Clusters", "Broad simultaneous flat-hand or forearm strike")
+    }
+
+    /**
+     * Comprehensive Guitar Right-Hand Picking & Left-Hand Articulation Techniques.
+     */
+    enum class GuitarPickingTechnique(val displayName: String, val category: String) {
+        ALTERNATE_PICKING("Alternate Picking", "Strict Down/Up plectrum stroke alternation"),
+        DOWNPICKING("Downpicking", "Heavy uniform downstroke attack"),
+        UPSTROKE_PICKING("Upstroke Picking", "Snappy upstroke plectrum attack"),
+        ECONOMY_PICKING("Economy Picking", "Direct sweep through adjacent strings"),
+        SWEEP_PICKING("Sweep Picking", "Smooth single-direction rake across multiple strings"),
+        TREMOLO_PICKING("Tremolo Picking", "Ultra-fast rapid-fire picking on a single string"),
+        CROSS_PICKING("Cross-Picking", "Flatpicking arpeggio patterns weaving across 3 strings"),
+        FLATPICKING("Flatpicking", "Traditional acoustic bluegrass lead/rhythm style"),
+        GYPSY_JAZZ_PICKING("Gypsy Jazz (Rest-Stroke)", "Downstroke on string change with rest on next string"),
+        FINGERSTYLE("Fingerstyle", "Independent thumb and finger plucking"),
+        TRAVIS_PICKING("Travis Picking", "Alternating syncopated thumb bass with finger melody"),
+        CLASSICAL_PIMA("Classical PIMA", "Pulgar, Indice, Medio, Anular classical fingerstyle"),
+        HYBRID_PICKING("Hybrid Picking", "Plectrum gripped between thumb/index + middle/ring fingers plucking"),
+        CHICKEN_PICKING("Chicken Picking", "Perceptive snappy snap-and-pop country hybrid attack"),
+        PALM_MUTING("Palm Muting", "Ulnar edge of picking hand resting on bridge saddles"),
+        PINCH_HARMONICS("Pinch Harmonics", "Pick strike accompanied instantaneously by thumb edge graze"),
+        RAKE_PICKING("Rake Picking", "Percussive muted sweep leading into target note"),
+        CIRCULAR_PICKING("Circular Picking", "Tiny micro-elliptical motion of thumb/index joints"),
+        STRING_SKIPPING("String Skipping", "Wide leap over intermediate strings without striking them"),
+        SLAP_AND_POP("Slap and Pop", "Percussive thumb slap on low strings, index/middle pop under high strings"),
+        RASGUEADO("Rasgueado", "Explosive flamenco multi-finger fan flick across strings")
+    }
+
+    /**
+     * Dynamic classifier for detecting piano articulation techniques from notes and playhead context.
+     */
+    fun classifyPianoTechnique(
+        activePitches: List<Int>,
+        activeNotes: List<ScoreNote>,
+        isPedalPressed: Boolean = false,
+        handSpan: Int = 0
+    ): PianoPlayingTechnique {
+        if (activeNotes.any { it.articulation == com.creativeblisslabs.peqlearn.app.ui.screens.TabArticulation.SLIDE_UP || it.articulation == com.creativeblisslabs.peqlearn.app.ui.screens.TabArticulation.SLIDE_DOWN }) return PianoPlayingTechnique.GLISSANDO
+        if (activeNotes.any { it.ornament == com.creativeblisslabs.peqlearn.app.ui.screens.OrnamentType.TRILL }) return PianoPlayingTechnique.TRILL
+        if (activeNotes.any { it.ornament == com.creativeblisslabs.peqlearn.app.ui.screens.OrnamentType.UPPER_MORDENT || it.ornament == com.creativeblisslabs.peqlearn.app.ui.screens.OrnamentType.LOWER_MORDENT }) return PianoPlayingTechnique.MORDENT
+        if (activeNotes.any { it.ornament == com.creativeblisslabs.peqlearn.app.ui.screens.OrnamentType.TURN || it.ornament == com.creativeblisslabs.peqlearn.app.ui.screens.OrnamentType.INVERTED_TURN }) return PianoPlayingTechnique.TURN
+        if (activeNotes.any { it.grace }) return PianoPlayingTechnique.GRACE_NOTES
+        if (activeNotes.any { it.arpeggio != com.creativeblisslabs.peqlearn.app.ui.screens.ArpeggioDirection.NONE }) return PianoPlayingTechnique.ARPEGGIO
+        if (activeNotes.any { it.musicalArticulation == com.creativeblisslabs.peqlearn.app.ui.screens.MusicalArticulation.STACCATO }) return PianoPlayingTechnique.STACCATO
+        if (activeNotes.any { it.musicalArticulation == com.creativeblisslabs.peqlearn.app.ui.screens.MusicalArticulation.STACCATISSIMO }) return PianoPlayingTechnique.STACCATISSIMO
+        if (activeNotes.any { it.musicalArticulation == com.creativeblisslabs.peqlearn.app.ui.screens.MusicalArticulation.TENUTO }) return PianoPlayingTechnique.TENUTO
+        if (activeNotes.any { it.musicalArticulation == com.creativeblisslabs.peqlearn.app.ui.screens.MusicalArticulation.MARCATO || it.musicalArticulation == com.creativeblisslabs.peqlearn.app.ui.screens.MusicalArticulation.ACCENT }) return PianoPlayingTechnique.MARCATO
+        if (activePitches.size >= 5 && handSpan <= 8) return PianoPlayingTechnique.TONE_CLUSTERS
+        if (activePitches.size >= 2 && handSpan == 12) return PianoPlayingTechnique.OCTAVE_PLAYING
+        if (isPedalPressed) return PianoPlayingTechnique.PEDALING_SUSTAIN
+        return PianoPlayingTechnique.LEGATO
+    }
+
+    /**
+     * Dynamic classifier for detecting guitar picking and articulation techniques.
+     */
+    fun classifyGuitarTechnique(
+        activeNotes: List<ScoreNote>,
+        frettedStrings: List<Int>,
+        soundingPitchesCount: Int
+    ): GuitarPickingTechnique {
+        if (activeNotes.any { it.palmMute || it.articulation == com.creativeblisslabs.peqlearn.app.ui.screens.TabArticulation.PALM_MUTE }) return GuitarPickingTechnique.PALM_MUTING
+        if (activeNotes.any { it.articulation == com.creativeblisslabs.peqlearn.app.ui.screens.TabArticulation.SLAP }) return GuitarPickingTechnique.SLAP_AND_POP
+        if (activeNotes.any { it.articulation == com.creativeblisslabs.peqlearn.app.ui.screens.TabArticulation.POP }) return GuitarPickingTechnique.SLAP_AND_POP
+        if (activeNotes.any { it.guitarHarmonic == com.creativeblisslabs.peqlearn.app.ui.screens.GuitarHarmonicType.PINCH }) return GuitarPickingTechnique.PINCH_HARMONICS
+        if (activeNotes.any { it.tremoloSlashes > 0 }) return GuitarPickingTechnique.TREMOLO_PICKING
+        if (activeNotes.any { it.pickDirection == com.creativeblisslabs.peqlearn.app.ui.screens.PickDirection.SWEEP_DOWN || it.pickDirection == com.creativeblisslabs.peqlearn.app.ui.screens.PickDirection.SWEEP_UP }) return GuitarPickingTechnique.SWEEP_PICKING
+        if (activeNotes.any { it.arpeggio != com.creativeblisslabs.peqlearn.app.ui.screens.ArpeggioDirection.NONE && soundingPitchesCount >= 3 }) return GuitarPickingTechnique.RASGUEADO
+        if (soundingPitchesCount >= 3 && frettedStrings.distinct().size >= 3) return GuitarPickingTechnique.CLASSICAL_PIMA
+        if (activeNotes.any { it.pickDirection == com.creativeblisslabs.peqlearn.app.ui.screens.PickDirection.DOWN }) return GuitarPickingTechnique.DOWNPICKING
+        if (activeNotes.any { it.pickDirection == com.creativeblisslabs.peqlearn.app.ui.screens.PickDirection.UP }) return GuitarPickingTechnique.UPSTROKE_PICKING
+        return GuitarPickingTechnique.ALTERNATE_PICKING
     }
 
     /**

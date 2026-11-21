@@ -38,6 +38,7 @@ import com.creativeblisslabs.peqlearn.app.data.*
 import com.creativeblisslabs.peqlearn.app.midi.AndroidMidiHandler
 import com.creativeblisslabs.peqlearn.app.services.pEQMediaSessionService
 import com.creativeblisslabs.peqlearn.app.security.initPermissionManager
+import java.nio.ByteOrder
 import com.creativeblisslabs.peqlearn.app.security.getPermissionManager
 import com.creativeblisslabs.peqlearn.app.data.initPersistenceManager
 import com.creativeblisslabs.peqlearn.app.data.getPersistenceManager
@@ -212,7 +213,12 @@ class MainActivity : ComponentActivity() {
         var trackPickerCallback: ((com.creativeblisslabs.peqlearn.app.data.pEQMediaItem) -> Unit)? = null
         val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let {
-                lifecycleScope.launch {
+                try {
+                    contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (e: Exception) {
+                    // Ignore if flag not grantable on this content provider
+                }
+                lifecycleScope.launch(Dispatchers.IO) {
                     val displayName = getFileName(it) ?: "Imported Track"
                     val mimeType = contentResolver.getType(it)
                     val sizeBytes = getFileSize(it)
@@ -230,17 +236,20 @@ class MainActivity : ComponentActivity() {
                         durationMs = durationMs
                     )
 
-                    if (trackPickerCallback != null) {
-                        trackPickerCallback?.invoke(item)
-                        trackPickerCallback = null
-                    } else {
-                        viewModel.playExternalFile(
-                            path = it.toString(),
-                            displayName = displayName,
-                            mimeType = mimeType,
-                            sizeBytes = sizeBytes,
-                            durationMs = durationMs
-                        )
+                    withContext(Dispatchers.Main) {
+                        if (trackPickerCallback != null) {
+                            val cb = trackPickerCallback
+                            trackPickerCallback = null
+                            cb?.invoke(item)
+                        } else {
+                            viewModel.playExternalFile(
+                                path = it.toString(),
+                                displayName = displayName,
+                                mimeType = mimeType,
+                                sizeBytes = sizeBytes,
+                                durationMs = durationMs
+                            )
+                        }
                     }
                 }
             }
@@ -392,6 +401,114 @@ class MainActivity : ComponentActivity() {
                         if (dest.exists() && dest.length() > 1000L) dest.absolutePath else null
                     } catch (_: Exception) { null }
                 }
+            }
+        }
+
+        viewModel.onDecodeAudioPcm = { audioPath, maxSeconds ->
+            try {
+                val resolvedFile = if (audioPath.startsWith("content://")) {
+                    val temp = File(cacheDir, "transcribe_dec_${System.currentTimeMillis()}.audio")
+                    contentResolver.openInputStream(android.net.Uri.parse(audioPath))?.use { input ->
+                        temp.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    if (temp.exists() && temp.length() > 0) temp else File(audioPath)
+                } else {
+                    File(audioPath)
+                }
+
+                if (resolvedFile.exists()) {
+                    val extractor = android.media.MediaExtractor()
+                    extractor.setDataSource(resolvedFile.absolutePath)
+                    var trackIdx = -1
+                    var format: android.media.MediaFormat? = null
+                    for (i in 0 until extractor.trackCount) {
+                        val f = extractor.getTrackFormat(i)
+                        val mime = f.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                        if (mime.startsWith("audio/")) {
+                            trackIdx = i
+                            format = f
+                            break
+                        }
+                    }
+
+                    if (trackIdx >= 0 && format != null) {
+                        extractor.selectTrack(trackIdx)
+                        val sampleRate = if (format.containsKey(android.media.MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE) else 44100
+                        val mime = format.getString(android.media.MediaFormat.KEY_MIME)!!
+                        val decoder = android.media.MediaCodec.createDecoderByType(mime)
+                        decoder.configure(format, null, null, 0)
+                        decoder.start()
+
+                        val info = android.media.MediaCodec.BufferInfo()
+                        val chunks = mutableListOf<ShortArray>()
+                        var currentChunk = ShortArray(65536)
+                        var chunkPos = 0
+                        var totalSamples = 0
+                        val maxSamples = sampleRate * 2 * maxSeconds
+                        var isEOS = false
+
+                        while (!isEOS && totalSamples < maxSamples) {
+                            val inIdx = decoder.dequeueInputBuffer(10000L)
+                            if (inIdx >= 0) {
+                                val inBuf = decoder.getInputBuffer(inIdx)
+                                if (inBuf != null) {
+                                    val size = extractor.readSampleData(inBuf, 0)
+                                    if (size < 0) {
+                                        decoder.queueInputBuffer(inIdx, 0, 0, 0L, android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                        isEOS = true
+                                    } else {
+                                        decoder.queueInputBuffer(inIdx, 0, size, extractor.sampleTime, 0)
+                                        extractor.advance()
+                                    }
+                                }
+                            }
+
+                            var outIdx = decoder.dequeueOutputBuffer(info, 10000L)
+                            while (outIdx >= 0) {
+                                val outBuf = decoder.getOutputBuffer(outIdx)
+                                if (outBuf != null && info.size > 0) {
+                                    outBuf.position(info.offset)
+                                    outBuf.limit(info.offset + info.size)
+                                    val shortBuf = outBuf.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                                    while (shortBuf.hasRemaining() && totalSamples < maxSamples) {
+                                        if (chunkPos >= currentChunk.size) {
+                                            chunks.add(currentChunk)
+                                            currentChunk = ShortArray(65536)
+                                            chunkPos = 0
+                                        }
+                                        currentChunk[chunkPos++] = shortBuf.get()
+                                        totalSamples++
+                                    }
+                                }
+                                decoder.releaseOutputBuffer(outIdx, false)
+                                if ((info.flags and android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                                    isEOS = true
+                                    break
+                                }
+                                outIdx = decoder.dequeueOutputBuffer(info, 0L)
+                            }
+                        }
+
+                        if (chunkPos > 0) chunks.add(currentChunk.copyOf(chunkPos))
+                        decoder.stop()
+                        decoder.release()
+                        extractor.release()
+
+                        if (totalSamples > 0) {
+                            val flattened = ShortArray(totalSamples)
+                            var dstOffset = 0
+                            for (c in chunks) {
+                                val len = minOf(c.size, totalSamples - dstOffset)
+                                System.arraycopy(c, 0, flattened, dstOffset, len)
+                                dstOffset += len
+                            }
+                            Pair(flattened, sampleRate)
+                        } else null
+                    } else null
+                } else null
+            } catch (e: Exception) {
+                println("pEQLearn [TranscribeDecode]: Error decoding $audioPath: ${e.message}")
+                null
             }
         }
 

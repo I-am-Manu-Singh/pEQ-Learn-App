@@ -37,41 +37,22 @@ object OnnxModelRegistry {
         id = "muscriptor_small_cond",
         name = "MuScriptor Conditioner",
         fileName = "muscriptor-small-cond.onnx",
-        downloadUrl = "https://huggingface.co/unifolia/muscriptor-small-onnx/resolve/main/muscriptor-small-cond.onnx",
-        sizeBytes = 6_000_000L, // ~6 MB conditioner
-        description = "Audio conditioner: converts 5-second 16kHz audio chunks into prefix embeddings (f32 [1, 501+1+K, 768]).",
+        downloadUrl = "https://huggingface.co/manu-singh/muscriptor-medium-standalone-onnx/resolve/main/conditioner.onnx",
+        sizeBytes = 6_223_112L, // ~5.9 MB conditioner
+        description = "Audio conditioner: converts log-mel spectrogram (16kHz, 512 mels) into prefix condition embeddings.",
         purpose = "Audio Conditioning (Spectrogram → Prefix Embeddings)"
     )
 
-    val MUSCRIPTOR_SMALL = OnnxModelDefinition(
-        id = "muscriptor_small",
-        name = "MuScriptor Small AMT",
-        fileName = "muscriptor-small-lm.onnx",
-        downloadUrl = "https://huggingface.co/unifolia/muscriptor-small-onnx/resolve/main/muscriptor-small-lm.onnx",
-        sizeBytes = 405_211_928L, // ~386 MB
-        description = "Decoder-only transformer (103M params). Greedy autoregressive decoding with 1393 MT3 token vocabulary. Converts prefix embeddings to MIDI note events.",
-        purpose = "Audio-to-MIDI & Sheet Music Transcription"
+    val MUSCRIPTOR_MEDIUM_STANDALONE = OnnxModelDefinition(
+        id = "muscriptor_medium_standalone",
+        name = "MuScriptor Medium W4A32 Standalone (.onnx)",
+        fileName = "muscriptor-medium-decoder-standalone.onnx",
+        downloadUrl = "https://huggingface.co/manu-singh/muscriptor-medium-standalone-onnx/resolve/main/muscriptor-medium-decoder-standalone.onnx",
+        sizeBytes = 217_415_609L,
+        description = "Self-contained single-file ONNX model with internal tensor data (no separate .onnx.data file needed).",
+        purpose = "Audio-to-MIDI & Sheet Music Transcription (Self-Contained)"
     )
 
-    val SPLEETER_VOCALS = OnnxModelDefinition(
-        id = "spleeter_vocals",
-        name = "Spleeter Vocals Extractor",
-        fileName = "spleeter_vocals.onnx",
-        downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems/resolve/main/vocals.onnx",
-        sizeBytes = 39_330_000L,
-        description = "Deep convolutional model isolating vocal tracks with high fidelity.",
-        purpose = "Stem Separation (Vocals)"
-    )
-
-    val SPLEETER_ACCOMPANIMENT = OnnxModelDefinition(
-        id = "spleeter_accompaniment",
-        name = "Spleeter Accompaniment Engine",
-        fileName = "spleeter_accompaniment.onnx",
-        downloadUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems/resolve/main/accompaniment.onnx",
-        sizeBytes = 39_330_000L,
-        description = "Complementary model isolating accompaniment, backing instruments, and chords.",
-        purpose = "Stem Separation (Backing Instruments)"
-    )
 
     val HTDEMUCS_QUANTIZED_fp16 = OnnxModelDefinition(
         id = "htdemucs_quantized_fp16",
@@ -95,7 +76,7 @@ object OnnxModelRegistry {
 
     val builtInModels = listOf(
         MUSCRIPTOR_SMALL_COND,
-        MUSCRIPTOR_SMALL,
+        MUSCRIPTOR_MEDIUM_STANDALONE,
         HTDEMUCS_QUANTIZED_fp16,
         HTDEMUCS_6S_FULL
     )
@@ -530,7 +511,7 @@ object OnnxModelRegistry {
 
             // Default active transcription model
             if (!activeTranscriptionModelId.containsKey("transcription")) {
-                activeTranscriptionModelId["transcription"] = MUSCRIPTOR_SMALL.id
+                activeTranscriptionModelId["transcription"] = MUSCRIPTOR_SMALL_COND.id
             }
         } catch (e: Exception) {
             e.printStackTrace()
